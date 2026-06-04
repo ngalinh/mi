@@ -18,7 +18,7 @@ async function notifyOne(order, opts = {}) {
     ? opts.messageOverride.trim()
     : (kind === 'ship' ? buildBaoShipMessage(order) : buildBaoHangMessage(order));
 
-  // Tìm khách theo SĐT (ưu tiên) hoặc tên
+  // Tìm khách: dùng SĐT (whitelist + tìm) và tên (khớp hội thoại)
   const keyword = order.phone || order.customerName;
 
   let result;
@@ -27,6 +27,7 @@ async function notifyOne(order, opts = {}) {
       profile: opts.profile || 'default',
       account: opts.account,
       keyword,
+      name: order.customerName,
       message,
     });
   } catch (err) {

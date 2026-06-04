@@ -62,18 +62,15 @@ const deaccent = (s) => norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLower
 async function selectZaloAccount(page, accountLabel) {
   if (!accountLabel) return false;
   const target = norm(accountLabel);
-  const tgt = deaccent(target);
 
-  // Ô tìm kiếm tài khoản (đặc trưng cho dropdown đang mở). Khác ô tìm hội thoại.
-  const searchSel = 'input[placeholder*="Tìm kiếm tài khoản" i]';
-  const isOpen = () => page.locator(searchSel).first().isVisible().catch(() => false);
-
-  // 1) Mở dropdown: thử vài cách tới khi ô tìm kiếm tài khoản hiện
+  // 1) Mở dropdown chọn tài khoản: thử vài opener
+  const accSearchSel = 'input[placeholder*="Tìm kiếm tài khoản" i]';
+  const isOpen = () => page.locator(accSearchSel).first().isVisible().catch(() => false);
   if (!(await isOpen())) {
     const openers = [
       page.getByText('Tất cả tài khoản', { exact: false }).first(),
+      page.locator('.el-select, .el-select .el-input__inner, .el-select__caret').first(),
       page.locator('[aria-haspopup], [aria-expanded]').first(),
-      page.getByRole('button', { name: /tài khoản/i }).first(),
       page.getByRole('combobox').first(),
     ];
     for (const op of openers) {
@@ -82,71 +79,103 @@ async function selectZaloAccount(page, accountLabel) {
       await page.waitForTimeout(600);
     }
   }
-  if (!(await isOpen())) {
-    await shot(page, '02b-account-dropdown-notfound');
-    return false; // có thể chỉ 1 account -> bỏ qua
-  }
 
-  // 2) Gõ tên vào ô tìm kiếm để lọc danh sách
-  const search = page.locator(searchSel).first();
-  await search.fill('').catch(() => {});
-  await search.type(target, { delay: 40 }).catch(() => {});
-  await page.waitForTimeout(1200);
+  // 2) Nếu có ô tìm kiếm tài khoản thì gõ để lọc (không bắt buộc)
+  const accSearch = page.locator(accSearchSel).first();
+  if (await accSearch.isVisible().catch(() => false)) {
+    await accSearch.fill('').catch(() => {});
+    await accSearch.type(target, { delay: 40 }).catch(() => {});
+    await page.waitForTimeout(1000);
+  }
   await shot(page, '02a-account-search');
 
-  // 3) Click item khớp: ưu tiên text khớp đầy đủ, rồi tới khớp deaccent
-  const exactLoc = page.getByText(target, { exact: true });
-  if (await exactLoc.count().catch(() => 0)) {
-    await exactLoc.first().click().catch(() => {});
-    await page.waitForTimeout(800);
+  // 3) Quét DOM tìm phần tử khớp tên -> click bằng TOẠ ĐỘ chuột (cách Xeko, ăn event Vue/React)
+  const rect = await page.evaluate((name) => {
+    const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
+      .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const tgt = deacc(name);
+    const els = document.querySelectorAll(
+      '[class*="dropdown"] li, [class*="option"], li, [class*="item"], div, span, a'
+    );
+    let exact = null;
+    let partial = null;
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0 && r.height < 120)) continue;
+      const t = deacc(el.textContent);
+      if (!t) continue;
+      if (t === tgt) { exact = { x: r.left + r.width / 2, y: r.top + r.height / 2 }; break; }
+      if (!partial && t.includes(tgt) && t.length <= tgt.length + 14) {
+        partial = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }
+    }
+    return exact || partial;
+  }, target);
+
+  if (rect) {
+    await page.mouse.click(rect.x, rect.y);
+    await page.waitForTimeout(900);
     await shot(page, '02-account-selected');
     return true;
   }
-  const candidates = page.locator('li, [role="option"], [class*="item"], [class*="option"], div, span, button');
-  const n = Math.min(await candidates.count().catch(() => 0), 500);
-  for (let i = 0; i < n; i++) {
-    const el = candidates.nth(i);
-    const txt = deaccent(await el.innerText().catch(() => ''));
-    if (txt === tgt && (await el.isVisible().catch(() => false))) {
-      await el.click().catch(() => {});
-      await page.waitForTimeout(800);
-      await shot(page, '02-account-selected');
-      return true;
-    }
-  }
   await shot(page, '02b-account-notfound');
-  throw new Error(`KHONG_THAY_TAI_KHOAN_ZALO: không chọn được tài khoản Zalo "${accountLabel}". Kiểm tra tên trong dropdown (xem ảnh screenshots/02a-account-search).`);
+  throw new Error(`KHONG_THAY_TAI_KHOAN_ZALO: không chọn được tài khoản Zalo "${accountLabel}". Xem ảnh screenshots/02a-account-search.png.`);
 }
 
 /**
- * Tìm và mở hội thoại khách theo từ khóa (tên hoặc SĐT).
+ * Tìm và mở hội thoại khách. Tìm theo TÊN trước (khớp text kiểu Xeko), nếu không thấy
+ * thì tìm theo SĐT và lấy kết quả trên cùng. Click bằng toạ độ chuột thật.
+ * @param {object} p { name, phone }
  */
-async function searchAndClickConversation(page, keyword) {
-  const kw = norm(keyword);
+async function searchAndClickConversation(page, { name, phone }) {
   const searchBox = page
     .locator('input[placeholder*="Tìm kiếm"], input[placeholder*="Search"], input[type="search"]')
     .first();
-
   if (!(await searchBox.isVisible().catch(() => false))) {
     throw new Error('KHONG_THAY_O_TIM_KIEM: Không tìm thấy ô tìm kiếm hội thoại trên Salework.');
   }
-  await searchBox.click();
-  await searchBox.fill('');
-  await searchBox.type(kw, { delay: 40 });
-  await page.waitForTimeout(2500);
-  await shot(page, '03-searched');
 
-  // Click vào kết quả đầu tiên khớp keyword
-  const result = page
-    .locator('[class*="conversation"], [class*="contact"], [class*="chat-item"], [class*="item"], li, div')
-    .filter({ hasText: kw.split(' ')[0] })
-    .first();
-
-  const visible = await result.isVisible().catch(() => false);
-  if (!visible) {
-    throw new Error(`KHONG_THAY_HOI_THOAI: Không tìm thấy hội thoại cho "${kw}". Kiểm tra khách đã từng nhắn Zalo chưa.`);
+  // term: từ khoá gõ vào ô tìm; matchByText=true -> chọn hàng có text khớp tên; false -> lấy hàng trên cùng
+  async function attempt(term, matchByText) {
+    if (!term) return null;
+    await searchBox.click().catch(() => {});
+    await searchBox.fill('').catch(() => {});
+    await searchBox.type(String(term), { delay: 40 });
+    await page.waitForTimeout(2500);
+    await shot(page, '03-searched');
+    return page.evaluate(({ term, matchByText }) => {
+      const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
+        .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const tgt = deacc(term);
+      const els = document.querySelectorAll(
+        '[class*="conversation"], [class*="contact"], [class*="chat"], '
+        + '[class*="list-item"], [class*="message-item"], li, a[href]'
+      );
+      let topmost = null;
+      for (const el of els) {
+        const r = el.getBoundingClientRect();
+        if (!(r.width > 150 && r.height > 30 && r.height < 220 && r.top >= 0)) continue;
+        const t = deacc(el.textContent);
+        if (matchByText) {
+          if (t && t.includes(tgt)) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        } else if (!topmost || r.top < topmost.top) {
+          topmost = { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top };
+        }
+      }
+      return matchByText ? null : topmost;
+    }, { term: String(term), matchByText });
   }
-  await result.click().catch(() => {});
+
+  let rect = null;
+  if (name) rect = await attempt(name, true);       // tìm theo tên, khớp text
+  if (!rect && phone) rect = await attempt(phone, false); // SĐT -> kết quả trên cùng
+  if (!rect && name) rect = await attempt(name, false);   // tên -> kết quả trên cùng
+
+  if (!rect) {
+    await shot(page, '03b-conversation-notfound');
+    throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${name || phone}". Kiểm tra khách đã từng nhắn Zalo trên tài khoản này chưa.`);
+  }
+  await page.mouse.click(rect.x, rect.y);
   await page.waitForTimeout(1500);
   await shot(page, '04-conversation-opened');
 }
@@ -207,12 +236,13 @@ async function typeAndSend(page, message) {
  * @param {object} p
  * @param {string} p.profile        - tên profile (account zalo) để load session
  * @param {string} [p.account]      - label account để chọn trong dropdown (nếu có)
- * @param {string} p.keyword        - từ khóa tìm khách (tên hoặc SĐT)
+ * @param {string} p.keyword        - SĐT khách (dùng để tìm + kiểm tra whitelist)
+ * @param {string} [p.name]         - tên khách (dùng để tìm/khớp hội thoại)
  * @param {string} p.message        - nội dung tin nhắn
  * @returns {Promise<{ok:boolean, step?:string}>}
  */
-async function sendBaoHang({ profile = 'default', account, keyword, message }) {
-  if (!keyword) throw new Error('Thiếu keyword (tên/SĐT khách).');
+async function sendBaoHang({ profile = 'default', account, keyword, name, message }) {
+  if (!keyword && !name) throw new Error('Thiếu keyword (SĐT) hoặc name (tên khách).');
   if (!message) throw new Error('Thiếu nội dung tin nhắn.');
 
   // CHẶN AN TOÀN: ở chế độ TEST chỉ gửi tới số nằm trong TEST_PHONES
@@ -226,7 +256,7 @@ async function sendBaoHang({ profile = 'default', account, keyword, message }) {
   // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env
   const acct = account || config.defaultZaloAccount;
   if (acct) await selectZaloAccount(page, acct);
-  await searchAndClickConversation(page, keyword);
+  await searchAndClickConversation(page, { name, phone: keyword });
   await typeAndSend(page, message);
 
   return { ok: true };
