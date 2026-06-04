@@ -19,7 +19,13 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'doraemi-local-runner', time: new Date().toISOString() });
+  res.json({
+    ok: true,
+    service: 'doraemi-local-runner',
+    testMode: config.testMode,
+    testPhones: config.testPhones,
+    time: new Date().toISOString(),
+  });
 });
 
 app.get('/api/profile/:name', (req, res) => {
@@ -50,4 +56,9 @@ app.listen(config.port, () => {
   console.log(`[local-runner] listening on http://localhost:${config.port}`);
   console.log(`[local-runner] Salework URL: ${config.saleworkUrl} | headless=${config.headless}`);
   if (!config.apiKey) console.warn('[local-runner] CẢNH BÁO: chưa đặt API_KEY — endpoint không được bảo vệ.');
+  if (config.testMode) {
+    console.warn(`[local-runner] 🧪 TEST_MODE BẬT — chỉ gửi tới: ${config.testPhones.join(', ') || '(trống!)'}`);
+  } else {
+    console.warn('[local-runner] ⚠️  TEST_MODE TẮT — sẽ gửi tới TẤT CẢ số được yêu cầu (khách thật).');
+  }
 });

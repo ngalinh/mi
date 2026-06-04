@@ -14,6 +14,14 @@ const { getPage } = require('./browser');
 
 const norm = (s) => (s == null ? '' : String(s).normalize('NFC').trim());
 
+// Chuẩn hóa SĐT để so khớp whitelist (bỏ ký tự không phải số, bỏ 84/0 đầu)
+const normPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
+function phoneAllowed(phone) {
+  if (!config.testMode) return true;
+  const t = normPhone(phone);
+  return config.testPhones.some((tp) => normPhone(tp) === t && t !== '');
+}
+
 function shot(page, name) {
   try {
     if (!fs.existsSync(config.screenshotDir)) fs.mkdirSync(config.screenshotDir, { recursive: true });
@@ -181,6 +189,11 @@ async function typeAndSend(page, message) {
 async function sendBaoHang({ profile = 'default', account, keyword, message }) {
   if (!keyword) throw new Error('Thiếu keyword (tên/SĐT khách).');
   if (!message) throw new Error('Thiếu nội dung tin nhắn.');
+
+  // CHẶN AN TOÀN: ở chế độ TEST chỉ gửi tới số nằm trong TEST_PHONES
+  if (!phoneAllowed(keyword)) {
+    throw new Error(`TEST_MODE: bỏ qua "${keyword}" — không nằm trong TEST_PHONES (an toàn, không gửi).`);
+  }
 
   const page = await getPage(profile);
   await gotoSalework(page);

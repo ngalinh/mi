@@ -6,7 +6,7 @@ const config = require('./config');
 const { getOrders, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats } = require('./db');
 const { notifyMany } = require('./notifyService');
-const { checkLocalHealth } = require('./playwrightProxy');
+const { getLocalHealth } = require('./playwrightProxy');
 
 const app = express();
 app.use(cors());
@@ -20,10 +20,16 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // ---- Health & cấu hình hiển thị ----
 app.get('/api/health', async (req, res) => {
+  const h = await getLocalHealth();
   res.json({
     ok: true,
     mock: config.basso.useMock,
-    localRunner: { url: config.playwrightLocalUrl, online: await checkLocalHealth() },
+    localRunner: {
+      url: config.playwrightLocalUrl,
+      online: h.online,
+      testMode: h.testMode || false,
+      testPhones: h.testPhones || [],
+    },
   });
 });
 

@@ -27,6 +27,18 @@ async function checkLocalHealth() {
   }
 }
 
+/** Lấy chi tiết health của runner (online, testMode, testPhones) */
+async function getLocalHealth() {
+  try {
+    const res = await fetch(localUrl('/health'), { timeout: 5000 });
+    if (!res.ok) return { online: false };
+    const j = await res.json();
+    return { online: true, testMode: !!j.testMode, testPhones: j.testPhones || [] };
+  } catch {
+    return { online: false };
+  }
+}
+
 /**
  * Gửi 1 tin nhắn báo hàng và chờ kết quả.
  * @param {{profile?:string, account?:string, keyword:string, message:string}} payload
@@ -64,4 +76,4 @@ async function sendBaoHang(payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60
   return { ok: false, jobId, error: 'Hết thời gian chờ local-runner (timeout)' };
 }
 
-module.exports = { sendBaoHang, checkLocalHealth };
+module.exports = { sendBaoHang, checkLocalHealth, getLocalHealth };

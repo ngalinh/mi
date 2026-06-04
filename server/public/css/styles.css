@@ -34,6 +34,7 @@ a { color: var(--primary); text-decoration: none; }
 .badge-online { background: #dcfce7; color: var(--green); }
 .badge-offline { background: #fee2e2; color: var(--red); }
 .badge-mock { background: #fef3c7; color: var(--amber); }
+.badge-test { background: #ede9fe; color: #7c3aed; font-weight: 700; }
 
 .container { padding: 24px; max-width: 1500px; margin: 0 auto; }
 .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }

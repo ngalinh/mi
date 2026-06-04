@@ -248,6 +248,13 @@
       lb.textContent = 'Local-runner: ' + (h.localRunner.online ? 'online' : 'offline');
       lb.className = 'badge-status ' + (h.localRunner.online ? 'badge-online' : 'badge-offline');
       $('mockBadge').style.display = h.mock ? '' : 'none';
+      const tb = $('testBadge');
+      if (h.localRunner.testMode) {
+        tb.style.display = '';
+        tb.textContent = '🧪 TEST: chỉ gửi ' + ((h.localRunner.testPhones || []).join(', ') || '(trống)');
+      } else {
+        tb.style.display = 'none';
+      }
     } catch { /* ignore */ }
   }
 
