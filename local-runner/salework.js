@@ -75,22 +75,29 @@ async function selectZaloAccount(page, accountLabel) {
   await opener.click().catch(() => {});
   await page.waitForTimeout(800);
 
-  // Tìm option khớp tên (hoặc tên + sđt)
-  const option = page
-    .locator('.el-select-dropdown__item, li[role="option"]')
-    .filter({ hasText: target.split(' ')[0] })
-    .first();
-
-  const found = await option.isVisible().catch(() => false);
-  if (found) {
-    await option.click().catch(() => {});
+  // Tìm option khớp tên: bỏ dấu, ưu tiên khớp ĐẦY ĐỦ, sau đó tới chứa một phần
+  const items = page.locator('.el-select-dropdown__item, li[role="option"]');
+  const count = await items.count().catch(() => 0);
+  const deaccent = (s) => norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const tgt = deaccent(target);
+  let exactIdx = -1;
+  let partialIdx = -1;
+  for (let i = 0; i < count; i++) {
+    const txt = deaccent(await items.nth(i).innerText().catch(() => ''));
+    if (!txt) continue;
+    if (txt === tgt) { exactIdx = i; break; }
+    if (partialIdx === -1 && (txt.includes(tgt) || tgt.includes(txt))) partialIdx = i;
+  }
+  const idx = exactIdx >= 0 ? exactIdx : partialIdx;
+  if (idx >= 0) {
+    await items.nth(idx).click().catch(() => {});
     await page.waitForTimeout(600);
     await shot(page, '02-account-selected');
     return true;
   }
-  // đóng dropdown nếu không thấy
+  // không thấy -> đóng dropdown, báo lỗi rõ để biết tên chưa khớp
   await page.keyboard.press('Escape').catch(() => {});
-  return false;
+  throw new Error(`KHONG_THAY_TAI_KHOAN_ZALO: không tìm thấy tài khoản Zalo "${target}" trong danh sách. Kiểm tra DEFAULT_ZALO_ACCOUNT.`);
 }
 
 /**
