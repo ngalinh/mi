@@ -198,7 +198,9 @@ async function sendBaoHang({ profile = 'default', account, keyword, message }) {
   const page = await getPage(profile);
   await gotoSalework(page);
   await ensureLoggedIn(page);
-  if (account) await selectZaloAccount(page, account);
+  // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env
+  const acct = account || config.defaultZaloAccount;
+  if (acct) await selectZaloAccount(page, acct);
   await searchAndClickConversation(page, keyword);
   await typeAndSend(page, message);
 
