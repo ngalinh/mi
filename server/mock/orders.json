@@ -82,5 +82,19 @@
     "has_zalo": true,
     "content": "Dạ Thơ ơi, đơn hàng của mình đã về kho VN ạ.",
     "content_ship": null
+  },
+  {
+    "id": 7,
+    "date_inventory": 1780531200,
+    "customer_id": 15999,
+    "customer_name": "Tram Truong",
+    "customer_phone": "0764523837",
+    "user_id": 7,
+    "employee_name": "Linh Thảo",
+    "status": "not_sent",
+    "note": null,
+    "has_zalo": true,
+    "content": "Dạ Tram Truong ơi, đơn hàng của mình đã về kho VN rồi ạ 🎉 Shop nhắn để mình biết nhé! (tin test từ Doraemi bot)",
+    "content_ship": "Dạ Tram Truong ơi, đơn của mình đã được gửi đi giao ạ 🚚 (tin test ship từ Doraemi bot)"
   }
 ]
