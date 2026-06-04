@@ -52,52 +52,70 @@ async function ensureLoggedIn(page) {
   }
 }
 
+const deaccent = (s) => norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
 /**
- * Chọn account Zalo trong dropdown (el-select), nếu giao diện có chọn nhiều account.
- * Bỏ qua êm nếu không tìm thấy dropdown (giao diện 1 account).
+ * Chọn tài khoản Zalo trong dropdown của Salework (giao diện zalo.salework.net mới —
+ * KHÔNG phải Element-UI). Dropdown có ô "Tìm kiếm tài khoản..." và danh sách tài khoản.
+ * Bỏ qua êm nếu không mở được dropdown (giao diện chỉ 1 account).
  */
 async function selectZaloAccount(page, accountLabel) {
   if (!accountLabel) return false;
   const target = norm(accountLabel);
-
-  // Xóa lựa chọn cũ (tối đa 20 tag)
-  for (let i = 0; i < 20; i++) {
-    const close = page.locator('.el-tag__close, .el-icon-close').first();
-    if (await close.isVisible().catch(() => false)) {
-      await close.click().catch(() => {});
-      await page.waitForTimeout(150);
-    } else break;
-  }
-
-  // Mở dropdown
-  const opener = page.locator('.el-select .el-input__inner, .el-select__caret, .el-select').first();
-  if (!(await opener.isVisible().catch(() => false))) return false;
-  await opener.click().catch(() => {});
-  await page.waitForTimeout(800);
-
-  // Tìm option khớp tên: bỏ dấu, ưu tiên khớp ĐẦY ĐỦ, sau đó tới chứa một phần
-  const items = page.locator('.el-select-dropdown__item, li[role="option"]');
-  const count = await items.count().catch(() => 0);
-  const deaccent = (s) => norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const tgt = deaccent(target);
-  let exactIdx = -1;
-  let partialIdx = -1;
-  for (let i = 0; i < count; i++) {
-    const txt = deaccent(await items.nth(i).innerText().catch(() => ''));
-    if (!txt) continue;
-    if (txt === tgt) { exactIdx = i; break; }
-    if (partialIdx === -1 && (txt.includes(tgt) || tgt.includes(txt))) partialIdx = i;
+
+  // Ô tìm kiếm tài khoản (đặc trưng cho dropdown đang mở). Khác ô tìm hội thoại.
+  const searchSel = 'input[placeholder*="Tìm kiếm tài khoản" i]';
+  const isOpen = () => page.locator(searchSel).first().isVisible().catch(() => false);
+
+  // 1) Mở dropdown: thử vài cách tới khi ô tìm kiếm tài khoản hiện
+  if (!(await isOpen())) {
+    const openers = [
+      page.getByText('Tất cả tài khoản', { exact: false }).first(),
+      page.locator('[aria-haspopup], [aria-expanded]').first(),
+      page.getByRole('button', { name: /tài khoản/i }).first(),
+      page.getByRole('combobox').first(),
+    ];
+    for (const op of openers) {
+      if (await isOpen()) break;
+      await op.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(600);
+    }
   }
-  const idx = exactIdx >= 0 ? exactIdx : partialIdx;
-  if (idx >= 0) {
-    await items.nth(idx).click().catch(() => {});
-    await page.waitForTimeout(600);
+  if (!(await isOpen())) {
+    await shot(page, '02b-account-dropdown-notfound');
+    return false; // có thể chỉ 1 account -> bỏ qua
+  }
+
+  // 2) Gõ tên vào ô tìm kiếm để lọc danh sách
+  const search = page.locator(searchSel).first();
+  await search.fill('').catch(() => {});
+  await search.type(target, { delay: 40 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  await shot(page, '02a-account-search');
+
+  // 3) Click item khớp: ưu tiên text khớp đầy đủ, rồi tới khớp deaccent
+  const exactLoc = page.getByText(target, { exact: true });
+  if (await exactLoc.count().catch(() => 0)) {
+    await exactLoc.first().click().catch(() => {});
+    await page.waitForTimeout(800);
     await shot(page, '02-account-selected');
     return true;
   }
-  // không thấy -> đóng dropdown, báo lỗi rõ để biết tên chưa khớp
-  await page.keyboard.press('Escape').catch(() => {});
-  throw new Error(`KHONG_THAY_TAI_KHOAN_ZALO: không tìm thấy tài khoản Zalo "${target}" trong danh sách. Kiểm tra DEFAULT_ZALO_ACCOUNT.`);
+  const candidates = page.locator('li, [role="option"], [class*="item"], [class*="option"], div, span, button');
+  const n = Math.min(await candidates.count().catch(() => 0), 500);
+  for (let i = 0; i < n; i++) {
+    const el = candidates.nth(i);
+    const txt = deaccent(await el.innerText().catch(() => ''));
+    if (txt === tgt && (await el.isVisible().catch(() => false))) {
+      await el.click().catch(() => {});
+      await page.waitForTimeout(800);
+      await shot(page, '02-account-selected');
+      return true;
+    }
+  }
+  await shot(page, '02b-account-notfound');
+  throw new Error(`KHONG_THAY_TAI_KHOAN_ZALO: không chọn được tài khoản Zalo "${accountLabel}". Kiểm tra tên trong dropdown (xem ảnh screenshots/02a-account-search).`);
 }
 
 /**
