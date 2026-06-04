@@ -6,6 +6,8 @@ module.exports = {
   port: parseInt(process.env.LOCAL_PORT || '8090', 10),
   apiKey: process.env.API_KEY || '',
   saleworkUrl: process.env.SALEWORK_URL || 'https://zalo.salework.net',
+  // URL trang đăng nhập (có thể khác trang chat). Mặc định dùng luôn saleworkUrl.
+  saleworkLoginUrl: process.env.SALEWORK_LOGIN_URL || process.env.SALEWORK_URL || 'https://zalo.salework.net',
   headless: String(process.env.HEADLESS || 'false').toLowerCase() === 'true',
   slowMo: parseInt(process.env.SLOW_MO || '300', 10),
   // Nơi lưu session đăng nhập Salework theo từng "profile" (account zalo)

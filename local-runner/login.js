@@ -18,7 +18,8 @@ const { getContext } = require('./browser');
 
   const context = await getContext(profile);
   const page = context.pages()[0] || (await context.newPage());
-  await page.goto(config.saleworkUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  console.log(`[login] URL đăng nhập: ${config.saleworkLoginUrl}`);
+  await page.goto(config.saleworkLoginUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
 
   console.log('\n========================================================');
   console.log(' 👉 ĐĂNG NHẬP Salework trên cửa sổ browser vừa mở.');
