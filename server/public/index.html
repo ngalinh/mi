@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Doraemi · Báo hàng về</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <nav class="topnav">
+    <span class="brand">🤖 DORAEMI</span>
+    <a class="nav active" href="/index.html">Hàng về VN</a>
+    <a class="nav" href="/reports.html">Lịch sử báo</a>
+    <span class="spacer"></span>
+    <span id="mockBadge" class="badge-status badge-mock" style="display:none">MOCK DATA</span>
+    <span id="localBadge" class="badge-status badge-offline">Local-runner: ...</span>
+  </nav>
+
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h1>HÀNG VỀ VN</h1>
+        <button id="syncBtn" class="btn">Đồng bộ ngay</button>
+      </div>
+
+      <div class="filters">
+        <div class="field"><label>Từ ngày</label><input type="date" id="fFrom" /></div>
+        <div class="field"><label>Đến ngày</label><input type="date" id="fTo" /></div>
+        <div class="field"><label>Trạng thái</label>
+          <select id="fStatus">
+            <option value="all">Tất cả</option>
+            <option value="not_sent">Chưa báo</option>
+            <option value="notified_arrival">Đã báo hàng</option>
+            <option value="notified_ship">Đã báo ship</option>
+            <option value="send_failed">Gửi lỗi</option>
+          </select>
+        </div>
+        <div class="field"><label>Nhân viên</label>
+          <select id="fStaff"><option value="">Tất cả</option></select>
+        </div>
+        <div class="field full"><label>Tìm kiếm</label><input type="text" id="fQ" placeholder="Tên / SĐT khách" /></div>
+      </div>
+
+      <!-- Tab nhân viên -->
+      <div class="tabs" id="staffTabs"></div>
+
+      <!-- Thanh thao tác bot (gửi hàng loạt) -->
+      <div class="bot-bar">
+        <span id="countInfo" class="muted"></span>
+        <span class="grow"></span>
+        <button id="bulkBtn" class="btn small">📣 Báo hàng loạt (chưa báo)</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:34px"></th>
+              <th class="center" style="width:50px">STT</th>
+              <th>Ngày nhập kho</th>
+              <th>Khách hàng</th>
+              <th>SĐT</th>
+              <th class="center">ND báo hàng</th>
+              <th class="center">ND báo ship</th>
+              <th>Trạng thái</th>
+              <th>Ghi chú</th>
+              <th>Nhân viên</th>
+            </tr>
+          </thead>
+          <tbody id="rows"><tr><td colspan="10" class="empty">Đang tải...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal xem/sửa nội dung + gửi Zalo -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <h3 id="modalTitle">Nội dung báo hàng</h3>
+      <p class="muted" id="modalSub"></p>
+      <textarea id="modalMsg"></textarea>
+      <div class="row">
+        <button class="btn secondary" id="modalCancel">Đóng</button>
+        <button class="btn" id="modalSend">📣 Gửi báo hàng qua Zalo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>

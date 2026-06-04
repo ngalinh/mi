@@ -1,0 +1,29 @@
+{
+  "name": "doraemi-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chatbot tự động báo hàng về VN qua Zalo (Salework) — dashboard + report + Playwright automation",
+  "type": "commonjs",
+  "scripts": {
+    "server": "node server/index.js",
+    "local": "node local-runner/index.js",
+    "local:debug": "cross-env HEADLESS=false node local-runner/index.js",
+    "login": "cross-env HEADLESS=false node local-runner/login.js",
+    "install:browser": "playwright install chromium",
+    "dev": "node server/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "form-data": "^4.0.1",
+    "node-fetch": "^2.7.0",
+    "playwright": "^1.50.1"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}

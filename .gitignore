@@ -1,0 +1,19 @@
+node_modules/
+.env
+*.log
+
+# SQLite database & WAL files
+data/
+*.sqlite
+*.sqlite-*
+
+# Playwright persistent sessions (chứa cookie đăng nhập Salework/Zalo — KHÔNG commit)
+playwright-data/
+screenshots/
+
+# Cấu hình Claude Code cá nhân (máy-specific)
+.claude/settings.local.json
+
+# OS
+Thumbs.db
+.DS_Store

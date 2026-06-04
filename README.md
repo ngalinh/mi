@@ -1,0 +1,108 @@
+# Doraemi Bot — Tự động báo hàng về VN qua Zalo (Salework)
+
+Chatbot tự động thông báo "hàng đã về kho VN" cho khách, gồm 3 phần như yêu cầu:
+
+1. **Dashboard** hiển thị danh sách hàng về (lấy từ API website — hiện dùng dữ liệu MOCK, ráp API thật sau).
+2. **Trang lịch sử báo** — log mọi lượt nhắn tin (thành công/thất bại, nội dung, thời gian).
+3. **Automation Playwright** trên tài khoản **Salework Zalo** (`https://zalo.salework.net`), port theo pattern của [Xeko](https://github.com/ngalinh/Xeko).
+
+## Kiến trúc (giống Xeko)
+
+```
+┌────────────────────────┐       HTTP (tunnel/localhost)      ┌──────────────────────────┐
+│  server/  (ai.basso.vn) │  ──── POST /api/zalo/send ───────▶ │ local-runner/ (máy có Chrome)│
+│  • Dashboard + Reports  │  ◀─── poll /api/job/:id  ───────── │ • Playwright persistent ctx │
+│  • bassoApi (đọc orders)│                                    │ • Điều khiển zalo.salework  │
+│  • SQLite log lịch sử   │                                    │ • Lưu session đăng nhập     │
+└────────────────────────┘                                    └──────────────────────────┘
+```
+
+- **server/**: Express, phục vụ web + API, lưu lịch sử (SQLite). Có thể deploy lên server.
+- **local-runner/**: chạy trên **máy Windows có trình duyệt**, giữ session đăng nhập Salework, thực thi automation. POST trả `jobId`, client poll kết quả (tránh timeout qua tunnel).
+
+> Vì sao tách? Session đăng nhập Zalo/Salework cần ở máy "thật" để tránh bị chặn và giữ đăng nhập lâu dài — đúng pattern Xeko.
+
+## Cài đặt
+
+```powershell
+npm install
+npm run install:browser   # tải Chromium cho Playwright
+copy .env.example .env     # rồi sửa .env
+```
+
+Trong `.env` đặt `API_KEY` (chuỗi ngẫu nhiên, giống nhau cho cả 2 process).
+
+## Chạy
+
+### 1) Local-runner (máy có Chrome) — đăng nhập Salework lần đầu
+```powershell
+npm run local:debug        # mở cửa sổ browser (HEADLESS=false)
+```
+Lần đầu hãy mở `https://zalo.salework.net` trong cửa sổ browser do bot bật lên và **đăng nhập thủ công 1 lần**. Session được lưu vào `playwright-data/salework-default/` nên các lần sau không phải login lại.
+
+> Tip: profile mặc định là `default`. Mỗi account Salework/Zalo nên dùng 1 profile riêng (truyền `profile` khi gọi `/api/notify`).
+
+### 2) Server (dashboard)
+```powershell
+npm run server
+```
+Mở http://localhost:8080 — dashboard "Hàng về VN".
+
+### Chung 1 máy?
+Để mặc định `PLAYWRIGHT_LOCAL_URL=http://localhost:8090` là chạy chung máy được luôn. Nếu local-runner ở máy khác sau NAT, dùng tunnel:
+```powershell
+# ví dụ với cloudflared / ngrok
+ngrok http 8090
+# rồi đặt PLAYWRIGHT_LOCAL_URL = URL tunnel trong .env của server
+```
+
+## Luồng hoạt động
+
+1. Dashboard gọi `GET /api/orders` → bảng hàng về.
+2. Chọn các đơn **"Chưa báo"** (hoặc bấm 📣 ở 1 dòng để xem/sửa nội dung trước khi gửi).
+3. `POST /api/notify { orderIds, messageOverride? }` → server build tin nhắn → forward xuống local-runner → Playwright tìm khách theo SĐT/tên trên Salework và gửi.
+4. Mỗi lượt được ghi vào **Lịch sử báo** (`/reports.html`).
+
+## Ráp API website thật (ĐÃ tích hợp Basso Partner API)
+
+Chỉ cần điền `.env` là chạy thật:
+```
+BASSO_API_BASE_URL=https://api.basso.vn   # Basso cung cấp
+BASSO_API_KEY=...                          # X-Partner-Api-Key
+BASSO_EMAIL=...                            # tài khoản login
+BASSO_PASS=...
+AUTO_UPDATE_STATUS=true                     # gửi xong tự đánh dấu "Đã báo hàng" về web
+```
+Để trống `BASSO_API_BASE_URL` => tự chạy MOCK.
+
+Đã cài sẵn trong [`server/bassoApi.js`](server/bassoApi.js):
+- **Login + cache token**: `POST /partner/login` → `data.access_token` (tự login lại khi hết hạn / gặp 401).
+- **List**: `GET /partner/getArrivedVnList` (filter `status`, `from`/`to` DD-MM-YYYY, `key`, `tab`=user_id NV, `page_size`).
+- **Update**: `POST /partner/updateArrivedVnRow` `{customer_id, date_inventory, status, note}` — tự gọi sau khi gửi Zalo thành công (nếu `AUTO_UPDATE_STATUS=true`).
+
+Map trạng thái API → nhãn: `not_sent`=Chưa báo, `notified_arrival`=Đã báo hàng, `notified_ship`=Đã báo ship, `send_failed`=Gửi lỗi.
+
+Shape nội bộ chuẩn:
+```
+{ id, customerId, dateInventory, stt, warehouseDate, customerName, phone,
+  noiDungBaoHang, noiDungBaoShip, statusCode, status, note, staff, userId, hasZalo }
+```
+
+## Khi giao diện Salework thay đổi
+
+Mọi selector tập trung trong [`local-runner/salework.js`](local-runner/salework.js). Chạy `npm run local:debug` để xem cửa sổ + ảnh chụp từng bước trong thư mục `screenshots/` để chỉnh selector.
+
+## Mẫu tin nhắn
+
+Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messageTemplate.js). Nếu đơn đã có sẵn "ND báo hàng" thì hệ thống ưu tiên dùng nguyên văn nội dung đó.
+
+## API tóm tắt
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/orders?status=&staff=&q=&from=&to=` | Danh sách hàng về |
+| POST | `/api/notify` `{orderIds[], profile?, account?, messageOverride?}` | Báo hàng |
+| GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
+| GET | `/api/health` | Trạng thái server + local-runner |
+
+Local-runner: `POST /api/zalo/send`, `GET /api/job/:id`, `GET /health` (bảo vệ bằng header `x-api-key`).
