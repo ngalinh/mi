@@ -12,7 +12,8 @@ module.exports = {
   // URL trang đăng nhập (có thể khác trang chat). Mặc định dùng luôn saleworkUrl.
   saleworkLoginUrl: process.env.SALEWORK_LOGIN_URL || process.env.SALEWORK_URL || 'https://zalo.salework.net',
   headless: String(process.env.HEADLESS || 'false').toLowerCase() === 'true',
-  slowMo: parseInt(process.env.SLOW_MO || '300', 10),
+  // Làm chậm mỗi thao tác (ms) — chỉ để dễ nhìn khi debug. Đặt 0 khi chạy thật cho nhanh.
+  slowMo: parseInt(process.env.SLOW_MO || '0', 10),
   // CHẾ ĐỘ TEST: chỉ gửi thật tới các số trong TEST_PHONES; số khác bị chặn (không gửi)
   testMode: String(process.env.TEST_MODE || 'false').toLowerCase() === 'true',
   testPhones: (process.env.TEST_PHONES || '').split(',').map((s) => s.trim()).filter(Boolean),

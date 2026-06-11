@@ -84,8 +84,8 @@ async function selectZaloAccount(page, accountLabel) {
   const accSearch = page.locator(accSearchSel).first();
   if (await accSearch.isVisible().catch(() => false)) {
     await accSearch.fill('').catch(() => {});
-    await accSearch.type(target, { delay: 40 }).catch(() => {});
-    await page.waitForTimeout(1000);
+    await accSearch.type(target, { delay: 30 }).catch(() => {});
+    await page.waitForTimeout(500);
   }
   await shot(page, '02a-account-search');
 
@@ -114,15 +114,14 @@ async function selectZaloAccount(page, accountLabel) {
 
   if (rect) {
     await page.mouse.click(rect.x, rect.y);
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(300);
     // Dropdown Salework là Element-UI multi-select (is-multiple) -> KHÔNG tự đóng khi
     // chọn option. Nếu để mở, lớp el-popper sẽ che + chặn pointer events khiến bước
     // click ô tìm kiếm hội thoại bị "intercepts pointer events" -> timeout 30s.
-    // => Chủ động đóng dropdown và chờ ô "Tìm kiếm tài khoản..." biến mất.
+    // => Chủ động đóng dropdown và chờ ô "Tìm kiếm tài khoản..." biến mất (trả về ngay khi ẩn).
     await page.keyboard.press('Escape').catch(() => {});
     await page.locator(accSearchSel).first()
-      .waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
-    await page.waitForTimeout(400);
+      .waitFor({ state: 'hidden', timeout: 4000 }).catch(() => {});
     await shot(page, '02-account-selected');
     return true;
   }
@@ -159,10 +158,9 @@ async function searchAndClickConversation(page, { name, phone }) {
     if (!term) return null;
     await searchBox.click().catch(() => {});
     await searchBox.fill('').catch(() => {});
-    await searchBox.type(String(term), { delay: 40 });
-    await page.waitForTimeout(2500);
-    await shot(page, '03-searched');
-    return page.evaluate(({ term, matchByText }) => {
+    await searchBox.type(String(term), { delay: 30 });
+
+    const scan = () => page.evaluate(({ term, matchByText }) => {
       const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
         .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
       const tgt = deacc(term);
@@ -183,6 +181,17 @@ async function searchAndClickConversation(page, { name, phone }) {
       }
       return matchByText ? null : topmost;
     }, { term: String(term), matchByText });
+
+    // Salework debounce kết quả tìm kiếm -> poll, TRẢ VỀ NGAY khi có kết quả
+    // thay vì chờ cứng (trước đây 2500ms cho mọi lần tìm).
+    let rect = null;
+    const deadline = Date.now() + 3000;
+    do {
+      await page.waitForTimeout(300);
+      rect = await scan();
+    } while (!rect && Date.now() < deadline);
+    await shot(page, '03-searched');
+    return rect;
   }
 
   let rect = null;
