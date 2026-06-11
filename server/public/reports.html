@@ -4,51 +4,70 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Doraemi · Lịch sử báo hàng</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
 <body>
-  <nav class="topnav">
-    <span class="brand">🤖 DORAEMI</span>
-    <a class="nav" href="/index.html">Hàng về VN</a>
-    <a class="nav active" href="/reports.html">Lịch sử báo</a>
-    <span class="spacer"></span>
-  </nav>
-
-  <div class="container">
-    <div class="stats">
-      <div class="stat"><div class="num" id="sTotal">0</div><div class="lbl">Tổng lượt báo</div></div>
-      <div class="stat"><div class="num" style="color:var(--green)" id="sSuccess">0</div><div class="lbl">Thành công</div></div>
-      <div class="stat"><div class="num" style="color:var(--red)" id="sFailed">0</div><div class="lbl">Thất bại</div></div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h1>Lịch sử báo hàng</h1>
-        <button id="reloadBtn" class="btn secondary small">↻ Tải lại</button>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo">🤖</span>
+        <span>DORAEMI<small>Báo hàng về VN</small></span>
       </div>
 
-      <div class="toolbar">
-        <div class="field" style="width:200px"><label>Trạng thái</label>
-          <select id="fStatus"><option value="">Tất cả</option><option value="success">Thành công</option><option value="failed">Thất bại</option></select>
+      <div class="nav-label">Điều hướng</div>
+      <a class="nav" href="/index.html"><span class="ic">📦</span> Hàng về VN</a>
+      <a class="nav active" href="/reports.html"><span class="ic">🕑</span> Lịch sử báo</a>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1>Lịch sử báo hàng</h1>
+          <div class="sub">Nhật ký mọi lượt gửi tin nhắn qua Zalo</div>
         </div>
-        <div class="field grow"><label>Tìm kiếm</label><input id="fQ" placeholder="Tên / SĐT / mã đơn" /></div>
-      </div>
+        <span class="spacer"></span>
+        <button id="reloadBtn" class="btn secondary small">↻ Tải lại</button>
+      </header>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Thời gian</th>
-            <th>Mã đơn</th>
-            <th>Khách hàng</th>
-            <th>SĐT</th>
-            <th>Nhân viên</th>
-            <th>Nội dung</th>
-            <th>Kết quả</th>
-            <th>Lỗi</th>
-          </tr>
-        </thead>
-        <tbody id="rows"><tr><td colspan="8" class="empty">Đang tải...</td></tr></tbody>
-      </table>
+      <div class="container">
+        <div class="stats">
+          <div class="stat"><div class="num" id="sTotal">0</div><div class="lbl">Tổng lượt báo</div></div>
+          <div class="stat ok"><div class="num" style="color:var(--green)" id="sSuccess">0</div><div class="lbl">Thành công</div></div>
+          <div class="stat bad"><div class="num" style="color:var(--red)" id="sFailed">0</div><div class="lbl">Thất bại</div></div>
+        </div>
+
+        <div class="card">
+          <div class="toolbar">
+            <div class="field" style="width:200px"><label>Trạng thái</label>
+              <select id="fStatus"><option value="">Tất cả</option><option value="success">Thành công</option><option value="failed">Thất bại</option></select>
+            </div>
+            <div class="field grow"><label>Tìm kiếm</label><input id="fQ" placeholder="🔍  Tên / SĐT / mã đơn" /></div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Thời gian</th>
+                  <th>Mã đơn</th>
+                  <th>Khách hàng</th>
+                  <th>SĐT</th>
+                  <th>Nhân viên</th>
+                  <th>Nội dung</th>
+                  <th>Kết quả</th>
+                  <th>Lỗi</th>
+                </tr>
+              </thead>
+              <tbody id="rows"><tr><td colspan="8" class="empty">Đang tải...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
