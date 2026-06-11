@@ -114,7 +114,15 @@ async function selectZaloAccount(page, accountLabel) {
 
   if (rect) {
     await page.mouse.click(rect.x, rect.y);
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(600);
+    // Dropdown Salework là Element-UI multi-select (is-multiple) -> KHÔNG tự đóng khi
+    // chọn option. Nếu để mở, lớp el-popper sẽ che + chặn pointer events khiến bước
+    // click ô tìm kiếm hội thoại bị "intercepts pointer events" -> timeout 30s.
+    // => Chủ động đóng dropdown và chờ ô "Tìm kiếm tài khoản..." biến mất.
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.locator(accSearchSel).first()
+      .waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(400);
     await shot(page, '02-account-selected');
     return true;
   }
@@ -128,8 +136,19 @@ async function selectZaloAccount(page, accountLabel) {
  * @param {object} p { name, phone }
  */
 async function searchAndClickConversation(page, { name, phone }) {
+  // An toàn: nếu còn popper/dropdown nào mở (vd dropdown chọn tài khoản) thì đóng lại,
+  // tránh việc nó che + chặn pointer events khi click ô tìm kiếm.
+  if (await page.locator('.el-select-dropdown, .el-popper').first().isVisible().catch(() => false)) {
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.waitForTimeout(300);
+  }
+
+  // Loại trừ ô "Tìm kiếm tài khoản..." (của dropdown account) để không khớp nhầm.
   const searchBox = page
-    .locator('input[placeholder*="Tìm kiếm"], input[placeholder*="Search"], input[type="search"]')
+    .locator(
+      'input[placeholder*="Tìm kiếm"]:not([placeholder*="tài khoản" i]), '
+      + 'input[placeholder*="Search"], input[type="search"]'
+    )
     .first();
   if (!(await searchBox.isVisible().catch(() => false))) {
     throw new Error('KHONG_THAY_O_TIM_KIEM: Không tìm thấy ô tìm kiếm hội thoại trên Salework.');
