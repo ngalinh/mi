@@ -4,72 +4,92 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Doraemi · Báo hàng về</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
 <body>
-  <nav class="topnav">
-    <span class="brand">🤖 DORAEMI</span>
-    <a class="nav active" href="/index.html">Hàng về VN</a>
-    <a class="nav" href="/reports.html">Lịch sử báo</a>
-    <span class="spacer"></span>
-    <span id="testBadge" class="badge-status badge-test" style="display:none"></span>
-    <span id="mockBadge" class="badge-status badge-mock" style="display:none">MOCK DATA</span>
-    <span id="localBadge" class="badge-status badge-offline">Local-runner: ...</span>
-  </nav>
-
-  <div class="container">
-    <div class="card">
-      <div class="card-header">
-        <h1>HÀNG VỀ VN</h1>
-        <button id="syncBtn" class="btn">Đồng bộ ngay</button>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo">🤖</span>
+        <span>DORAEMI<small>Báo hàng về VN</small></span>
       </div>
 
-      <div class="filters">
-        <div class="field"><label>Từ ngày</label><input type="date" id="fFrom" /></div>
-        <div class="field"><label>Đến ngày</label><input type="date" id="fTo" /></div>
-        <div class="field"><label>Trạng thái</label>
-          <select id="fStatus">
-            <option value="all">Tất cả</option>
-            <option value="not_sent">Chưa báo</option>
-            <option value="notified_arrival">Đã báo hàng</option>
-            <option value="notified_ship">Đã báo ship</option>
-            <option value="send_failed">Gửi lỗi</option>
-          </select>
+      <div class="nav-label">Điều hướng</div>
+      <a class="nav active" href="/index.html"><span class="ic">📦</span> Hàng về VN</a>
+      <a class="nav" href="/reports.html"><span class="ic">🕑</span> Lịch sử báo</a>
+
+      <div class="side-foot">
+        <span id="testBadge" class="badge-status badge-test" style="display:none"></span>
+        <span id="mockBadge" class="badge-status badge-mock" style="display:none">MOCK DATA</span>
+        <span id="localBadge" class="badge-status badge-offline">Local-runner: ...</span>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1>Hàng về VN</h1>
+          <div class="sub">Danh sách đơn hàng & gửi thông báo qua Zalo</div>
         </div>
-        <div class="field"><label>Nhân viên</label>
-          <select id="fStaff"><option value="">Tất cả</option></select>
+        <span class="spacer"></span>
+        <button id="syncBtn" class="btn"><span class="ic">↻</span> Đồng bộ ngay</button>
+      </header>
+
+      <div class="container">
+        <div class="card">
+          <div class="filters">
+            <div class="field"><label>Từ ngày</label><input type="date" id="fFrom" /></div>
+            <div class="field"><label>Đến ngày</label><input type="date" id="fTo" /></div>
+            <div class="field"><label>Trạng thái</label>
+              <select id="fStatus">
+                <option value="all">Tất cả</option>
+                <option value="not_sent">Chưa báo</option>
+                <option value="notified_arrival">Đã báo hàng</option>
+                <option value="notified_ship">Đã báo ship</option>
+                <option value="send_failed">Gửi lỗi</option>
+              </select>
+            </div>
+            <div class="field"><label>Nhân viên</label>
+              <select id="fStaff"><option value="">Tất cả</option></select>
+            </div>
+            <div class="field full"><label>Tìm kiếm</label><input type="text" id="fQ" placeholder="🔍  Tên / SĐT khách" /></div>
+          </div>
+
+          <!-- Tab nhân viên -->
+          <div class="tabs" id="staffTabs"></div>
+
+          <!-- Thanh thao tác bot (gửi hàng loạt) -->
+          <div class="bot-bar">
+            <span id="countInfo" class="muted"></span>
+            <span class="grow"></span>
+            <button id="bulkBtn" class="btn small">📣 Báo hàng loạt (chưa báo)</button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:34px"></th>
+                  <th class="center" style="width:50px">STT</th>
+                  <th>Ngày nhập kho</th>
+                  <th>Khách hàng</th>
+                  <th>SĐT</th>
+                  <th class="center">ND báo hàng</th>
+                  <th class="center">ND báo ship</th>
+                  <th>Trạng thái</th>
+                  <th>Ghi chú</th>
+                  <th>Nhân viên</th>
+                </tr>
+              </thead>
+              <tbody id="rows"><tr><td colspan="10" class="empty">Đang tải...</td></tr></tbody>
+            </table>
+          </div>
         </div>
-        <div class="field full"><label>Tìm kiếm</label><input type="text" id="fQ" placeholder="Tên / SĐT khách" /></div>
-      </div>
-
-      <!-- Tab nhân viên -->
-      <div class="tabs" id="staffTabs"></div>
-
-      <!-- Thanh thao tác bot (gửi hàng loạt) -->
-      <div class="bot-bar">
-        <span id="countInfo" class="muted"></span>
-        <span class="grow"></span>
-        <button id="bulkBtn" class="btn small">📣 Báo hàng loạt (chưa báo)</button>
-      </div>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:34px"></th>
-              <th class="center" style="width:50px">STT</th>
-              <th>Ngày nhập kho</th>
-              <th>Khách hàng</th>
-              <th>SĐT</th>
-              <th class="center">ND báo hàng</th>
-              <th class="center">ND báo ship</th>
-              <th>Trạng thái</th>
-              <th>Ghi chú</th>
-              <th>Nhân viên</th>
-            </tr>
-          </thead>
-          <tbody id="rows"><tr><td colspan="10" class="empty">Đang tải...</td></tr></tbody>
-        </table>
       </div>
     </div>
   </div>
