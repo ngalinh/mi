@@ -1,36 +1,36 @@
 /* ============================================================
    Doraemi — Design System
-   Modern dashboard UI. Light theme, indigo accent, sidebar layout.
+   Nền kem ấm · điểm nhấn cam coral · thương hiệu tím indigo · sidebar layout.
    ============================================================ */
 :root {
-  /* surfaces */
-  --bg: #f7f8fc;
-  --bg-soft: #eef1f8;
+  /* surfaces — nền kem ấm */
+  --bg: #fbf6ee;
+  --bg-soft: #f3ecdf;
   --card: #ffffff;
-  --sidebar: #0f172a;
-  --sidebar-soft: #1e293b;
-  --border: #e6e9f2;
-  --border-strong: #d6dbe8;
+  --sidebar: #2e2a5e;        /* tím indigo đậm */
+  --sidebar-soft: #3d3878;
+  --border: #ece3d4;
+  --border-strong: #ddd1bd;
 
   /* text */
-  --text: #1e293b;
-  --text-soft: #475569;
-  --muted: #94a3b8;
-  --on-dark: #e2e8f0;
-  --on-dark-muted: #94a3b8;
+  --text: #2e2a5e;           /* chữ tím đậm */
+  --text-soft: #5b567f;
+  --muted: #9c95b1;
+  --on-dark: #ece9f7;
+  --on-dark-muted: #b4adce;
 
   /* brand / accents */
-  --primary: #6366f1;
-  --primary-dark: #4f46e5;
-  --primary-soft: #eef2ff;
+  --primary: #e8623c;        /* cam coral — CTA chính */
+  --primary-dark: #d24d28;
+  --primary-soft: #fdeee7;
   --green: #16a34a;
   --green-soft: #dcfce7;
   --red: #dc2626;
   --red-soft: #fee2e2;
   --amber: #d97706;
   --amber-soft: #fef3c7;
-  --violet: #7c3aed;
-  --violet-soft: #ede9fe;
+  --violet: #4a3fb5;         /* tím indigo — điểm nhấn phụ */
+  --violet-soft: #ebe9fa;
 
   /* shape & motion */
   --radius: 14px;
@@ -93,7 +93,7 @@ a { color: var(--primary); text-decoration: none; }
   font-size: 20px;
   background: linear-gradient(135deg, var(--primary), var(--violet));
   border-radius: 11px;
-  box-shadow: 0 6px 16px -4px rgba(99, 102, 241, .6);
+  box-shadow: 0 6px 16px -4px rgba(232, 98, 60, .6);
 }
 .sidebar .brand small {
   display: block;
@@ -121,7 +121,7 @@ a { color: var(--primary); text-decoration: none; }
 .sidebar a.nav.active {
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: #fff;
-  box-shadow: 0 8px 20px -8px rgba(99, 102, 241, .8);
+  box-shadow: 0 8px 20px -8px rgba(232, 98, 60, .8);
 }
 
 .sidebar .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 14px; }
@@ -134,7 +134,7 @@ a { color: var(--primary); text-decoration: none; }
   height: 64px;
   display: flex; align-items: center; gap: 16px;
   padding: 0 28px;
-  background: rgba(247, 248, 252, .8);
+  background: rgba(251, 246, 238, .8);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 20;
@@ -196,7 +196,7 @@ a { color: var(--primary); text-decoration: none; }
 .field input:focus, .field select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, .15);
+  box-shadow: 0 0 0 3px rgba(232, 98, 60, .15);
 }
 .field input::placeholder { color: var(--muted); }
 
@@ -210,17 +210,22 @@ a { color: var(--primary); text-decoration: none; }
   padding: 10px 17px; font-size: 14px; font-weight: 600; font-family: inherit;
   cursor: pointer; white-space: nowrap;
   background: var(--primary); color: #fff;
-  box-shadow: 0 4px 12px -4px rgba(99, 102, 241, .55);
+  box-shadow: 0 4px 12px -4px rgba(232, 98, 60, .55);
   transition: background .15s var(--ease), transform .08s var(--ease), box-shadow .15s var(--ease);
 }
 .btn:hover { background: var(--primary-dark); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 .btn.secondary {
+  background: var(--violet); color: #fff;
+  border-color: transparent; box-shadow: 0 4px 12px -4px rgba(74, 63, 181, .5);
+}
+.btn.secondary:hover { background: #3d349c; color: #fff; }
+.btn.ghost {
   background: #fff; color: var(--text-soft);
   border-color: var(--border-strong); box-shadow: var(--shadow-sm);
 }
-.btn.secondary:hover { background: var(--bg-soft); color: var(--text); }
+.btn.ghost:hover { background: var(--bg-soft); color: var(--text); }
 .btn.small { padding: 7px 13px; font-size: 13px; }
 
 .toolbar { display: flex; gap: 12px; align-items: flex-end; margin: 18px 0; flex-wrap: wrap; }
@@ -297,7 +302,7 @@ td.center, th.center { text-align: center; }
   border-radius: var(--radius-sm); background: #fff; font-size: 13px;
   font-weight: 600; min-width: 138px; cursor: pointer; font-family: inherit;
 }
-.status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,.15); }
+.status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,98,60,.15); }
 .status-sel[data-code="notified_arrival"], .status-sel[data-code="notified_ship"] { color: var(--green); border-color: var(--green-soft); background: var(--green-soft); }
 .status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
 .status-sel[data-code="not_sent"] { color: var(--amber); border-color: var(--amber-soft); background: var(--amber-soft); }
@@ -308,7 +313,7 @@ td.center, th.center { text-align: center; }
   flex: 1; min-width: 140px; padding: 8px 11px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit;
 }
-.note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,.15); }
+.note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,98,60,.15); }
 .save-note {
   background: none; border: none; cursor: pointer; color: var(--muted);
   font-size: 16px; padding: 4px 6px; border-radius: 7px; transition: .15s var(--ease);
@@ -412,7 +417,7 @@ td.center, th.center { text-align: center; }
   border: 1px solid var(--border-strong); border-radius: 12px;
   font-family: inherit; font-size: 14px; line-height: 1.55; resize: vertical;
 }
-.modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99,102,241,.15); }
+.modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,98,60,.15); }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 
 /* ============================================================
