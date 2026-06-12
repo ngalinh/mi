@@ -48,9 +48,9 @@
   function rowHtml(o) {
     const open = openRows.has(String(o.id));
     const noZalo = o.hasZalo === false
-      ? ' <span class="muted" title="Khách chưa có Zalo — có thể gửi lỗi">⚠️</span>' : '';
+      ? ` <span class="muted" title="Khách chưa có Zalo — có thể gửi lỗi">${App.icon('alert')}</span>` : '';
     const main = `<tr class="main-row" data-id="${App.esc(o.id)}">
-      <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">›</button></td>
+      <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
       <td class="cust">${App.esc(o.customerName)}${noZalo}</td>
@@ -60,7 +60,7 @@
       <td>${statusSelect(o)}</td>
       <td><div class="note-cell">
         <input class="note-input" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
-        <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">💾</button>
+        <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
       </div></td>
       <td>${App.esc(o.staff)}</td>
     </tr>`;
@@ -70,10 +70,10 @@
         <div><h4>ND báo hàng</h4><pre>${App.esc(o.noiDungBaoHang) || '(trống)'}</pre></div>
         <div><h4>ND báo ship</h4><pre>${App.esc(o.noiDungBaoShip) || '(trống)'}</pre></div>
         <div class="full detail-actions">
-          <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">📣 Gửi báo hàng qua Zalo</button>
+          <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">${App.icon('send')} Gửi báo hàng qua Zalo</button>
           ${o.noiDungBaoShip && o.noiDungBaoShip.trim()
-            ? `<button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="ship">📦 Gửi báo ship qua Zalo</button>` : ''}
-          <button class="btn small secondary edit-content" data-id="${App.esc(o.id)}">✏️ Sửa nội dung rồi gửi</button>
+            ? `<button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="ship">${App.icon('box')} Gửi báo ship qua Zalo</button>` : ''}
+          <button class="btn small secondary edit-content" data-id="${App.esc(o.id)}">${App.icon('edit')} Sửa nội dung rồi gửi</button>
         </div>
       </div></td>
     </tr>`;
@@ -162,7 +162,8 @@
     $('modalTitle').textContent = `${isShip ? 'Báo ship' : 'Báo hàng'} — ${o.customerName}`;
     $('modalSub').textContent = `SĐT: ${o.phone || '—'} · NV: ${o.staff || '—'}`;
     $('modalMsg').value = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
-    $('modalSend').textContent = isShip ? '📦 Gửi báo ship qua Zalo' : '📣 Gửi báo hàng qua Zalo';
+    $('modalSend').innerHTML = (isShip ? App.icon('box') : App.icon('send')) +
+      (isShip ? ' Gửi báo ship qua Zalo' : ' Gửi báo hàng qua Zalo');
     $('modalSend').style.display = '';
     $('modalBg').classList.add('show');
   }
@@ -214,7 +215,7 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
-      btn.innerHTML = '📣 Báo hàng loạt (chưa báo)';
+      btn.innerHTML = App.icon('megaphone') + ' Báo hàng loạt (chưa báo)';
     }
   }
 

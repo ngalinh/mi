@@ -3,9 +3,10 @@
   const rowsEl = $('rows');
 
   function resultPill(s) {
-    const cls = s === 'success' ? 'success' : 'failed';
-    const txt = s === 'success' ? '✅ Thành công' : '❌ Thất bại';
-    return `<span class="pill ${cls}">${txt}</span>`;
+    const ok = s === 'success';
+    const cls = ok ? 'success' : 'failed';
+    const txt = ok ? 'Thành công' : 'Thất bại';
+    return `<span class="pill ${cls}">${App.icon(ok ? 'check' : 'alert')} ${txt}</span>`;
   }
 
   function msgPreview(t) {
