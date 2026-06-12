@@ -11,27 +11,28 @@
 </head>
 <body>
   <div class="app">
-    <!-- Sidebar -->
+    <!-- Sidebar: icon rail -->
     <aside class="sidebar">
-      <div class="brand">
-        <span class="logo">🤖</span>
-        <span>DORAEMI<small>Báo hàng về VN</small></span>
+      <div class="brand" title="Doraemi">🤖</div>
+      <nav class="rail-nav">
+        <a class="nav" href="/index.html" title="Hàng về VN"><span class="ic">▦</span></a>
+        <a class="nav active" href="/reports.html" title="Lịch sử báo"><span class="ic">🕘</span></a>
+      </nav>
+      <div class="side-foot">
+        <span class="rail-sep"></span>
+        <div class="avatar" title="Doraemi Bot">🐱</div>
       </div>
-
-      <div class="nav-label">Điều hướng</div>
-      <a class="nav" href="/index.html"><span class="ic">📦</span> Hàng về VN</a>
-      <a class="nav active" href="/reports.html"><span class="ic">🕑</span> Lịch sử báo</a>
     </aside>
 
     <!-- Main -->
     <div class="main">
       <header class="topbar">
         <div>
-          <h1>Lịch sử báo hàng</h1>
+          <h1>Lịch sử <span class="accent">báo hàng</span></h1>
           <div class="sub">Nhật ký mọi lượt gửi tin nhắn qua Zalo</div>
         </div>
         <span class="spacer"></span>
-        <button id="reloadBtn" class="btn secondary small">↻ Tải lại</button>
+        <button id="reloadBtn" class="btn secondary">↻ Tải lại</button>
       </header>
 
       <div class="container">
