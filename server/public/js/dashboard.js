@@ -8,9 +8,10 @@
   const rowsEl = $('rows');
 
   const DONE = new Set(['notified_arrival', 'notified_ship']);
-  // "Đã báo" = web đã đánh dấu, HOẶC bot đã tự gửi thành công (lưu local trong mi).
-  // Dùng để loại khỏi "Báo hàng loạt" -> tránh gửi trùng cho khách bot đã nhắn.
-  const isNotified = (o) => DONE.has(o.statusCode) || (o.autoNotified && o.autoNotified.status === 'success');
+  // "Đã báo" = web đã đánh dấu, HOẶC mi đã gửi (bot 'success' / đã báo tay 'manual').
+  // Dùng để loại khỏi "Báo hàng loạt" -> tránh gửi trùng cho khách đã nhắn.
+  const SENT_LOCAL = new Set(['success', 'manual']);
+  const isNotified = (o) => DONE.has(o.statusCode) || (o.autoNotified && SENT_LOCAL.has(o.autoNotified.status));
   const STATUS_OPTS = [
     ['not_sent', 'Chưa báo'],
     ['notified_arrival', 'Đã báo hàng'],
@@ -50,6 +51,9 @@
     const when = a.at ? App.fmtDateTime(a.at) : '';
     if (a.status === 'success') {
       return `<span class="bot-tag" title="Bot tự động đã gửi${when ? ' lúc ' + when : ''}">🤖 Bot đã gửi</span>`;
+    }
+    if (a.status === 'manual') {
+      return `<span class="bot-tag bot-manual" title="Đã báo tay trong mi${when ? ' lúc ' + when : ''}">✋ Đã báo tay</span>`;
     }
     return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">🤖 Bot lỗi (${a.attempts})</span>`;
   }

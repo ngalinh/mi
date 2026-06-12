@@ -70,7 +70,19 @@ function listReports({ limit = 200, status, q } = {}) {
   return db.prepare(sql).all(params);
 }
 
-// ---- Dedup cho luồng tự động báo hàng ----
+// ---- Dedup cho báo hàng (tự động + tay) ----
+/**
+ * Khóa chống trùng ỔN ĐỊNH cho 1 dòng hàng về. Ưu tiên customerId:dateInventory
+ * (khóa thật của updateArrivedVnRow) vì API thật có thể KHÔNG trả field `id`.
+ * Dùng chung ở autoNotify, notifyService và index.js để mọi nơi tra cùng 1 khóa.
+ */
+function autoKey(order) {
+  if (order.customerId != null && order.dateInventory != null) {
+    return `c${order.customerId}:d${order.dateInventory}`;
+  }
+  return `id:${order.id}`;
+}
+
 const getAutoStmt = db.prepare('SELECT * FROM auto_notified WHERE order_id = @order_id');
 const upsertAutoStmt = db.prepare(`
   INSERT INTO auto_notified (order_id, status, attempts, updated_at)
@@ -105,4 +117,4 @@ function stats() {
   return { total: row.total || 0, success: row.success || 0, failed: row.failed || 0 };
 }
 
-module.exports = { db, addReport, listReports, stats, getAutoRecord, recordAutoNotified };
+module.exports = { db, addReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey };
