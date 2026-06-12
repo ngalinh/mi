@@ -341,7 +341,8 @@ td.center, th.center { text-align: center; }
 .items-table th, .items-table td { padding: 9px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
 .items-table thead th { position: static; background: var(--bg); }
 .items-table tbody tr:last-child td { border-bottom: none; }
-.items-table td.num, .items-table th.num { text-align: right; white-space: nowrap; }
+.items-table td.num, .items-table th.num { text-align: right; white-space: nowrap; font-weight: 600; }
+.items-table td.info-cell { font-size: 12.5px; line-height: 1.7; white-space: nowrap; }
 .items-table a { color: var(--primary); font-weight: 600; text-decoration: none; }
 .items-table a:hover { text-decoration: underline; }
 .sp-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; margin: 0 auto; }
