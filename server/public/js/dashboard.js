@@ -40,6 +40,17 @@
     return `<select class="status-sel" data-code="${App.esc(o.statusCode)}" data-id="${App.esc(o.id)}">${opts}</select>`;
   }
 
+  // Dấu "bot tự động đã gửi" — lưu local trong mi (không phụ thuộc trạng thái web Basso)
+  function botTag(o) {
+    const a = o.autoNotified;
+    if (!a) return '';
+    const when = a.at ? App.fmtDateTime(a.at) : '';
+    if (a.status === 'success') {
+      return `<span class="bot-tag" title="Bot tự động đã gửi${when ? ' lúc ' + when : ''}">🤖 Bot đã gửi</span>`;
+    }
+    return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">🤖 Bot lỗi (${a.attempts})</span>`;
+  }
+
   function contentCell(text, id, kind) {
     if (!text || !String(text).trim()) return '<span class="muted">—</span>';
     return `<button class="link-btn view-content" data-id="${App.esc(id)}" data-kind="${kind}">Xem nội dung</button>`;
@@ -149,7 +160,7 @@
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
-      <td>${statusSelect(o)}</td>
+      <td>${statusSelect(o)}${botTag(o)}</td>
       <td><div class="note-cell">
         <input class="note-input" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>

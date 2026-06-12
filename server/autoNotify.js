@@ -68,6 +68,7 @@ async function runAutoNotify(opts = {}) {
         profile: cfg.profile,
         account: cfg.account,
         kind: 'hang',
+        skipWebUpdate: !cfg.updateWeb, // mặc định chỉ đánh dấu trong mi, không cập nhật web Basso
       });
       const status = r.ok ? 'success' : 'failed';
       recordAutoNotified(order.id, status, attempts);

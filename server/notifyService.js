@@ -9,7 +9,7 @@ const { addReport } = require('./db');
  * Báo hàng/ship cho 1 đơn: build tin nhắn -> gửi qua local-runner -> (tùy chọn) cập nhật
  * trạng thái về web -> ghi report.
  * @param {object} order - đơn đã chuẩn hóa
- * @param {object} [opts] { profile, account, messageOverride, kind } kind = 'hang' | 'ship'
+ * @param {object} [opts] { profile, account, messageOverride, kind, skipWebUpdate } kind = 'hang' | 'ship'
  */
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
@@ -34,9 +34,10 @@ async function notifyOne(order, opts = {}) {
     result = { ok: false, error: err.message };
   }
 
-  // Gửi thành công -> cập nhật trạng thái 'Đã báo hàng' ngược về web (nếu bật)
+  // Gửi thành công -> cập nhật trạng thái 'Đã báo hàng' ngược về web (nếu bật).
+  // skipWebUpdate=true (luồng bot tự động): CHỈ lưu trạng thái trong mi, KHÔNG đẩy về web Basso.
   let updateError = null;
-  if (result.ok && config.basso.autoUpdateStatus && order.customerId != null) {
+  if (result.ok && !opts.skipWebUpdate && config.basso.autoUpdateStatus && order.customerId != null) {
     try {
       await updateOrderStatus({
         customerId: order.customerId,

@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
-const { listReports, stats } = require('./db');
+const { listReports, stats, getAutoRecord } = require('./db');
 const { notifyMany } = require('./notifyService');
 const { getLocalHealth } = require('./playwrightProxy');
 const autoNotify = require('./autoNotify');
@@ -40,6 +40,14 @@ app.get('/api/orders', async (req, res) => {
   try {
     const { from, to, status, staff, q } = req.query;
     const data = await getOrders({ from, to, status, staff, q });
+    // Gắn dấu "bot đã tự gửi" (lưu local trong mi) để dashboard phân biệt, kể cả khi
+    // không cập nhật trạng thái về web Basso.
+    if (Array.isArray(data.orders)) {
+      data.orders = data.orders.map((o) => {
+        const a = getAutoRecord(o.id);
+        return a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
+      });
+    }
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
