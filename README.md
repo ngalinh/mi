@@ -65,6 +65,8 @@ ngrok http 8090
 
 ## Tự động báo hàng (auto-notify) 🆕
 
+> 📄 Sơ đồ toàn bộ luồng A→Z: xem [`docs/FLOW.md`](docs/FLOW.md).
+
 Không cần bấm tay: cứ có đơn **"Chưa báo"** (`not_sent` = hàng đã về kho) là hệ thống tự
 build tin nhắn + gửi qua Zalo. Có **chống gửi trùng** (mỗi đơn chỉ tự gửi 1 lần thành công;
 gửi lỗi sẽ thử lại tối đa `AUTO_NOTIFY_MAX_RETRIES` lần rồi thôi — tránh spam khi runner offline).
