@@ -3,7 +3,7 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
-const { getOrders, updateOrderStatus } = require('./bassoApi');
+const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats } = require('./db');
 const { notifyMany } = require('./notifyService');
 const { getLocalHealth } = require('./playwrightProxy');
@@ -38,6 +38,20 @@ app.get('/api/orders', async (req, res) => {
   try {
     const { from, to, status, staff, q } = req.query;
     const data = await getOrders({ from, to, status, staff, q });
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Chi tiết sản phẩm đã về của 1 dòng (load lazy khi mở rộng) ----
+app.get('/api/arrived-items', async (req, res) => {
+  try {
+    const { id, customerId, dateInventory } = req.query;
+    if (id == null && (customerId == null || dateInventory == null)) {
+      return res.status(400).json({ ok: false, error: 'Cần id hoặc (customerId + dateInventory)' });
+    }
+    const data = await getArrivedItems({ id, customerId, dateInventory });
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

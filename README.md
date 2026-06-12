@@ -77,24 +77,37 @@ AUTO_UPDATE_STATUS=true                     # gửi xong tự đánh dấu "Đã
 
 Đã cài sẵn trong [`server/bassoApi.js`](server/bassoApi.js):
 - **Login + cache token**: `POST /partner/login` → `data.access_token` (tự login lại khi hết hạn / gặp 401).
-- **List**: `GET /partner/getArrivedVnList` (filter `status`, `from`/`to` DD-MM-YYYY, `key`, `tab`=user_id NV, `page_size`, `include_items=1` để kèm danh sách SP đã về).
+- **List**: `GET /partner/getArrivedVnList` (filter `status`, `from`/`to` DD-MM-YYYY, `key`, `tab`=user_id NV, `page_size`).
+- **Chi tiết SP (load lazy)**: `GET /partner/getArrivedVnItems?id=` (hoặc `customer_id`+`date_inventory`) — gọi khi mở rộng từng dòng để lấy đầy đủ danh sách sản phẩm đã về.
 - **Update**: `POST /partner/updateArrivedVnRow` `{customer_id, date_inventory, status, note}` — tự gọi sau khi gửi Zalo thành công (nếu `AUTO_UPDATE_STATUS=true`).
 
 Map trạng thái API → nhãn: `not_sent`=Chưa báo, `notified_arrival`=Đã báo hàng, `notified_ship`=Đã báo ship, `send_failed`=Gửi lỗi.
 
-Shape nội bộ chuẩn:
+Shape đơn (1 dòng hàng về):
 ```
 { id, customerId, dateInventory, stt, warehouseDate, customerName, phone,
-  noiDungBaoHang, noiDungBaoShip, statusCode, status, note, staff, userId, hasZalo,
-  items: [{ orderCode, orderId, name, link, image, quantity, weight, shipFee,
-            shipFeeDomestic, shipCode, shipStatus }] }
+  noiDungBaoHang, noiDungBaoShip, statusCode, status, note, staff, userId, hasZalo }
 ```
 
-Danh sách `items` (sản phẩm đã về) được lấy nhờ tham số `include_items=1` và hiển thị
-thành bảng con khi mở rộng từng dòng trên dashboard. Map field theo tài liệu Partner API
-8.3/8.4: `orderCode`(Mã ĐH), `nameItem`→`name`, `linkItem`→`link`, `image`,
-`soLuongVe`→`quantity`(SL về), `canNang`→`weight`(kg), `phiShip`→`shipFee`(Phí VC).
-Nếu API không trả `items` cho dòng nào thì bảng hiện "Không có dữ liệu sản phẩm".
+### Chi tiết sản phẩm đã về (đầy đủ như web `basso/arrived_vn`)
+
+Dashboard **load lazy** qua `GET /api/arrived-items?id=&customerId=&dateInventory=`
+(server gọi tiếp `/partner/getArrivedVnItems`) khi bấm mở rộng 1 dòng. Mỗi sản phẩm
+(`normalizeItem`) map từ field thô đã xác nhận từ response thật:
+
+| Cột hiển thị | Field thô | Trường nội bộ |
+|---|---|---|
+| Tình trạng | `shipped_time` (null → "Chưa giao") | `shipStatusLabel`, `shippedDate` |
+| Mã ĐH | `orderCode` | `orderCode` |
+| Hình SP | `image` | `image` |
+| Tên/link sp | `nameItem`, `linkItem` | `name`, `link` |
+| Size/Màu | `variationsItem` (**chuỗi JSON** `[{name,value}]`) | `variations` |
+| SL về / Đã về | `soLuongVe`, `tongsanphamDaVe`/`tongsanpham` | `quantity`, `arrivedQty`/`totalQty` |
+| Cân nặng | `canNang` | `weight` |
+| Phí VC | `phiShip` | `shipFee` |
+| Giá sp | `price`, `currency_symbol` | `priceValue`, `currencySymbol` |
+| Phụ thu | `term_fee` | `termFee` |
+| Tổng giá (VND) | tính: `price × currency_rate + phiShip + term_fee` | `totalVnd` |
 
 ## Khi giao diện Salework thay đổi
 
@@ -109,6 +122,7 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | Method | Path | Mô tả |
 |---|---|---|
 | GET | `/api/orders?status=&staff=&q=&from=&to=` | Danh sách hàng về |
+| GET | `/api/arrived-items?id=&customerId=&dateInventory=` | Chi tiết SP đã về 1 dòng (load lazy) |
 | POST | `/api/notify` `{orderIds[], profile?, account?, messageOverride?}` | Báo hàng |
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
 | GET | `/api/health` | Trạng thái server + local-runner |

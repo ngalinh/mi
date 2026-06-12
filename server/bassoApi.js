@@ -105,31 +105,64 @@ function formatUnixDate(sec) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+function num(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// variationsItem là CHUỖI JSON (vd '[{"name":"Color","value":"RED"}]'); parse an toàn.
+function parseVariations(v) {
+  let arr = v;
+  if (typeof v === 'string') {
+    if (!v.trim()) return [];
+    try { arr = JSON.parse(v); } catch { return []; }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter((x) => x && (x.value != null && String(x.value).trim() !== ''))
+    .map((x) => ({ name: x.name || '', value: x.value || '' }));
+}
+
 /**
- * 1 sản phẩm trong snapshot "Hàng về VN" (getArrivedVnList?include_items=1
- * hoặc getArrivedVnItems) -> shape nội bộ hiển thị.
- * Field nguồn theo tài liệu Partner API 8.3/8.4.
+ * 1 sản phẩm "Hàng về VN" (getArrivedVnItems / get_vn_wasehouse_items) -> shape hiển thị.
+ * Tên field thô xác nhận từ response thật: orderCode, order_id, nameItem, linkItem, image,
+ * variationsItem(JSON string), soLuongVe, tongsanpham, tongsanphamDaVe, canNang, phiShip,
+ * phiShipNoiDia, price, term_fee, currency_rate, currency_symbol, shipCode, shipStatus, shipped_time.
  */
 function normalizeItem(it) {
+  const price = num(it.price);                       // Giá sp (ngoại tệ)
+  const rate = num(it.currency_rate);                // tỷ giá -> VND
+  const shipFee = Math.round(num(it.phiShip));       // Phí VC (VND)
+  const termFee = Math.round(num(it.term_fee));      // Phụ thu (VND)
+  // Tổng giá (VND) = giá quy đổi + phí VC + phụ thu (khớp cách web tính)
+  const totalVnd = Math.round(price * rate) + shipFee + termFee;
   return {
-    orderCode: it.orderCode || '',                 // Mã ĐH (vd SU01042501)
+    orderCode: it.orderCode || '',                   // Mã ĐH
     orderId: it.order_id ?? null,
-    name: it.nameItem || '',                        // Tên SP
-    link: it.linkItem || '',                        // Link SP (nếu có)
-    image: it.image || '',                          // Ảnh SP (nếu có)
-    quantity: it.soLuongVe ?? null,                 // SL về
-    weight: it.canNang ?? null,                     // Cân nặng (kg)
-    shipFee: it.phiShip ?? null,                    // Phí VC
-    shipFeeDomestic: it.phiShipNoiDia ?? null,      // Phí ship nội địa (nếu có)
-    shipCode: it.shipCode || '',                    // Mã vận đơn (nếu có)
-    shipStatus: it.shipStatus || '',                // Trạng thái giao (nếu có)
+    name: it.nameItem || '',                          // Tên SP
+    link: it.linkItem || '',                          // Link SP
+    image: it.image || '',                            // Ảnh SP
+    variations: parseVariations(it.variationsItem),   // Size/Màu: [{name,value}]
+    quantity: it.soLuongVe ?? null,                   // SL về
+    arrivedQty: it.tongsanphamDaVe ?? null,           // đã về (x)
+    totalQty: it.tongsanpham ?? null,                 // tổng (y) -> "x/y"
+    weight: it.canNang != null ? num(it.canNang) : null, // Cân nặng (kg)
+    shipFee,                                          // Phí VC (VND)
+    shipFeeDomestic: Math.round(num(it.phiShipNoiDia)),
+    priceValue: price,                                // Giá sp (số)
+    currencySymbol: it.currency_symbol || '$',
+    currencyRate: rate,
+    termFee,                                          // Phụ thu (VND)
+    totalVnd,                                         // Tổng giá (VND)
+    shipCode: it.shipCode || '',                      // Mã vận đơn
+    shipStatusLabel: it.shipped_time ? 'Đã giao' : 'Chưa giao',
+    shippedDate: it.shipped_time ? formatUnixDate(it.shipped_time) : '',
   };
 }
 
-/** raw row (API hoặc mock) -> shape nội bộ */
+/** raw row (API hoặc mock) -> shape nội bộ (KHÔNG kèm items — items load lazy qua getArrivedItems) */
 function normalizeOrder(raw) {
   const code = raw.status || 'not_sent';
-  const items = Array.isArray(raw.items) ? raw.items.map(normalizeItem) : [];
   return {
     id: String(raw.id),                       // khóa duy nhất để chọn dòng
     customerId: raw.customer_id,
@@ -146,7 +179,6 @@ function normalizeOrder(raw) {
     staff: raw.employee_name || '',
     userId: raw.user_id,
     hasZalo: raw.has_zalo !== false,
-    items,                                    // danh sách SP đã về (có thể rỗng)
   };
 }
 
@@ -194,7 +226,6 @@ async function getOrders(filters = {}) {
       to: toApiDate(to),
       key: q || undefined,
       tab: staff || undefined,
-      include_items: 1,                       // gắn danh sách SP vào mỗi dòng
     },
   });
 
@@ -226,6 +257,30 @@ function applyClientFilters(orders, { status, staff, q } = {}) {
 }
 
 /**
+ * Lấy chi tiết sản phẩm đã về của 1 dòng (load lazy khi mở rộng).
+ * Key: id HOẶC (customerId + dateInventory). Dùng /partner/getArrivedVnItems.
+ * @param {{id?:string|number, customerId?:number, dateInventory?:number}} p
+ * @returns {Promise<{source, items}>}
+ */
+async function getArrivedItems({ id, customerId, dateInventory } = {}) {
+  if (config.basso.useMock) {
+    const rows = loadMock();
+    const row = rows.find((r) =>
+      (id != null && id !== '' && String(r.id) === String(id)) ||
+      (customerId != null && dateInventory != null &&
+        String(r.customer_id) === String(customerId) &&
+        String(r.date_inventory) === String(dateInventory)));
+    const items = row && Array.isArray(row.items) ? row.items.map(normalizeItem) : [];
+    return { source: 'mock', items };
+  }
+  const data = await apiFetch('/partner/getArrivedVnItems', {
+    query: { id, customer_id: customerId, date_inventory: dateInventory },
+  });
+  const items = (data && Array.isArray(data.items) ? data.items : []).map(normalizeItem);
+  return { source: 'api', items };
+}
+
+/**
  * Cập nhật trạng thái + note 1 dòng hàng về (key = customer_id + date_inventory).
  * @param {{customerId:number, dateInventory:number, status:string, note?:string}} p
  */
@@ -238,4 +293,4 @@ async function updateOrderStatus({ customerId, dateInventory, status, note }) {
   return { ok: true, record: data && data.record };
 }
 
-module.exports = { getOrders, updateOrderStatus, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = { getOrders, getArrivedItems, updateOrderStatus, normalizeOrder, normalizeItem, STATUS_LABELS };

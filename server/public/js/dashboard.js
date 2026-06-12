@@ -45,38 +45,96 @@
     return `<button class="link-btn view-content" data-id="${App.esc(id)}" data-kind="${kind}">Xem nội dung</button>`;
   }
 
-  // Bảng danh sách sản phẩm đã về (đồng bộ từ getArrivedVnList?include_items=1)
-  function itemsTable(items) {
-    if (!items || !items.length) {
-      return '<div class="full"><h4>Sản phẩm đã về</h4><p class="muted">Không có dữ liệu sản phẩm (API chưa trả items cho dòng này).</p></div>';
-    }
-    const rows = items.map((it) => {
+  // ---- Bảng sản phẩm đã về (load lazy qua /api/arrived-items) ----
+  function variationsCell(vs) {
+    if (!vs || !vs.length) return '<span class="muted">—</span>';
+    return vs.map((v) => `<b>${App.esc(v.name)}</b>: ${App.esc(v.value)}`).join('<br>');
+  }
+
+  function infoCell(it) {
+    const lines = [];
+    const arrived = (it.arrivedQty != null && it.totalQty != null)
+      ? ` - Đã về: ${App.esc(it.arrivedQty)}/${App.esc(it.totalQty)}` : '';
+    lines.push(`SL về: ${App.esc(it.quantity ?? '')}${arrived}`);
+    if (it.weight != null) lines.push(`Cân nặng: ${Number(it.weight).toFixed(2)} (kg)`);
+    lines.push(`Phí VC: ${App.fmtVnd(it.shipFee)}`);
+    lines.push(`Giá sp: ${App.esc(it.currencySymbol)}${Number(it.priceValue).toFixed(2)}`);
+    lines.push(`Phụ thu: ${App.fmtVnd(it.termFee)}`);
+    return lines.join('<br>');
+  }
+
+  function itemsTableRows(items) {
+    return items.map((it, i) => {
       const nameCell = it.link
         ? `<a href="${App.esc(it.link)}" target="_blank" rel="noopener">${App.esc(it.name)}</a>`
         : App.esc(it.name);
       const img = it.image
         ? `<img class="sp-thumb" src="${App.esc(it.image)}" alt="" loading="lazy" />`
         : '<span class="muted">—</span>';
-      const weight = it.weight != null ? `${it.weight} kg` : '';
+      const tinhTrang = it.shippedDate
+        ? `${App.esc(it.shipStatusLabel)}<br><span class="muted">${App.esc(it.shippedDate)}</span>`
+        : App.esc(it.shipStatusLabel);
       return `<tr>
+        <td>${tinhTrang}</td>
         <td>${App.esc(it.orderCode)}</td>
+        <td class="center">${i + 1}</td>
         <td class="center">${img}</td>
         <td>${nameCell}</td>
-        <td class="center">${App.esc(it.quantity ?? '')}</td>
-        <td class="center">${App.esc(weight)}</td>
-        <td class="num">${App.esc(App.fmtVnd(it.shipFee))}</td>
+        <td>${variationsCell(it.variations)}</td>
+        <td class="info-cell">${infoCell(it)}</td>
+        <td class="num">${App.esc(App.fmtVnd(it.totalVnd))}</td>
       </tr>`;
     }).join('');
-    return `<div class="full">
-      <h4>Sản phẩm đã về (${items.length})</h4>
-      <table class="items-table">
-        <thead><tr>
-          <th>Mã ĐH</th><th>Hình SP</th><th>Tên/link SP</th>
-          <th class="center">SL về</th><th class="center">Cân nặng</th><th class="num">Phí VC</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+  }
+
+  // Render khối sản phẩm theo trạng thái load của dòng (idle/loading/loaded/error)
+  function itemsSection(o) {
+    const st = o._itemsState || 'idle';
+    let body;
+    if (st === 'loading') {
+      body = '<p class="muted">Đang tải sản phẩm…</p>';
+    } else if (st === 'error') {
+      body = `<p class="muted">Lỗi tải sản phẩm: ${App.esc(o._itemsError || '')}</p>`;
+    } else if (st === 'loaded') {
+      const items = o._items || [];
+      body = items.length
+        ? `<table class="items-table">
+            <thead><tr>
+              <th>Tình trạng</th><th>Mã ĐH</th><th class="center">STT</th><th class="center">Hình SP</th>
+              <th>Tên/link sp</th><th>Size/Màu</th><th>Thông tin</th><th class="num">Tổng giá sp(VND)</th>
+            </tr></thead>
+            <tbody>${itemsTableRows(items)}</tbody>
+          </table>`
+        : '<p class="muted">Không có chi tiết sản phẩm cho ngày này.</p>';
+    } else {
+      body = '<p class="muted">Mở rộng để xem sản phẩm…</p>';
+    }
+    const count = st === 'loaded' ? ` (${(o._items || []).length})` : '';
+    return `<div class="full" data-items="${App.esc(o.id)}"><h4>Sản phẩm đã về${count}</h4>${body}</div>`;
+  }
+
+  function refreshItemsSection(o) {
+    const wrap = rowsEl.querySelector(`div[data-items="${cssEsc(String(o.id))}"]`);
+    if (wrap) wrap.outerHTML = itemsSection(o);
+  }
+
+  async function loadItems(o) {
+    if (o._itemsState === 'loading' || o._itemsState === 'loaded') return;
+    o._itemsState = 'loading';
+    refreshItemsSection(o);
+    try {
+      const params = new URLSearchParams();
+      if (o.id != null && String(o.id) !== '' && String(o.id) !== '0') params.set('id', o.id);
+      if (o.customerId != null) params.set('customerId', o.customerId);
+      if (o.dateInventory != null) params.set('dateInventory', o.dateInventory);
+      const r = await App.api('/api/arrived-items?' + params.toString());
+      o._items = r.items || [];
+      o._itemsState = 'loaded';
+    } catch (e) {
+      o._itemsError = e.message;
+      o._itemsState = 'error';
+    }
+    refreshItemsSection(o);
   }
 
   function rowHtml(o) {
@@ -103,7 +161,7 @@
       <td colspan="10"><div class="detail-box">
         <div><h4>ND báo hàng</h4><pre>${App.esc(o.noiDungBaoHang) || '(trống)'}</pre></div>
         <div><h4>ND báo ship</h4><pre>${App.esc(o.noiDungBaoShip) || '(trống)'}</pre></div>
-        ${itemsTable(o.items)}
+        ${itemsSection(o)}
         <div class="full detail-actions">
           <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">${App.icon('send')} Gửi báo hàng qua Zalo</button>
           ${o.noiDungBaoShip && o.noiDungBaoShip.trim()
@@ -123,6 +181,8 @@
     }
     rowsEl.innerHTML = orders.map(rowHtml).join('');
     updateCount();
+    // Dòng đang mở: load (hoặc render lại) chi tiết sản phẩm
+    orders.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
   }
 
   function updateCount() {
@@ -134,11 +194,13 @@
   // ---------------- Mở rộng dòng ----------------
   function toggleDetail(id) {
     const key = String(id);
-    if (openRows.has(key)) openRows.delete(key); else openRows.add(key);
+    const opening = !openRows.has(key);
+    if (opening) openRows.add(key); else openRows.delete(key);
     const detail = rowsEl.querySelector(`tr.detail-row[data-detail="${cssEsc(key)}"]`);
     const btn = rowsEl.querySelector(`.expand-btn[data-id="${cssEsc(key)}"]`);
     if (detail) detail.classList.toggle('hidden', !openRows.has(key));
     if (btn) btn.classList.toggle('open', openRows.has(key));
+    if (opening) { const o = byId(id); if (o) loadItems(o); }
   }
   const cssEsc = (s) => String(s).replace(/"/g, '\\"');
 
