@@ -11,21 +11,16 @@
 </head>
 <body>
   <div class="app">
-    <!-- Sidebar -->
+    <!-- Sidebar: icon rail -->
     <aside class="sidebar">
-      <div class="brand">
-        <span class="logo">🤖</span>
-        <span>DORAEMI<small>Báo hàng về VN</small></span>
-      </div>
-
-      <div class="nav-label">Điều hướng</div>
-      <a class="nav active" href="/index.html"><span class="ic">📦</span> Hàng về VN</a>
-      <a class="nav" href="/reports.html"><span class="ic">🕑</span> Lịch sử báo</a>
-
+      <div class="brand" title="Doraemi">🤖</div>
+      <nav class="rail-nav">
+        <a class="nav active" href="/index.html" title="Hàng về VN"><span class="ic">▦</span></a>
+        <a class="nav" href="/reports.html" title="Lịch sử báo"><span class="ic">🕘</span></a>
+      </nav>
       <div class="side-foot">
-        <span id="testBadge" class="badge-status badge-test" style="display:none"></span>
-        <span id="mockBadge" class="badge-status badge-mock" style="display:none">MOCK DATA</span>
-        <span id="localBadge" class="badge-status badge-offline">Local-runner: ...</span>
+        <span class="rail-sep"></span>
+        <div class="avatar" title="Doraemi Bot">🐱</div>
       </div>
     </aside>
 
@@ -33,11 +28,14 @@
     <div class="main">
       <header class="topbar">
         <div>
-          <h1>Hàng về VN</h1>
+          <h1>Hàng về <span class="accent">VN</span></h1>
           <div class="sub">Danh sách đơn hàng & gửi thông báo qua Zalo</div>
         </div>
         <span class="spacer"></span>
-        <button id="syncBtn" class="btn"><span class="ic">↻</span> Đồng bộ ngay</button>
+        <span id="testBadge" class="badge-status badge-test" style="display:none"></span>
+        <span id="mockBadge" class="badge-status badge-mock" style="display:none">MOCK DATA</span>
+        <span id="localBadge" class="badge-status badge-offline">Local-runner: ...</span>
+        <button id="syncBtn" class="btn">↻ Đồng bộ ngay</button>
       </header>
 
       <div class="container">
@@ -60,7 +58,7 @@
             <div class="field full"><label>Tìm kiếm</label><input type="text" id="fQ" placeholder="🔍  Tên / SĐT khách" /></div>
           </div>
 
-          <!-- Tab nhân viên -->
+          <!-- Tab nhân viên (pill) -->
           <div class="tabs" id="staffTabs"></div>
 
           <!-- Thanh thao tác bot (gửi hàng loạt) -->
