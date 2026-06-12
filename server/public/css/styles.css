@@ -336,6 +336,16 @@ td.center, th.center { text-align: center; }
 }
 .detail-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
+/* bảng sản phẩm đã về trong dòng mở rộng */
+.items-table { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.items-table th, .items-table td { padding: 9px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
+.items-table thead th { position: static; background: var(--bg); }
+.items-table tbody tr:last-child td { border-bottom: none; }
+.items-table td.num, .items-table th.num { text-align: right; white-space: nowrap; }
+.items-table a { color: var(--primary); font-weight: 600; text-decoration: none; }
+.items-table a:hover { text-decoration: underline; }
+.sp-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; margin: 0 auto; }
+
 .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 8px; border-radius: 8px; }
 .link-btn:hover { background: var(--primary-soft); }
 

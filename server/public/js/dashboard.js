@@ -45,6 +45,40 @@
     return `<button class="link-btn view-content" data-id="${App.esc(id)}" data-kind="${kind}">Xem nội dung</button>`;
   }
 
+  // Bảng danh sách sản phẩm đã về (đồng bộ từ getArrivedVnList?include_items=1)
+  function itemsTable(items) {
+    if (!items || !items.length) {
+      return '<div class="full"><h4>Sản phẩm đã về</h4><p class="muted">Không có dữ liệu sản phẩm (API chưa trả items cho dòng này).</p></div>';
+    }
+    const rows = items.map((it) => {
+      const nameCell = it.link
+        ? `<a href="${App.esc(it.link)}" target="_blank" rel="noopener">${App.esc(it.name)}</a>`
+        : App.esc(it.name);
+      const img = it.image
+        ? `<img class="sp-thumb" src="${App.esc(it.image)}" alt="" loading="lazy" />`
+        : '<span class="muted">—</span>';
+      const weight = it.weight != null ? `${it.weight} kg` : '';
+      return `<tr>
+        <td>${App.esc(it.orderCode)}</td>
+        <td class="center">${img}</td>
+        <td>${nameCell}</td>
+        <td class="center">${App.esc(it.quantity ?? '')}</td>
+        <td class="center">${App.esc(weight)}</td>
+        <td class="num">${App.esc(App.fmtVnd(it.shipFee))}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="full">
+      <h4>Sản phẩm đã về (${items.length})</h4>
+      <table class="items-table">
+        <thead><tr>
+          <th>Mã ĐH</th><th>Hình SP</th><th>Tên/link SP</th>
+          <th class="center">SL về</th><th class="center">Cân nặng</th><th class="num">Phí VC</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
   function rowHtml(o) {
     const open = openRows.has(String(o.id));
     const noZalo = o.hasZalo === false
@@ -69,6 +103,7 @@
       <td colspan="10"><div class="detail-box">
         <div><h4>ND báo hàng</h4><pre>${App.esc(o.noiDungBaoHang) || '(trống)'}</pre></div>
         <div><h4>ND báo ship</h4><pre>${App.esc(o.noiDungBaoShip) || '(trống)'}</pre></div>
+        ${itemsTable(o.items)}
         <div class="full detail-actions">
           <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">${App.icon('send')} Gửi báo hàng qua Zalo</button>
           ${o.noiDungBaoShip && o.noiDungBaoShip.trim()

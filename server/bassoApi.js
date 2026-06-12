@@ -105,9 +105,31 @@ function formatUnixDate(sec) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+/**
+ * 1 sản phẩm trong snapshot "Hàng về VN" (getArrivedVnList?include_items=1
+ * hoặc getArrivedVnItems) -> shape nội bộ hiển thị.
+ * Field nguồn theo tài liệu Partner API 8.3/8.4.
+ */
+function normalizeItem(it) {
+  return {
+    orderCode: it.orderCode || '',                 // Mã ĐH (vd SU01042501)
+    orderId: it.order_id ?? null,
+    name: it.nameItem || '',                        // Tên SP
+    link: it.linkItem || '',                        // Link SP (nếu có)
+    image: it.image || '',                          // Ảnh SP (nếu có)
+    quantity: it.soLuongVe ?? null,                 // SL về
+    weight: it.canNang ?? null,                     // Cân nặng (kg)
+    shipFee: it.phiShip ?? null,                    // Phí VC
+    shipFeeDomestic: it.phiShipNoiDia ?? null,      // Phí ship nội địa (nếu có)
+    shipCode: it.shipCode || '',                    // Mã vận đơn (nếu có)
+    shipStatus: it.shipStatus || '',                // Trạng thái giao (nếu có)
+  };
+}
+
 /** raw row (API hoặc mock) -> shape nội bộ */
 function normalizeOrder(raw) {
   const code = raw.status || 'not_sent';
+  const items = Array.isArray(raw.items) ? raw.items.map(normalizeItem) : [];
   return {
     id: String(raw.id),                       // khóa duy nhất để chọn dòng
     customerId: raw.customer_id,
@@ -124,6 +146,7 @@ function normalizeOrder(raw) {
     staff: raw.employee_name || '',
     userId: raw.user_id,
     hasZalo: raw.has_zalo !== false,
+    items,                                    // danh sách SP đã về (có thể rỗng)
   };
 }
 
@@ -171,6 +194,7 @@ async function getOrders(filters = {}) {
       to: toApiDate(to),
       key: q || undefined,
       tab: staff || undefined,
+      include_items: 1,                       // gắn danh sách SP vào mỗi dòng
     },
   });
 
@@ -214,4 +238,4 @@ async function updateOrderStatus({ customerId, dateInventory, status, note }) {
   return { ok: true, record: data && data.record };
 }
 
-module.exports = { getOrders, updateOrderStatus, normalizeOrder, STATUS_LABELS };
+module.exports = { getOrders, updateOrderStatus, normalizeOrder, normalizeItem, STATUS_LABELS };

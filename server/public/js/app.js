@@ -47,4 +47,10 @@ const App = {
     const p = (n) => String(n).padStart(2, '0');
     return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
   },
+
+  // Định dạng số tiền VND: 480000 -> "480,000₫"
+  fmtVnd(n) {
+    if (n == null || n === '' || isNaN(Number(n))) return '';
+    return Number(n).toLocaleString('vi-VN') + '₫';
+  },
 };
