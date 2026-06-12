@@ -353,7 +353,38 @@
       } else {
         tb.style.display = 'none';
       }
+      if (h.autoNotify) renderAutoBadge(h.autoNotify);
     } catch { /* ignore */ }
+  }
+
+  // ---------------- Tự động báo hàng ----------------
+  let autoEnabled = false;
+  function renderAutoBadge(a) {
+    autoEnabled = !!a.enabled;
+    const el = $('autoBadge');
+    const every = Math.round((a.intervalMs || 0) / 1000);
+    el.textContent = 'Tự động: ' + (autoEnabled ? `Bật (mỗi ${every}s)` : 'Tắt');
+    el.className = 'badge-status badge-clickable ' + (autoEnabled ? 'badge-online' : 'badge-offline');
+    const last = a.lastResult;
+    el.title = autoEnabled
+      ? `Tự gửi báo hàng cho đơn "Chưa báo".${last ? ` Lần gần nhất: ✅${last.sent || 0} ❌${last.failed || 0}` : ''} · Bấm để tắt`
+      : 'Bấm để BẬT tự động báo hàng khi có đơn về';
+  }
+
+  async function toggleAuto() {
+    const next = !autoEnabled;
+    if (next && !confirm('Bật TỰ ĐỘNG báo hàng? Hệ thống sẽ tự gửi tin cho mọi đơn "Chưa báo".')) return;
+    try {
+      const a = await App.api('/api/auto-notify/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      renderAutoBadge(a);
+      App.toast(next ? '✅ Đã bật tự động báo hàng' : 'Đã tắt tự động báo hàng');
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
+    }
   }
 
   // ---------------- Events ----------------
@@ -364,6 +395,7 @@
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
   $('bulkBtn').addEventListener('click', bulkSend);
+  $('autoBadge').addEventListener('click', toggleAuto);
 
   $('staffTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.tab');

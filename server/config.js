@@ -18,5 +18,16 @@ module.exports = {
     useMock,
     autoUpdateStatus: String(process.env.AUTO_UPDATE_STATUS || 'true').toLowerCase() === 'true',
   },
+  // Tự động báo hàng: cứ có đơn "Chưa báo" (đã về kho) là tự gửi tin, không cần bấm tay.
+  autoNotify: {
+    enabled: String(process.env.AUTO_NOTIFY || 'false').toLowerCase() === 'true',
+    intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '120000', 10) || 120000, 10000),
+    profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
+    account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
+    // Số lần thử lại tối đa cho 1 đơn nếu gửi lỗi (tránh spam khi local-runner offline)
+    maxRetries: Math.max(parseInt(process.env.AUTO_NOTIFY_MAX_RETRIES || '3', 10) || 3, 1),
+    // Bí mật bảo vệ webhook /api/webhook/arrived (so khớp header x-webhook-secret). Trống = không kiểm tra.
+    webhookSecret: process.env.AUTO_NOTIFY_WEBHOOK_SECRET || '',
+  },
   dbPath: path.join(__dirname, '..', 'data', 'doraemi.sqlite'),
 };

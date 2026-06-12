@@ -23,6 +23,15 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at);
   CREATE INDEX IF NOT EXISTS idx_reports_status  ON reports(status);
+
+  -- Chống gửi trùng cho luồng TỰ ĐỘNG báo hàng: mỗi đơn (order_id) chỉ tự gửi 1 lần thành công.
+  -- Khi lỗi, tăng attempts; quá maxRetries thì thôi (tránh spam khi local-runner offline).
+  CREATE TABLE IF NOT EXISTS auto_notified (
+    order_id    TEXT PRIMARY KEY,
+    status      TEXT NOT NULL,           -- 'success' | 'failed'
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    updated_at  TEXT NOT NULL            -- ISO string
+  );
 `);
 
 const insertStmt = db.prepare(`
@@ -61,6 +70,30 @@ function listReports({ limit = 200, status, q } = {}) {
   return db.prepare(sql).all(params);
 }
 
+// ---- Dedup cho luồng tự động báo hàng ----
+const getAutoStmt = db.prepare('SELECT * FROM auto_notified WHERE order_id = @order_id');
+const upsertAutoStmt = db.prepare(`
+  INSERT INTO auto_notified (order_id, status, attempts, updated_at)
+  VALUES (@order_id, @status, @attempts, @updated_at)
+  ON CONFLICT(order_id) DO UPDATE SET
+    status = @status, attempts = @attempts, updated_at = @updated_at
+`);
+
+/** Lấy bản ghi tự-động-đã-gửi của 1 đơn (null nếu chưa có). */
+function getAutoRecord(orderId) {
+  return getAutoStmt.get({ order_id: String(orderId) }) || null;
+}
+
+/** Ghi/cập nhật trạng thái tự động báo của 1 đơn. */
+function recordAutoNotified(orderId, status, attempts) {
+  upsertAutoStmt.run({
+    order_id: String(orderId),
+    status,
+    attempts: attempts ?? 0,
+    updated_at: new Date().toISOString(),
+  });
+}
+
 function stats() {
   const row = db.prepare(`
     SELECT
@@ -72,4 +105,4 @@ function stats() {
   return { total: row.total || 0, success: row.success || 0, failed: row.failed || 0 };
 }
 
-module.exports = { db, addReport, listReports, stats };
+module.exports = { db, addReport, listReports, stats, getAutoRecord, recordAutoNotified };

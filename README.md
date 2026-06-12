@@ -63,6 +63,33 @@ ngrok http 8090
 3. `POST /api/notify { orderIds, messageOverride? }` → server build tin nhắn → forward xuống local-runner → Playwright tìm khách theo SĐT/tên trên Salework và gửi.
 4. Mỗi lượt được ghi vào **Lịch sử báo** (`/reports.html`).
 
+## Tự động báo hàng (auto-notify) 🆕
+
+Không cần bấm tay: cứ có đơn **"Chưa báo"** (`not_sent` = hàng đã về kho) là hệ thống tự
+build tin nhắn + gửi qua Zalo. Có **chống gửi trùng** (mỗi đơn chỉ tự gửi 1 lần thành công;
+gửi lỗi sẽ thử lại tối đa `AUTO_NOTIFY_MAX_RETRIES` lần rồi thôi — tránh spam khi runner offline).
+
+**2 cách kích hoạt** (dùng chung 1 luồng):
+
+1. **Poller định kỳ** — server tự quét mỗi `AUTO_NOTIFY_INTERVAL_MS` (mặc định 2 phút).
+   Bật bằng `.env`:
+   ```
+   AUTO_NOTIFY=true
+   AUTO_NOTIFY_INTERVAL_MS=120000
+   AUTO_NOTIFY_PROFILE=default
+   ```
+   Hoặc bật/tắt ngay trên dashboard qua badge **"Tự động"** (góc trên phải).
+
+2. **Webhook real-time** — để website Basso gọi sang **ngay khi có hàng về**:
+   ```
+   POST /api/webhook/arrived
+   Header (tùy chọn): x-webhook-secret: <AUTO_NOTIFY_WEBHOOK_SECRET>
+   ```
+   Server sẽ quét + gửi ngay, trả tóm tắt `{ scanned, candidates, sent, failed }`.
+
+> Điều kiện gửi 1 đơn: trạng thái `not_sent` **và** khách có Zalo (`hasZalo !== false`).
+> Sau khi gửi xong, nếu `AUTO_UPDATE_STATUS=true` thì trạng thái tự chuyển "Đã báo hàng" về web.
+
 ## Ráp API website thật (ĐÃ tích hợp Basso Partner API)
 
 Chỉ cần điền `.env` là chạy thật:
@@ -124,7 +151,11 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | GET | `/api/orders?status=&staff=&q=&from=&to=` | Danh sách hàng về |
 | GET | `/api/arrived-items?id=&customerId=&dateInventory=` | Chi tiết SP đã về 1 dòng (load lazy) |
 | POST | `/api/notify` `{orderIds[], profile?, account?, messageOverride?}` | Báo hàng |
+| GET | `/api/auto-notify` | Trạng thái tự động báo hàng |
+| POST | `/api/auto-notify/toggle` `{enabled}` | Bật/tắt tự động (runtime) |
+| POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt |
+| POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay (header `x-webhook-secret`) |
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
-| GET | `/api/health` | Trạng thái server + local-runner |
+| GET | `/api/health` | Trạng thái server + local-runner + auto-notify |
 
 Local-runner: `POST /api/zalo/send`, `GET /api/job/:id`, `GET /health` (bảo vệ bằng header `x-api-key`).
