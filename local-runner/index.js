@@ -38,11 +38,11 @@ app.get('/api/profile/:name', (req, res) => {
  * => trả { ok, jobId } ngay; poll /api/job/:id để lấy kết quả.
  */
 app.post('/api/zalo/send', (req, res) => {
-  const { profile, account, keyword, name, message } = req.body || {};
+  const { profile, account, keyword, name, message, strictMatch } = req.body || {};
   if ((!keyword && !name) || !message) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc message' });
   }
-  const jobId = createJob({ profile, account, keyword, name, message }, sendBaoHang);
+  const jobId = createJob({ profile, account, keyword, name, message, strictMatch }, sendBaoHang);
   res.json({ ok: true, jobId });
 });
 

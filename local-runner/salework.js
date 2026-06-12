@@ -134,7 +134,7 @@ async function selectZaloAccount(page, accountLabel) {
  * thì tìm theo SĐT và lấy kết quả trên cùng. Click bằng toạ độ chuột thật.
  * @param {object} p { name, phone }
  */
-async function searchAndClickConversation(page, { name, phone }) {
+async function searchAndClickConversation(page, { name, phone, strictMatch = false }) {
   // An toàn: nếu còn popper/dropdown nào mở (vd dropdown chọn tài khoản) thì đóng lại,
   // tránh việc nó che + chặn pointer events khi click ô tìm kiếm.
   if (await page.locator('.el-select-dropdown, .el-popper').first().isVisible().catch(() => false)) {
@@ -195,13 +195,23 @@ async function searchAndClickConversation(page, { name, phone }) {
   }
 
   let rect = null;
-  if (name) rect = await attempt(name, true);       // tìm theo tên, khớp text
-  if (!rect && phone) rect = await attempt(phone, false); // SĐT -> kết quả trên cùng
-  if (!rect && name) rect = await attempt(name, false);   // tên -> kết quả trên cùng
-
-  if (!rect) {
-    await shot(page, '03b-conversation-notfound');
-    throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${name || phone}". Kiểm tra khách đã từng nhắn Zalo trên tài khoản này chưa.`);
+  if (name) rect = await attempt(name, true);             // tìm theo tên, khớp text
+  if (!rect && phone) rect = await attempt(phone, true);  // SĐT, vẫn yêu cầu khớp text
+  if (strictMatch) {
+    // Luồng bot tự động: KHÔNG "lấy đại đơn trên cùng" vì không có người soát ->
+    // tránh gửi nhầm khách. Không khớp chắc chắn thì báo lỗi để xử lý tay.
+    if (!rect) {
+      await shot(page, '03b-conversation-notfound');
+      throw new Error(`KHONG_THAY_HOI_THOAI (strict): không khớp chắc chắn hội thoại cho "${name || phone}". Bỏ qua để gửi tay, tránh gửi nhầm.`);
+    }
+  } else {
+    // Luồng gửi tay (có người soát): cho phép fallback lấy kết quả trên cùng.
+    if (!rect && phone) rect = await attempt(phone, false);
+    if (!rect && name) rect = await attempt(name, false);
+    if (!rect) {
+      await shot(page, '03b-conversation-notfound');
+      throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${name || phone}". Kiểm tra khách đã từng nhắn Zalo trên tài khoản này chưa.`);
+    }
   }
   await page.mouse.click(rect.x, rect.y);
   await page.waitForTimeout(1500);
@@ -269,7 +279,7 @@ async function typeAndSend(page, message) {
  * @param {string} p.message        - nội dung tin nhắn
  * @returns {Promise<{ok:boolean, step?:string}>}
  */
-async function sendBaoHang({ profile = 'default', account, keyword, name, message }) {
+async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false }) {
   if (!keyword && !name) throw new Error('Thiếu keyword (SĐT) hoặc name (tên khách).');
   if (!message) throw new Error('Thiếu nội dung tin nhắn.');
 
@@ -284,7 +294,7 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
   // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env
   const acct = account || config.defaultZaloAccount;
   if (acct) await selectZaloAccount(page, acct);
-  await searchAndClickConversation(page, { name, phone: keyword });
+  await searchAndClickConversation(page, { name, phone: keyword, strictMatch });
   await typeAndSend(page, message);
 
   return { ok: true };

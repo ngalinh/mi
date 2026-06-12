@@ -44,7 +44,7 @@ app.get('/api/orders', async (req, res) => {
     // không cập nhật trạng thái về web Basso.
     if (Array.isArray(data.orders)) {
       data.orders = data.orders.map((o) => {
-        const a = getAutoRecord(o.id);
+        const a = getAutoRecord(autoNotify.autoKey(o));
         return a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
       });
     }

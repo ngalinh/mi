@@ -29,6 +29,7 @@ async function notifyOne(order, opts = {}) {
       keyword,
       name: order.customerName,
       message,
+      strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
     });
   } catch (err) {
     result = { ok: false, error: err.message };

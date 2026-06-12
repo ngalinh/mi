@@ -3,6 +3,7 @@ const config = require('./config');
 const { getOrders } = require('./bassoApi');
 const { notifyOne } = require('./notifyService');
 const { getAutoRecord, recordAutoNotified } = require('./db');
+const { checkLocalHealth } = require('./playwrightProxy');
 
 /**
  * TỰ ĐỘNG BÁO HÀNG.
@@ -14,8 +15,10 @@ const { getAutoRecord, recordAutoNotified } = require('./db');
  *   1) Poller định kỳ (startAutoNotify) — server tự quét mỗi `intervalMs`.
  *   2) Webhook /api/webhook/arrived — website Basso gọi sang để gửi NGAY khi có hàng về.
  *
- * Chống gửi trùng: bảng `auto_notified` (SQLite). Gửi thành công 1 lần là khóa lại;
- * gửi lỗi thì tăng attempts, quá `maxRetries` thì bỏ qua (tránh spam khi local-runner offline).
+ * Chống gửi trùng: bảng `auto_notified` (SQLite), khóa theo customerId+dateInventory
+ * (khóa ổn định của 1 dòng hàng về). Gửi thành công 1 lần là khóa lại; lỗi CẤP-ĐƠN thì
+ * tăng attempts, quá `maxRetries` thì bỏ qua. Lỗi TẠM THỜI (runner offline/timeout) KHÔNG
+ * trừ attempts và dừng lượt — để thử lại nguyên vẹn khi runner online lại.
  */
 
 const cfg = config.autoNotify;
@@ -31,14 +34,54 @@ const state = {
 
 let timer = null;
 
+/**
+ * Khóa chống trùng ỔN ĐỊNH cho 1 dòng hàng về.
+ * Ưu tiên customerId:dateInventory (khóa thật của updateArrivedVnRow) vì API thật
+ * có thể KHÔNG trả field `id`; fallback về id nếu thiếu. Cùng hàm này dùng ở index.js.
+ */
+function autoKey(order) {
+  if (order.customerId != null && order.dateInventory != null) {
+    return `c${order.customerId}:d${order.dateInventory}`;
+  }
+  return `id:${order.id}`;
+}
+
+/** Lỗi tạm thời (runner down / mạng / timeout) — KHÔNG nên trừ lượt thử của đơn. */
+function isTransientError(msg) {
+  const m = String(msg || '').toLowerCase();
+  return (
+    m.includes('econnrefused') || m.includes('local-runner') ||
+    m.includes('timeout') || m.includes('hết thời gian') ||
+    m.includes('network') || m.includes('fetch failed') ||
+    m.includes('socket') || m.includes('etimedout')
+  );
+}
+
 /** Đơn có đủ điều kiện tự gửi không? */
 function isCandidate(order) {
   if (order.statusCode !== 'not_sent') return false; // chỉ "Chưa báo"
   if (order.hasZalo === false) return false;          // khách chưa có Zalo -> bỏ qua
-  const rec = getAutoRecord(order.id);
+  const rec = getAutoRecord(autoKey(order));
   if (!rec) return true;
   if (rec.status === 'success') return false;         // đã tự gửi thành công rồi
   return rec.attempts < cfg.maxRetries;               // còn lượt thử lại
+}
+
+/** Lấy TẤT CẢ đơn "Chưa báo" qua mọi trang (vì không cập nhật web nên tập này không tự co lại). */
+async function fetchAllNotSent() {
+  const all = [];
+  const seen = new Set();
+  for (let page = 1; page <= 50; page += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { orders, total } = await getOrders({ status: 'not_sent', page, pageSize: 100 });
+    for (const o of orders) {
+      const k = autoKey(o);
+      if (!seen.has(k)) { seen.add(k); all.push(o); }
+    }
+    if (orders.length < 100) break;                 // hết trang
+    if (total != null && all.length >= total) break; // đã lấy đủ
+  }
+  return all;
 }
 
 /**
@@ -54,30 +97,50 @@ async function runAutoNotify(opts = {}) {
   state.running = true;
   const summary = { trigger, scanned: 0, candidates: 0, sent: 0, failed: 0, results: [] };
   try {
-    // Chỉ lấy đơn "Chưa báo" cho nhẹ (API hỗ trợ filter status).
-    const { orders } = await getOrders({ status: 'not_sent' });
+    // R4: runner offline thì bỏ cả lượt, KHÔNG trừ attempts (tránh "bỏ cuộc" oan).
+    const online = await checkLocalHealth();
+    if (!online) {
+      summary.skipped = true;
+      summary.reason = 'local-runner offline';
+      console.warn(`[auto-notify:${trigger}] bỏ lượt — local-runner offline (không trừ lượt thử).`);
+      return summary;
+    }
+
+    const orders = await fetchAllNotSent();
     summary.scanned = orders.length;
     const candidates = orders.filter(isCandidate);
     summary.candidates = candidates.length;
 
     for (const order of candidates) {
-      const prev = getAutoRecord(order.id);
-      const attempts = (prev ? prev.attempts : 0) + 1;
+      const key = autoKey(order);
+      const prev = getAutoRecord(key);
       // eslint-disable-next-line no-await-in-loop
       const r = await notifyOne(order, {
         profile: cfg.profile,
         account: cfg.account,
         kind: 'hang',
         skipWebUpdate: !cfg.updateWeb, // mặc định chỉ đánh dấu trong mi, không cập nhật web Basso
+        strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
       });
-      const status = r.ok ? 'success' : 'failed';
-      recordAutoNotified(order.id, status, attempts);
-      if (r.ok) summary.sent += 1; else summary.failed += 1;
+
+      if (r.ok) {
+        recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
+        summary.sent += 1;
+      } else if (isTransientError(r.error)) {
+        // Runner vừa sập / mạng lỗi giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
+        summary.failed += 1;
+        summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
+        summary.stopped = 'local-runner offline giữa chừng';
+        console.warn(`[auto-notify:${trigger}] dừng giữa chừng — lỗi tạm thời: ${r.error}`);
+        break;
+      } else {
+        recordAutoNotified(key, 'failed', (prev ? prev.attempts : 0) + 1);
+        summary.failed += 1;
+      }
       summary.results.push({
-        orderId: order.id,
+        orderId: key,
         customerName: order.customerName,
         ok: r.ok,
-        attempts,
         error: r.error || r.updateError || null,
       });
     }
@@ -142,4 +205,4 @@ function getStatus() {
   };
 }
 
-module.exports = { runAutoNotify, startAutoNotify, setEnabled, getStatus };
+module.exports = { runAutoNotify, startAutoNotify, setEnabled, getStatus, autoKey };

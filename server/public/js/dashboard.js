@@ -8,6 +8,9 @@
   const rowsEl = $('rows');
 
   const DONE = new Set(['notified_arrival', 'notified_ship']);
+  // "Đã báo" = web đã đánh dấu, HOẶC bot đã tự gửi thành công (lưu local trong mi).
+  // Dùng để loại khỏi "Báo hàng loạt" -> tránh gửi trùng cho khách bot đã nhắn.
+  const isNotified = (o) => DONE.has(o.statusCode) || (o.autoNotified && o.autoNotified.status === 'success');
   const STATUS_OPTS = [
     ['not_sent', 'Chưa báo'],
     ['notified_arrival', 'Đã báo hàng'],
@@ -197,7 +200,7 @@
   }
 
   function updateCount() {
-    const chua = orders.filter((o) => !DONE.has(o.statusCode)).length;
+    const chua = orders.filter((o) => !isNotified(o)).length;
     $('countInfo').textContent = `${orders.length} đơn · ${chua} chưa báo`;
     $('bulkBtn').disabled = chua === 0;
   }
@@ -307,7 +310,7 @@
   }
 
   async function bulkSend() {
-    const ids = orders.filter((o) => !DONE.has(o.statusCode)).map((o) => String(o.id));
+    const ids = orders.filter((o) => !isNotified(o)).map((o) => String(o.id));
     if (!ids.length) return;
     if (!confirm(`Gửi báo hàng cho ${ids.length} khách chưa báo?`)) return;
     const btn = $('bulkBtn');
