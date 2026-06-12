@@ -58,6 +58,27 @@ body {
 a { color: var(--primary); text-decoration: none; }
 
 /* ============================================================
+   Icons (SVG line, theo currentColor)
+   ============================================================ */
+.icon {
+  width: 1.1em; height: 1.1em; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  display: inline-block; vertical-align: -.18em;
+}
+.btn .icon { width: 17px; height: 17px; }
+.icon-btn .icon { width: 19px; height: 19px; }
+.pill .icon { width: 14px; height: 14px; vertical-align: -.22em; }
+
+/* ô input có icon bên trái */
+.input-icon { position: relative; }
+.input-icon .icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  width: 17px; height: 17px; color: var(--muted); pointer-events: none;
+}
+.input-icon input { padding-left: 42px; }
+
+/* ============================================================
    App shell: icon rail + main
    ============================================================ */
 .app {
@@ -82,6 +103,7 @@ a { color: var(--primary); text-decoration: none; }
   box-shadow: var(--shadow-primary);
   margin-bottom: 6px;
 }
+.sidebar .brand .icon { width: 27px; height: 27px; }
 .sidebar .brand small, .sidebar .nav-label { display: none; }
 
 .sidebar .rail-nav { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -91,7 +113,8 @@ a { color: var(--primary); text-decoration: none; }
   color: var(--muted); font-size: 21px;
   transition: background .16s var(--ease), color .16s var(--ease), transform .08s var(--ease);
 }
-.sidebar a.nav .ic { line-height: 1; }
+.sidebar a.nav .ic { line-height: 1; display: grid; place-items: center; }
+.sidebar a.nav .icon { width: 24px; height: 24px; }
 .sidebar a.nav:hover { background: var(--primary-soft); color: var(--primary); }
 .sidebar a.nav:active { transform: scale(.94); }
 .sidebar a.nav.active {
@@ -106,6 +129,7 @@ a { color: var(--primary); text-decoration: none; }
   background: var(--primary-grad); display: grid; place-items: center;
   color: #fff; font-size: 20px; box-shadow: var(--shadow-primary);
 }
+.sidebar .avatar .icon { width: 23px; height: 23px; }
 
 /* ---- main column ---- */
 .main { min-width: 0; display: flex; flex-direction: column; }
@@ -264,10 +288,12 @@ td.center, th.center { text-align: center; }
 
 /* expand button */
 .expand-btn {
-  background: none; border: none; cursor: pointer; font-size: 17px;
+  background: none; border: none; cursor: pointer;
   color: var(--muted); transition: transform .18s var(--ease), color .15s var(--ease), background .15s var(--ease);
-  line-height: 1; width: 28px; height: 28px; border-radius: 9px;
+  width: 28px; height: 28px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center;
 }
+.expand-btn .icon { width: 18px; height: 18px; vertical-align: middle; }
 .expand-btn:hover { background: var(--primary-soft); color: var(--primary); }
 .expand-btn.open { transform: rotate(90deg); color: var(--primary); }
 
@@ -291,8 +317,10 @@ td.center, th.center { text-align: center; }
 .note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124,77,255,.15); }
 .save-note {
   background: none; border: none; cursor: pointer; color: var(--muted);
-  font-size: 16px; padding: 5px 7px; border-radius: 9px; transition: .15s var(--ease);
+  padding: 6px; border-radius: 9px; transition: .15s var(--ease);
+  display: inline-flex; align-items: center; justify-content: center;
 }
+.save-note .icon { width: 17px; height: 17px; }
 .save-note:hover { color: var(--primary); background: var(--primary-soft); }
 .save-note.saved { color: var(--green); }
 
