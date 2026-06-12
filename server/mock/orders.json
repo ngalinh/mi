@@ -11,7 +11,11 @@
     "note": null,
     "has_zalo": true,
     "content": "Dạ Thuỳ Duyên ơi, đơn 2 áo + 1 túi của mình đã về kho VN ngày 04/06/2026 ạ. Shop ship cho mình nhé!",
-    "content_ship": "Dạ Thuỳ Duyên ơi, shop đã gửi đơn đi giao qua GHTK, mã vận đơn S123456 ạ 🚚"
+    "content_ship": "Dạ Thuỳ Duyên ơi, shop đã gửi đơn đi giao qua GHTK, mã vận đơn S123456 ạ 🚚",
+    "items": [
+      { "orderCode": "SU04062403", "order_id": 2403, "nameItem": "Áo sơ mi linen Uniqlo", "soLuongVe": 2, "canNang": 0.6, "phiShip": 180000, "linkItem": "https://uniqlo.com/p/123" },
+      { "orderCode": "SU04062404", "order_id": 2404, "nameItem": "Túi tote canvas", "soLuongVe": 1, "canNang": 0.4, "phiShip": 120000, "linkItem": "https://amazon.com/dp/abc" }
+    ]
   },
   {
     "id": 2,
@@ -95,6 +99,10 @@
     "note": null,
     "has_zalo": true,
     "content": "Dạ Tram Truong ơi, đơn hàng của mình đã về kho VN rồi ạ 🎉 Shop nhắn để mình biết nhé! (tin test từ Doraemi bot)",
-    "content_ship": "Dạ Tram Truong ơi, đơn của mình đã được gửi đi giao ạ 🚚 (tin test ship từ Doraemi bot)"
+    "content_ship": "Dạ Tram Truong ơi, đơn của mình đã được gửi đi giao ạ 🚚 (tin test ship từ Doraemi bot)",
+    "items": [
+      { "orderCode": "BS12062602", "order_id": 12602, "nameItem": "SAN PHAM TEST 1", "soLuongVe": 2, "canNang": 2.0, "phiShip": 480000, "linkItem": "https://example.com/sp/test-1" },
+      { "orderCode": "BS12062601", "order_id": 12601, "nameItem": "Prada Beauty 3Pc Mini Lip Balm Trio Set", "soLuongVe": 1, "canNang": 1.0, "phiShip": 240000, "linkItem": "https://example.com/sp/prada-lip-balm" }
+    ]
   }
 ]

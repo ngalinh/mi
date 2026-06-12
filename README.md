@@ -77,7 +77,7 @@ AUTO_UPDATE_STATUS=true                     # gửi xong tự đánh dấu "Đã
 
 Đã cài sẵn trong [`server/bassoApi.js`](server/bassoApi.js):
 - **Login + cache token**: `POST /partner/login` → `data.access_token` (tự login lại khi hết hạn / gặp 401).
-- **List**: `GET /partner/getArrivedVnList` (filter `status`, `from`/`to` DD-MM-YYYY, `key`, `tab`=user_id NV, `page_size`).
+- **List**: `GET /partner/getArrivedVnList` (filter `status`, `from`/`to` DD-MM-YYYY, `key`, `tab`=user_id NV, `page_size`, `include_items=1` để kèm danh sách SP đã về).
 - **Update**: `POST /partner/updateArrivedVnRow` `{customer_id, date_inventory, status, note}` — tự gọi sau khi gửi Zalo thành công (nếu `AUTO_UPDATE_STATUS=true`).
 
 Map trạng thái API → nhãn: `not_sent`=Chưa báo, `notified_arrival`=Đã báo hàng, `notified_ship`=Đã báo ship, `send_failed`=Gửi lỗi.
@@ -85,8 +85,16 @@ Map trạng thái API → nhãn: `not_sent`=Chưa báo, `notified_arrival`=Đã 
 Shape nội bộ chuẩn:
 ```
 { id, customerId, dateInventory, stt, warehouseDate, customerName, phone,
-  noiDungBaoHang, noiDungBaoShip, statusCode, status, note, staff, userId, hasZalo }
+  noiDungBaoHang, noiDungBaoShip, statusCode, status, note, staff, userId, hasZalo,
+  items: [{ orderCode, orderId, name, link, image, quantity, weight, shipFee,
+            shipFeeDomestic, shipCode, shipStatus }] }
 ```
+
+Danh sách `items` (sản phẩm đã về) được lấy nhờ tham số `include_items=1` và hiển thị
+thành bảng con khi mở rộng từng dòng trên dashboard. Map field theo tài liệu Partner API
+8.3/8.4: `orderCode`(Mã ĐH), `nameItem`→`name`, `linkItem`→`link`, `image`,
+`soLuongVe`→`quantity`(SL về), `canNang`→`weight`(kg), `phiShip`→`shipFee`(Phí VC).
+Nếu API không trả `items` cho dòng nào thì bảng hiện "Không có dữ liệu sản phẩm".
 
 ## Khi giao diện Salework thay đổi
 
