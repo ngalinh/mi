@@ -11,7 +11,8 @@
     "login": "cross-env HEADLESS=false node local-runner/login.js",
     "install:browser": "playwright install chromium",
     "dev": "node server/index.js",
-    "diagram": "node scripts/gen-flow-diagram.js"
+    "diagram": "node scripts/gen-flow-diagram.js",
+    "test:basso": "node scripts/test-basso.js"
   },
   "engines": {
     "node": ">=20"

@@ -405,7 +405,30 @@
     }
   }
 
+  // ---------------- Test kết nối Basso ----------------
+  async function pingBasso() {
+    const btn = $('bassoBtn');
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang kiểm tra...';
+    try {
+      const r = await App.api('/api/basso/ping');
+      if (r.connected) {
+        const s = r.sample ? ` · đơn mẫu: ${r.sample.customerName}` : ' · danh sách trống';
+        App.toast(`✅ Basso OK (${r.ms}ms · ${r.total ?? 0} đơn${s})`, 6000);
+      } else if (r.mock) {
+        App.toast('⚠️ Đang ở chế độ MOCK — chưa nối Basso thật (đặt BASSO_API_BASE_URL, USE_MOCK=false).', 7000);
+      } else {
+        App.toast(`❌ Không kết nối được Basso: ${r.error}`, 8000);
+      }
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 6000);
+    } finally {
+      btn.disabled = false; btn.innerHTML = label;
+    }
+  }
+
   // ---------------- Events ----------------
+  $('bassoBtn').addEventListener('click', pingBasso);
   $('syncBtn').addEventListener('click', load);
   $('fStatus').addEventListener('change', load);
   $('fStaff').addEventListener('change', (e) => { currentStaff = e.target.value; load(); });
