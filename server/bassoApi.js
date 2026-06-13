@@ -40,10 +40,16 @@ function baseHeaders() {
 }
 
 async function login() {
+  // Theo tài liệu Partner API: /partner/login dùng application/x-www-form-urlencoded
+  // (KHÔNG phải JSON). Backend PHP đọc $this->input->post(); gửi JSON sẽ làm email/pass
+  // rỗng -> "Đăng nhập thất bại". Vì vậy phải gửi form-urlencoded.
+  const form = new URLSearchParams();
+  form.set('email', config.basso.email);
+  form.set('pass', config.basso.pass);
   const res = await fetch(`${config.basso.baseUrl}/partner/login`, {
     method: 'POST',
-    headers: { ...baseHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: config.basso.email, pass: config.basso.pass }),
+    headers: { ...baseHeaders(), 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.success === false || !json.data || !json.data.access_token) {
