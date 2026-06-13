@@ -35,6 +35,31 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+// ---- Test kết nối Basso (chỉ đọc): dùng cho nút "Test Basso" trên dashboard ----
+// Luôn trả HTTP 200 + cờ `connected` để frontend hiển thị được cả khi lỗi.
+app.get('/api/basso/ping', async (req, res) => {
+  if (config.basso.useMock) {
+    return res.json({ ok: true, connected: false, mock: true, error: 'Đang ở chế độ MOCK — chưa nối Basso thật.' });
+  }
+  const t0 = Date.now();
+  try {
+    const r = await getOrders({ pageSize: 1 });
+    const o = (r.orders || [])[0] || null;
+    res.json({
+      ok: true,
+      connected: true,
+      mock: false,
+      baseUrl: config.basso.baseUrl,
+      source: r.source,
+      total: r.total,
+      ms: Date.now() - t0,
+      sample: o ? { id: o.id, customerName: o.customerName, warehouseDate: o.warehouseDate, status: o.status } : null,
+    });
+  } catch (err) {
+    res.json({ ok: true, connected: false, mock: false, baseUrl: config.basso.baseUrl, ms: Date.now() - t0, error: err.message });
+  }
+});
+
 // ---- Dashboard: danh sách hàng về ----
 app.get('/api/orders', async (req, res) => {
   try {
