@@ -15,10 +15,14 @@ const info = (s) => console.log(`   ${s}`);
 
 function diagnose(err) {
   const m = String(err && err.message || err);
-  if (/login/i.test(m)) return 'Sai BASSO_EMAIL/BASSO_PASS hoặc BASSO_API_KEY (login thất bại).';
-  if (/401|403/.test(m)) return 'Bị từ chối (401/403): kiểm tra X-Partner-Api-Key / quyền tài khoản.';
+  // Sai URL / gọi nhầm website thay vì API: trả 404 hoặc HTML
+  if (/404|cannot post|not found|<!doctype|<html/i.test(m)) {
+    return 'Có vẻ SAI BASSO_API_BASE_URL (gọi nhầm endpoint/website). Hỏi Basso URL gốc của Partner API (vd https://api.basso.vn).';
+  }
   if (/ENOTFOUND|EAI_AGAIN/.test(m)) return 'Không phân giải được tên miền: kiểm tra BASSO_API_BASE_URL.';
   if (/ECONNREFUSED|ETIMEDOUT|ECONNRESET|network|fetch failed/i.test(m)) return 'Không kết nối được: sai URL, firewall, hoặc Basso chặn IP máy này.';
+  if (/401|403/.test(m)) return 'Bị từ chối (401/403): kiểm tra X-Partner-Api-Key / quyền tài khoản.';
+  if (/login/i.test(m)) return 'Login thất bại: kiểm tra BASSO_EMAIL/BASSO_PASS, BASSO_API_KEY, và đúng BASSO_API_BASE_URL.';
   return m;
 }
 
@@ -49,7 +53,8 @@ function diagnose(err) {
     }
   } catch (err) {
     bad('getArrivedVnList lỗi.');
-    info(diagnose(err));
+    info('Gợi ý: ' + diagnose(err));
+    info('Lỗi gốc: ' + String(err && err.message || err));
     process.exit(2);
   }
 
