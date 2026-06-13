@@ -8,6 +8,10 @@
   const rowsEl = $('rows');
 
   const DONE = new Set(['notified_arrival', 'notified_ship']);
+  // "Đã báo" = web đã đánh dấu, HOẶC mi đã gửi (bot 'success' / đã báo tay 'manual').
+  // Dùng để loại khỏi "Báo hàng loạt" -> tránh gửi trùng cho khách đã nhắn.
+  const SENT_LOCAL = new Set(['success', 'manual']);
+  const isNotified = (o) => DONE.has(o.statusCode) || (o.autoNotified && SENT_LOCAL.has(o.autoNotified.status));
   const STATUS_OPTS = [
     ['not_sent', 'Chưa báo'],
     ['notified_arrival', 'Đã báo hàng'],
@@ -38,6 +42,20 @@
     const opts = STATUS_OPTS.map(([v, l]) =>
       `<option value="${v}" ${v === o.statusCode ? 'selected' : ''}>${l}</option>`).join('');
     return `<select class="status-sel" data-code="${App.esc(o.statusCode)}" data-id="${App.esc(o.id)}">${opts}</select>`;
+  }
+
+  // Dấu "bot tự động đã gửi" — lưu local trong mi (không phụ thuộc trạng thái web Basso)
+  function botTag(o) {
+    const a = o.autoNotified;
+    if (!a) return '';
+    const when = a.at ? App.fmtDateTime(a.at) : '';
+    if (a.status === 'success') {
+      return `<span class="bot-tag" title="Bot tự động đã gửi${when ? ' lúc ' + when : ''}">🤖 Bot đã gửi</span>`;
+    }
+    if (a.status === 'manual') {
+      return `<span class="bot-tag bot-manual" title="Đã báo tay trong mi${when ? ' lúc ' + when : ''}">✋ Đã báo tay</span>`;
+    }
+    return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">🤖 Bot lỗi (${a.attempts})</span>`;
   }
 
   function contentCell(text, id, kind) {
@@ -149,7 +167,7 @@
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
-      <td>${statusSelect(o)}</td>
+      <td>${statusSelect(o)}${botTag(o)}</td>
       <td><div class="note-cell">
         <input class="note-input" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
@@ -186,7 +204,7 @@
   }
 
   function updateCount() {
-    const chua = orders.filter((o) => !DONE.has(o.statusCode)).length;
+    const chua = orders.filter((o) => !isNotified(o)).length;
     $('countInfo').textContent = `${orders.length} đơn · ${chua} chưa báo`;
     $('bulkBtn').disabled = chua === 0;
   }
@@ -296,7 +314,7 @@
   }
 
   async function bulkSend() {
-    const ids = orders.filter((o) => !DONE.has(o.statusCode)).map((o) => String(o.id));
+    const ids = orders.filter((o) => !isNotified(o)).map((o) => String(o.id));
     if (!ids.length) return;
     if (!confirm(`Gửi báo hàng cho ${ids.length} khách chưa báo?`)) return;
     const btn = $('bulkBtn');
@@ -353,7 +371,38 @@
       } else {
         tb.style.display = 'none';
       }
+      if (h.autoNotify) renderAutoBadge(h.autoNotify);
     } catch { /* ignore */ }
+  }
+
+  // ---------------- Tự động báo hàng ----------------
+  let autoEnabled = false;
+  function renderAutoBadge(a) {
+    autoEnabled = !!a.enabled;
+    const el = $('autoBadge');
+    const every = Math.round((a.intervalMs || 0) / 1000);
+    el.textContent = 'Tự động: ' + (autoEnabled ? `Bật (mỗi ${every}s)` : 'Tắt');
+    el.className = 'badge-status badge-clickable ' + (autoEnabled ? 'badge-online' : 'badge-offline');
+    const last = a.lastResult;
+    el.title = autoEnabled
+      ? `Tự gửi báo hàng cho đơn "Chưa báo".${last ? ` Lần gần nhất: ✅${last.sent || 0} ❌${last.failed || 0}` : ''} · Bấm để tắt`
+      : 'Bấm để BẬT tự động báo hàng khi có đơn về';
+  }
+
+  async function toggleAuto() {
+    const next = !autoEnabled;
+    if (next && !confirm('Bật TỰ ĐỘNG báo hàng? Hệ thống sẽ tự gửi tin cho mọi đơn "Chưa báo".')) return;
+    try {
+      const a = await App.api('/api/auto-notify/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      renderAutoBadge(a);
+      App.toast(next ? '✅ Đã bật tự động báo hàng' : 'Đã tắt tự động báo hàng');
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
+    }
   }
 
   // ---------------- Events ----------------
@@ -364,6 +413,7 @@
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
   $('bulkBtn').addEventListener('click', bulkSend);
+  $('autoBadge').addEventListener('click', toggleAuto);
 
   $('staffTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.tab');

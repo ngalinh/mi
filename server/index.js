@@ -4,9 +4,10 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
-const { listReports, stats } = require('./db');
+const { listReports, stats, getAutoRecord } = require('./db');
 const { notifyMany } = require('./notifyService');
 const { getLocalHealth } = require('./playwrightProxy');
+const autoNotify = require('./autoNotify');
 
 const app = express();
 app.use(cors());
@@ -30,6 +31,7 @@ app.get('/api/health', async (req, res) => {
       testMode: h.testMode || false,
       testPhones: h.testPhones || [],
     },
+    autoNotify: autoNotify.getStatus(),
   });
 });
 
@@ -38,6 +40,14 @@ app.get('/api/orders', async (req, res) => {
   try {
     const { from, to, status, staff, q } = req.query;
     const data = await getOrders({ from, to, status, staff, q });
+    // Gắn dấu "bot đã tự gửi" (lưu local trong mi) để dashboard phân biệt, kể cả khi
+    // không cập nhật trạng thái về web Basso.
+    if (Array.isArray(data.orders)) {
+      data.orders = data.orders.map((o) => {
+        const a = getAutoRecord(autoNotify.autoKey(o));
+        return a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
+      });
+    }
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -86,6 +96,43 @@ app.post('/api/update-row', async (req, res) => {
   }
 });
 
+// ---- Tự động báo hàng: trạng thái + bật/tắt + chạy thủ công ----
+app.get('/api/auto-notify', (req, res) => {
+  res.json({ ok: true, ...autoNotify.getStatus() });
+});
+
+// Bật/tắt poller tự động lúc runtime. body: { enabled: boolean }
+app.post('/api/auto-notify/toggle', (req, res) => {
+  const { enabled } = req.body || {};
+  const status = autoNotify.setEnabled(!!enabled);
+  res.json({ ok: true, ...status });
+});
+
+// Chạy 1 lượt quét + gửi ngay (không phụ thuộc interval). Dùng cho nút "Quét & gửi ngay".
+app.post('/api/auto-notify/run', async (req, res) => {
+  try {
+    const result = await autoNotify.runAutoNotify({ trigger: 'manual' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Webhook: website Basso gọi sang khi CÓ HÀNG VỀ -> gửi ngay (real-time) ----
+// Bảo vệ tùy chọn bằng header `x-webhook-secret` khớp AUTO_NOTIFY_WEBHOOK_SECRET.
+app.post('/api/webhook/arrived', async (req, res) => {
+  const secret = config.autoNotify.webhookSecret;
+  if (secret && req.get('x-webhook-secret') !== secret) {
+    return res.status(401).json({ ok: false, error: 'Sai webhook secret' });
+  }
+  try {
+    const result = await autoNotify.runAutoNotify({ trigger: 'webhook' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ---- Lịch sử report ----
 app.get('/api/reports', (req, res) => {
   try {
@@ -100,4 +147,5 @@ app.get('/api/reports', (req, res) => {
 app.listen(config.port, () => {
   console.log(`[server] http://localhost:${config.port}`);
   console.log(`[server] mock=${config.basso.useMock} | local-runner=${config.playwrightLocalUrl}`);
+  autoNotify.startAutoNotify();
 });

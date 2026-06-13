@@ -171,6 +171,14 @@ a { color: var(--primary); text-decoration: none; }
 .badge-offline { color: var(--red); }
 .badge-mock { color: var(--amber); }
 .badge-test { color: var(--violet); font-weight: 700; }
+/* Badge bấm được (bật/tắt tự động báo hàng) */
+.badge-clickable { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
+.badge-clickable:hover { filter: brightness(0.97); border-color: currentColor; }
+/* Dấu "bot tự động đã gửi" trong cột trạng thái */
+.bot-tag { display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 600; color: var(--green); background: rgba(34,197,94,.12); white-space: nowrap; }
+.bot-tag.bot-fail { color: var(--red); background: rgba(239,68,68,.12); }
+.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); }
 
 /* ============================================================
    Cards

@@ -10,7 +10,8 @@
     "local:debug": "cross-env HEADLESS=false node local-runner/index.js",
     "login": "cross-env HEADLESS=false node local-runner/login.js",
     "install:browser": "playwright install chromium",
-    "dev": "node server/index.js"
+    "dev": "node server/index.js",
+    "diagram": "node scripts/gen-flow-diagram.js"
   },
   "engines": {
     "node": ">=20"
@@ -24,6 +25,7 @@
     "playwright": "^1.50.1"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "cross-env": "^7.0.3"
   }
 }

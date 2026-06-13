@@ -63,6 +63,59 @@ ngrok http 8090
 3. `POST /api/notify { orderIds, messageOverride? }` → server build tin nhắn → forward xuống local-runner → Playwright tìm khách theo SĐT/tên trên Salework và gửi.
 4. Mỗi lượt được ghi vào **Lịch sử báo** (`/reports.html`).
 
+## Tự động báo hàng (auto-notify) 🆕
+
+> 📄 Sơ đồ toàn bộ luồng A→Z: xem [`docs/FLOW.md`](docs/FLOW.md).
+
+![Sơ đồ luồng Doraemi Bot](docs/flow.png)
+
+
+Không cần bấm tay: cứ có đơn **"Chưa báo"** (`not_sent` = hàng đã về kho) là hệ thống tự
+build tin nhắn + gửi qua Zalo. Có **chống gửi trùng** (mỗi đơn chỉ tự gửi 1 lần thành công;
+gửi lỗi sẽ thử lại tối đa `AUTO_NOTIFY_MAX_RETRIES` lần rồi thôi — tránh spam khi runner offline).
+
+**2 cách kích hoạt** (dùng chung 1 luồng):
+
+1. **Poller định kỳ** — server tự quét mỗi `AUTO_NOTIFY_INTERVAL_MS` (mặc định 2 phút).
+   Bật bằng `.env`:
+   ```
+   AUTO_NOTIFY=true
+   AUTO_NOTIFY_INTERVAL_MS=120000
+   AUTO_NOTIFY_PROFILE=default
+   ```
+   Hoặc bật/tắt ngay trên dashboard qua badge **"Tự động"** (góc trên phải).
+
+2. **Webhook real-time** — để website Basso gọi sang **ngay khi có hàng về**:
+   ```
+   POST /api/webhook/arrived
+   Header (tùy chọn): x-webhook-secret: <AUTO_NOTIFY_WEBHOOK_SECRET>
+   ```
+   Server sẽ quét + gửi ngay, trả tóm tắt `{ scanned, candidates, sent, failed }`.
+
+> Điều kiện gửi 1 đơn: trạng thái `not_sent` **và** khách có Zalo (`hasZalo !== false`).
+
+**Cơ chế chống sai (đã kiểm thử):**
+- **Khóa chống trùng ổn định**: dedup theo `customerId:dateInventory` (khóa thật của 1 dòng
+  hàng về), không phụ thuộc field `id` (API thật có thể không trả) → không bị "gửi 1 đơn rồi
+  bỏ hết".
+- **Không gửi trùng với báo tay**: dashboard loại đơn bot đã gửi khỏi "Báo hàng loạt" (vẫn hiện
+  badge 🤖) → khách không nhận 2 lần dù web vẫn `not_sent`.
+- **Quét hết các trang** `not_sent` trong mỗi lượt → không bỏ sót khi có >100 đơn chờ.
+- **Runner offline → bỏ cả lượt, KHÔNG trừ lượt thử**; lỗi mạng/timeout giữa chừng cũng không
+  trừ → tự gửi lại nguyên vẹn khi runner online lại (chỉ lỗi cấp-đơn mới tính `maxRetries`).
+- **Khớp chắc chắn (strict)**: bot chỉ gửi khi tìm đúng hội thoại theo tên/SĐT, KHÔNG "lấy đại
+  đơn trên cùng" như gửi tay → tránh gửi nhầm khách khi không có người soát.
+- **Không gửi chồng tay ↔ tự động**: hai luồng dùng chung 1 khóa (`server/lock.js`) nên chạy
+  tuần tự, không cùng gửi 1 đơn. Báo tay thành công cũng ghi dấu `manual` vào bảng dedup →
+  bot không gửi lại, kể cả khi không cập nhật web Basso. (Đã test bắn đồng thời: mỗi khách
+  chỉ nhận đúng 1 tin.)
+
+**Bot gửi xong KHÔNG đụng vào web Basso** (mặc định `AUTO_NOTIFY_UPDATE_WEB=false`): chỉ
+đánh dấu trong mi qua bảng `auto_notified`, và dashboard hiển thị badge **🤖 Bot đã gửi**
+(kèm giờ gửi) ở cột trạng thái để phân biệt rõ với báo tay. Đơn vẫn giữ nhãn web gốc nên
+vẫn xem được ở mi cho tới khi xử lý xong. Muốn bot cũng cập nhật web thì đặt
+`AUTO_NOTIFY_UPDATE_WEB=true` (khi đó dùng theo `AUTO_UPDATE_STATUS`).
+
 ## Ráp API website thật (ĐÃ tích hợp Basso Partner API)
 
 Chỉ cần điền `.env` là chạy thật:
@@ -124,7 +177,11 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | GET | `/api/orders?status=&staff=&q=&from=&to=` | Danh sách hàng về |
 | GET | `/api/arrived-items?id=&customerId=&dateInventory=` | Chi tiết SP đã về 1 dòng (load lazy) |
 | POST | `/api/notify` `{orderIds[], profile?, account?, messageOverride?}` | Báo hàng |
+| GET | `/api/auto-notify` | Trạng thái tự động báo hàng |
+| POST | `/api/auto-notify/toggle` `{enabled}` | Bật/tắt tự động (runtime) |
+| POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt |
+| POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay (header `x-webhook-secret`) |
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
-| GET | `/api/health` | Trạng thái server + local-runner |
+| GET | `/api/health` | Trạng thái server + local-runner + auto-notify |
 
 Local-runner: `POST /api/zalo/send`, `GET /api/job/:id`, `GET /health` (bảo vệ bằng header `x-api-key`).
