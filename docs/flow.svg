@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1500" viewBox="0 0 1280 1500">
+<defs><marker id="ah" markerWidth="11" markerHeight="11" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker></defs>
+<rect width="1280" height="1500" fill="#f8fafc"/>
+<text x="40" y="52" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="800" fill="#0f172a" text-anchor="start">Doraemi Bot — Luồng báo hàng về VN (A → Z)</text>
+<text x="40" y="80" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="400" fill="#475569" text-anchor="start">Tự động báo "hàng đã về kho" cho khách qua Zalo (Salework)</text>
+<rect x="40" y="110" width="300" height="150" rx="14" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+<text x="60" y="144" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" fill="#92400e" text-anchor="start">WEBSITE BASSO</text>
+<text x="60" y="172" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#7c2d12" text-anchor="start">Partner API (nguồn hàng về)</text>
+<text x="60" y="196" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#7c2d12" text-anchor="start">• getArrivedVnList — danh sách</text>
+<text x="60" y="220" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#7c2d12" text-anchor="start">• getArrivedVnItems — chi tiết</text>
+<text x="60" y="244" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#7c2d12" text-anchor="start">• updateArrivedVnRow — cập nhật</text>
+<rect x="400" y="110" width="470" height="150" rx="14" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+<text x="420" y="144" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" fill="#3730a3" text-anchor="start">server/  (bộ não — ai.basso.vn)</text>
+<text x="420" y="172" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#312e81" text-anchor="start">• Dashboard + REST API</text>
+<text x="420" y="196" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#312e81" text-anchor="start">• Quyết định GỬI CHO AI + build tin</text>
+<text x="420" y="220" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#312e81" text-anchor="start">• Bot tự động (auto-notify)</text>
+<text x="420" y="244" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#312e81" text-anchor="start">• Chống trùng + ghi lịch sử (SQLite)</text>
+<rect x="930" y="110" width="310" height="150" rx="14" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+<text x="950" y="144" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" fill="#065f46" text-anchor="start">local-runner/ (cánh tay)</text>
+<text x="950" y="172" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">Máy có Chrome thật</text>
+<text x="950" y="196" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">• Playwright + session Zalo</text>
+<text x="950" y="220" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">• THỰC THI việc gửi</text>
+<text x="950" y="244" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">• zalo.salework.net</text>
+<line x1="340" y1="170" x2="400" y2="170" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#ah)"/>
+<rect x="348.2" y="155" width="43.599999999999994" height="22" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="370" y="171" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#f59e0b" text-anchor="middle">đọc</text>
+<line x1="400" y1="205" x2="340" y2="205" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#ah)"/>
+<rect x="320.6" y="190" width="98.8" height="22" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1"/>
+<text x="370" y="206" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#f59e0b" text-anchor="middle">cập nhật*</text>
+<line x1="870" y1="170" x2="930" y2="170" stroke="#10b981" stroke-width="2.5" marker-end="url(#ah)"/>
+<rect x="850.6" y="155" width="98.8" height="22" rx="6" fill="#ffffff" stroke="#10b981" stroke-width="1"/>
+<text x="900" y="171" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#10b981" text-anchor="middle">POST send</text>
+<line x1="930" y1="210" x2="870" y2="210" stroke="#10b981" stroke-width="2.5" marker-end="url(#ah)"/>
+<rect x="846" y="195" width="108" height="22" rx="6" fill="#ffffff" stroke="#10b981" stroke-width="1"/>
+<text x="900" y="211" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="600" fill="#10b981" text-anchor="middle">jobId/poll</text>
+<text x="40" y="324" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="17" font-weight="700" fill="#0f172a" text-anchor="start">2 luồng kích hoạt gửi — đều đi qua bước GỬI chung (dưới cùng)</text>
+<rect x="40" y="340" width="580" height="250" rx="14" fill="#ffffff" stroke="#6366f1" stroke-width="2"/>
+<text x="60" y="372" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#3730a3" text-anchor="start">B) BÁO TAY  — người bấm trên dashboard</text>
+<text x="60" y="402" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">POST /api/notify  → notifyMany()  🔒 withLock</text>
+<text x="60" y="425" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start"></text>
+<text x="60" y="448" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">① build tin (ưu tiên "ND báo hàng" của đơn)</text>
+<text x="60" y="471" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">② gửi qua local-runner  (bước GỬI chung)</text>
+<text x="60" y="494" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">③ OK + AUTO_UPDATE_STATUS → cập nhật web Basso</text>
+<text x="60" y="517" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">④ ghi reports (success/failed)</text>
+<text x="60" y="540" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">⑤ OK → ghi dấu "manual" vào dedup</text>
+<text x="60" y="570" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#64748b" text-anchor="start">Có người soát → cho phép khớp "đơn trên cùng"</text>
+<rect x="660" y="340" width="580" height="250" rx="14" fill="#fdf2f8" stroke="#ec4899" stroke-width="2"/>
+<text x="680" y="372" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#9d174d" text-anchor="start">C) BÁO TỰ ĐỘNG — bot</text>
+<text x="680" y="402" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">(1) Poller mỗi 2 phút   (2) Webhook /arrived</text>
+<text x="680" y="425" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">        → runAutoNotify()  🔒 withLock</text>
+<text x="680" y="448" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start"></text>
+<text x="680" y="471" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">① runner offline? → bỏ lượt (không trừ lượt)</text>
+<text x="680" y="494" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">② quét HẾT trang đơn "Chưa báo" (not_sent)</text>
+<text x="680" y="517" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">③ lọc: có Zalo + chưa gửi + còn lượt thử</text>
+<text x="680" y="540" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#1e293b" text-anchor="start">④ gửi (strict, KHÔNG đụng web) → dedup</text>
+<text x="680" y="570" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#64748b" text-anchor="start">Không người soát → strict match, không "lấy đại"</text>
+<line x1="330" y1="590" x2="330" y2="650" stroke="#475569" stroke-width="2.5" marker-end="url(#ah)"/>
+<line x1="950" y1="590" x2="950" y2="650" stroke="#475569" stroke-width="2.5" marker-end="url(#ah)"/>
+<rect x="40" y="640" width="1200" height="210" rx="14" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+<text x="60" y="674" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#065f46" text-anchor="start">D) BƯỚC GỬI QUA LOCAL-RUNNER  (chung cho cả tay &amp; bot)</text>
+<text x="60" y="706" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">server.sendBaoHang → POST /api/zalo/send → runner trả jobId → server poll /api/job/:id (tới khi done/error)</text>
+<text x="60" y="729" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start"></text>
+<text x="60" y="752" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">runner xử lý job (tuần tự) → salework.sendBaoHang():</text>
+<text x="80" y="782" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">① TEST_MODE: chỉ gửi số trong TEST_PHONES (chặn an toàn)</text>
+<text x="80" y="805" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">② mở browser (session đã lưu) → vào Salework → kiểm tra đăng nhập → chọn account Zalo</text>
+<text x="80" y="828" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">③ tìm &amp; mở hội thoại (tên/SĐT; bot = strict, không khớp chắc thì BÁO LỖI, không gửi)</text>
+<text x="80" y="851" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#064e3b" text-anchor="start">④ dán nội dung (giữ xuống dòng) → bấm Gửi → trả { ok:true }</text>
+<rect x="40" y="900" width="580" height="170" rx="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>
+<text x="60" y="932" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#334155" text-anchor="start">SQLite — reports</text>
+<text x="60" y="962" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#334155" text-anchor="start">Mọi lượt gửi (tay + bot, OK + lỗi)</text>
+<text x="60" y="986" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#334155" text-anchor="start">→ xem ở trang /reports.html</text>
+<text x="60" y="1010" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13.5" font-weight="400" fill="#334155" text-anchor="start">kèm thống kê ✅ / ❌</text>
+<rect x="660" y="900" width="580" height="170" rx="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>
+<text x="680" y="932" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="16" font-weight="700" fill="#334155" text-anchor="start">SQLite — auto_notified (chống trùng)</text>
+<text x="680" y="962" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#334155" text-anchor="start">khóa: c&lt;customerId&gt;:d&lt;dateInventory&gt;</text>
+<text x="680" y="986" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#334155" text-anchor="start">status: 'success' (bot) / 'manual' (tay) / 'failed'</text>
+<text x="680" y="1010" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13.5" font-weight="400" fill="#334155" text-anchor="start">→ bot bỏ qua đơn đã success/manual</text>
+<line x1="620" y1="820" x2="660" y2="940" stroke="#475569" stroke-width="2.5" marker-end="url(#ah)"/>
+<line x1="560" y1="835" x2="330" y2="900" stroke="#475569" stroke-width="2.5" marker-end="url(#ah)"/>
+<text x="40" y="1114" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="700" fill="#0f172a" text-anchor="start">Các lớp chống sai &amp; chống trùng</text>
+<rect x="40" y="1138" width="288" height="70" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+<text x="56" y="1166" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#16a34a" text-anchor="start">✓ TEST_MODE</text>
+<text x="56" y="1190" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="start">chỉ gửi số whitelist</text>
+<rect x="344" y="1138" width="288" height="70" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+<text x="360" y="1166" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#16a34a" text-anchor="start">✓ Khóa dedup ổn định</text>
+<text x="360" y="1190" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="start">không phụ thuộc field id</text>
+<rect x="648" y="1138" width="288" height="70" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+<text x="664" y="1166" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#16a34a" text-anchor="start">✓ success / manual</text>
+<text x="664" y="1190" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="start">không gửi lại lần 2</text>
+<rect x="952" y="1138" width="288" height="70" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+<text x="968" y="1166" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#16a34a" text-anchor="start">✓ withLock</text>
+<text x="968" y="1190" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="start">tay &amp; bot không chạy chồng</text>
+<rect x="40" y="1224" width="288" height="70" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+<text x="56" y="1252" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#16a34a" text-anchor="start">✓ strictMatch</text>
+<text x="56" y="1276" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="start">bot không gửi nhầm người</text>
+<rect x="344" y="1224" width="288" height="70" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+<text x="360" y="1252" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#16a34a" text-anchor="start">✓ skip khi runner offline</text>
+<text x="360" y="1276" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="start">không "bỏ cuộc" oan</text>
+<rect x="648" y="1224" width="288" height="70" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+<text x="664" y="1252" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#16a34a" text-anchor="start">✓ quét hết trang</text>
+<text x="664" y="1276" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="start">không bỏ sót đơn &gt;100</text>
+<text x="40" y="1476" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#64748b" text-anchor="start">* Bot mặc định KHÔNG cập nhật web Basso (AUTO_NOTIFY_UPDATE_WEB=false) — chỉ đánh dấu trong mi (badge 🤖). Chi tiết: docs/FLOW.md</text>
+</svg>

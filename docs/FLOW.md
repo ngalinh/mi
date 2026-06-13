@@ -3,6 +3,11 @@
 Tài liệu mô tả end-to-end cách hệ thống báo hàng về VN qua Zalo (Salework) hoạt động,
 gồm cả **báo tay** và **báo tự động**. Xem thêm tổng quan ở [`README.md`](../README.md).
 
+![Sơ đồ luồng Doraemi Bot](flow.png)
+
+> Ảnh được sinh tự động từ [`scripts/gen-flow-diagram.js`](../scripts/gen-flow-diagram.js)
+> (chạy `node scripts/gen-flow-diagram.js` để cập nhật `flow.png`/`flow.svg`).
+
 ---
 
 ## 0. Hai thành phần (2 process tách nhau)
