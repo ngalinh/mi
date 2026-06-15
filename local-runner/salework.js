@@ -55,6 +55,25 @@ async function ensureLoggedIn(page) {
 const deaccent = (s) => norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /**
+ * Đóng mọi dropdown/popper Element-UI đang mở (vd dropdown chọn tài khoản) và CHỜ tới khi
+ * nó thực sự biến mất. Poll nhanh và TRẢ VỀ NGAY khi đã đóng — tránh chờ cứng làm chậm
+ * khúc chuyển "chọn kênh → tìm khách". Cần đóng vì lớp el-popper che + chặn pointer events,
+ * nếu còn mở thì click ô tìm kiếm hội thoại sẽ "intercepts pointer events" -> timeout 30s.
+ */
+async function closeOpenDropdown(page, { timeout = 2500 } = {}) {
+  const popper = page
+    .locator('.el-select-dropdown, .el-popper, input[placeholder*="Tìm kiếm tài khoản" i]')
+    .first();
+  const deadline = Date.now() + timeout;
+  // Nếu đã đóng sẵn thì không tốn 1ms nào.
+  while (await popper.isVisible().catch(() => false)) {
+    await page.keyboard.press('Escape').catch(() => {});
+    if (Date.now() >= deadline) break;
+    await page.waitForTimeout(150);
+  }
+}
+
+/**
  * Chọn tài khoản Zalo trong dropdown của Salework (giao diện zalo.salework.net mới —
  * KHÔNG phải Element-UI). Dropdown có ô "Tìm kiếm tài khoản..." và danh sách tài khoản.
  * Bỏ qua êm nếu không mở được dropdown (giao diện chỉ 1 account).
@@ -114,14 +133,10 @@ async function selectZaloAccount(page, accountLabel) {
 
   if (rect) {
     await page.mouse.click(rect.x, rect.y);
-    await page.waitForTimeout(300);
     // Dropdown Salework là Element-UI multi-select (is-multiple) -> KHÔNG tự đóng khi
-    // chọn option. Nếu để mở, lớp el-popper sẽ che + chặn pointer events khiến bước
-    // click ô tìm kiếm hội thoại bị "intercepts pointer events" -> timeout 30s.
-    // => Chủ động đóng dropdown và chờ ô "Tìm kiếm tài khoản..." biến mất (trả về ngay khi ẩn).
-    await page.keyboard.press('Escape').catch(() => {});
-    await page.locator(accSearchSel).first()
-      .waitFor({ state: 'hidden', timeout: 4000 }).catch(() => {});
+    // chọn option. Đóng chủ động và chờ popper biến mất (poll, đóng xong đi tiếp ngay)
+    // để không che + chặn pointer events ở bước tìm hội thoại, mà không phí thời gian chờ cứng.
+    await closeOpenDropdown(page);
     await shot(page, '02-account-selected');
     return true;
   }
@@ -136,11 +151,8 @@ async function selectZaloAccount(page, accountLabel) {
  */
 async function searchAndClickConversation(page, { name, phone, strictMatch = false }) {
   // An toàn: nếu còn popper/dropdown nào mở (vd dropdown chọn tài khoản) thì đóng lại,
-  // tránh việc nó che + chặn pointer events khi click ô tìm kiếm.
-  if (await page.locator('.el-select-dropdown, .el-popper').first().isVisible().catch(() => false)) {
-    await page.keyboard.press('Escape').catch(() => {});
-    await page.waitForTimeout(300);
-  }
+  // tránh việc nó che + chặn pointer events khi click ô tìm kiếm. Poll, đóng xong đi tiếp ngay.
+  await closeOpenDropdown(page);
 
   // Loại trừ ô "Tìm kiếm tài khoản..." (của dropdown account) để không khớp nhầm.
   const searchBox = page
