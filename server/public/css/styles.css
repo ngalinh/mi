@@ -373,6 +373,9 @@ td.center, th.center { text-align: center; }
 
 .msg-cell { max-width: 360px; white-space: pre-wrap; color: var(--text-soft); font-size: 13px; line-height: 1.5; }
 
+/* Cột lỗi: cắt gọn 1 dòng, xem đầy đủ qua tooltip để không phình bảng */
+.err-cell { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; cursor: help; }
+
 /* ============================================================
    Stat cards
    ============================================================ */
