@@ -23,10 +23,17 @@
 
   // Gửi đơn đầy đủ field lên server (không để server tra lại theo id -> tránh lỗi
   // "Không tìm thấy đơn" khi dữ liệu nhiều/phân trang/đang lọc theo nhân viên).
+  // Mã ĐH (orderCode) nằm trên từng SP — nếu đã mở rộng/đã tải SP thì gửi kèm để report
+  // hiển thị đúng mã đơn mà server khỏi phải tra lại. Chưa tải thì để server tự tra.
+  const orderCodeOf = (o) => {
+    const items = o._items || [];
+    const codes = [...new Set(items.map((it) => it.orderCode).filter(Boolean))];
+    return codes.length ? codes.join(', ') : undefined;
+  };
   const orderPayload = (o) => ({
     id: o.id, customerId: o.customerId, dateInventory: o.dateInventory,
     customerName: o.customerName, phone: o.phone, note: o.note, staff: o.staff,
-    warehouseDate: o.warehouseDate, hasZalo: o.hasZalo,
+    warehouseDate: o.warehouseDate, hasZalo: o.hasZalo, orderCode: orderCodeOf(o),
     noiDungBaoHang: o.noiDungBaoHang, noiDungBaoShip: o.noiDungBaoShip,
   });
 

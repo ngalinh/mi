@@ -13,6 +13,30 @@ const { withLock } = require('./lock');
  * @param {object} [opts] { profile, account, messageOverride, kind, skipWebUpdate, bassoClient }
  *   kind = 'hang' | 'ship'. bassoClient = tài khoản dùng để cập nhật web (mặc định: tài khoản .env).
  */
+/**
+ * Mã đơn để HIỂN THỊ trên report = "Mã ĐH" (orderCode, vd BS26052646), KHÔNG phải id nội bộ (vd 546).
+ * orderCode nằm trên từng sản phẩm nên: ưu tiên client gửi sẵn, không có thì tra lazy qua getArrivedItems,
+ * gộp các mã khác nhau (1 dòng có thể nhiều SP). Tra lỗi/không có -> fallback về id để report không trống.
+ * @param {object} order
+ * @param {object} basso - bassoClient dùng để tra (theo tài khoản người gửi)
+ * @returns {Promise<string|null>}
+ */
+async function resolveOrderCode(order, basso) {
+  if (order.orderCode && String(order.orderCode).trim()) return String(order.orderCode).trim();
+  try {
+    const { items } = await basso.getArrivedItems({
+      id: order.id,
+      customerId: order.customerId,
+      dateInventory: order.dateInventory,
+    });
+    const codes = [...new Set((items || []).map((it) => it.orderCode).filter(Boolean))];
+    if (codes.length) return codes.join(', ');
+  } catch (_) {
+    // bỏ qua — fallback về id bên dưới
+  }
+  return order.id != null ? String(order.id) : null;
+}
+
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const basso = opts.bassoClient || defaultClient;
@@ -55,7 +79,7 @@ async function notifyOne(order, opts = {}) {
   }
 
   const report = addReport({
-    orderId: order.id,
+    orderId: await resolveOrderCode(order, basso),
     customerName: order.customerName,
     phone: order.phone,
     staff: order.staff,
