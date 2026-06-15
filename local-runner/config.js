@@ -14,6 +14,9 @@ module.exports = {
   headless: String(process.env.HEADLESS || 'false').toLowerCase() === 'true',
   // Làm chậm mỗi thao tác (ms) — chỉ để dễ nhìn khi debug. Đặt 0 khi chạy thật cho nhanh.
   slowMo: parseInt(process.env.SLOW_MO || '0', 10),
+  // Gửi xong thì đóng trình duyệt (giải phóng tài nguyên). Đặt false để giữ context sống
+  // giữa các lần gửi cho nhanh hơn khi gửi hàng loạt.
+  closeAfterSend: String(process.env.CLOSE_AFTER_SEND || 'true').toLowerCase() === 'true',
   // CHẾ ĐỘ TEST: chỉ gửi thật tới các số trong TEST_PHONES; số khác bị chặn (không gửi)
   testMode: String(process.env.TEST_MODE || 'false').toLowerCase() === 'true',
   testPhones: (process.env.TEST_PHONES || '').split(',').map((s) => s.trim()).filter(Boolean),

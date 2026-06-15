@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
-const { getPage } = require('./browser');
+const { getPage, closeContext } = require('./browser');
 
 /**
  * Tự động gửi tin nhắn báo hàng về qua giao diện Salework Zalo (https://zalo.salework.net).
@@ -317,13 +317,19 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
   }
 
   const page = await getPage(profile);
-  await gotoSalework(page);
-  await ensureLoggedIn(page);
-  // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env
-  const acct = account || config.defaultZaloAccount;
-  if (acct) await selectZaloAccount(page, acct);
-  await searchAndClickConversation(page, { name, phone: keyword, strictMatch });
-  await typeAndSend(page, message);
+  try {
+    await gotoSalework(page);
+    await ensureLoggedIn(page);
+    // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env
+    const acct = account || config.defaultZaloAccount;
+    if (acct) await selectZaloAccount(page, acct);
+    await searchAndClickConversation(page, { name, phone: keyword, strictMatch });
+    await typeAndSend(page, message);
+  } finally {
+    // Gửi xong (kể cả khi lỗi) thì đóng trình duyệt để giải phóng tài nguyên.
+    // Tắt bằng CLOSE_AFTER_SEND=false nếu muốn giữ context sống cho lần gửi sau.
+    if (config.closeAfterSend) await closeContext(profile);
+  }
 
   return { ok: true };
 }
