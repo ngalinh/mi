@@ -97,6 +97,23 @@
     return lines.join('<br>');
   }
 
+  // Mã ĐH dẫn tới trang chi tiết đơn trên web Basso (giống hệ thống basso).
+  const ORDER_DETAIL_BASE = 'https://basso.vn/basso/customer_order/detail/';
+  // Tên khách dẫn tới trang profile khách hàng trên web Basso.
+  const CUSTOMER_DETAIL_BASE = 'https://basso.vn/management/customer/detail/';
+  function customerNameCell(o) {
+    const name = App.esc(o.customerName);
+    if (!o.customerId) return name;
+    const href = CUSTOMER_DETAIL_BASE + encodeURIComponent(o.customerId);
+    return `<a href="${href}" target="_blank" rel="noopener">${name}</a>`;
+  }
+  function orderCodeCell(it) {
+    const code = App.esc(it.orderCode);
+    if (!it.orderId) return code;
+    const href = ORDER_DETAIL_BASE + encodeURIComponent(it.orderId);
+    return `<a href="${href}" target="_blank" rel="noopener">${code}</a>`;
+  }
+
   function itemsTableRows(items) {
     return items.map((it, i) => {
       const nameCell = it.link
@@ -110,7 +127,7 @@
         : App.esc(it.shipStatusLabel);
       return `<tr>
         <td>${tinhTrang}</td>
-        <td>${App.esc(it.orderCode)}</td>
+        <td>${orderCodeCell(it)}</td>
         <td class="center">${i + 1}</td>
         <td class="center">${img}</td>
         <td>${nameCell}</td>
@@ -179,7 +196,7 @@
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
-      <td class="cust">${App.esc(o.customerName)}${noZalo}</td>
+      <td class="cust">${customerNameCell(o)}${noZalo}</td>
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
