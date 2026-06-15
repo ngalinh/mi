@@ -65,6 +65,14 @@ function profileExists(profileName) {
   return fs.existsSync(profilePath(profileName));
 }
 
+/** Đóng trình duyệt của 1 profile (session đăng nhập vẫn lưu trong userDataDir nên lần sau mở lại vẫn đăng nhập). */
+async function closeContext(profileName) {
+  const entry = contexts.get(profileName);
+  if (!entry) return;
+  try { await entry.context.close(); } catch { /* ignore */ }
+  contexts.delete(profileName);
+}
+
 async function closeAll() {
   for (const [name, entry] of contexts) {
     try { await entry.context.close(); } catch { /* ignore */ }
@@ -72,4 +80,4 @@ async function closeAll() {
   }
 }
 
-module.exports = { getContext, getPage, profileExists, profilePath, closeAll };
+module.exports = { getContext, getPage, profileExists, profilePath, closeContext, closeAll };
