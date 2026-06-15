@@ -33,4 +33,11 @@ module.exports = {
     webhookSecret: process.env.AUTO_NOTIFY_WEBHOOK_SECRET || '',
   },
   dbPath: path.join(__dirname, '..', 'data', 'doraemi.sqlite'),
+  // ---- Đăng nhập nhân viên (mỗi người 1 tài khoản Basso riêng) ----
+  auth: {
+    // Danh sách nhân viên được cấp quyền: data/accounts.json (gitignore). Sửa file = thêm/xóa.
+    accountsPath: process.env.ACCOUNTS_PATH || path.join(__dirname, '..', 'data', 'accounts.json'),
+    // Thời gian sống của 1 phiên đăng nhập (ms). Mặc định 12 giờ kể từ lần dùng cuối.
+    sessionTtlMs: Math.max(parseInt(process.env.SESSION_TTL_MS || '43200000', 10) || 43200000, 60000),
+  },
 };

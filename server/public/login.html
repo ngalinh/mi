@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Đăng nhập · Doraemi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .login-wrap {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 24px; font-family: 'Inter', system-ui, sans-serif;
+    }
+    .login-card {
+      width: 100%; max-width: 380px; background: var(--card, #fff);
+      border: 1px solid var(--border, #e5e7eb); border-radius: 16px;
+      padding: 28px; box-shadow: 0 10px 40px rgba(0, 0, 0, .08);
+    }
+    .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+    .login-brand svg { width: 28px; height: 28px; }
+    .login-card h1 { font-size: 20px; margin: 0; }
+    .login-card .muted { font-size: 13px; color: var(--muted, #6b7280); margin: 4px 0 20px; }
+    .login-field { margin-bottom: 14px; }
+    .login-field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+    .login-field input {
+      width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 14px;
+      border: 1px solid var(--border, #d1d5db); border-radius: 10px; outline: none;
+      font-family: inherit;
+    }
+    .login-field input:focus { border-color: var(--accent, #6366f1); }
+    .login-btn {
+      width: 100%; padding: 11px; font-size: 14px; font-weight: 700; cursor: pointer;
+      border: none; border-radius: 10px; color: #fff; background: var(--accent, #6366f1);
+      font-family: inherit; margin-top: 4px;
+    }
+    .login-btn:disabled { opacity: .6; cursor: default; }
+    .login-err {
+      display: none; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca;
+      border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px;
+    }
+    .login-hint { font-size: 12px; color: var(--muted, #9ca3af); margin-top: 16px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <form class="login-card" id="loginForm">
+      <div class="login-brand">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+        <h1>Đăng nhập Doraemi</h1>
+      </div>
+      <div class="muted">Dùng tài khoản Basso của bạn để vào hệ thống báo hàng.</div>
+
+      <div class="login-err" id="loginErr"></div>
+
+      <div class="login-field">
+        <label for="email">Email Basso</label>
+        <input type="email" id="email" autocomplete="username" required placeholder="ban@shop.vn" />
+      </div>
+      <div class="login-field">
+        <label for="pass">Mật khẩu</label>
+        <input type="password" id="pass" autocomplete="current-password" required placeholder="••••••••" />
+      </div>
+      <button type="submit" class="login-btn" id="loginBtn">Đăng nhập</button>
+
+      <div class="login-hint">Chưa có quyền truy cập? Liên hệ quản trị để được cấp tài khoản.</div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const errBox = document.getElementById('loginErr');
+    const btn = document.getElementById('loginBtn');
+
+    function showErr(msg) {
+      errBox.textContent = msg;
+      errBox.style.display = 'block';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errBox.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Đang đăng nhập...';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            email: document.getElementById('email').value.trim(),
+            pass: document.getElementById('pass').value,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.error || `Lỗi ${res.status}`);
+        // Đăng nhập xong -> về dashboard (giữ ?next nếu có).
+        const next = new URLSearchParams(location.search).get('next');
+        location.href = next && next.startsWith('/') ? next : '/index.html';
+      } catch (err) {
+        showErr(err.message || 'Đăng nhập thất bại');
+        btn.disabled = false;
+        btn.textContent = 'Đăng nhập';
+      }
+    });
+  </script>
+</body>
+</html>

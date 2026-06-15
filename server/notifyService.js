@@ -1,6 +1,6 @@
 'use strict';
 const config = require('./config');
-const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
+const { defaultClient } = require('./bassoApi');
 const { sendBaoHang } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
 const { addReport, getAutoRecord, recordAutoNotified, autoKey } = require('./db');
@@ -10,19 +10,21 @@ const { withLock } = require('./lock');
  * Báo hàng/ship cho 1 đơn: build tin nhắn -> gửi qua local-runner -> (tùy chọn) cập nhật
  * trạng thái về web -> ghi report.
  * @param {object} order - đơn đã chuẩn hóa
- * @param {object} [opts] { profile, account, messageOverride, kind, skipWebUpdate } kind = 'hang' | 'ship'
+ * @param {object} [opts] { profile, account, messageOverride, kind, skipWebUpdate, bassoClient }
+ *   kind = 'hang' | 'ship'. bassoClient = tài khoản dùng để cập nhật web (mặc định: tài khoản .env).
  */
 /**
  * Mã đơn để HIỂN THỊ trên report = "Mã ĐH" (orderCode, vd BS26052646), KHÔNG phải id nội bộ (vd 546).
  * orderCode nằm trên từng sản phẩm nên: ưu tiên client gửi sẵn, không có thì tra lazy qua getArrivedItems,
  * gộp các mã khác nhau (1 dòng có thể nhiều SP). Tra lỗi/không có -> fallback về id để report không trống.
  * @param {object} order
+ * @param {object} basso - bassoClient dùng để tra (theo tài khoản người gửi)
  * @returns {Promise<string|null>}
  */
-async function resolveOrderCode(order) {
+async function resolveOrderCode(order, basso) {
   if (order.orderCode && String(order.orderCode).trim()) return String(order.orderCode).trim();
   try {
-    const { items } = await getArrivedItems({
+    const { items } = await basso.getArrivedItems({
       id: order.id,
       customerId: order.customerId,
       dateInventory: order.dateInventory,
@@ -37,6 +39,7 @@ async function resolveOrderCode(order) {
 
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
+  const basso = opts.bassoClient || defaultClient;
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
   const message = opts.messageOverride && opts.messageOverride.trim()
     ? opts.messageOverride.trim()
@@ -64,7 +67,7 @@ async function notifyOne(order, opts = {}) {
   let updateError = null;
   if (result.ok && !opts.skipWebUpdate && config.basso.autoUpdateStatus && order.customerId != null) {
     try {
-      await updateOrderStatus({
+      await basso.updateOrderStatus({
         customerId: order.customerId,
         dateInventory: order.dateInventory,
         status: newStatus,
@@ -76,7 +79,7 @@ async function notifyOne(order, opts = {}) {
   }
 
   const report = addReport({
-    orderId: await resolveOrderCode(order),
+    orderId: await resolveOrderCode(order, basso),
     customerName: order.customerName,
     phone: order.phone,
     staff: order.staff,
@@ -129,7 +132,8 @@ async function notifyOrders(orders, opts = {}) {
  * @param {object} [opts]
  */
 async function notifyMany(orderIds, opts = {}) {
-  const { orders } = await getOrders();
+  const basso = opts.bassoClient || defaultClient;
+  const { orders } = await basso.getOrders();
   const byId = new Map(orders.map((o) => [String(o.id), o]));
   const found = [];
   const missing = [];
