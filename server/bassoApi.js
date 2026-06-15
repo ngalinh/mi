@@ -12,6 +12,11 @@ const config = require('./config');
  *   - access_token lấy qua POST /partner/login {email, pass} -> data.access_token (kèm expires_at),
  *     gửi kèm header `Authorization: Bearer <token>`. Token được cache & tự login lại khi hết hạn.
  *
+ * NHIỀU TÀI KHOẢN: mỗi nhân viên đăng nhập bằng tài khoản Basso của chính họ. Vì vậy token
+ * KHÔNG dùng chung toàn server nữa — mỗi tài khoản có 1 "client" riêng (createBassoClient) với
+ * cache token độc lập. `defaultClient` (lấy email/pass từ .env) dùng cho tác vụ nền: tự động báo
+ * hàng, webhook... và làm fallback khi không có session người dùng.
+ *
  * Mock: nếu chưa cấu hình BASSO_API_BASE_URL (hoặc USE_MOCK=true) => đọc server/mock/orders.json
  * (file mock đã theo đúng shape raw `rows` của API để dùng chung normalizeOrder).
  */
@@ -27,81 +32,14 @@ const STATUS_LABELS = {
   error: 'Lỗi',
 };
 
-// ----------------------------------------------------------------------------
-// Token cache + HTTP helper
-// ----------------------------------------------------------------------------
-let _token = null;        // access_token
-let _tokenExp = 0;        // unix seconds
-
 function baseHeaders() {
   const h = { 'Accept': 'application/json' };
   if (config.basso.partnerApiKey) h['X-Partner-Api-Key'] = config.basso.partnerApiKey;
   return h;
 }
 
-async function login() {
-  // Theo tài liệu Partner API: /partner/login dùng application/x-www-form-urlencoded
-  // (KHÔNG phải JSON). Backend PHP đọc $this->input->post(); gửi JSON sẽ làm email/pass
-  // rỗng -> "Đăng nhập thất bại". Vì vậy phải gửi form-urlencoded.
-  const form = new URLSearchParams();
-  form.set('email', config.basso.email);
-  form.set('pass', config.basso.pass);
-  const res = await fetch(`${config.basso.baseUrl}/partner/login`, {
-    method: 'POST',
-    headers: { ...baseHeaders(), 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: form.toString(),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || json.success === false || !json.data || !json.data.access_token) {
-    throw new Error(`Login Basso thất bại: ${json.message || res.status} ${JSON.stringify(json.errors || '')}`);
-  }
-  _token = json.data.access_token;
-  // expires_at là unix seconds; nếu không có thì mặc định 1h
-  _tokenExp = json.data.expires_at || Math.floor(Date.now() / 1000) + 3600;
-  return _token;
-}
-
-async function getToken() {
-  const now = Math.floor(Date.now() / 1000);
-  if (_token && _tokenExp - now > 60) return _token; // còn > 60s thì dùng lại
-  return login();
-}
-
-/**
- * Gọi API có xác thực. Tự login & retry 1 lần nếu 401 (token hỏng).
- */
-async function apiFetch(pathName, { method = 'GET', query, body, _retried = false } = {}) {
-  const token = await getToken();
-  const url = new URL(config.basso.baseUrl + pathName);
-  if (query) {
-    for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
-    }
-  }
-  const res = await fetch(url.toString(), {
-    method,
-    headers: {
-      ...baseHeaders(),
-      'Authorization': `Bearer ${token}`,
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (res.status === 401 && !_retried) {
-    _token = null; // ép login lại
-    return apiFetch(pathName, { method, query, body, _retried: true });
-  }
-
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || json.success === false) {
-    throw new Error(`API ${pathName} lỗi: ${json.message || res.status} ${JSON.stringify(json.errors || '')}`);
-  }
-  return json.data;
-}
-
 // ----------------------------------------------------------------------------
-// Chuẩn hóa
+// Chuẩn hóa (thuần, không phụ thuộc tài khoản) — để ở module level dùng chung.
 // ----------------------------------------------------------------------------
 function formatUnixDate(sec) {
   if (!sec) return '';
@@ -195,51 +133,8 @@ function toApiDate(isoDate) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : isoDate;
 }
 
-// ----------------------------------------------------------------------------
-// Public
-// ----------------------------------------------------------------------------
 function loadMock() {
   return JSON.parse(fs.readFileSync(MOCK_FILE, 'utf8'));
-}
-
-/**
- * Lấy danh sách hàng về.
- * @param {object} [filters] { from, to, status, staff(user_id), q, page, pageSize }
- * @returns {Promise<{source, orders, tabUsers, total, page}>}
- */
-async function getOrders(filters = {}) {
-  const { from, to, status, q } = filters;
-  // staff chỉ hợp lệ khi là user_id dạng số; bỏ qua giá trị rác như "Tất cả"
-  const staff = /^\d+$/.test(String(filters.staff || '')) ? filters.staff : undefined;
-  const page = filters.page || 1;
-  const pageSize = Math.min(filters.pageSize || 100, 100);
-
-  if (config.basso.useMock) {
-    let rows = loadMock();
-    let orders = rows.map(normalizeOrder);
-    orders = applyClientFilters(orders, { status, staff, q });
-    orders.forEach((o, i) => { o.stt = i + 1; });
-    const tabUsers = uniqueStaff(rows);
-    return { source: 'mock', orders, tabUsers, total: orders.length, page: 1 };
-  }
-
-  const data = await apiFetch('/partner/getArrivedVnList', {
-    query: {
-      page,
-      page_size: pageSize,
-      status: status && status !== 'all' ? status : undefined,
-      from: toApiDate(from),
-      to: toApiDate(to),
-      key: q || undefined,
-      tab: staff || undefined,
-    },
-  });
-
-  const rows = data.rows || [];
-  const orders = rows.map(normalizeOrder);
-  orders.forEach((o, i) => { o.stt = (page - 1) * pageSize + i + 1; });
-  const tabUsers = (data.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
-  return { source: 'api', orders, tabUsers, total: data.total ?? orders.length, page: data.page ?? page };
 }
 
 function uniqueStaff(rows) {
@@ -262,41 +157,174 @@ function applyClientFilters(orders, { status, staff, q } = {}) {
   });
 }
 
+// ----------------------------------------------------------------------------
+// Client theo TÀI KHOẢN: mỗi email/pass có cache token + các hàm gọi API riêng.
+// ----------------------------------------------------------------------------
 /**
- * Lấy chi tiết sản phẩm đã về của 1 dòng (load lazy khi mở rộng).
- * Key: id HOẶC (customerId + dateInventory). Dùng /partner/getArrivedVnItems.
- * @param {{id?:string|number, customerId?:number, dateInventory?:number}} p
- * @returns {Promise<{source, items}>}
+ * Tạo 1 client Basso gắn với 1 cặp email/pass.
+ * @param {{email?:string, pass?:string}} [creds] - bỏ trống = lấy từ .env (tài khoản hệ thống).
  */
-async function getArrivedItems({ id, customerId, dateInventory } = {}) {
-  if (config.basso.useMock) {
-    const rows = loadMock();
-    const row = rows.find((r) =>
-      (id != null && id !== '' && String(r.id) === String(id)) ||
-      (customerId != null && dateInventory != null &&
-        String(r.customer_id) === String(customerId) &&
-        String(r.date_inventory) === String(dateInventory)));
-    const items = row && Array.isArray(row.items) ? row.items.map(normalizeItem) : [];
-    return { source: 'mock', items };
+function createBassoClient(creds = {}) {
+  const email = creds.email || config.basso.email;
+  const pass = creds.pass || config.basso.pass;
+
+  let _token = null;        // access_token của riêng tài khoản này
+  let _tokenExp = 0;        // unix seconds
+
+  async function login() {
+    // Theo tài liệu Partner API: /partner/login dùng application/x-www-form-urlencoded
+    // (KHÔNG phải JSON). Backend PHP đọc $this->input->post(); gửi JSON sẽ làm email/pass
+    // rỗng -> "Đăng nhập thất bại". Vì vậy phải gửi form-urlencoded.
+    const form = new URLSearchParams();
+    form.set('email', email);
+    form.set('pass', pass);
+    const res = await fetch(`${config.basso.baseUrl}/partner/login`, {
+      method: 'POST',
+      headers: { ...baseHeaders(), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.success === false || !json.data || !json.data.access_token) {
+      throw new Error(`Login Basso thất bại: ${json.message || res.status} ${JSON.stringify(json.errors || '')}`);
+    }
+    _token = json.data.access_token;
+    // expires_at là unix seconds; nếu không có thì mặc định 1h
+    _tokenExp = json.data.expires_at || Math.floor(Date.now() / 1000) + 3600;
+    return _token;
   }
-  const data = await apiFetch('/partner/getArrivedVnItems', {
-    query: { id, customer_id: customerId, date_inventory: dateInventory },
-  });
-  const items = (data && Array.isArray(data.items) ? data.items : []).map(normalizeItem);
-  return { source: 'api', items };
+
+  async function getToken() {
+    const now = Math.floor(Date.now() / 1000);
+    if (_token && _tokenExp - now > 60) return _token; // còn > 60s thì dùng lại
+    return login();
+  }
+
+  /**
+   * Gọi API có xác thực. Tự login & retry 1 lần nếu 401 (token hỏng).
+   */
+  async function apiFetch(pathName, { method = 'GET', query, body, _retried = false } = {}) {
+    const token = await getToken();
+    const url = new URL(config.basso.baseUrl + pathName);
+    if (query) {
+      for (const [k, v] of Object.entries(query)) {
+        if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
+      }
+    }
+    const res = await fetch(url.toString(), {
+      method,
+      headers: {
+        ...baseHeaders(),
+        'Authorization': `Bearer ${token}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (res.status === 401 && !_retried) {
+      _token = null; // ép login lại
+      return apiFetch(pathName, { method, query, body, _retried: true });
+    }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.success === false) {
+      throw new Error(`API ${pathName} lỗi: ${json.message || res.status} ${JSON.stringify(json.errors || '')}`);
+    }
+    return json.data;
+  }
+
+  /**
+   * Lấy danh sách hàng về.
+   * @param {object} [filters] { from, to, status, staff(user_id), q, page, pageSize }
+   * @returns {Promise<{source, orders, tabUsers, total, page}>}
+   */
+  async function getOrders(filters = {}) {
+    const { from, to, status, q } = filters;
+    // staff chỉ hợp lệ khi là user_id dạng số; bỏ qua giá trị rác như "Tất cả"
+    const staff = /^\d+$/.test(String(filters.staff || '')) ? filters.staff : undefined;
+    const page = filters.page || 1;
+    const pageSize = Math.min(filters.pageSize || 100, 100);
+
+    if (config.basso.useMock) {
+      let rows = loadMock();
+      let orders = rows.map(normalizeOrder);
+      orders = applyClientFilters(orders, { status, staff, q });
+      orders.forEach((o, i) => { o.stt = i + 1; });
+      const tabUsers = uniqueStaff(rows);
+      return { source: 'mock', orders, tabUsers, total: orders.length, page: 1 };
+    }
+
+    const data = await apiFetch('/partner/getArrivedVnList', {
+      query: {
+        page,
+        page_size: pageSize,
+        status: status && status !== 'all' ? status : undefined,
+        from: toApiDate(from),
+        to: toApiDate(to),
+        key: q || undefined,
+        tab: staff || undefined,
+      },
+    });
+
+    const rows = data.rows || [];
+    const orders = rows.map(normalizeOrder);
+    orders.forEach((o, i) => { o.stt = (page - 1) * pageSize + i + 1; });
+    const tabUsers = (data.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
+    return { source: 'api', orders, tabUsers, total: data.total ?? orders.length, page: data.page ?? page };
+  }
+
+  /**
+   * Lấy chi tiết sản phẩm đã về của 1 dòng (load lazy khi mở rộng).
+   * Key: id HOẶC (customerId + dateInventory). Dùng /partner/getArrivedVnItems.
+   * @param {{id?:string|number, customerId?:number, dateInventory?:number}} p
+   * @returns {Promise<{source, items}>}
+   */
+  async function getArrivedItems({ id, customerId, dateInventory } = {}) {
+    if (config.basso.useMock) {
+      const rows = loadMock();
+      const row = rows.find((r) =>
+        (id != null && id !== '' && String(r.id) === String(id)) ||
+        (customerId != null && dateInventory != null &&
+          String(r.customer_id) === String(customerId) &&
+          String(r.date_inventory) === String(dateInventory)));
+      const items = row && Array.isArray(row.items) ? row.items.map(normalizeItem) : [];
+      return { source: 'mock', items };
+    }
+    const data = await apiFetch('/partner/getArrivedVnItems', {
+      query: { id, customer_id: customerId, date_inventory: dateInventory },
+    });
+    const items = (data && Array.isArray(data.items) ? data.items : []).map(normalizeItem);
+    return { source: 'api', items };
+  }
+
+  /**
+   * Cập nhật trạng thái + note 1 dòng hàng về (key = customer_id + date_inventory).
+   * @param {{customerId:number, dateInventory:number, status:string, note?:string}} p
+   */
+  async function updateOrderStatus({ customerId, dateInventory, status, note }) {
+    if (config.basso.useMock) return { ok: true, mock: true, status };
+    const data = await apiFetch('/partner/updateArrivedVnRow', {
+      method: 'POST',
+      body: { customer_id: customerId, date_inventory: dateInventory, status, note },
+    });
+    return { ok: true, record: data && data.record };
+  }
+
+  return { email, login, getToken, getOrders, getArrivedItems, updateOrderStatus };
 }
 
-/**
- * Cập nhật trạng thái + note 1 dòng hàng về (key = customer_id + date_inventory).
- * @param {{customerId:number, dateInventory:number, status:string, note?:string}} p
- */
-async function updateOrderStatus({ customerId, dateInventory, status, note }) {
-  if (config.basso.useMock) return { ok: true, mock: true, status };
-  const data = await apiFetch('/partner/updateArrivedVnRow', {
-    method: 'POST',
-    body: { customer_id: customerId, date_inventory: dateInventory, status, note },
-  });
-  return { ok: true, record: data && data.record };
-}
+// ----------------------------------------------------------------------------
+// Client mặc định (tài khoản hệ thống lấy từ .env) — dùng cho tác vụ nền & fallback.
+// ----------------------------------------------------------------------------
+const defaultClient = createBassoClient();
 
-module.exports = { getOrders, getArrivedItems, updateOrderStatus, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = {
+  createBassoClient,
+  defaultClient,
+  // Backward-compat: các hàm module-level ủy quyền cho defaultClient.
+  getOrders: (...a) => defaultClient.getOrders(...a),
+  getArrivedItems: (...a) => defaultClient.getArrivedItems(...a),
+  updateOrderStatus: (...a) => defaultClient.updateOrderStatus(...a),
+  normalizeOrder,
+  normalizeItem,
+  STATUS_LABELS,
+};

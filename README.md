@@ -46,7 +46,21 @@ Lần đầu hãy mở `https://zalo.salework.net` trong cửa sổ browser do b
 ```powershell
 npm run server
 ```
-Mở http://localhost:8080 — dashboard "Hàng về VN".
+Mở http://localhost:8080 — sẽ chuyển tới trang **đăng nhập**.
+
+### Đăng nhập nhân viên (mỗi người 1 tài khoản Basso riêng) 🆕
+Dashboard yêu cầu đăng nhập. **Mỗi nhân viên dùng tài khoản Basso của chính mình** — server login Basso bằng email/mật khẩu họ nhập, rồi lấy dữ liệu theo quyền của tài khoản đó.
+
+- Danh sách nhân viên được cấp quyền nằm ở **`data/accounts.json`** (đã `.gitignore`, không lộ lên git). Xem mẫu tại [`accounts.example.json`](accounts.example.json):
+  ```json
+  [
+    { "email": "nhanvien1@shop.vn", "name": "Nguyễn Văn A" }
+  ]
+  ```
+- **Thêm/xóa nhân viên** = sửa file này (chỉ cần `email` + `name`, KHÔNG để mật khẩu). Server đọc lại mỗi lần đăng nhập nên không cần restart.
+- File tự tạo khi chạy server lần đầu (seed sẵn `BASSO_EMAIL` trong `.env` nếu có).
+- Tài khoản trong `.env` (`BASSO_EMAIL`/`BASSO_PASS`) giờ là **tài khoản hệ thống** cho tác vụ nền: tự động báo hàng + webhook (chạy khi không có người đăng nhập).
+- Phiên đăng nhập sống mặc định 12 giờ (chỉnh `SESSION_TTL_MS`).
 
 ### Chung 1 máy?
 Để mặc định `PLAYWRIGHT_LOCAL_URL=http://localhost:8090` là chạy chung máy được luôn. Nếu local-runner ở máy khác sau NAT, dùng tunnel:
@@ -174,6 +188,9 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 
 | Method | Path | Mô tả |
 |---|---|---|
+| POST | `/api/auth/login` `{email, pass}` | Đăng nhập bằng tài khoản Basso (set cookie phiên) |
+| POST | `/api/auth/logout` | Đăng xuất (xóa phiên) |
+| GET | `/api/auth/me` | Thông tin người đang đăng nhập |
 | GET | `/api/orders?status=&staff=&q=&from=&to=` | Danh sách hàng về |
 | GET | `/api/arrived-items?id=&customerId=&dateInventory=` | Chi tiết SP đã về 1 dòng (load lazy) |
 | POST | `/api/notify` `{orderIds[], profile?, account?, messageOverride?}` | Báo hàng |
@@ -183,5 +200,7 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay (header `x-webhook-secret`) |
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
 | GET | `/api/health` | Trạng thái server + local-runner + auto-notify |
+
+> Mọi API dữ liệu yêu cầu **cookie đăng nhập**; ngoại lệ công khai: `/api/auth/*`, `/api/health`, `/api/webhook/arrived` (webhook bảo vệ riêng bằng `x-webhook-secret`).
 
 Local-runner: `POST /api/zalo/send`, `GET /api/job/:id`, `GET /health` (bảo vệ bằng header `x-api-key`).

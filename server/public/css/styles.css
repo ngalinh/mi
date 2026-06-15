@@ -459,3 +459,10 @@ td.center, th.center { text-align: center; }
 @media (max-width: 520px) {
   .filters { grid-template-columns: 1fr; }
 }
+
+/* Người dùng đang đăng nhập + nút đăng xuất (góc phải topbar) */
+.user-chip { display: inline-flex; align-items: center; gap: 10px; }
+.user-chip .user-name {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

@@ -16,13 +16,45 @@ const App = {
     return `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${this.ICONS[name] || ''}</svg>`;
   },
 
-  async api(path, opts) {
-    const res = await fetch(path, opts);
+  async api(path, opts = {}) {
+    const res = await fetch(path, { credentials: 'same-origin', ...opts });
+    // Hết phiên / chưa đăng nhập -> về trang đăng nhập (kèm ?next để quay lại đúng trang).
+    if (res.status === 401) {
+      const next = encodeURIComponent(location.pathname + location.search);
+      location.href = `/login.html?next=${next}`;
+      throw new Error('Phiên đăng nhập đã hết. Đang chuyển tới trang đăng nhập...');
+    }
     const data = await res.json().catch(() => ({ ok: false, error: 'Response không hợp lệ' }));
     if (!res.ok || data.ok === false) {
       throw new Error(data.error || `HTTP ${res.status}`);
     }
     return data;
+  },
+
+  async logout() {
+    try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch { /* ignore */ }
+    location.href = '/login.html';
+  },
+
+  // Hiển thị người dùng đang đăng nhập + nút đăng xuất ở góc phải topbar.
+  async initUserChip() {
+    let user;
+    try {
+      const r = await this.api('/api/auth/me');
+      user = r.user;
+    } catch { return; }
+    const bar = document.querySelector('.topbar');
+    if (!bar || !user) return;
+    const chip = document.createElement('div');
+    chip.className = 'user-chip';
+    chip.innerHTML = `
+      <span class="user-name" title="${this.esc(user.email)}">${this.esc(user.name || user.email)}</span>
+      <button class="btn secondary small" id="logoutBtn" title="Đăng xuất">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+        Đăng xuất
+      </button>`;
+    bar.appendChild(chip);
+    chip.querySelector('#logoutBtn').addEventListener('click', () => this.logout());
   },
 
   toast(msg, ms = 3000) {
@@ -54,3 +86,6 @@ const App = {
     return Number(n).toLocaleString('vi-VN') + '₫';
   },
 };
+
+// Mọi trang (dashboard, reports) đều hiển thị tên người dùng + nút đăng xuất.
+document.addEventListener('DOMContentLoaded', () => App.initUserChip());
