@@ -155,6 +155,7 @@ runner xử lý job (tuần tự qua jobQueue) ▶ salework.sendBaoHang():
 | **TEST_MODE** | runner chỉ gửi số whitelist | gửi nhầm khách thật khi test |
 | **Khóa dedup ổn định** | `c<cid>:d<date>` (không phụ thuộc `id`) | API thật thiếu `id` → gửi 1 đơn rồi bỏ hết |
 | **status success/manual** | bot bỏ đơn đã gửi (tay hoặc bot) | gửi lại lần 2 |
+| **xác nhận khi gửi lẻ** | gửi 1 đơn đã báo (web/bot/tay) → hỏi lại trước khi gửi | báo tay trùng đơn đã báo |
 | **withLock** | tay & bot chạy tuần tự | đua gửi đồng thời 1 đơn |
 | **strictMatch** | bot chỉ gửi khi khớp chắc | gửi nhầm người |
 | **skip khi runner offline** | không trừ attempt | "bỏ cuộc" oan, mất báo |
