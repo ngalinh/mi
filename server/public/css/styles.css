@@ -438,6 +438,7 @@ td.center, th.center { text-align: center; }
 @keyframes pop { from { transform: scale(.96) translateY(8px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
 .modal h3 { margin: 0 0 4px; font-size: 19px; font-weight: 800; }
 .modal .muted { margin: 0 0 16px; }
+.modal-msg-head { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .modal textarea {
   width: 100%; min-height: 360px; max-height: 60vh; padding: 14px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
