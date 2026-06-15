@@ -107,8 +107,8 @@ runAutoNotify()
    ① R3: fetchAllNotSent() — quét HẾT các trang đơn "Chưa báo"
    ② lọc ứng viên (isCandidate):
         - statusCode === 'not_sent'
-        - hasZalo !== false                 (bỏ khách không có Zalo)
         - dedup: chưa 'success'/'manual', và attempts < maxRetries
+        (khách có Zalo hay không xác định lúc gửi: tìm SĐT không ra hội thoại → lỗi)
    ③ mỗi ứng viên ▶ notifyOne({ skipWebUpdate:true, strictMatch:true }):
         → gửi qua local-runner (FLOW D)
         → KHÔNG cập nhật web Basso (chỉ đánh dấu trong mi)  [trừ khi AUTO_NOTIFY_UPDATE_WEB=true]

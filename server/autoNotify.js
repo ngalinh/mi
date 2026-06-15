@@ -49,7 +49,6 @@ function isTransientError(msg) {
 /** Đơn có đủ điều kiện tự gửi không? */
 function isCandidate(order) {
   if (order.statusCode !== 'not_sent') return false; // chỉ "Chưa báo"
-  if (order.hasZalo === false) return false;          // khách chưa có Zalo -> bỏ qua
   const rec = getAutoRecord(autoKey(order));
   if (!rec) return true;
   // Đã gửi (bot 'success' hoặc đã báo tay 'manual') -> bot không gửi lại.

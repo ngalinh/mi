@@ -43,7 +43,7 @@
   const orderPayload = (o) => ({
     id: o.id, customerId: o.customerId, dateInventory: o.dateInventory,
     customerName: o.customerName, phone: o.phone, note: o.note, staff: o.staff,
-    warehouseDate: o.warehouseDate, hasZalo: o.hasZalo, orderCode: orderCodeOf(o),
+    warehouseDate: o.warehouseDate, orderCode: orderCodeOf(o),
     noiDungBaoHang: o.noiDungBaoHang, noiDungBaoShip: o.noiDungBaoShip,
   });
 
@@ -200,13 +200,11 @@
 
   function rowHtml(o) {
     const open = openRows.has(String(o.id));
-    const noZalo = o.hasZalo === false
-      ? ` <span class="muted" title="Khách chưa có Zalo — có thể gửi lỗi">${App.icon('alert')}</span>` : '';
     const main = `<tr class="main-row" data-id="${App.esc(o.id)}">
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
-      <td class="cust">${customerNameCell(o)}${noZalo}</td>
+      <td class="cust">${customerNameCell(o)}</td>
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>

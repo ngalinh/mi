@@ -184,7 +184,6 @@ function normalizeOrder(raw) {
     note: raw.note || '',
     staff: raw.employee_name || '',
     userId: raw.user_id,
-    hasZalo: raw.has_zalo !== false,
   };
 }
 
