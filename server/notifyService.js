@@ -1,6 +1,6 @@
 'use strict';
 const config = require('./config');
-const { getOrders, updateOrderStatus } = require('./bassoApi');
+const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
 const { sendBaoHang } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
 const { addReport, getAutoRecord, recordAutoNotified, autoKey } = require('./db');
@@ -12,6 +12,29 @@ const { withLock } = require('./lock');
  * @param {object} order - đơn đã chuẩn hóa
  * @param {object} [opts] { profile, account, messageOverride, kind, skipWebUpdate } kind = 'hang' | 'ship'
  */
+/**
+ * Mã đơn để HIỂN THỊ trên report = "Mã ĐH" (orderCode, vd BS26052646), KHÔNG phải id nội bộ (vd 546).
+ * orderCode nằm trên từng sản phẩm nên: ưu tiên client gửi sẵn, không có thì tra lazy qua getArrivedItems,
+ * gộp các mã khác nhau (1 dòng có thể nhiều SP). Tra lỗi/không có -> fallback về id để report không trống.
+ * @param {object} order
+ * @returns {Promise<string|null>}
+ */
+async function resolveOrderCode(order) {
+  if (order.orderCode && String(order.orderCode).trim()) return String(order.orderCode).trim();
+  try {
+    const { items } = await getArrivedItems({
+      id: order.id,
+      customerId: order.customerId,
+      dateInventory: order.dateInventory,
+    });
+    const codes = [...new Set((items || []).map((it) => it.orderCode).filter(Boolean))];
+    if (codes.length) return codes.join(', ');
+  } catch (_) {
+    // bỏ qua — fallback về id bên dưới
+  }
+  return order.id != null ? String(order.id) : null;
+}
+
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
@@ -53,7 +76,7 @@ async function notifyOne(order, opts = {}) {
   }
 
   const report = addReport({
-    orderId: order.id,
+    orderId: await resolveOrderCode(order),
     customerName: order.customerName,
     phone: order.phone,
     staff: order.staff,
