@@ -130,8 +130,10 @@ async function selectZaloAccount(page, accountLabel) {
 }
 
 /**
- * Tìm và mở hội thoại khách. Tìm theo TÊN trước (khớp text kiểu Xeko), nếu không thấy
- * thì tìm theo SĐT và lấy kết quả trên cùng. Click bằng toạ độ chuột thật.
+ * Tìm và mở hội thoại khách. GÕ THẲNG SĐT vào ô tìm kiếm trước (SĐT là duy nhất nên
+ * khớp chính xác hơn tên — tránh trùng tên / sai dấu), khớp hàng theo SĐT HOẶC tên
+ * (hàng hội thoại thường hiển thị tên); nếu gõ SĐT không ra mới tìm theo TÊN.
+ * Click bằng toạ độ chuột thật.
  * @param {object} p { name, phone }
  */
 async function searchAndClickConversation(page, { name, phone, strictMatch = false }) {
@@ -153,17 +155,25 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     throw new Error('KHONG_THAY_O_TIM_KIEM: Không tìm thấy ô tìm kiếm hội thoại trên Salework.');
   }
 
-  // term: từ khoá gõ vào ô tìm; matchByText=true -> chọn hàng có text khớp tên; false -> lấy hàng trên cùng
-  async function attempt(term, matchByText) {
-    if (!term) return null;
+  // typeTerm: từ khoá GÕ vào ô tìm (ưu tiên SĐT). matchTerms: danh sách chuỗi để khớp
+  // hàng hội thoại (SĐT và/hoặc tên) — null/[] -> lấy hàng trên cùng.
+  async function attempt(typeTerm, matchTerms) {
+    if (!typeTerm) return null;
     await searchBox.click().catch(() => {});
     await searchBox.fill('').catch(() => {});
-    await searchBox.type(String(term), { delay: 30 });
+    await searchBox.type(String(typeTerm), { delay: 30 });
 
-    const scan = () => page.evaluate(({ term, matchByText }) => {
+    const scan = () => page.evaluate(({ matchTerms }) => {
       const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
         .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-      const tgt = deacc(term);
+      // Lõi SĐT: bỏ ký tự không phải số + tiền tố 84/0 để khớp dù định dạng khác (có dấu cách, +84...).
+      const phoneCore = (s) => (s || '').replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
+      const terms = (matchTerms || [])
+        .map((m) => ({
+          text: deacc(m),
+          phone: /^[\d\s+().-]+$/.test(String(m || '')) ? phoneCore(m) : '',
+        }))
+        .filter((m) => m.text || m.phone);
       const els = document.querySelectorAll(
         '[class*="conversation"], [class*="contact"], [class*="chat"], '
         + '[class*="list-item"], [class*="message-item"], li, a[href]'
@@ -172,15 +182,19 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       for (const el of els) {
         const r = el.getBoundingClientRect();
         if (!(r.width > 150 && r.height > 30 && r.height < 220 && r.top >= 0)) continue;
-        const t = deacc(el.textContent);
-        if (matchByText) {
-          if (t && t.includes(tgt)) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        const raw = el.textContent || '';
+        const t = deacc(raw);
+        const tPhone = phoneCore(raw);
+        if (terms.length) {
+          const hit = terms.some((m) =>
+            (m.text && t.includes(m.text)) || (m.phone && tPhone.includes(m.phone)));
+          if (hit) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
         } else if (!topmost || r.top < topmost.top) {
           topmost = { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top };
         }
       }
-      return matchByText ? null : topmost;
-    }, { term: String(term), matchByText });
+      return terms.length ? null : topmost;
+    }, { matchTerms });
 
     // Salework debounce kết quả tìm kiếm -> poll, TRẢ VỀ NGAY khi có kết quả
     // thay vì chờ cứng (trước đây 2500ms cho mọi lần tìm).
@@ -195,22 +209,24 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   }
 
   let rect = null;
-  if (name) rect = await attempt(name, true);             // tìm theo tên, khớp text
-  if (!rect && phone) rect = await attempt(phone, true);  // SĐT, vẫn yêu cầu khớp text
+  // Gõ THẲNG SĐT vào ô tìm kiếm; khớp hàng theo SĐT hoặc tên (hàng thường hiển thị tên).
+  if (phone) rect = await attempt(phone, [phone, name].filter(Boolean));
+  // Fallback: gõ SĐT không ra (khách lưu khác số) thì tìm theo TÊN.
+  if (!rect && name) rect = await attempt(name, [name]);
   if (strictMatch) {
     // Luồng bot tự động: KHÔNG "lấy đại đơn trên cùng" vì không có người soát ->
     // tránh gửi nhầm khách. Không khớp chắc chắn thì báo lỗi để xử lý tay.
     if (!rect) {
       await shot(page, '03b-conversation-notfound');
-      throw new Error(`KHONG_THAY_HOI_THOAI (strict): không khớp chắc chắn hội thoại cho "${name || phone}". Bỏ qua để gửi tay, tránh gửi nhầm.`);
+      throw new Error(`KHONG_THAY_HOI_THOAI (strict): không khớp chắc chắn hội thoại cho "${phone || name}". Bỏ qua để gửi tay, tránh gửi nhầm.`);
     }
   } else {
     // Luồng gửi tay (có người soát): cho phép fallback lấy kết quả trên cùng.
-    if (!rect && phone) rect = await attempt(phone, false);
-    if (!rect && name) rect = await attempt(name, false);
+    if (!rect && phone) rect = await attempt(phone, null);
+    if (!rect && name) rect = await attempt(name, null);
     if (!rect) {
       await shot(page, '03b-conversation-notfound');
-      throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${name || phone}". Kiểm tra khách đã từng nhắn Zalo trên tài khoản này chưa.`);
+      throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${phone || name}". Kiểm tra khách đã từng nhắn Zalo trên tài khoản này chưa.`);
     }
   }
   await page.mouse.click(rect.x, rect.y);
