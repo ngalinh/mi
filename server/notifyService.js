@@ -67,23 +67,16 @@ async function notifyOne(order, opts = {}) {
 }
 
 /**
- * Báo hàng cho nhiều đơn theo danh sách orderId. Chạy tuần tự (local-runner cũng tuần tự).
+ * Báo hàng cho danh sách ĐƠN (object đầy đủ field do client gửi lên — đã có sẵn trên
+ * dashboard). Không phải tra lại theo id nên không lệ thuộc phân trang/bộ lọc.
  * Bọc trong withLock để KHÔNG chạy chồng với luồng tự động (R6) -> tránh gửi trùng.
- * @param {string[]} orderIds
+ * @param {object[]} orders - mỗi phần tử cần tối thiểu: customerId, dateInventory, customerName, phone
  * @param {object} [opts]
  */
-async function notifyMany(orderIds, opts = {}) {
+async function notifyOrders(orders, opts = {}) {
   return withLock(async () => {
-    const { orders } = await getOrders();
-    const byId = new Map(orders.map((o) => [String(o.id), o]));
-
     const results = [];
-    for (const id of orderIds) {
-      const order = byId.get(String(id));
-      if (!order) {
-        results.push({ orderId: id, ok: false, error: 'Không tìm thấy đơn' });
-        continue;
-      }
+    for (const order of orders) {
       // eslint-disable-next-line no-await-in-loop
       const r = await notifyOne(order, opts);
       // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không
@@ -94,17 +87,39 @@ async function notifyMany(orderIds, opts = {}) {
         if (!ex || ex.status !== 'success') recordAutoNotified(key, 'manual', ex ? ex.attempts : 0);
       }
       results.push({
-        orderId: id,
+        orderId: order.id,
         customerName: order.customerName,
         ok: r.ok,
         error: r.error || r.updateError || null,
         jobId: r.jobId || null,
       });
     }
-
     const sent = results.filter((r) => r.ok).length;
     return { total: results.length, sent, failed: results.length - sent, results };
   });
 }
 
-module.exports = { notifyOne, notifyMany };
+/**
+ * (Legacy) Báo hàng theo danh sách orderId — tự tra đơn từ Basso. CẢNH BÁO: chỉ lấy
+ * trang đầu nên có thể không tìm thấy khi dữ liệu nhiều; ưu tiên dùng notifyOrders.
+ * @param {string[]} orderIds
+ * @param {object} [opts]
+ */
+async function notifyMany(orderIds, opts = {}) {
+  const { orders } = await getOrders();
+  const byId = new Map(orders.map((o) => [String(o.id), o]));
+  const found = [];
+  const missing = [];
+  for (const id of orderIds) {
+    const o = byId.get(String(id));
+    if (o) found.push(o); else missing.push(id);
+  }
+  const res = await notifyOrders(found, opts);
+  for (const id of missing) {
+    res.results.push({ orderId: id, ok: false, error: 'Không tìm thấy đơn' });
+    res.total += 1; res.failed += 1;
+  }
+  return res;
+}
+
+module.exports = { notifyOne, notifyMany, notifyOrders };

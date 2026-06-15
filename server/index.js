@@ -5,7 +5,7 @@ const cors = require('cors');
 const config = require('./config');
 const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats, getAutoRecord } = require('./db');
-const { notifyMany } = require('./notifyService');
+const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth } = require('./playwrightProxy');
 const autoNotify = require('./autoNotify');
 
@@ -94,15 +94,21 @@ app.get('/api/arrived-items', async (req, res) => {
 });
 
 // ---- Báo hàng: gửi tin cho 1 hoặc nhiều đơn ----
-// body: { orderIds: string[], profile?, account?, messageOverride? }
+// body: { orders: object[] (ưu tiên, client gửi đơn đầy đủ) | orderIds: string[] (legacy),
+//         profile?, account?, messageOverride?, kind? }
 app.post('/api/notify', async (req, res) => {
   try {
-    const { orderIds, profile, account, messageOverride, kind } = req.body || {};
-    if (!Array.isArray(orderIds) || orderIds.length === 0) {
-      return res.status(400).json({ ok: false, error: 'Cần orderIds (mảng không rỗng)' });
+    const { orders, orderIds, profile, account, messageOverride, kind } = req.body || {};
+    const opts = { profile, account, messageOverride, kind };
+    if (Array.isArray(orders) && orders.length) {
+      const result = await notifyOrders(orders, opts);
+      return res.json({ ok: true, ...result });
     }
-    const result = await notifyMany(orderIds, { profile, account, messageOverride, kind });
-    res.json({ ok: true, ...result });
+    if (Array.isArray(orderIds) && orderIds.length) {
+      const result = await notifyMany(orderIds, opts);
+      return res.json({ ok: true, ...result });
+    }
+    return res.status(400).json({ ok: false, error: 'Cần orders hoặc orderIds (mảng không rỗng)' });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

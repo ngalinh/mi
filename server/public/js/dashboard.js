@@ -21,6 +21,15 @@
 
   const byId = (id) => orders.find((o) => String(o.id) === String(id));
 
+  // Gửi đơn đầy đủ field lên server (không để server tra lại theo id -> tránh lỗi
+  // "Không tìm thấy đơn" khi dữ liệu nhiều/phân trang/đang lọc theo nhân viên).
+  const orderPayload = (o) => ({
+    id: o.id, customerId: o.customerId, dateInventory: o.dateInventory,
+    customerName: o.customerName, phone: o.phone, note: o.note, staff: o.staff,
+    warehouseDate: o.warehouseDate, hasZalo: o.hasZalo,
+    noiDungBaoHang: o.noiDungBaoHang, noiDungBaoShip: o.noiDungBaoShip,
+  });
+
   // ---------------- Tabs nhân viên ----------------
   function renderTabs() {
     const el = $('staffTabs');
@@ -300,7 +309,7 @@
       const res = await App.api('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds: [id], messageOverride: messageOverride || undefined, kind }),
+        body: JSON.stringify({ orders: [orderPayload(o)], messageOverride: messageOverride || undefined, kind }),
       });
       const r = res.results[0];
       if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
@@ -314,16 +323,16 @@
   }
 
   async function bulkSend() {
-    const ids = orders.filter((o) => !isNotified(o)).map((o) => String(o.id));
-    if (!ids.length) return;
-    if (!confirm(`Gửi báo hàng cho ${ids.length} khách chưa báo?`)) return;
+    const sel = orders.filter((o) => !isNotified(o));
+    if (!sel.length) return;
+    if (!confirm(`Gửi báo hàng cho ${sel.length} khách chưa báo?`)) return;
     const btn = $('bulkBtn');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
     try {
       const res = await App.api('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds: ids }),
+        body: JSON.stringify({ orders: sel.map(orderPayload) }),
       });
       App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
       await load();
