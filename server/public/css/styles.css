@@ -431,7 +431,7 @@ td.center, th.center { text-align: center; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .modal {
   background: #fff; border-radius: var(--radius); padding: 28px;
-  width: 540px; max-width: 92vw; max-height: 86vh; overflow: auto;
+  width: 600px; max-width: 92vw; max-height: 90vh; overflow: auto;
   box-shadow: var(--shadow-lg);
   animation: pop .22s var(--ease);
 }
@@ -439,9 +439,9 @@ td.center, th.center { text-align: center; }
 .modal h3 { margin: 0 0 4px; font-size: 19px; font-weight: 800; }
 .modal .muted { margin: 0 0 16px; }
 .modal textarea {
-  width: 100%; min-height: 150px; padding: 14px;
+  width: 100%; min-height: 360px; max-height: 60vh; padding: 14px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-  font-family: inherit; font-size: 14px; line-height: 1.55; resize: vertical;
+  font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical;
 }
 .modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124,77,255,.15); }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }

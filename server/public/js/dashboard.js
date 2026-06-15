@@ -290,6 +290,13 @@
       (isShip ? ' Gửi báo ship qua Zalo' : ' Gửi báo hàng qua Zalo');
     $('modalSend').style.display = '';
     $('modalBg').classList.add('show');
+    autoGrowMsg();
+  }
+  // Cho textarea cao vừa đủ nội dung (trong giới hạn max-height của CSS) để khỏi phải scroll.
+  function autoGrowMsg() {
+    const ta = $('modalMsg');
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
   }
   function closeModal() { $('modalBg').classList.remove('show'); modalId = null; }
 
@@ -470,6 +477,7 @@
 
   $('modalCancel').addEventListener('click', closeModal);
   $('modalSend').addEventListener('click', sendFromModal);
+  $('modalMsg').addEventListener('input', autoGrowMsg);
   $('modalBg').addEventListener('click', (e) => { if (e.target.id === 'modalBg') closeModal(); });
 
   loadHealth();
