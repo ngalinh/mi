@@ -97,6 +97,15 @@
     return lines.join('<br>');
   }
 
+  // Mã ĐH dẫn tới trang chi tiết đơn trên web Basso (giống hệ thống basso).
+  const ORDER_DETAIL_BASE = 'https://basso.vn/basso/customer_order/detail/';
+  function orderCodeCell(it) {
+    const code = App.esc(it.orderCode);
+    if (!it.orderId) return code;
+    const href = ORDER_DETAIL_BASE + encodeURIComponent(it.orderId);
+    return `<a href="${href}" target="_blank" rel="noopener">${code}</a>`;
+  }
+
   function itemsTableRows(items) {
     return items.map((it, i) => {
       const nameCell = it.link
@@ -110,7 +119,7 @@
         : App.esc(it.shipStatusLabel);
       return `<tr>
         <td>${tinhTrang}</td>
-        <td>${App.esc(it.orderCode)}</td>
+        <td>${orderCodeCell(it)}</td>
         <td class="center">${i + 1}</td>
         <td class="center">${img}</td>
         <td>${nameCell}</td>
