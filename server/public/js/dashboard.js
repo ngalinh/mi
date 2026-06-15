@@ -324,6 +324,25 @@
   }
   function closeModal() { $('modalBg').classList.remove('show'); modalId = null; }
 
+  async function copyModalMsg() {
+    const text = $('modalMsg').value;
+    if (!text.trim()) { App.toast('Không có nội dung để copy'); return; }
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = $('modalMsg');
+        ta.select();
+        document.execCommand('copy');
+        ta.setSelectionRange(0, 0);
+        ta.blur();
+      }
+      App.toast('✅ Đã copy nội dung');
+    } catch (e) {
+      App.toast('Không copy được, vui lòng copy thủ công');
+    }
+  }
+
   async function sendFromModal() {
     if (!modalId) return;
     await sendZalo(modalId, $('modalMsg').value.trim(), $('modalSend'), modalKind);
@@ -499,6 +518,7 @@
     if (sel) changeStatus(sel.dataset.id, sel.value);
   });
 
+  $('modalCopy').addEventListener('click', copyModalMsg);
   $('modalCancel').addEventListener('click', closeModal);
   $('modalSend').addEventListener('click', sendFromModal);
   $('modalMsg').addEventListener('input', autoGrowMsg);
