@@ -1,14 +1,23 @@
 'use strict';
 const fetch = require('node-fetch');
 const config = require('./config');
+const localRegistry = require('./localRegistry');
 
 /**
  * Forward lệnh automation xuống local-runner (qua tunnel / localhost).
  * Theo pattern Xeko: POST trả jobId -> poll cho tới khi done/error.
  */
 
+/**
+ * URL runner hiệu lực: ưu tiên URL runner tự đăng ký qua /api/register-local (heartbeat),
+ * nếu chưa có/đã cũ thì fallback PLAYWRIGHT_LOCAL_URL tĩnh trong .env (chạy chung máy/local).
+ */
+function effectiveBaseUrl() {
+  return localRegistry.getFreshUrl() || config.playwrightLocalUrl;
+}
+
 function localUrl(path) {
-  return `${config.playwrightLocalUrl.replace(/\/$/, '')}${path}`;
+  return `${effectiveBaseUrl().replace(/\/$/, '')}${path}`;
 }
 
 function headers() {
@@ -76,4 +85,4 @@ async function sendBaoHang(payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60
   return { ok: false, jobId, error: 'Hết thời gian chờ local-runner (timeout)' };
 }
 
-module.exports = { sendBaoHang, checkLocalHealth, getLocalHealth };
+module.exports = { sendBaoHang, checkLocalHealth, getLocalHealth, effectiveBaseUrl };

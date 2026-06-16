@@ -183,6 +183,29 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt |
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay (header `x-webhook-secret`) |
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
+| POST | `/api/register-local` `{url, apiKey}` | Runner tự khai báo URL (Xeko pattern) — server lưu trong RAM + dùng forward |
 | GET | `/api/health` | Trạng thái server + local-runner + auto-notify |
 
 Local-runner: `POST /api/zalo/send`, `GET /api/job/:id`, `GET /health` (bảo vệ bằng header `x-api-key`).
+
+## Tự đăng ký URL runner lên cloud (Xeko pattern) 🆕
+
+Thay vì hardcode `PLAYWRIGHT_LOCAL_URL` ở server, chạy launcher `start.js` trên máy có
+Chrome — nó spawn local-runner rồi **tự POST URL của runner lên cloud** (`REMOTE_BOT_URL`)
+qua `/api/register-local`, lặp lại **heartbeat mỗi 30s** (vì cloud lưu URL trong RAM, cứ
+restart là mất). Đổi IP/tunnel không cần sửa `.env` của server.
+
+```powershell
+# .env trên máy runner:
+REMOTE_BOT_URL=https://ai.basso.vn/b/<bot-id>   # URL bot trên cloud
+API_KEY=...                                      # giống hệt server
+PLAYWRIGHT_PUBLIC_URL=https://abcd.ngrok-free.app  # (tùy chọn) URL tunnel để khai báo
+
+npm run runner      # = node start.js  (spawn runner + heartbeat đăng ký)
+```
+
+Server ưu tiên URL đã đăng ký (còn "tươi" trong ~90s); hết hạn thì fallback
+`PLAYWRIGHT_LOCAL_URL`. Xem trạng thái ở `GET /api/health` → `localRunner.registered`.
+
+> Giữ launcher sống bền: bọc thêm `pm2 start start.js --name mi-runner` (hoặc NSSM/Task
+> Scheduler trên Windows) để auto-restart khi crash + auto-start cùng máy.
