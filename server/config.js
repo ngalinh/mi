@@ -7,7 +7,9 @@ const useMockEnv = (process.env.USE_MOCK || '').toLowerCase();
 const useMock = useMockEnv === 'true' ? true : useMockEnv === 'false' ? false : !bassoBase;
 
 module.exports = {
-  port: parseInt(process.env.SERVER_PORT || '8080', 10),
+  // Ưu tiên PORT (nền tảng host như ai.basso.vn thường cấp port động qua biến này),
+  // sau đó tới SERVER_PORT (cấu hình thủ công), cuối cùng mặc định 8080 cho chạy local.
+  port: parseInt(process.env.PORT || process.env.SERVER_PORT || '8080', 10),
   apiKey: process.env.API_KEY || '',
   playwrightLocalUrl: process.env.PLAYWRIGHT_LOCAL_URL || 'http://localhost:8090',
   basso: {
