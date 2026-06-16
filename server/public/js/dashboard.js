@@ -12,6 +12,16 @@
   // Dùng để loại khỏi "Báo hàng loạt" -> tránh gửi trùng cho khách đã nhắn.
   const SENT_LOCAL = new Set(['success', 'manual']);
   const isNotified = (o) => DONE.has(o.statusCode) || (o.autoNotified && SENT_LOCAL.has(o.autoNotified.status));
+  // Vì sao 1 đơn bị coi là "đã báo" cho loại tin đang gửi (để cảnh báo khi gửi lẻ) — null nếu chưa báo.
+  // Báo ship: chỉ chặn khi đã báo ship; đơn mới "Đã báo hàng" vẫn được báo ship bình thường.
+  const notifiedReason = (o, kind = 'hang') => {
+    const done = kind === 'ship' ? o.statusCode === 'notified_ship' : DONE.has(o.statusCode);
+    if (done) return `web đang ở trạng thái "${o.status}"`;
+    if (kind === 'ship') return null; // dấu auto_notified là của báo hàng, không áp cho báo ship
+    if (o.autoNotified && o.autoNotified.status === 'success') return 'bot đã tự gửi';
+    if (o.autoNotified && o.autoNotified.status === 'manual') return 'đã báo tay trước đó';
+    return null;
+  };
   const STATUS_OPTS = [
     ['not_sent', 'Chưa báo'],
     ['notified_arrival', 'Đã báo hàng'],
@@ -33,7 +43,7 @@
   const orderPayload = (o) => ({
     id: o.id, customerId: o.customerId, dateInventory: o.dateInventory,
     customerName: o.customerName, phone: o.phone, note: o.note, staff: o.staff,
-    warehouseDate: o.warehouseDate, hasZalo: o.hasZalo, orderCode: orderCodeOf(o),
+    warehouseDate: o.warehouseDate, orderCode: orderCodeOf(o),
     noiDungBaoHang: o.noiDungBaoHang, noiDungBaoShip: o.noiDungBaoShip,
   });
 
@@ -190,13 +200,11 @@
 
   function rowHtml(o) {
     const open = openRows.has(String(o.id));
-    const noZalo = o.hasZalo === false
-      ? ` <span class="muted" title="Khách chưa có Zalo — có thể gửi lỗi">${App.icon('alert')}</span>` : '';
     const main = `<tr class="main-row" data-id="${App.esc(o.id)}">
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
-      <td class="cust">${customerNameCell(o)}${noZalo}</td>
+      <td class="cust">${customerNameCell(o)}</td>
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
@@ -333,6 +341,10 @@
   // ---------------- Gửi Zalo ----------------
   async function sendZalo(id, messageOverride, btnEl, kind = 'hang') {
     const o = byId(id); if (!o) return;
+    // Chốt chặn báo trùng: gửi lẻ không tự loại đơn đã báo như "Báo hàng loạt",
+    // nên nếu đơn đã báo (web/bot/tay) thì hỏi lại trước khi gửi tiếp.
+    const reason = notifiedReason(o, kind);
+    if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
     const btn = btnEl || rowsEl.querySelector(`.send-zalo[data-id="${cssEsc(String(id))}"][data-kind="${kind}"]`);
     const label = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...'; }
