@@ -60,9 +60,13 @@ const deaccent = (s) => norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLower
  * khúc chuyển "chọn kênh → tìm khách". Cần đóng vì lớp el-popper che + chặn pointer events,
  * nếu còn mở thì click ô tìm kiếm hội thoại sẽ "intercepts pointer events" -> timeout 30s.
  */
-async function closeOpenDropdown(page, { timeout = 2500 } = {}) {
+async function closeOpenDropdown(page, { timeout = 1200 } = {}) {
+  // Chỉ nhắm đúng popper của dropdown CHỌN TÀI KHOẢN (cái thực sự che + chặn pointer events).
+  // KHÔNG dùng `.el-popper` trần: class đó quá chung (tooltip... luôn hiển thị) khiến vòng lặp
+  // không bao giờ thoát sớm -> chạy đủ deadline mỗi lần gọi. `.el-select-dropdown` đã là popper
+  // của el-select, còn ô "Tìm kiếm tài khoản" là dấu hiệu dropdown account còn mở.
   const popper = page
-    .locator('.el-select-dropdown, .el-popper, input[placeholder*="Tìm kiếm tài khoản" i]')
+    .locator('.el-select-dropdown, input[placeholder*="Tìm kiếm tài khoản" i]')
     .first();
   const deadline = Date.now() + timeout;
   // Nếu đã đóng sẵn thì không tốn 1ms nào.
@@ -133,10 +137,9 @@ async function selectZaloAccount(page, accountLabel) {
 
   if (rect) {
     await page.mouse.click(rect.x, rect.y);
-    // Dropdown Salework là Element-UI multi-select (is-multiple) -> KHÔNG tự đóng khi
-    // chọn option. Đóng chủ động và chờ popper biến mất (poll, đóng xong đi tiếp ngay)
-    // để không che + chặn pointer events ở bước tìm hội thoại, mà không phí thời gian chờ cứng.
-    await closeOpenDropdown(page);
+    // Dropdown Salework là Element-UI multi-select (is-multiple) -> KHÔNG tự đóng khi chọn
+    // option. KHÔNG đóng ở đây: searchAndClickConversation() gọi closeOpenDropdown() ngay đầu
+    // nên đóng 2 lần chỉ tốn thêm thời gian (mỗi lần poll tới timeout). Để 1 chỗ đóng là đủ.
     await shot(page, '02-account-selected');
     return true;
   }
