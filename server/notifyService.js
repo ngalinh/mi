@@ -14,8 +14,10 @@ const { withLock } = require('./lock');
  */
 /**
  * Mã đơn để HIỂN THỊ trên report = "Mã ĐH" (orderCode, vd BS26052646), KHÔNG phải id nội bộ (vd 546).
- * orderCode nằm trên từng sản phẩm nên: ưu tiên client gửi sẵn, không có thì tra lazy qua getArrivedItems,
- * gộp các mã khác nhau (1 dòng có thể nhiều SP). Tra lỗi/không có -> fallback về id để report không trống.
+ * orderCode nằm trên từng sản phẩm nên: ưu tiên client gửi sẵn, không có thì tra qua getArrivedItems
+ * (mọi luồng đều truyền đủ id/customerId/dateInventory nên luôn tra được), gộp các mã khác nhau
+ * (1 dòng có thể nhiều SP). Không tra được (đơn không có SP, hoặc API rỗng/lỗi) -> trả null để UI
+ * hiển thị "—". KHÔNG fallback về id nội bộ nữa để tránh nhầm id (546) với mã ĐH (BS...).
  * @param {object} order
  * @returns {Promise<string|null>}
  */
@@ -29,10 +31,11 @@ async function resolveOrderCode(order) {
     });
     const codes = [...new Set((items || []).map((it) => it.orderCode).filter(Boolean))];
     if (codes.length) return codes.join(', ');
-  } catch (_) {
-    // bỏ qua — fallback về id bên dưới
+    console.warn(`[notify] đơn id=${order.id} không có mã ĐH (không có SP đã về) -> report để trống`);
+  } catch (err) {
+    console.warn(`[notify] không tra được mã ĐH cho đơn id=${order.id}: ${err.message}`);
   }
-  return order.id != null ? String(order.id) : null;
+  return null;
 }
 
 async function notifyOne(order, opts = {}) {
