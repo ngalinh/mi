@@ -5,7 +5,9 @@
   "description": "Chatbot tự động báo hàng về VN qua Zalo (Salework) — dashboard + report + Playwright automation",
   "type": "commonjs",
   "scripts": {
+    "start": "node server/index.js",
     "server": "node server/index.js",
+    "runner": "node start.js",
     "local": "node local-runner/index.js",
     "local:debug": "cross-env HEADLESS=false node local-runner/index.js",
     "login": "cross-env HEADLESS=false node local-runner/login.js",

@@ -6,7 +6,8 @@ const config = require('./config');
 const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats, getAutoRecord } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
-const { getLocalHealth } = require('./playwrightProxy');
+const { getLocalHealth, effectiveBaseUrl } = require('./playwrightProxy');
+const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
 
 const app = express();
@@ -26,13 +27,31 @@ app.get('/api/health', async (req, res) => {
     ok: true,
     mock: config.basso.useMock,
     localRunner: {
-      url: config.playwrightLocalUrl,
+      url: effectiveBaseUrl(),
       online: h.online,
       testMode: h.testMode || false,
       testPhones: h.testPhones || [],
+      // Thông tin runner tự đăng ký (Xeko pattern). registered.url='' nghĩa là đang dùng
+      // PLAYWRIGHT_LOCAL_URL tĩnh trong .env.
+      registered: localRegistry.getInfo(),
     },
     autoNotify: autoNotify.getStatus(),
   });
+});
+
+// ---- Local-runner tự đăng ký URL (Xeko pattern) ----
+// Runner (start.js) gọi định kỳ để báo "tôi đang ở URL này". Server lưu trong RAM rồi
+// forward lệnh automation tới đó, khỏi cần hardcode PLAYWRIGHT_LOCAL_URL trong .env server.
+app.post('/api/register-local', (req, res) => {
+  const { url, apiKey } = req.body || {};
+  // Bảo vệ bằng API_KEY dùng chung (nếu server có đặt). Trống = bỏ qua kiểm tra (dev).
+  if (config.apiKey && apiKey !== config.apiKey) {
+    return res.status(401).json({ ok: false, error: 'Sai hoặc thiếu apiKey' });
+  }
+  if (!localRegistry.register(url)) {
+    return res.status(400).json({ ok: false, error: 'Thiếu url hợp lệ' });
+  }
+  res.json({ ok: true, url: localRegistry.getInfo().url });
 });
 
 // ---- Test kết nối Basso (chỉ đọc): dùng cho nút "Test Basso" trên dashboard ----

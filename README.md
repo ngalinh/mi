@@ -183,6 +183,47 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt |
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay (header `x-webhook-secret`) |
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
+| POST | `/api/register-local` `{url, apiKey}` | Runner tự khai báo URL (Xeko pattern) — server lưu trong RAM + dùng forward |
 | GET | `/api/health` | Trạng thái server + local-runner + auto-notify |
 
 Local-runner: `POST /api/zalo/send`, `GET /api/job/:id`, `GET /health` (bảo vệ bằng header `x-api-key`).
+
+## Tự đăng ký URL runner lên cloud (Xeko pattern) 🆕
+
+Thay vì hardcode `PLAYWRIGHT_LOCAL_URL` ở server, chạy launcher `start.js` trên máy có
+Chrome — nó spawn local-runner rồi **tự POST URL của runner lên cloud** (`REMOTE_BOT_URL`)
+qua `/api/register-local`, lặp lại **heartbeat mỗi 30s** (vì cloud lưu URL trong RAM, cứ
+restart là mất). Đổi IP/tunnel không cần sửa `.env` của server.
+
+```powershell
+# .env trên máy runner:
+REMOTE_BOT_URL=https://ai.basso.vn/b/<bot-id>   # URL bot trên cloud
+API_KEY=...                                      # giống hệt server
+PLAYWRIGHT_PUBLIC_URL=https://abcd.ngrok-free.app  # (tùy chọn) URL tunnel để khai báo
+
+npm run runner      # = node start.js  (spawn runner + heartbeat đăng ký)
+```
+
+Server ưu tiên URL đã đăng ký (còn "tươi" trong ~90s); hết hạn thì fallback
+`PLAYWRIGHT_LOCAL_URL`. Xem trạng thái ở `GET /api/health` → `localRunner.registered`.
+
+> Giữ launcher sống bền: bọc thêm `pm2 start start.js --name mi-runner` (hoặc NSSM/Task
+> Scheduler trên Windows) để auto-restart khi crash + auto-start cùng máy.
+
+## Hướng nâng cấp tương lai (khi nào cần)
+
+Pattern Xeko (runner tự đăng ký URL + heartbeat) là lựa chọn **đủ tốt cho quy mô hiện tại**:
+1 shop, báo hàng không cần realtime, đã chạy thật ở Xeko. Giữ nguyên cho gọn. Các đánh đổi
+đã biết và **cách nâng cấp** nếu sau này thấy phiền:
+
+| Hạn chế hiện tại | Khi nào thành vấn đề | Hướng nâng cấp |
+|---|---|---|
+| URL runner lưu **trong RAM** cloud → có cửa sổ "mù" ~30s sau khi cloud restart | Khi cần gửi gần như tức thời, không chịu được trễ | Lưu URL vào store bền (file/SQLite/Redis) thay vì RAM |
+| Nhánh **tự dò IP public** (`http://ip:port`) mong manh, không TLS, phải mở cổng | Khi không muốn duy trì tunnel | **WebSocket runner→cloud**: runner mở kết nối thường trực lên cloud, cloud đẩy lệnh ngược qua đó. Bỏ hẳn inbound/port, xuyên NAT sạch, không còn cửa sổ mù |
+| Mô hình **push** (cloud gọi vào runner) phụ thuộc tunnel + bảo mật `API_KEY` | Khi muốn loại bỏ inbound hoàn toàn | **Job-pull**: runner tự kéo job từ cloud (polling/long-poll). Không cần inbound, đổi lại thêm độ trễ |
+| Chỉ giữ **1 URL** (last-writer-wins) | Khi chạy nhiều runner song song | Đăng ký theo `runnerId`, server chọn runner theo profile/tải |
+| `start.js` **không tự restart** runner | Máy online 24/7 | pm2/NSSM bọc ngoài (đã nêu trên) |
+
+> 👉 Nâng cấp **đáng giá nhất** nếu thấy việc duy trì tunnel/port phiền: chuyển sang
+> **WebSocket runner→cloud**. Khi đó khỏi cần `PLAYWRIGHT_PUBLIC_URL`, `/api/register-local`
+> và cả tunnel — runner chủ động giữ 1 kết nối lên cloud là đủ.
