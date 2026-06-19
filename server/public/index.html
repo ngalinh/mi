@@ -77,6 +77,12 @@
                 <input type="text" id="fQ" placeholder="Tên / SĐT khách" />
               </div>
             </div>
+            <div class="field field-group"><label>Nhóm</label>
+              <select id="fGroupBy">
+                <option value="">Không nhóm</option>
+                <option value="customer">Theo khách hàng</option>
+              </select>
+            </div>
             <button type="button" id="filterToggle" class="btn secondary filter-toggle" aria-expanded="false" aria-controls="advFilters">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
               Bộ lọc
@@ -98,12 +104,6 @@
             </div>
             <div class="field"><label>Nhân viên</label>
               <select id="fStaff"><option value="">Tất cả</option></select>
-            </div>
-            <div class="field"><label>Nhóm</label>
-              <select id="fGroupBy">
-                <option value="">Không nhóm</option>
-                <option value="customer">Theo khách hàng</option>
-              </select>
             </div>
           </div>
 

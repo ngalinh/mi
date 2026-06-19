@@ -231,14 +231,16 @@
     refreshItemsSection(o);
   }
 
-  function rowHtml(o) {
+  // grouped = dòng thuộc nhóm khách có ≥2 đơn (thêm class để kẻ vạch nối + thụt lề).
+  function rowHtml(o, grouped = false) {
     const open = openRows.has(String(o.id));
     const canBulk = !isNotified(o); // chỉ đơn chưa báo mới được loại trừ
     const isExcl = excluded.has(String(o.id));
+    const gc = grouped ? ' grouped-child' : '';
     const excludeCell = canBulk
       ? `<input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt" />`
       : '';
-    const main = `<tr class="main-row ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
+    const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
@@ -255,7 +257,7 @@
       <td>${App.esc(o.staff)}</td>
     </tr>`;
 
-    const detail = `<tr class="detail-row ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
+    const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
       <td colspan="11"><div class="detail-box">
         ${itemsSection(o)}
         <div class="full detail-actions">
@@ -276,20 +278,35 @@
     return 'name:' + String(o.customerName || '').trim().toLowerCase();
   }
 
-  // Header 1 nhóm khách: tên + SĐT + số đơn, có nút mở/đóng tất cả đơn của khách.
+  // Đếm SL sản phẩm của 1 nhóm (gộp các đơn của khách). SL = số dòng SP đã về,
+  // khớp với số "(N)" ở khối "Sản phẩm đã về". Items load lazy nên trả kèm cờ
+  // allLoaded để biết đã đủ dữ liệu chưa (chưa đủ thì hiện "…").
+  function groupProductCount(items) {
+    let n = 0, allLoaded = true;
+    for (const o of items) {
+      if (o._itemsState === 'loaded') n += (o._items || []).length;
+      else allLoaded = false;
+    }
+    return { n, allLoaded };
+  }
+  function productText(items) {
+    const { n, allLoaded } = groupProductCount(items);
+    return allLoaded ? `${n} sản phẩm` : '… sản phẩm';
+  }
+
+  // Header 1 nhóm khách: tên + SĐT + số đơn + SL sản phẩm, có nút mở/đóng tất cả đơn.
   function groupHeaderHtml(key, items) {
     const o0 = items[0];
     const allOpen = items.every((o) => openRows.has(String(o.id)));
     const phone = o0.phone ? ` · ${App.esc(o0.phone)}` : '';
     return `<tr class="group-row" data-group-key="${App.esc(key)}">
       <td class="center"><button class="group-expand ${allOpen ? 'open' : ''}" data-group-key="${App.esc(key)}" title="Mở/đóng tất cả đơn của khách">${App.icon('chevron')}</button></td>
-      <td colspan="10"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn</span></td>
+      <td colspan="10"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn · <span class="group-sp">${productText(items)}</span></span></td>
     </tr>`;
   }
 
-  // Gom danh sách theo khách rồi render: mỗi nhóm 1 header + các dòng đơn của khách.
-  // Sắp xếp nhóm theo tên khách để dễ tra.
-  function groupedRowsHtml(list) {
+  // Gom danh sách theo khách, sắp xếp nhóm theo tên khách để dễ tra.
+  function groupList(list) {
     const groups = new Map();
     for (const o of list) {
       const k = customerKey(o);
@@ -297,9 +314,32 @@
       groups.get(k).push(o);
     }
     return [...groups.entries()]
-      .sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'))
-      .map(([k, items]) => groupHeaderHtml(k, items) + items.map(rowHtml).join(''))
+      .sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'));
+  }
+
+  // Render gom nhóm: chỉ khách có ≥2 đơn mới có header gom (đỡ rối khi đa số
+  // khách chỉ 1 đơn). Khách 1 đơn render như dòng thường, vẫn sắp theo tên.
+  function groupedRowsHtml(list) {
+    return groupList(list)
+      .map(([k, items]) => items.length > 1
+        ? groupHeaderHtml(k, items) + items.map((o) => rowHtml(o, true)).join('')
+        : rowHtml(items[0]))
       .join('');
+  }
+
+  // Nạp SP cho các đơn trong nhóm (chỉ nhóm có header, ≥2 đơn) để đếm SL sản
+  // phẩm, rồi cập nhật header tại chỗ (không render lại cả bảng -> không phá
+  // thao tác đang gõ ghi chú).
+  function fillGroupProductCounts(list) {
+    for (const [key, items] of groupList(list)) {
+      if (items.length < 2) continue;
+      if (items.every((o) => o._itemsState === 'loaded')) { updateGroupSp(key, items); continue; }
+      Promise.all(items.map((o) => loadItems(o))).then(() => updateGroupSp(key, items));
+    }
+  }
+  function updateGroupSp(key, items) {
+    const span = rowsEl.querySelector(`.group-row[data-group-key="${cssEsc(key)}"] .group-sp`);
+    if (span) span.textContent = productText(items);
   }
 
   // Bấm header nhóm: mở hết nếu đang có dòng đóng, ngược lại đóng hết.
@@ -341,10 +381,12 @@
     }
     rowsEl.innerHTML = currentGroupBy === 'customer'
       ? groupedRowsHtml(list)
-      : list.map(rowHtml).join('');
+      : list.map((o) => rowHtml(o)).join('');
     updateCount(list);
     // Dòng đang mở: load (hoặc render lại) chi tiết sản phẩm
     list.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
+    // Gom nhóm: nạp SP để đếm SL sản phẩm trên header (cập nhật khi tải xong)
+    if (currentGroupBy === 'customer') fillGroupProductCounts(list);
   }
 
   // Đơn sẽ được gửi khi bấm "Báo hàng loạt": chưa báo VÀ không bị tick loại trừ.
@@ -644,7 +686,6 @@
     if ($('fTo').value) n++;
     if ($('fStatus').value && $('fStatus').value !== 'all') n++;
     if ($('fStaff').value) n++;
-    if ($('fGroupBy').value) n++;
     const badge = $('filterCount');
     badge.textContent = n;
     badge.hidden = n === 0;
@@ -655,7 +696,7 @@
     panel.hidden = !open;
     $('filterToggle').setAttribute('aria-expanded', String(open));
   });
-  ['fFrom', 'fTo', 'fStatus', 'fStaff', 'fGroupBy'].forEach((id) => $(id).addEventListener('change', updateFilterCount));
+  ['fFrom', 'fTo', 'fStatus', 'fStaff'].forEach((id) => $(id).addEventListener('change', updateFilterCount));
   updateFilterCount();
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
