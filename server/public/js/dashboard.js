@@ -2,7 +2,7 @@
   let orders = [];
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
-  let currentGroup = 'all'; // nhóm trạng thái đang xem ('all' | 'todo' | 'failed' | 'done')
+  let currentGroup = 'all'; // nhóm trạng thái đang xem ('all' | 'todo' | 'arrival' | 'ship' | 'failed')
   const openRows = new Set();
 
   const $ = (id) => document.getElementById(id);
@@ -34,25 +34,30 @@
 
   const byId = (id) => orders.find((o) => String(o.id) === String(id));
 
-  // Gom đơn về 3 nhóm việc. "done" dùng isNotified (web đã báo HOẶC bot/tay đã gửi).
+  // Gom đơn về 4 nhóm theo trạng thái báo. "arrival" gộp cả khi bot/tay đã gửi
+  // báo hàng nhưng web vẫn 'not_sent' (coi như đã báo hàng).
   const GROUPS = [
-    ['todo', 'Cần báo'],
-    ['failed', 'Lỗi, báo lại'],
-    ['done', 'Đã xong'],
+    ['todo', 'Chưa báo'],
+    ['arrival', 'Đã báo hàng'],
+    ['ship', 'Đã báo ship'],
+    ['failed', 'Lỗi - Báo lại'],
   ];
   function groupOf(o) {
-    if (isNotified(o)) return 'done';
     if (o.statusCode === 'send_failed' || o.statusCode === 'error') return 'failed';
+    if (o.statusCode === 'notified_ship') return 'ship';
+    if (o.statusCode === 'notified_arrival') return 'arrival';
+    if (o.autoNotified && SENT_LOCAL.has(o.autoNotified.status)) return 'arrival';
     return 'todo';
   }
   // Map nhanh từ mã trạng thái (dropdown) sang nhóm, không cần cả object.
   function groupOfCode(code) {
-    if (code === 'notified_arrival' || code === 'notified_ship') return 'done';
+    if (code === 'notified_ship') return 'ship';
+    if (code === 'notified_arrival') return 'arrival';
     if (code === 'send_failed' || code === 'error') return 'failed';
     return 'todo';
   }
   function groupCounts() {
-    const c = { todo: 0, failed: 0, done: 0 };
+    const c = { todo: 0, arrival: 0, ship: 0, failed: 0 };
     for (const o of orders) c[groupOf(o)]++;
     return c;
   }
