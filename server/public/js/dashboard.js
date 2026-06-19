@@ -555,6 +555,27 @@
   });
   $('fStaff').addEventListener('change', (e) => { currentStaff = e.target.value; load(); });
   ['fFrom', 'fTo'].forEach((id) => $(id).addEventListener('change', load));
+
+  // Bộ lọc nâng cao: thu gọn mặc định, ô tìm kiếm luôn hiện.
+  // Đếm số filter đang bật để hiện badge -> tránh "ẩn rồi quên đang lọc".
+  function updateFilterCount() {
+    let n = 0;
+    if ($('fFrom').value) n++;
+    if ($('fTo').value) n++;
+    if ($('fStatus').value && $('fStatus').value !== 'all') n++;
+    if ($('fStaff').value) n++;
+    const badge = $('filterCount');
+    badge.textContent = n;
+    badge.hidden = n === 0;
+  }
+  $('filterToggle').addEventListener('click', () => {
+    const panel = $('advFilters');
+    const open = panel.hidden;
+    panel.hidden = !open;
+    $('filterToggle').setAttribute('aria-expanded', String(open));
+  });
+  ['fFrom', 'fTo', 'fStatus', 'fStaff'].forEach((id) => $(id).addEventListener('change', updateFilterCount));
+  updateFilterCount();
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
   $('bulkBtn').addEventListener('click', bulkSend);
