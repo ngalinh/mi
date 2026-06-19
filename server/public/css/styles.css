@@ -398,6 +398,11 @@ td.center, th.center { text-align: center; }
 .items-table a:hover { text-decoration: underline; }
 .sp-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; margin: 0 auto; }
 
+/* Thumbnail ảnh SP trên Lịch sử báo (tối đa 4 + "+N") */
+.rp-thumbs { display: flex; align-items: center; gap: 4px; }
+.rp-thumb { width: 34px; height: 34px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--bg); flex: none; }
+.rp-more { font-size: 12px; font-weight: 700; color: var(--text-soft); margin-left: 2px; }
+
 .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 8px; border-radius: 8px; }
 .link-btn:hover { background: var(--primary-soft); }
 

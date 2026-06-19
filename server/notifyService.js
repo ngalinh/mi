@@ -21,21 +21,27 @@ const { withLock } = require('./lock');
  * @param {object} order
  * @returns {Promise<string|null>}
  */
-async function resolveOrderCode(order) {
-  if (order.orderCode && String(order.orderCode).trim()) return String(order.orderCode).trim();
+async function resolveOrderMeta(order) {
+  let orderCode = order.orderCode && String(order.orderCode).trim() ? String(order.orderCode).trim() : null;
+  let images = [];
   try {
     const { items } = await getArrivedItems({
       id: order.id,
       customerId: order.customerId,
       dateInventory: order.dateInventory,
     });
-    const codes = [...new Set((items || []).map((it) => it.orderCode).filter(Boolean))];
-    if (codes.length) return codes.join(', ');
-    console.warn(`[notify] đơn id=${order.id} không có mã ĐH (không có SP đã về) -> report để trống`);
+    const list = items || [];
+    if (!orderCode) {
+      const codes = [...new Set(list.map((it) => it.orderCode).filter(Boolean))];
+      if (codes.length) orderCode = codes.join(', ');
+      else console.warn(`[notify] đơn id=${order.id} không có mã ĐH (không có SP đã về) -> report để trống`);
+    }
+    // Ảnh SP để hiển thị thumbnail trên Lịch sử báo (giữ tối đa 20, UI cắt còn 4 + "+N").
+    images = [...new Set(list.map((it) => it.image).filter(Boolean))].slice(0, 20);
   } catch (err) {
-    console.warn(`[notify] không tra được mã ĐH cho đơn id=${order.id}: ${err.message}`);
+    console.warn(`[notify] không tra được SP cho đơn id=${order.id}: ${err.message}`);
   }
-  return null;
+  return { orderCode, images };
 }
 
 async function notifyOne(order, opts = {}) {
@@ -78,8 +84,9 @@ async function notifyOne(order, opts = {}) {
     }
   }
 
+  const meta = await resolveOrderMeta(order);
   const report = addReport({
-    orderId: await resolveOrderCode(order),
+    orderId: meta.orderCode,
     customerName: order.customerName,
     phone: order.phone,
     staff: order.staff,
@@ -87,6 +94,7 @@ async function notifyOne(order, opts = {}) {
     status: result.ok ? 'success' : 'failed',
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
+    images: meta.images,
   });
 
   return { order, ...result, updateError, report };

@@ -23,8 +23,13 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at);
   CREATE INDEX IF NOT EXISTS idx_reports_status  ON reports(status);
+`);
 
-  -- Chống gửi trùng cho luồng TỰ ĐỘNG báo hàng: mỗi đơn (order_id) chỉ tự gửi 1 lần thành công.
+// Migration: thêm cột ảnh SP (JSON mảng URL) cho report cũ. SQLite không có
+// "ADD COLUMN IF NOT EXISTS" -> bọc try/catch, chạy lại không sao.
+try { db.exec('ALTER TABLE reports ADD COLUMN images TEXT'); } catch (_) { /* đã có cột */ }
+
+db.exec(`  -- Chống gửi trùng cho luồng TỰ ĐỘNG báo hàng: mỗi đơn (order_id) chỉ tự gửi 1 lần thành công.
   -- Khi lỗi, tăng attempts; quá maxRetries thì thôi (tránh spam khi local-runner offline).
   CREATE TABLE IF NOT EXISTS auto_notified (
     order_id    TEXT PRIMARY KEY,
@@ -35,8 +40,8 @@ db.exec(`
 `);
 
 const insertStmt = db.prepare(`
-  INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, created_at)
-  VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @created_at)
+  INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, created_at)
+  VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @images, @created_at)
 `);
 
 function addReport(row) {
@@ -49,10 +54,18 @@ function addReport(row) {
     status: row.status,
     error: row.error ?? null,
     job_id: row.jobId ?? null,
+    images: Array.isArray(row.images) && row.images.length ? JSON.stringify(row.images) : null,
     created_at: new Date().toISOString(),
   };
   const info = insertStmt.run(data);
   return { id: info.lastInsertRowid, ...data };
+}
+
+// Đổi cột images (JSON string) -> mảng URL cho client. Lỗi parse -> [].
+function parseImages(row) {
+  let images = [];
+  if (row.images) { try { images = JSON.parse(row.images) || []; } catch (_) { images = []; } }
+  return { ...row, images };
 }
 
 function listReports({ limit = 200, status, q } = {}) {
@@ -67,7 +80,7 @@ function listReports({ limit = 200, status, q } = {}) {
   if (where.length) sql += ' WHERE ' + where.join(' AND ');
   sql += ' ORDER BY id DESC LIMIT @limit';
   params.limit = Math.min(limit, 1000);
-  return db.prepare(sql).all(params);
+  return db.prepare(sql).all(params).map(parseImages);
 }
 
 // ---- Dedup cho báo hàng (tự động + tay) ----

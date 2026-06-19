@@ -9,6 +9,18 @@
     return `<span class="pill ${cls}">${App.icon(ok ? 'check' : 'alert')} ${txt}</span>`;
   }
 
+  // Thumbnail ảnh SP đã báo: hiện tối đa 4, dư thì "+N".
+  function thumbsCell(images) {
+    const list = Array.isArray(images) ? images.filter(Boolean) : [];
+    if (!list.length) return '<span class="muted">—</span>';
+    const shown = list.slice(0, 4);
+    const extra = list.length - shown.length;
+    const imgs = shown.map((src) =>
+      `<img class="rp-thumb" src="${App.esc(src)}" alt="" loading="lazy" />`).join('');
+    const more = extra > 0 ? `<span class="rp-more">+${extra}</span>` : '';
+    return `<div class="rp-thumbs">${imgs}${more}</div>`;
+  }
+
   function msgPreview(t) {
     const s = String(t || '').trim();
     if (!s) return '<span class="muted">—</span>';
@@ -25,7 +37,7 @@
   }
 
   async function load() {
-    rowsEl.innerHTML = '<tr><td colspan="8" class="empty">Đang tải...</td></tr>';
+    rowsEl.innerHTML = '<tr><td colspan="9" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     const st = $('fStatus').value, q = $('fQ').value;
     if (st) params.set('status', st);
@@ -37,12 +49,13 @@
       $('sFailed').textContent = res.stats.failed;
       const items = res.items || [];
       if (!items.length) {
-        rowsEl.innerHTML = '<tr><td colspan="8" class="empty">Chưa có lượt báo nào</td></tr>';
+        rowsEl.innerHTML = '<tr><td colspan="9" class="empty">Chưa có lượt báo nào</td></tr>';
         return;
       }
       rowsEl.innerHTML = items.map((r) => `<tr>
         <td>${App.fmtDateTime(r.created_at)}</td>
         <td>${App.esc(r.order_id) || '—'}</td>
+        <td>${thumbsCell(r.images)}</td>
         <td class="cust">${App.esc(r.customer_name)}</td>
         <td>${App.esc(r.phone)}</td>
         <td>${App.esc(r.staff)}</td>
@@ -51,7 +64,7 @@
         <td class="err-cell" style="color:var(--red)" title="${App.esc(r.error)}">${errPreview(r.error)}</td>
       </tr>`).join('');
     } catch (e) {
-      rowsEl.innerHTML = `<tr><td colspan="8" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td colspan="9" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
