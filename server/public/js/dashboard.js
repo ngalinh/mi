@@ -264,7 +264,6 @@
           <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">${App.icon('send')} Gửi báo hàng qua Zalo</button>
           ${o.noiDungBaoShip && o.noiDungBaoShip.trim()
             ? `<button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="ship">${App.icon('box')} Gửi báo ship qua Zalo</button>` : ''}
-          <button class="btn small secondary edit-content" data-id="${App.esc(o.id)}">${App.icon('edit')} Sửa nội dung rồi gửi</button>
         </div>
       </div></td>
     </tr>`;
