@@ -3,6 +3,7 @@
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'all'; // nhóm trạng thái đang xem ('all' | 'todo' | 'arrival' | 'ship' | 'failed')
+  let currentGroupBy = ''; // gom dòng theo khách ('' = không gom | 'customer' = theo khách hàng)
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ khỏi "Báo hàng loạt"
 
@@ -268,6 +269,48 @@
     return main + detail;
   }
 
+  // ---------------- Gom dòng theo khách hàng ----------------
+  // Khoá gom: ưu tiên customerId (chắc chắn cùng 1 khách), không có thì gộp theo tên.
+  function customerKey(o) {
+    if (o.customerId != null && String(o.customerId) !== '') return 'id:' + o.customerId;
+    return 'name:' + String(o.customerName || '').trim().toLowerCase();
+  }
+
+  // Header 1 nhóm khách: tên + SĐT + số đơn, có nút mở/đóng tất cả đơn của khách.
+  function groupHeaderHtml(key, items) {
+    const o0 = items[0];
+    const allOpen = items.every((o) => openRows.has(String(o.id)));
+    const phone = o0.phone ? ` · ${App.esc(o0.phone)}` : '';
+    return `<tr class="group-row" data-group-key="${App.esc(key)}">
+      <td class="center"><button class="group-expand ${allOpen ? 'open' : ''}" data-group-key="${App.esc(key)}" title="Mở/đóng tất cả đơn của khách">${App.icon('chevron')}</button></td>
+      <td colspan="10"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn</span></td>
+    </tr>`;
+  }
+
+  // Gom danh sách theo khách rồi render: mỗi nhóm 1 header + các dòng đơn của khách.
+  // Sắp xếp nhóm theo tên khách để dễ tra.
+  function groupedRowsHtml(list) {
+    const groups = new Map();
+    for (const o of list) {
+      const k = customerKey(o);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(o);
+    }
+    return [...groups.entries()]
+      .sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'))
+      .map(([k, items]) => groupHeaderHtml(k, items) + items.map(rowHtml).join(''))
+      .join('');
+  }
+
+  // Bấm header nhóm: mở hết nếu đang có dòng đóng, ngược lại đóng hết.
+  function toggleGroup(key) {
+    const list = visibleOrders().filter((o) => customerKey(o) === key);
+    if (!list.length) return;
+    const allOpen = list.every((o) => openRows.has(String(o.id)));
+    list.forEach((o) => { if (allOpen) openRows.delete(String(o.id)); else openRows.add(String(o.id)); });
+    render();
+  }
+
   // ---------------- Nhóm trạng thái ----------------
   function renderGroupBar() {
     const counts = groupCounts();
@@ -296,7 +339,9 @@
       updateCount(list);
       return;
     }
-    rowsEl.innerHTML = list.map(rowHtml).join('');
+    rowsEl.innerHTML = currentGroupBy === 'customer'
+      ? groupedRowsHtml(list)
+      : list.map(rowHtml).join('');
     updateCount(list);
     // Dòng đang mở: load (hoặc render lại) chi tiết sản phẩm
     list.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
@@ -587,6 +632,8 @@
     render();
   });
   $('fStaff').addEventListener('change', (e) => { currentStaff = e.target.value; load(); });
+  // Gom theo khách là thao tác client-side (đã có đủ đơn) -> chỉ render lại.
+  $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
   ['fFrom', 'fTo'].forEach((id) => $(id).addEventListener('change', load));
 
   // Bộ lọc nâng cao: thu gọn mặc định, ô tìm kiếm luôn hiện.
@@ -597,6 +644,7 @@
     if ($('fTo').value) n++;
     if ($('fStatus').value && $('fStatus').value !== 'all') n++;
     if ($('fStaff').value) n++;
+    if ($('fGroupBy').value) n++;
     const badge = $('filterCount');
     badge.textContent = n;
     badge.hidden = n === 0;
@@ -607,7 +655,7 @@
     panel.hidden = !open;
     $('filterToggle').setAttribute('aria-expanded', String(open));
   });
-  ['fFrom', 'fTo', 'fStatus', 'fStaff'].forEach((id) => $(id).addEventListener('change', updateFilterCount));
+  ['fFrom', 'fTo', 'fStatus', 'fStaff', 'fGroupBy'].forEach((id) => $(id).addEventListener('change', updateFilterCount));
   updateFilterCount();
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
@@ -634,6 +682,7 @@
   // Delegation cho bảng
   rowsEl.addEventListener('click', (e) => {
     const t = e.target;
+    const ge = t.closest('.group-expand'); if (ge) return toggleGroup(ge.dataset.groupKey);
     const exp = t.closest('.expand-btn'); if (exp) return toggleDetail(exp.dataset.id);
     const vc = t.closest('.view-content'); if (vc) return openModal(vc.dataset.id, vc.dataset.kind);
     const sz = t.closest('.send-zalo'); if (sz) return sendZalo(sz.dataset.id, undefined, sz, sz.dataset.kind || 'hang');
