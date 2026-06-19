@@ -4,6 +4,7 @@
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'all'; // nhóm trạng thái đang xem ('all' | 'todo' | 'arrival' | 'ship' | 'failed')
   const openRows = new Set();
+  const excluded = new Set(); // id các đơn bị TICK loại trừ khỏi "Báo hàng loạt"
 
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
@@ -231,7 +232,13 @@
 
   function rowHtml(o) {
     const open = openRows.has(String(o.id));
-    const main = `<tr class="main-row" data-id="${App.esc(o.id)}">
+    const canBulk = !isNotified(o); // chỉ đơn chưa báo mới được loại trừ
+    const isExcl = excluded.has(String(o.id));
+    const excludeCell = canBulk
+      ? `<input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} title="Tick để loại khỏi Báo hàng loạt" />`
+      : '';
+    const main = `<tr class="main-row ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
+      <td class="center">${excludeCell}</td>
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
@@ -248,7 +255,7 @@
     </tr>`;
 
     const detail = `<tr class="detail-row ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
-      <td colspan="10"><div class="detail-box">
+      <td colspan="11"><div class="detail-box">
         <div><h4>ND báo hàng</h4><pre>${App.esc(o.noiDungBaoHang) || '(trống)'}</pre></div>
         <div><h4>ND báo ship</h4><pre>${App.esc(o.noiDungBaoShip) || '(trống)'}</pre></div>
         ${itemsSection(o)}
@@ -287,7 +294,7 @@
     const list = visibleOrders();
     if (!list.length) {
       const msg = orders.length ? 'Không có đơn trong nhóm này' : 'Không có dữ liệu';
-      rowsEl.innerHTML = `<tr><td colspan="10" class="empty">${msg}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td colspan="11" class="empty">${msg}</td></tr>`;
       updateCount(list);
       return;
     }
@@ -297,10 +304,16 @@
     list.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
   }
 
+  // Đơn sẽ được gửi khi bấm "Báo hàng loạt": chưa báo VÀ không bị tick loại trừ.
+  function bulkTargets() {
+    return orders.filter((o) => !isNotified(o) && !excluded.has(String(o.id)));
+  }
   function updateCount(list = orders) {
     const chua = orders.filter((o) => !isNotified(o)).length;
-    $('countInfo').textContent = `Hiển thị ${list.length} đơn · ${chua} chưa báo`;
-    $('bulkBtn').disabled = chua === 0;
+    const willSend = bulkTargets().length;
+    const exclNote = chua - willSend > 0 ? ` (loại ${chua - willSend})` : '';
+    $('countInfo').textContent = `Hiển thị ${list.length} đơn · ${chua} chưa báo${exclNote}`;
+    $('bulkBtn').disabled = willSend === 0;
   }
 
   // ---------------- Mở rộng dòng ----------------
@@ -416,10 +429,23 @@
     }
   }
 
+  // Bấm "Báo hàng loạt" -> popup xác nhận số lượng (kèm số đã loại trừ).
+  function openBulkModal() {
+    const willSend = bulkTargets().length;
+    if (!willSend) { App.toast('Không có khách nào để báo', 4000); return; }
+    const chua = orders.filter((o) => !isNotified(o)).length;
+    const exclN = chua - willSend;
+    $('bulkSummary').innerHTML = `Sẽ gửi báo hàng cho <strong>${willSend}</strong> khách chưa báo`
+      + (exclN > 0 ? ` <span class="muted">(đã loại trừ ${exclN} khách)</span>` : '') + '.';
+    $('bulkConfirm').innerHTML = App.icon('megaphone') + ` Báo hàng (${willSend})`;
+    $('bulkModalBg').classList.add('show');
+  }
+  function closeBulkModal() { $('bulkModalBg').classList.remove('show'); }
+
   async function bulkSend() {
-    const sel = orders.filter((o) => !isNotified(o));
+    const sel = bulkTargets();
     if (!sel.length) return;
-    if (!confirm(`Gửi báo hàng cho ${sel.length} khách chưa báo?`)) return;
+    closeBulkModal();
     const btn = $('bulkBtn');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
     try {
@@ -441,7 +467,7 @@
   // opts.auto = true: đồng bộ nền — không hiện "Đang tải...", giữ dòng đang mở, báo khách mới.
   async function load(opts = {}) {
     const auto = opts.auto === true;
-    if (!auto) rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Đang tải...</td></tr>';
+    if (!auto) rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Đang tải...</td></tr>';
     // Không lọc trạng thái ở server nữa (để đếm đủ 3 nhóm); chỉ lọc staff/ngày/tìm kiếm.
     const params = new URLSearchParams();
     const f = $('fFrom').value, t = $('fTo').value, q = $('fQ').value;
@@ -457,6 +483,9 @@
       // Giữ các dòng đang mở, bỏ id không còn tồn tại
       const existing = new Set(orders.map((o) => String(o.id)));
       [...openRows].forEach((id) => { if (!existing.has(id)) openRows.delete(id); });
+      // Bỏ tick loại trừ với đơn không còn / đã chuyển sang đã báo
+      const stillTodo = new Set(orders.filter((o) => !isNotified(o)).map((o) => String(o.id)));
+      [...excluded].forEach((id) => { if (!stillTodo.has(id)) excluded.delete(id); });
       if (auto) {
         const fresh = orders.filter((o) => groupOf(o) === 'todo' && !prevTodo.has(String(o.id)));
         if (fresh.length) App.toast(`🆕 ${fresh.length} khách mới cần báo`, 5000);
@@ -466,7 +495,7 @@
       populateStaff();
       render();
     } catch (e) {
-      if (!auto) rowsEl.innerHTML = `<tr><td colspan="10" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
+      if (!auto) rowsEl.innerHTML = `<tr><td colspan="11" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -474,6 +503,7 @@
   function autoSync() {
     if (document.hidden) return;
     if ($('modalBg').classList.contains('show')) return;
+    if ($('bulkModalBg').classList.contains('show')) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
     load({ auto: true });
@@ -583,7 +613,7 @@
   updateFilterCount();
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
-  $('bulkBtn').addEventListener('click', bulkSend);
+  $('bulkBtn').addEventListener('click', openBulkModal);
   $('autoBadge').addEventListener('click', toggleAuto);
 
   $('staffTabs').addEventListener('click', (e) => {
@@ -614,13 +644,26 @@
   });
   rowsEl.addEventListener('change', (e) => {
     const sel = e.target.closest('.status-sel');
-    if (sel) changeStatus(sel.dataset.id, sel.value);
+    if (sel) return changeStatus(sel.dataset.id, sel.value);
+    const cb = e.target.closest('.excl-cb');
+    if (cb) {
+      const id = String(cb.dataset.id);
+      if (cb.checked) excluded.add(id); else excluded.delete(id);
+      const tr = cb.closest('.main-row');
+      if (tr) tr.classList.toggle('row-excluded', cb.checked);
+      updateCount();
+    }
   });
 
   $('modalCancel').addEventListener('click', closeModal);
   $('modalSend').addEventListener('click', sendFromModal);
   $('modalMsg').addEventListener('input', autoGrowMsg);
   $('modalBg').addEventListener('click', (e) => { if (e.target.id === 'modalBg') closeModal(); });
+
+  // Modal xác nhận báo hàng loạt
+  $('bulkConfirm').addEventListener('click', bulkSend);
+  $('bulkCancel').addEventListener('click', closeBulkModal);
+  $('bulkModalBg').addEventListener('click', (e) => { if (e.target.id === 'bulkModalBg') closeBulkModal(); });
 
   loadHealth();
   setInterval(loadHealth, 15000);

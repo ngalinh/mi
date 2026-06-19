@@ -201,7 +201,7 @@ a { color: var(--primary); text-decoration: none; }
 /* ============================================================
    Filters
    ============================================================ */
-.filter-bar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 4px; }
+.filter-bar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
 .filter-bar .grow { flex: 1 1 auto; }
 .filter-toggle { flex: none; white-space: nowrap; }
 .filter-count {
@@ -488,6 +488,12 @@ td.center, th.center { text-align: center; }
 }
 .modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124,77,255,.15); }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+.modal.modal-sm { width: 440px; }
+
+/* Cột "Loại" — tick để loại khách khỏi Báo hàng loạt */
+.excl-cb { width: 17px; height: 17px; accent-color: var(--red); cursor: pointer; vertical-align: middle; }
+tr.row-excluded { opacity: .55; }
+tr.row-excluded .cust a, tr.row-excluded .cust { text-decoration: line-through; }
 
 /* ============================================================
    Responsive

@@ -53,6 +53,23 @@
 
       <div class="container">
         <div class="card">
+          <!-- Tab nhân viên (pill) -->
+          <div class="tabs" id="staffTabs"></div>
+
+          <!-- Nhóm trạng thái (đếm theo nhân viên đang chọn) -->
+          <div class="group-bar" id="groupBar"></div>
+
+          <!-- Thanh thao tác bot (gửi hàng loạt) -->
+          <div class="bot-bar">
+            <span id="countInfo" class="muted"></span>
+            <span class="grow"></span>
+            <button id="bulkBtn" class="btn small">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+              Báo hàng loạt (chưa báo)
+            </button>
+          </div>
+
+          <!-- Tìm kiếm + bộ lọc (ngay trên bảng) -->
           <div class="filter-bar">
             <div class="field grow"><label>Tìm kiếm</label>
               <div class="input-icon">
@@ -84,26 +101,11 @@
             </div>
           </div>
 
-          <!-- Tab nhân viên (pill) -->
-          <div class="tabs" id="staffTabs"></div>
-
-          <!-- Nhóm trạng thái (đếm theo nhân viên đang chọn) -->
-          <div class="group-bar" id="groupBar"></div>
-
-          <!-- Thanh thao tác bot (gửi hàng loạt) -->
-          <div class="bot-bar">
-            <span id="countInfo" class="muted"></span>
-            <span class="grow"></span>
-            <button id="bulkBtn" class="btn small">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
-              Báo hàng loạt (chưa báo)
-            </button>
-          </div>
-
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th class="center" style="width:42px" title="Tick để loại khách khỏi Báo hàng loạt">Loại</th>
                   <th style="width:34px"></th>
                   <th class="center" style="width:50px">STT</th>
                   <th>Ngày nhập kho</th>
@@ -116,7 +118,7 @@
                   <th>Nhân viên</th>
                 </tr>
               </thead>
-              <tbody id="rows"><tr><td colspan="10" class="empty">Đang tải...</td></tr></tbody>
+              <tbody id="rows"><tr><td colspan="11" class="empty">Đang tải...</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -136,6 +138,18 @@
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.54 21.69a.5.5 0 0 0 .94-.03l6.5-19a.5.5 0 0 0-.64-.63l-19 6.5a.5.5 0 0 0-.02.93l7.93 3.18a2 2 0 0 1 1.1 1.11z"/><path d="m21.85 2.15-10.94 10.94"/></svg>
           Gửi báo hàng qua Zalo
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal xác nhận báo hàng loạt -->
+  <div class="modal-bg" id="bulkModalBg">
+    <div class="modal modal-sm">
+      <h3>Xác nhận báo hàng loạt</h3>
+      <p class="muted" id="bulkSummary"></p>
+      <div class="row">
+        <button class="btn secondary" id="bulkCancel">Huỷ</button>
+        <button class="btn" id="bulkConfirm">Báo hàng</button>
       </div>
     </div>
   </div>
