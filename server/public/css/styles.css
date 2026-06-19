@@ -201,7 +201,7 @@ a { color: var(--primary); text-decoration: none; }
 /* ============================================================
    Filters
    ============================================================ */
-.filter-bar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 4px; }
+.filter-bar { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
 .filter-bar .grow { flex: 1 1 auto; }
 .filter-toggle { flex: none; white-space: nowrap; }
 .filter-count {

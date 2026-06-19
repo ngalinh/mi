@@ -53,6 +53,23 @@
 
       <div class="container">
         <div class="card">
+          <!-- Tab nhân viên (pill) -->
+          <div class="tabs" id="staffTabs"></div>
+
+          <!-- Nhóm trạng thái (đếm theo nhân viên đang chọn) -->
+          <div class="group-bar" id="groupBar"></div>
+
+          <!-- Thanh thao tác bot (gửi hàng loạt) -->
+          <div class="bot-bar">
+            <span id="countInfo" class="muted"></span>
+            <span class="grow"></span>
+            <button id="bulkBtn" class="btn small">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+              Báo hàng loạt (chưa báo)
+            </button>
+          </div>
+
+          <!-- Tìm kiếm + bộ lọc (ngay trên bảng) -->
           <div class="filter-bar">
             <div class="field grow"><label>Tìm kiếm</label>
               <div class="input-icon">
@@ -82,22 +99,6 @@
             <div class="field"><label>Nhân viên</label>
               <select id="fStaff"><option value="">Tất cả</option></select>
             </div>
-          </div>
-
-          <!-- Tab nhân viên (pill) -->
-          <div class="tabs" id="staffTabs"></div>
-
-          <!-- Nhóm trạng thái (đếm theo nhân viên đang chọn) -->
-          <div class="group-bar" id="groupBar"></div>
-
-          <!-- Thanh thao tác bot (gửi hàng loạt) -->
-          <div class="bot-bar">
-            <span id="countInfo" class="muted"></span>
-            <span class="grow"></span>
-            <button id="bulkBtn" class="btn small">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
-              Báo hàng loạt (chưa báo)
-            </button>
           </div>
 
           <div class="table-wrap">
