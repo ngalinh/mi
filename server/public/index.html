@@ -36,6 +36,7 @@
           <div class="sub">Danh sách đơn hàng & gửi thông báo qua Zalo</div>
         </div>
         <span class="spacer"></span>
+        <span id="syncInfo" class="sync-info"></span>
         <span id="testBadge" class="badge-status badge-test" style="display:none"></span>
         <span id="mockBadge" class="badge-status badge-mock" style="display:none">MOCK DATA</span>
         <button id="autoBadge" class="badge-status badge-clickable badge-offline" title="Tự động báo hàng khi có đơn về">Tự động: ...</button>
@@ -77,6 +78,9 @@
 
           <!-- Tab nhân viên (pill) -->
           <div class="tabs" id="staffTabs"></div>
+
+          <!-- Nhóm trạng thái (đếm theo nhân viên đang chọn) -->
+          <div class="group-bar" id="groupBar"></div>
 
           <!-- Thanh thao tác bot (gửi hàng loạt) -->
           <div class="bot-bar">
