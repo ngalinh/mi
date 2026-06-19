@@ -644,7 +644,6 @@
     if ($('fTo').value) n++;
     if ($('fStatus').value && $('fStatus').value !== 'all') n++;
     if ($('fStaff').value) n++;
-    if ($('fGroupBy').value) n++;
     const badge = $('filterCount');
     badge.textContent = n;
     badge.hidden = n === 0;
@@ -655,7 +654,7 @@
     panel.hidden = !open;
     $('filterToggle').setAttribute('aria-expanded', String(open));
   });
-  ['fFrom', 'fTo', 'fStatus', 'fStaff', 'fGroupBy'].forEach((id) => $(id).addEventListener('change', updateFilterCount));
+  ['fFrom', 'fTo', 'fStatus', 'fStaff'].forEach((id) => $(id).addEventListener('change', updateFilterCount));
   updateFilterCount();
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
