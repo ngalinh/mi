@@ -256,8 +256,6 @@
 
     const detail = `<tr class="detail-row ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
       <td colspan="11"><div class="detail-box">
-        <div><h4>ND báo hàng</h4><pre>${App.esc(o.noiDungBaoHang) || '(trống)'}</pre></div>
-        <div><h4>ND báo ship</h4><pre>${App.esc(o.noiDungBaoShip) || '(trống)'}</pre></div>
         ${itemsSection(o)}
         <div class="full detail-actions">
           <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">${App.icon('send')} Gửi báo hàng qua Zalo</button>
