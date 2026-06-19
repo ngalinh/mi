@@ -403,7 +403,7 @@ tbody tr.grouped-child > td:first-child { box-shadow: inset 3px 0 0 rgba(124, 77
   color: var(--text); background: #fff; border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 13px 15px; line-height: 1.55;
 }
-.detail-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.detail-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
 /* bảng sản phẩm đã về trong dòng mở rộng */
 .items-table { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
