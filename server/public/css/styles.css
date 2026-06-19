@@ -265,6 +265,32 @@ a { color: var(--primary); text-decoration: none; }
 }
 
 /* ============================================================
+   Nhóm trạng thái (thẻ đếm bấm để lọc)
+   ============================================================ */
+.group-bar { display: flex; gap: 12px; margin: 14px 0 6px; flex-wrap: wrap; }
+.group-card {
+  flex: 1; min-width: 160px; text-align: left; cursor: pointer;
+  background: #fff; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); padding: 14px 16px;
+  font: inherit; color: var(--text); box-shadow: var(--shadow-sm);
+  transition: border-color .15s var(--ease), background .15s var(--ease);
+}
+.group-card:hover { border-color: var(--primary-soft); }
+.group-card.active { border-width: 2px; padding: 13px 15px; }
+.group-card.g-todo.active   { border-color: var(--amber); background: var(--amber-soft); }
+.group-card.g-failed.active { border-color: var(--red);   background: var(--red-soft); }
+.group-card.g-done.active   { border-color: var(--green); background: var(--green-soft); }
+.group-card .gc-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-soft); }
+.group-card .gc-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.group-card.g-todo   .gc-dot { background: var(--amber); }
+.group-card.g-failed .gc-dot { background: var(--red); }
+.group-card.g-done   .gc-dot { background: var(--green); }
+.group-card .gc-num { font-size: 26px; font-weight: 800; margin-top: 4px; letter-spacing: -.5px; }
+
+/* Thời điểm đồng bộ gần nhất trên topbar */
+.sync-info { font-size: 12px; color: var(--text-soft); white-space: nowrap; }
+
+/* ============================================================
    Bot bar
    ============================================================ */
 .bot-bar {

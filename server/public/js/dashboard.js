@@ -2,10 +2,13 @@
   let orders = [];
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
+  let currentGroup = 'all'; // nhóm trạng thái đang xem ('all' | 'todo' | 'failed' | 'done')
   const openRows = new Set();
 
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
+
+  const AUTO_SYNC_MS = 120000; // tự động đồng bộ danh sách mỗi 2 phút
 
   const DONE = new Set(['notified_arrival', 'notified_ship']);
   // "Đã báo" = web đã đánh dấu, HOẶC mi đã gửi (bot 'success' / đã báo tay 'manual').
@@ -30,6 +33,29 @@
   ];
 
   const byId = (id) => orders.find((o) => String(o.id) === String(id));
+
+  // Gom đơn về 3 nhóm việc. "done" dùng isNotified (web đã báo HOẶC bot/tay đã gửi).
+  const GROUPS = [
+    ['todo', 'Cần báo'],
+    ['failed', 'Lỗi, báo lại'],
+    ['done', 'Đã xong'],
+  ];
+  function groupOf(o) {
+    if (isNotified(o)) return 'done';
+    if (o.statusCode === 'send_failed' || o.statusCode === 'error') return 'failed';
+    return 'todo';
+  }
+  // Map nhanh từ mã trạng thái (dropdown) sang nhóm, không cần cả object.
+  function groupOfCode(code) {
+    if (code === 'notified_arrival' || code === 'notified_ship') return 'done';
+    if (code === 'send_failed' || code === 'error') return 'failed';
+    return 'todo';
+  }
+  function groupCounts() {
+    const c = { todo: 0, failed: 0, done: 0 };
+    for (const o of orders) c[groupOf(o)]++;
+    return c;
+  }
 
   // Gửi đơn đầy đủ field lên server (không để server tra lại theo id -> tránh lỗi
   // "Không tìm thấy đơn" khi dữ liệu nhiều/phân trang/đang lọc theo nhân viên).
@@ -232,21 +258,43 @@
     return main + detail;
   }
 
-  function render() {
-    if (!orders.length) {
-      rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Không có dữ liệu</td></tr>';
-      updateCount();
-      return;
-    }
-    rowsEl.innerHTML = orders.map(rowHtml).join('');
-    updateCount();
-    // Dòng đang mở: load (hoặc render lại) chi tiết sản phẩm
-    orders.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
+  // ---------------- Nhóm trạng thái ----------------
+  function renderGroupBar() {
+    const counts = groupCounts();
+    $('groupBar').innerHTML = GROUPS.map(([key, label]) =>
+      `<button class="group-card g-${key} ${currentGroup === key ? 'active' : ''}" data-group="${key}">
+         <span class="gc-label"><span class="gc-dot"></span>${label}</span>
+         <span class="gc-num">${counts[key]}</span>
+       </button>`).join('');
   }
 
-  function updateCount() {
+  // Đơn hiển thị = lọc theo nhóm + theo dropdown trạng thái (đều client-side)
+  function visibleOrders() {
+    let list = orders;
+    if (currentGroup !== 'all') list = list.filter((o) => groupOf(o) === currentGroup);
+    const st = $('fStatus').value;
+    if (st && st !== 'all') list = list.filter((o) => o.statusCode === st);
+    return list;
+  }
+
+  function render() {
+    renderGroupBar();
+    const list = visibleOrders();
+    if (!list.length) {
+      const msg = orders.length ? 'Không có đơn trong nhóm này' : 'Không có dữ liệu';
+      rowsEl.innerHTML = `<tr><td colspan="10" class="empty">${msg}</td></tr>`;
+      updateCount(list);
+      return;
+    }
+    rowsEl.innerHTML = list.map(rowHtml).join('');
+    updateCount(list);
+    // Dòng đang mở: load (hoặc render lại) chi tiết sản phẩm
+    list.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
+  }
+
+  function updateCount(list = orders) {
     const chua = orders.filter((o) => !isNotified(o)).length;
-    $('countInfo').textContent = `${orders.length} đơn · ${chua} chưa báo`;
+    $('countInfo').textContent = `Hiển thị ${list.length} đơn · ${chua} chưa báo`;
     $('bulkBtn').disabled = chua === 0;
   }
 
@@ -281,10 +329,8 @@
       await updateRow(o, { status: code, note: o.note || '' });
       o.statusCode = code;
       App.toast('✅ Đã cập nhật trạng thái');
-      // cập nhật màu select + nhãn
-      const sel = rowsEl.querySelector(`.status-sel[data-id="${cssEsc(String(id))}"]`);
-      if (sel) sel.setAttribute('data-code', code);
-      updateCount();
+      // Render lại: cập nhật số đếm nhóm + lọc dòng theo nhóm đang xem
+      render();
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
       const sel = rowsEl.querySelector(`.status-sel[data-id="${cssEsc(String(id))}"]`);
@@ -387,26 +433,45 @@
   }
 
   // ---------------- Load ----------------
-  async function load() {
-    rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Đang tải...</td></tr>';
+  // opts.auto = true: đồng bộ nền — không hiện "Đang tải...", giữ dòng đang mở, báo khách mới.
+  async function load(opts = {}) {
+    const auto = opts.auto === true;
+    if (!auto) rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Đang tải...</td></tr>';
+    // Không lọc trạng thái ở server nữa (để đếm đủ 3 nhóm); chỉ lọc staff/ngày/tìm kiếm.
     const params = new URLSearchParams();
-    const f = $('fFrom').value, t = $('fTo').value, st = $('fStatus').value, q = $('fQ').value;
+    const f = $('fFrom').value, t = $('fTo').value, q = $('fQ').value;
     if (f) params.set('from', f);
     if (t) params.set('to', t);
-    if (st && st !== 'all') params.set('status', st);
     if (currentStaff) params.set('staff', currentStaff);
     if (q) params.set('q', q);
+    const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
     try {
       const res = await App.api('/api/orders?' + params.toString());
       orders = res.orders || [];
       if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
-      openRows.clear();
+      // Giữ các dòng đang mở, bỏ id không còn tồn tại
+      const existing = new Set(orders.map((o) => String(o.id)));
+      [...openRows].forEach((id) => { if (!existing.has(id)) openRows.delete(id); });
+      if (auto) {
+        const fresh = orders.filter((o) => groupOf(o) === 'todo' && !prevTodo.has(String(o.id)));
+        if (fresh.length) App.toast(`🆕 ${fresh.length} khách mới cần báo`, 5000);
+      }
+      $('syncInfo').textContent = `Cập nhật ${App.fmtDateTime(new Date().toISOString())}`;
       renderTabs();
       populateStaff();
       render();
     } catch (e) {
-      rowsEl.innerHTML = `<tr><td colspan="10" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
+      if (!auto) rowsEl.innerHTML = `<tr><td colspan="10" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
     }
+  }
+
+  // Đồng bộ nền định kỳ: bỏ qua khi đang gõ / mở modal / tab ẩn để không phá thao tác.
+  function autoSync() {
+    if (document.hidden) return;
+    if ($('modalBg').classList.contains('show')) return;
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+    load({ auto: true });
   }
 
   async function loadHealth() {
@@ -481,8 +546,13 @@
 
   // ---------------- Events ----------------
   $('bassoBtn').addEventListener('click', pingBasso);
-  $('syncBtn').addEventListener('click', load);
-  $('fStatus').addEventListener('change', load);
+  $('syncBtn').addEventListener('click', () => load());
+  // Dropdown trạng thái lọc client-side (đã có đủ đơn) + đồng bộ highlight nhóm
+  $('fStatus').addEventListener('change', (e) => {
+    const v = e.target.value;
+    currentGroup = (v && v !== 'all') ? groupOfCode(v) : 'all';
+    render();
+  });
   $('fStaff').addEventListener('change', (e) => { currentStaff = e.target.value; load(); });
   ['fFrom', 'fTo'].forEach((id) => $(id).addEventListener('change', load));
   let qTimer;
@@ -495,6 +565,16 @@
     if (!tab) return;
     currentStaff = tab.dataset.staff || '';
     load();
+  });
+
+  // Bấm thẻ nhóm = lọc client-side (bấm lại để bỏ lọc). Reset dropdown trạng thái.
+  $('groupBar').addEventListener('click', (e) => {
+    const card = e.target.closest('.group-card');
+    if (!card) return;
+    const key = card.dataset.group;
+    currentGroup = (currentGroup === key) ? 'all' : key;
+    $('fStatus').value = 'all';
+    render();
   });
 
   // Delegation cho bảng
@@ -518,5 +598,6 @@
 
   loadHealth();
   setInterval(loadHealth, 15000);
+  setInterval(autoSync, AUTO_SYNC_MS);
   load();
 })();
