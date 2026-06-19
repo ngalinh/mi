@@ -1,46 +1,50 @@
 /* ============================================================
    Doraemi — Design System
-   Phong cách fintech tím violet · nền lavender · bo góc lớn · sidebar icon rail.
+   Phong cách "calm space": nền gradient mint→sky · accent xanh ngọc + xanh trời
+   · thẻ kính trắng · bo góc lớn · sidebar icon rail.
    ============================================================ */
 :root {
   /* surfaces */
-  --bg: #f3f1fb;             /* lavender nhạt */
-  --bg-soft: #eae6f9;
+  --bg: #e6f2ec;             /* mint rất nhạt (fallback của gradient) */
+  --bg-soft: #dcefe8;
+  --bg-grad: linear-gradient(160deg, #d6f0e0 0%, #def1ee 42%, #d8ecf8 100%);
   --card: #ffffff;
-  --rail: #ffffff;           /* sidebar trắng */
-  --border: #eceaf6;
-  --border-strong: #e0ddf1;
+  --rail: rgba(255, 255, 255, .72);  /* kính mờ */
+  --border: #e4eeea;
+  --border-strong: #d4e3dd;
 
   /* text */
-  --text: #1f1b3a;           /* indigo gần đen */
-  --text-soft: #6c6790;
-  --muted: #a6a2c0;
+  --text: #14302a;           /* xanh đen dịu */
+  --text-soft: #56716a;
+  --muted: #93a8a0;
 
   /* brand / accents */
-  --primary: #7c4dff;        /* tím violet */
-  --primary-dark: #6a32f5;
-  --primary-soft: #efe9ff;
-  --primary-grad: linear-gradient(135deg, #9b6bff, #7c4dff);
+  --primary: #2fc08a;        /* xanh ngọc (mint/emerald) */
+  --primary-dark: #1faa75;
+  --primary-soft: #d9f5e8;
+  --primary-grad: linear-gradient(135deg, #4cd0a0, #2cb8d6);  /* mint → sky */
   --green: #16a34a;
   --green-soft: #dcfce7;
   --red: #e11d48;
   --red-soft: #ffe4e9;
   --amber: #d97706;
   --amber-soft: #fef3c7;
-  --blue: #2563eb;
-  --blue-soft: #dbeafe;
-  --violet: #7c4dff;
-  --violet-soft: #efe9ff;
+  --blue: #2aa6dc;           /* xanh trời dịu */
+  --blue-soft: #d8eefb;
+  --sky: #2cb8d6;            /* cyan-sky (nút tròn) */
+  --sky-soft: #d6f0f7;
+  --violet: #2aa6dc;         /* dùng tông sky cho badge phụ */
+  --violet-soft: #d8eefb;
 
   /* shape & motion */
   --radius: 24px;
   --radius-md: 18px;
   --radius-sm: 13px;
   --radius-pill: 999px;
-  --shadow-sm: 0 2px 8px -2px rgba(31, 27, 58, .06);
-  --shadow: 0 10px 30px -10px rgba(31, 27, 58, .12);
-  --shadow-lg: 0 24px 60px -16px rgba(31, 27, 58, .26);
-  --shadow-primary: 0 12px 26px -10px rgba(124, 77, 255, .65);
+  --shadow-sm: 0 2px 8px -2px rgba(20, 60, 50, .07);
+  --shadow: 0 10px 30px -10px rgba(20, 60, 50, .14);
+  --shadow-lg: 0 24px 60px -16px rgba(20, 60, 50, .26);
+  --shadow-primary: 0 12px 26px -10px rgba(44, 184, 168, .5);
   --ease: cubic-bezier(.4, 0, .2, 1);
 }
 
@@ -51,7 +55,7 @@ html, body { height: 100%; }
 body {
   margin: 0;
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  background: var(--bg);
+  background: var(--bg-grad) fixed, var(--bg);
   color: var(--text);
   font-size: 14px;
   line-height: 1.5;
@@ -92,6 +96,7 @@ a { color: var(--primary); text-decoration: none; }
 /* ---- Sidebar = icon rail ---- */
 .sidebar {
   background: var(--rail);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   display: flex; flex-direction: column; align-items: center;
   gap: 16px; padding: 20px 0;
   position: sticky; top: 0; height: 100vh;
@@ -183,7 +188,7 @@ a { color: var(--primary); text-decoration: none; }
   font-size: 11px; font-weight: 600; color: var(--green); background: rgba(34,197,94,.12);
   border: 1px solid rgba(34,197,94,.25); white-space: nowrap; }
 .bot-tag.bot-fail { color: var(--red); background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.25); }
-.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: rgba(124,77,255,.25); }
+.bot-tag.bot-manual { color: var(--violet); background: var(--violet-soft); border-color: rgba(42,166,220,.3); }
 
 /* ============================================================
    Cards
@@ -229,7 +234,7 @@ a { color: var(--primary); text-decoration: none; }
 .field input:focus, .field select:focus {
   outline: none; background: #fff;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(124, 77, 255, .15);
+  box-shadow: 0 0 0 3px rgba(47, 192, 138, .18);
 }
 .field input::placeholder { color: var(--muted); }
 
@@ -350,12 +355,12 @@ td.center, th.center { text-align: center; }
 .expand-btn.open { transform: rotate(90deg); color: var(--primary); }
 
 /* group header row (gom theo khách) — kiểu nhẹ, có vạch màu bên trái */
-tbody tr.group-row > td { background: #f7f5fe; padding: 7px 16px; border-bottom: 1px solid var(--border); }
+tbody tr.group-row > td { background: #eef9f3; padding: 7px 16px; border-bottom: 1px solid var(--border); }
 tbody tr.group-row > td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
 tbody tr.group-row .group-name { font-weight: 700; color: var(--text); font-size: 13.5px; }
 tbody tr.group-row .group-meta { color: var(--muted); font-weight: 600; font-size: 12.5px; }
 /* dòng con trong nhóm: vạch nối mờ bên trái + thụt nhẹ cho thấy đang lồng trong nhóm */
-tbody tr.grouped-child > td:first-child { box-shadow: inset 3px 0 0 rgba(124, 77, 255, .22); padding-left: 26px; }
+tbody tr.grouped-child > td:first-child { box-shadow: inset 3px 0 0 rgba(47, 192, 138, .25); padding-left: 26px; }
 .group-expand {
   background: none; border: none; cursor: pointer;
   color: var(--primary); transition: transform .18s var(--ease);
@@ -372,7 +377,7 @@ tbody tr.grouped-child > td:first-child { box-shadow: inset 3px 0 0 rgba(124, 77
   border-radius: var(--radius-sm); background: #fff; font-size: 13px;
   font-weight: 600; min-width: 140px; cursor: pointer; font-family: inherit;
 }
-.status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124,77,255,.15); }
+.status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(47, 192, 138, .18); }
 .status-sel[data-code="notified_arrival"], .status-sel[data-code="notified_ship"] { color: var(--green); border-color: var(--green-soft); background: var(--green-soft); }
 .status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
 .status-sel[data-code="not_sent"] { color: var(--amber); border-color: var(--amber-soft); background: var(--amber-soft); }
@@ -383,7 +388,7 @@ tbody tr.grouped-child > td:first-child { box-shadow: inset 3px 0 0 rgba(124, 77
   flex: 1; min-width: 140px; padding: 9px 12px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit;
 }
-.note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124,77,255,.15); }
+.note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(47, 192, 138, .18); }
 .save-note {
   background: none; border: none; cursor: pointer; color: var(--muted);
   padding: 6px; border-radius: 9px; transition: .15s var(--ease);
@@ -489,7 +494,7 @@ tbody tr.grouped-child > td:first-child { box-shadow: inset 3px 0 0 rgba(124, 77
    Modal
    ============================================================ */
 .modal-bg {
-  position: fixed; inset: 0; background: rgba(31, 27, 58, .42);
+  position: fixed; inset: 0; background: rgba(16, 42, 56, .42);
   backdrop-filter: blur(4px);
   display: none; align-items: center; justify-content: center; z-index: 80;
 }
@@ -509,7 +514,7 @@ tbody tr.grouped-child > td:first-child { box-shadow: inset 3px 0 0 rgba(124, 77
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical;
 }
-.modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124,77,255,.15); }
+.modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(47, 192, 138, .18); }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 .modal.modal-sm { width: 440px; }
 
