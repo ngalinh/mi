@@ -53,7 +53,21 @@
 
       <div class="container">
         <div class="card">
-          <div class="filters">
+          <div class="filter-bar">
+            <div class="field grow"><label>Tìm kiếm</label>
+              <div class="input-icon">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" id="fQ" placeholder="Tên / SĐT khách" />
+              </div>
+            </div>
+            <button type="button" id="filterToggle" class="btn secondary filter-toggle" aria-expanded="false" aria-controls="advFilters">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Bộ lọc
+              <span id="filterCount" class="filter-count" hidden>0</span>
+            </button>
+          </div>
+
+          <div class="filters" id="advFilters" hidden>
             <div class="field"><label>Từ ngày</label><input type="date" id="fFrom" /></div>
             <div class="field"><label>Đến ngày</label><input type="date" id="fTo" /></div>
             <div class="field"><label>Trạng thái</label>
@@ -67,12 +81,6 @@
             </div>
             <div class="field"><label>Nhân viên</label>
               <select id="fStaff"><option value="">Tất cả</option></select>
-            </div>
-            <div class="field full"><label>Tìm kiếm</label>
-              <div class="input-icon">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" id="fQ" placeholder="Tên / SĐT khách" />
-              </div>
             </div>
           </div>
 
