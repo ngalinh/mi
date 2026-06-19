@@ -349,10 +349,13 @@ td.center, th.center { text-align: center; }
 .expand-btn:hover { background: var(--primary-soft); color: var(--primary); }
 .expand-btn.open { transform: rotate(90deg); color: var(--primary); }
 
-/* group header row (gom theo khách) */
-tbody tr.group-row > td { background: var(--primary-soft); padding: 9px 16px; border-bottom: 1px solid var(--border); }
-tbody tr.group-row .group-name { font-weight: 800; color: var(--text); }
+/* group header row (gom theo khách) — kiểu nhẹ, có vạch màu bên trái */
+tbody tr.group-row > td { background: #f7f5fe; padding: 7px 16px; border-bottom: 1px solid var(--border); }
+tbody tr.group-row > td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+tbody tr.group-row .group-name { font-weight: 700; color: var(--text); font-size: 13.5px; }
 tbody tr.group-row .group-meta { color: var(--muted); font-weight: 600; font-size: 12.5px; }
+/* dòng con trong nhóm: vạch nối mờ bên trái + thụt nhẹ cho thấy đang lồng trong nhóm */
+tbody tr.grouped-child > td:first-child { box-shadow: inset 3px 0 0 rgba(124, 77, 255, .22); padding-left: 26px; }
 .group-expand {
   background: none; border: none; cursor: pointer;
   color: var(--primary); transition: transform .18s var(--ease);

@@ -231,14 +231,16 @@
     refreshItemsSection(o);
   }
 
-  function rowHtml(o) {
+  // grouped = dòng thuộc nhóm khách có ≥2 đơn (thêm class để kẻ vạch nối + thụt lề).
+  function rowHtml(o, grouped = false) {
     const open = openRows.has(String(o.id));
     const canBulk = !isNotified(o); // chỉ đơn chưa báo mới được loại trừ
     const isExcl = excluded.has(String(o.id));
+    const gc = grouped ? ' grouped-child' : '';
     const excludeCell = canBulk
       ? `<input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt" />`
       : '';
-    const main = `<tr class="main-row ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
+    const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
@@ -255,7 +257,7 @@
       <td>${App.esc(o.staff)}</td>
     </tr>`;
 
-    const detail = `<tr class="detail-row ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
+    const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
       <td colspan="11"><div class="detail-box">
         ${itemsSection(o)}
         <div class="full detail-actions">
@@ -315,17 +317,22 @@
       .sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'));
   }
 
-  // Render gom nhóm: mỗi nhóm 1 header + các dòng đơn của khách.
+  // Render gom nhóm: chỉ khách có ≥2 đơn mới có header gom (đỡ rối khi đa số
+  // khách chỉ 1 đơn). Khách 1 đơn render như dòng thường, vẫn sắp theo tên.
   function groupedRowsHtml(list) {
     return groupList(list)
-      .map(([k, items]) => groupHeaderHtml(k, items) + items.map(rowHtml).join(''))
+      .map(([k, items]) => items.length > 1
+        ? groupHeaderHtml(k, items) + items.map((o) => rowHtml(o, true)).join('')
+        : rowHtml(items[0]))
       .join('');
   }
 
-  // Nạp SP cho mọi đơn trong từng nhóm để đếm SL sản phẩm, rồi cập nhật header
-  // tại chỗ (không render lại cả bảng -> không phá thao tác đang gõ ghi chú).
+  // Nạp SP cho các đơn trong nhóm (chỉ nhóm có header, ≥2 đơn) để đếm SL sản
+  // phẩm, rồi cập nhật header tại chỗ (không render lại cả bảng -> không phá
+  // thao tác đang gõ ghi chú).
   function fillGroupProductCounts(list) {
     for (const [key, items] of groupList(list)) {
+      if (items.length < 2) continue;
       if (items.every((o) => o._itemsState === 'loaded')) { updateGroupSp(key, items); continue; }
       Promise.all(items.map((o) => loadItems(o))).then(() => updateGroupSp(key, items));
     }
@@ -374,7 +381,7 @@
     }
     rowsEl.innerHTML = currentGroupBy === 'customer'
       ? groupedRowsHtml(list)
-      : list.map(rowHtml).join('');
+      : list.map((o) => rowHtml(o)).join('');
     updateCount(list);
     // Dòng đang mở: load (hoặc render lại) chi tiết sản phẩm
     list.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
