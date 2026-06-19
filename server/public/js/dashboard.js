@@ -276,20 +276,35 @@
     return 'name:' + String(o.customerName || '').trim().toLowerCase();
   }
 
-  // Header 1 nhóm khách: tên + SĐT + số đơn, có nút mở/đóng tất cả đơn của khách.
+  // Đếm SL sản phẩm của 1 nhóm (gộp các đơn của khách). SL = số dòng SP đã về,
+  // khớp với số "(N)" ở khối "Sản phẩm đã về". Items load lazy nên trả kèm cờ
+  // allLoaded để biết đã đủ dữ liệu chưa (chưa đủ thì hiện "…").
+  function groupProductCount(items) {
+    let n = 0, allLoaded = true;
+    for (const o of items) {
+      if (o._itemsState === 'loaded') n += (o._items || []).length;
+      else allLoaded = false;
+    }
+    return { n, allLoaded };
+  }
+  function productText(items) {
+    const { n, allLoaded } = groupProductCount(items);
+    return allLoaded ? `${n} sản phẩm` : '… sản phẩm';
+  }
+
+  // Header 1 nhóm khách: tên + SĐT + số đơn + SL sản phẩm, có nút mở/đóng tất cả đơn.
   function groupHeaderHtml(key, items) {
     const o0 = items[0];
     const allOpen = items.every((o) => openRows.has(String(o.id)));
     const phone = o0.phone ? ` · ${App.esc(o0.phone)}` : '';
     return `<tr class="group-row" data-group-key="${App.esc(key)}">
       <td class="center"><button class="group-expand ${allOpen ? 'open' : ''}" data-group-key="${App.esc(key)}" title="Mở/đóng tất cả đơn của khách">${App.icon('chevron')}</button></td>
-      <td colspan="10"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn</span></td>
+      <td colspan="10"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn · <span class="group-sp">${productText(items)}</span></span></td>
     </tr>`;
   }
 
-  // Gom danh sách theo khách rồi render: mỗi nhóm 1 header + các dòng đơn của khách.
-  // Sắp xếp nhóm theo tên khách để dễ tra.
-  function groupedRowsHtml(list) {
+  // Gom danh sách theo khách, sắp xếp nhóm theo tên khách để dễ tra.
+  function groupList(list) {
     const groups = new Map();
     for (const o of list) {
       const k = customerKey(o);
@@ -297,9 +312,27 @@
       groups.get(k).push(o);
     }
     return [...groups.entries()]
-      .sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'))
+      .sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'));
+  }
+
+  // Render gom nhóm: mỗi nhóm 1 header + các dòng đơn của khách.
+  function groupedRowsHtml(list) {
+    return groupList(list)
       .map(([k, items]) => groupHeaderHtml(k, items) + items.map(rowHtml).join(''))
       .join('');
+  }
+
+  // Nạp SP cho mọi đơn trong từng nhóm để đếm SL sản phẩm, rồi cập nhật header
+  // tại chỗ (không render lại cả bảng -> không phá thao tác đang gõ ghi chú).
+  function fillGroupProductCounts(list) {
+    for (const [key, items] of groupList(list)) {
+      if (items.every((o) => o._itemsState === 'loaded')) { updateGroupSp(key, items); continue; }
+      Promise.all(items.map((o) => loadItems(o))).then(() => updateGroupSp(key, items));
+    }
+  }
+  function updateGroupSp(key, items) {
+    const span = rowsEl.querySelector(`.group-row[data-group-key="${cssEsc(key)}"] .group-sp`);
+    if (span) span.textContent = productText(items);
   }
 
   // Bấm header nhóm: mở hết nếu đang có dòng đóng, ngược lại đóng hết.
@@ -345,6 +378,8 @@
     updateCount(list);
     // Dòng đang mở: load (hoặc render lại) chi tiết sản phẩm
     list.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
+    // Gom nhóm: nạp SP để đếm SL sản phẩm trên header (cập nhật khi tải xong)
+    if (currentGroupBy === 'customer') fillGroupProductCounts(list);
   }
 
   // Đơn sẽ được gửi khi bấm "Báo hàng loạt": chưa báo VÀ không bị tick loại trừ.
