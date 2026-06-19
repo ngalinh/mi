@@ -490,7 +490,7 @@ td.center, th.center { text-align: center; }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 .modal.modal-sm { width: 440px; }
 
-/* Cột "Loại" — tick để loại khách khỏi Báo hàng loạt */
+/* Cột "Delay" — tick để đánh dấu delay, loại khách khỏi Báo hàng loạt */
 .excl-cb { width: 17px; height: 17px; accent-color: var(--red); cursor: pointer; vertical-align: middle; }
 tr.row-excluded { opacity: .55; }
 tr.row-excluded .cust a, tr.row-excluded .cust { text-decoration: line-through; }

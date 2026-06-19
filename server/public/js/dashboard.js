@@ -235,10 +235,9 @@
     const canBulk = !isNotified(o); // chỉ đơn chưa báo mới được loại trừ
     const isExcl = excluded.has(String(o.id));
     const excludeCell = canBulk
-      ? `<input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} title="Tick để loại khỏi Báo hàng loạt" />`
+      ? `<input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt" />`
       : '';
     const main = `<tr class="main-row ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
-      <td class="center">${excludeCell}</td>
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
@@ -247,6 +246,7 @@
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>
+      <td class="center">${excludeCell}</td>
       <td><div class="note-cell">
         <input class="note-input" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
