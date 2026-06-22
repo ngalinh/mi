@@ -260,7 +260,7 @@
     const actionsCell = `<div class="action-cell">
       <div class="action-btns">
         <button class="btn small icon-only send-zalo" data-id="${App.esc(o.id)}" data-kind="hang" ${hasHang ? '' : 'disabled'} aria-label="Báo hàng" title="${hasHang ? 'Gửi báo hàng qua Zalo' : 'Chưa có nội dung báo hàng'}">${App.icon('box')}</button>
-        <button class="btn small outline icon-only send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" ${hasShip ? '' : 'disabled'} aria-label="Báo ship" title="${hasShip ? 'Gửi báo ship qua Zalo' : 'Chưa có nội dung báo ship'}">${App.icon('truck')}</button>
+        <button class="btn small icon-only send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" ${hasShip ? '' : 'disabled'} aria-label="Báo ship" title="${hasShip ? 'Gửi báo ship qua Zalo' : 'Chưa có nội dung báo ship'}">${App.icon('truck')}</button>
       </div>
     </div>`;
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
