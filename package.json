@@ -11,13 +11,14 @@
     "local": "node local-runner/index.js",
     "local:debug": "cross-env HEADLESS=false node local-runner/index.js",
     "login": "cross-env HEADLESS=false node local-runner/login.js",
+    "accounts": "node local-runner/accounts.js",
     "install:browser": "playwright install chromium",
     "dev": "node server/index.js",
     "diagram": "node scripts/gen-flow-diagram.js",
     "test:basso": "node scripts/test-basso.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "dependencies": {
     "cors": "^2.8.5",

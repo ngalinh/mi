@@ -148,6 +148,52 @@ async function selectZaloAccount(page, accountLabel) {
 }
 
 /**
+ * Liệt kê TẤT CẢ tài khoản Zalo mà profile đang thấy trong dropdown chọn account của Salework.
+ * Mở dropdown (tái dùng opener như selectZaloAccount) rồi quét nhãn các option. Dùng để kiểm
+ * tra "profile này đang đăng nhập những Zalo nào" + lấy đúng tên điền ZALO_ACCOUNT_MAP.
+ * @returns {Promise<string[]>} danh sách tên account (đã loại trùng/rỗng), [] nếu không đọc được.
+ */
+async function listZaloAccounts(page) {
+  const accSearchSel = 'input[placeholder*="Tìm kiếm tài khoản" i]';
+  const isOpen = () => page.locator(accSearchSel).first().isVisible().catch(() => false);
+  if (!(await isOpen())) {
+    const openers = [
+      page.getByText('Tất cả tài khoản', { exact: false }).first(),
+      page.locator('.el-select, .el-select .el-input__inner, .el-select__caret').first(),
+      page.locator('[aria-haspopup], [aria-expanded]').first(),
+      page.getByRole('combobox').first(),
+    ];
+    for (const op of openers) {
+      if (await isOpen()) break;
+      await op.click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(600);
+    }
+  }
+  await shot(page, '02a-account-search');
+
+  // Quét nhãn option theo nhiều mức selector (ưu tiên class chuẩn Element-UI), loại ô tìm kiếm.
+  return page.evaluate(() => {
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const collect = (sel) => {
+      const out = [];
+      for (const el of document.querySelectorAll(sel)) {
+        const r = el.getBoundingClientRect();
+        if (!(r.width > 0 && r.height > 0 && r.height < 120)) continue;
+        const t = clean(el.textContent);
+        if (!t || t.length > 60) continue;
+        if (/tìm kiếm tài khoản/i.test(t)) continue;
+        out.push(t);
+      }
+      return [...new Set(out)];
+    };
+    let list = collect('.el-select-dropdown__item');
+    if (!list.length) list = collect('.el-select-dropdown li');
+    if (!list.length) list = collect('[class*="dropdown"] li, [class*="option"]');
+    return list;
+  });
+}
+
+/**
  * Tìm và mở hội thoại khách. GÕ THẲNG SĐT vào ô tìm kiếm trước (SĐT là duy nhất nên
  * khớp chính xác hơn tên — tránh trùng tên / sai dấu), khớp hàng theo SĐT HOẶC tên
  * (hàng hội thoại thường hiển thị tên); nếu gõ SĐT không ra mới tìm theo TÊN.
@@ -337,4 +383,4 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
   return { ok: true };
 }
 
-module.exports = { sendBaoHang };
+module.exports = { sendBaoHang, gotoSalework, ensureLoggedIn, listZaloAccounts };

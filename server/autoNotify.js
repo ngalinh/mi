@@ -109,10 +109,11 @@ async function runAutoNotify(opts = {}) {
         // eslint-disable-next-line no-await-in-loop
         const r = await notifyOne(order, {
           profile: cfg.profile,
-          account: cfg.account,
+          defaultAccount: cfg.account,   // fallback khi NV không có trong ZALO_ACCOUNT_MAP
           kind: 'hang',
           skipWebUpdate: !cfg.updateWeb, // mặc định chỉ đánh dấu trong mi, không cập nhật web Basso
           strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
+          actor: 'bot',                  // audit: luồng tự động
         });
 
         if (r.ok) {
