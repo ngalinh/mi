@@ -170,26 +170,48 @@ async function listZaloAccounts(page) {
     }
   }
   await shot(page, '02a-account-search');
+  // Cho danh sách kịp render sau khi mở dropdown.
+  await page.waitForTimeout(500);
 
-  // Quét nhãn option theo nhiều mức selector (ưu tiên class chuẩn Element-UI), loại ô tìm kiếm.
+  // Quét tên account KHÔNG phụ thuộc class (giao diện Salework dùng dropdown tùy biến, không
+  // phải Element-UI). Bám theo ô "Tìm kiếm tài khoản…" làm mốc: các dòng account nằm NGAY DƯỚI
+  // ô đó và cùng cột. Lấy phần tử "lá" (không có con cùng text) để tránh trùng cha/con.
   return page.evaluate(() => {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-    const collect = (sel) => {
-      const out = [];
-      for (const el of document.querySelectorAll(sel)) {
-        const r = el.getBoundingClientRect();
-        if (!(r.width > 0 && r.height > 0 && r.height < 120)) continue;
-        const t = clean(el.textContent);
-        if (!t || t.length > 60) continue;
-        if (/tìm kiếm tài khoản/i.test(t)) continue;
-        out.push(t);
-      }
-      return [...new Set(out)];
+    const search = [...document.querySelectorAll('input')]
+      .find((i) => /tìm kiếm tài khoản/i.test(i.placeholder || ''));
+
+    const names = [];
+    const seen = new Set();
+    const add = (t) => {
+      if (!t || t.length > 60 || seen.has(t)) return;
+      if (/tìm kiếm tài khoản/i.test(t)) return;
+      if (/^tất cả tài khoản$/i.test(t)) return; // tùy chọn gộp, không phải account gửi được
+      seen.add(t); names.push(t);
     };
-    let list = collect('.el-select-dropdown__item');
-    if (!list.length) list = collect('.el-select-dropdown li');
-    if (!list.length) list = collect('[class*="dropdown"] li, [class*="option"]');
-    return list;
+    // Gom theo HÌNH HỌC rồi loại trùng bằng Set: 1 dòng account có thể là div bọc span con
+    // (cùng text) -> Set gộp lại; phần tử bao cả danh sách có height lớn -> bị loại (height<80).
+    const collectByGeometry = (within) => {
+      const cands = [];
+      for (const el of document.querySelectorAll('li,div,span,a,p,[class*="item"],[class*="option"]')) {
+        const r = el.getBoundingClientRect();
+        if (!(r.height >= 18 && r.height < 80 && r.width > 60)) continue;
+        if (within && !within(r)) continue;
+        const t = clean(el.textContent);
+        if (t) cands.push({ t, top: r.top });
+      }
+      cands.sort((a, b) => a.top - b.top).forEach((c) => add(c.t));
+    };
+
+    if (search) {
+      const sr = search.getBoundingClientRect();
+      collectByGeometry((r) =>
+        r.top >= sr.bottom - 2 && r.top <= sr.bottom + 600   // nằm DƯỚI ô search, trong tầm popup
+        && r.left >= sr.left - 40 && r.left <= sr.right + 60); // cùng cột với ô search
+    }
+    // Fallback (không thấy ô search): quét toàn trang theo hình học (kém chính xác hơn).
+    if (!names.length) collectByGeometry(null);
+    return names;
   });
 }
 
