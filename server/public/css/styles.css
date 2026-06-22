@@ -348,10 +348,8 @@ a { color: var(--primary); text-decoration: none; }
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-color) 18%, transparent);
 }
 
-/* Biến thể 3 thẻ thống kê (trang Lịch sử báo) — dùng lại look status-tab */
+/* Biến thể 3 thẻ thống kê (trang Lịch sử báo) — bấm để lọc theo loại */
 .status-tabs.cols-3 { grid-template-columns: repeat(3, 1fr); }
-.status-tabs.cols-3 .status-tab { cursor: default; }
-.status-tabs.cols-3 .status-tab:hover { transform: none; box-shadow: none; }
 .status-tab.st-total   { --st-color: #e05c14; --st-tint: #fdeede; }
 .status-tab.st-success { --st-color: #3a9b71; --st-tint: #e9f5ef; }
 .status-tab.st-fail    { --st-color: #d44f6b; --st-tint: #fce9ee; }

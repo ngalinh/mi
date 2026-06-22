@@ -42,22 +42,22 @@
       </header>
 
       <div class="container">
-        <div class="status-tabs cols-3">
-          <div class="status-tab st-total">
+        <div class="status-tabs cols-3" id="statCards">
+          <button type="button" class="status-tab st-total active" data-filter="">
             <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
             <span class="st-label">Tổng lượt báo</span>
             <span class="st-num" id="sTotal">0</span>
-          </div>
-          <div class="status-tab st-success">
+          </button>
+          <button type="button" class="status-tab st-success" data-filter="success">
             <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/></svg></span>
             <span class="st-label">Thành công</span>
             <span class="st-num" id="sSuccess">0</span>
-          </div>
-          <div class="status-tab st-fail">
+          </button>
+          <button type="button" class="status-tab st-fail" data-filter="failed">
             <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
             <span class="st-label">Thất bại</span>
             <span class="st-num" id="sFailed">0</span>
-          </div>
+          </button>
         </div>
 
         <div class="card">
