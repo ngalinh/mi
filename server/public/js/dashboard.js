@@ -239,14 +239,16 @@
     const canBulk = !isNotified(o); // chỉ đơn chưa báo mới được loại trừ
     const isExcl = excluded.has(String(o.id));
     const gc = grouped ? ' grouped-child' : '';
+    const hasHang = o.noiDungBaoHang && o.noiDungBaoHang.trim();
     const hasShip = o.noiDungBaoShip && o.noiDungBaoShip.trim();
     const excludeCell = canBulk
       ? `<label class="excl-wrap" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt"><input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} /></label>`
       : '';
+    // Luôn hiện cả 2 nút; nút nào chưa có nội dung thì disable, không cho gửi.
     const actionsCell = `<div class="action-cell">
       <div class="action-btns">
-        <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang" title="Gửi báo hàng qua Zalo">${App.icon('send')} Báo hàng</button>
-        ${hasShip ? `<button class="btn small outline send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" title="Gửi báo ship qua Zalo">${App.icon('box')} Báo ship</button>` : ''}
+        <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang" ${hasHang ? '' : 'disabled'} title="${hasHang ? 'Gửi báo hàng qua Zalo' : 'Chưa có nội dung báo hàng'}">${App.icon('send')} Báo hàng</button>
+        <button class="btn small outline send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" ${hasShip ? '' : 'disabled'} title="${hasShip ? 'Gửi báo ship qua Zalo' : 'Chưa có nội dung báo ship'}">${App.icon('box')} Báo ship</button>
       </div>
     </div>`;
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
