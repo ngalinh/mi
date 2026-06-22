@@ -17,8 +17,21 @@ const App = {
     return `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${this.ICONS[name] || ''}</svg>`;
   },
 
-  async api(path, opts) {
-    const res = await fetch(path, opts);
+  // Timeout (ms) cho mỗi request — tránh kẹt "Đang tải..." vô thời hạn khi server/Basso
+  // chậm. Đặt dài hơn timeout phía server (12s) để lỗi server nổi lên trước.
+  API_TIMEOUT_MS: 20000,
+  async api(path, opts = {}) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.API_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch(path, { ...opts, signal: ctrl.signal });
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('Quá thời gian chờ — kết nối chậm, thử lại sau');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
     const data = await res.json().catch(() => ({ ok: false, error: 'Response không hợp lệ' }));
     if (!res.ok || data.ok === false) {
       throw new Error(data.error || `HTTP ${res.status}`);
