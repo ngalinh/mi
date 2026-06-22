@@ -568,6 +568,8 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .action-cell { display: flex; }
 .action-btns { display: flex; gap: 7px; flex-wrap: nowrap; }
 .action-cell .btn.small { padding: 6px 13px; font-size: 12px; justify-content: center; white-space: nowrap; flex: 0 0 auto; }
+.action-cell .btn.icon-only { padding: 8px; min-width: 0; }
+.action-cell .btn.icon-only .icon { width: 19px; height: 19px; }
 .excl-wrap { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 
 /* bảng sản phẩm đã về trong dòng mở rộng */
