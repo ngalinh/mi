@@ -259,10 +259,10 @@ a { color: var(--primary); text-decoration: none; }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
 .btn.secondary {
-  background: #fff; color: var(--primary); background-image: none;
-  border-color: var(--primary); box-shadow: none;
+  background: #fff; color: var(--text); background-image: none;
+  border-color: var(--border-strong); box-shadow: none;
 }
-.btn.secondary:hover { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); filter: none; }
+.btn.secondary:hover { background: var(--bg); color: var(--text); border-color: var(--muted); filter: none; }
 /* alias điểm nhấn = chính (giữ tương thích markup demo) */
 .btn.accent { background: var(--primary-grad); color: #fff; box-shadow: var(--shadow-primary); }
 .btn.accent:hover { filter: brightness(1.06); }
@@ -336,11 +336,11 @@ a { color: var(--primary); text-decoration: none; }
 }
 .status-tab .st-icon .icon { width: 19px; height: 19px; }
 
-/* màu theo trạng thái — pastel (dùng biến để gọn) */
-.status-tab.st-todo    { --st-color: var(--amber); --st-tint: #fdf3e4; }
-.status-tab.st-arrival { --st-color: #9bb6e6;      --st-tint: #eef3fc; }
-.status-tab.st-ship    { --st-color: var(--green);  --st-tint: #e8f5ef; }
-.status-tab.st-error   { --st-color: var(--red);    --st-tint: #fceaef; }
+/* màu theo trạng thái — số đậm để dễ đọc, tint nền nhạt & đồng đều */
+.status-tab.st-todo    { --st-color: #cc8418; --st-tint: #fdf2e3; }
+.status-tab.st-arrival { --st-color: #4f7cc4; --st-tint: #eef2fb; }
+.status-tab.st-ship    { --st-color: #3a9b71; --st-tint: #e9f5ef; }
+.status-tab.st-error   { --st-color: #d44f6b; --st-tint: #fce9ee; }
 
 /* tab đang chọn: viền đậm theo màu + vầng sáng để nổi bật */
 .status-tab.active {
@@ -426,11 +426,11 @@ a { color: var(--primary); text-decoration: none; }
 .toolbar-bar .tb-search input::placeholder { color: var(--muted); }
 .toolbar-bar .tb-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(242,107,31,.16); }
 .toolbar-bar .tb-select {
-  padding: 8px 36px 8px 16px; border: 1px solid var(--primary);
+  padding: 8px 36px 8px 16px; border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
-  color: var(--primary); -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  color: var(--text); -webkit-appearance: none; -moz-appearance: none; appearance: none;
   background-color: #fff;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23f26b1f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a39e97' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 16px center;
 }
 .toolbar-bar .tb-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(242,107,31,.16); }
