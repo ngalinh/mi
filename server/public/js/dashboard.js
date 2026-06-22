@@ -244,8 +244,8 @@
       ? `<label class="excl-wrap" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt"><input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} />Loại trừ</label>`
       : '';
     const actionsCell = `<div class="action-cell">
-      <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">${App.icon('send')} Gửi báo hàng qua Zalo</button>
-      ${hasShip ? `<button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="ship">${App.icon('box')} Gửi báo ship qua Zalo</button>` : ''}
+      <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang" title="Gửi báo hàng qua Zalo">${App.icon('send')} Báo hàng</button>
+      ${hasShip ? `<button class="btn small outline send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" title="Gửi báo ship qua Zalo">${App.icon('box')} Báo ship</button>` : ''}
       ${excludeCell}
     </div>`;
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
