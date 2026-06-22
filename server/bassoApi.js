@@ -39,6 +39,27 @@ function baseHeaders() {
   return h;
 }
 
+/**
+ * fetch có timeout (AbortController). Nếu upstream Basso chậm/treo, hủy sau
+ * requestTimeoutMs và ném lỗi rõ ràng thay vì để request treo vô thời hạn.
+ */
+async function fetchWithTimeout(url, opts = {}) {
+  const ms = config.basso.requestTimeoutMs;
+  if (!ms) return fetch(url, opts);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error(`Basso không phản hồi sau ${ms}ms (timeout) — thử lại sau`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function login() {
   // Theo tài liệu Partner API: /partner/login dùng application/x-www-form-urlencoded
   // (KHÔNG phải JSON). Backend PHP đọc $this->input->post(); gửi JSON sẽ làm email/pass
@@ -46,7 +67,7 @@ async function login() {
   const form = new URLSearchParams();
   form.set('email', config.basso.email);
   form.set('pass', config.basso.pass);
-  const res = await fetch(`${config.basso.baseUrl}/partner/login`, {
+  const res = await fetchWithTimeout(`${config.basso.baseUrl}/partner/login`, {
     method: 'POST',
     headers: { ...baseHeaders(), 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form.toString(),
@@ -78,7 +99,7 @@ async function apiFetch(pathName, { method = 'GET', query, body, _retried = fals
       if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
     }
   }
-  const res = await fetch(url.toString(), {
+  const res = await fetchWithTimeout(url.toString(), {
     method,
     headers: {
       ...baseHeaders(),
@@ -201,6 +222,27 @@ function loadMock() {
   return JSON.parse(fs.readFileSync(MOCK_FILE, 'utf8'));
 }
 
+// Cache danh sách hàng về trong RAM (TTL ngắn). Tránh gọi lại Basso cho mỗi lần
+// auto-sync / đổi tab / gõ tìm kiếm lặp lại. Key = bộ lọc đã chuẩn hóa.
+const _listCache = new Map(); // key -> { at:number, data:object }
+
+function listCacheGet(key) {
+  const ttl = config.basso.listCacheTtlMs;
+  if (!ttl) return null;
+  const hit = _listCache.get(key);
+  if (hit && Date.now() - hit.at < ttl) return hit.data;
+  if (hit) _listCache.delete(key);
+  return null;
+}
+function listCacheSet(key, data) {
+  if (!config.basso.listCacheTtlMs) return;
+  _listCache.set(key, { at: Date.now(), data });
+}
+/** Xóa cache danh sách — gọi sau khi dữ liệu đổi (cập nhật trạng thái/ghi chú). */
+function invalidateOrdersCache() {
+  _listCache.clear();
+}
+
 /**
  * Lấy danh sách hàng về.
  * @param {object} [filters] { from, to, status, staff(user_id), q, page, pageSize }
@@ -222,23 +264,29 @@ async function getOrders(filters = {}) {
     return { source: 'mock', orders, tabUsers, total: orders.length, page: 1 };
   }
 
-  const data = await apiFetch('/partner/getArrivedVnList', {
-    query: {
-      page,
-      page_size: pageSize,
-      status: status && status !== 'all' ? status : undefined,
-      from: toApiDate(from),
-      to: toApiDate(to),
-      key: q || undefined,
-      tab: staff || undefined,
-    },
-  });
+  const query = {
+    page,
+    page_size: pageSize,
+    status: status && status !== 'all' ? status : undefined,
+    from: toApiDate(from),
+    to: toApiDate(to),
+    key: q || undefined,
+    tab: staff || undefined,
+  };
+
+  const cacheKey = JSON.stringify(query);
+  const cached = listCacheGet(cacheKey);
+  if (cached) return { ...cached, source: 'api-cache' };
+
+  const data = await apiFetch('/partner/getArrivedVnList', { query });
 
   const rows = data.rows || [];
   const orders = rows.map(normalizeOrder);
   orders.forEach((o, i) => { o.stt = (page - 1) * pageSize + i + 1; });
   const tabUsers = (data.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
-  return { source: 'api', orders, tabUsers, total: data.total ?? orders.length, page: data.page ?? page };
+  const result = { source: 'api', orders, tabUsers, total: data.total ?? orders.length, page: data.page ?? page };
+  listCacheSet(cacheKey, result);
+  return result;
 }
 
 function uniqueStaff(rows) {
@@ -295,7 +343,8 @@ async function updateOrderStatus({ customerId, dateInventory, status, note }) {
     method: 'POST',
     body: { customer_id: customerId, date_inventory: dateInventory, status, note },
   });
+  invalidateOrdersCache(); // dữ liệu đã đổi -> bỏ cache để lần load sau lấy mới
   return { ok: true, record: data && data.record };
 }
 
-module.exports = { getOrders, getArrivedItems, updateOrderStatus, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = { getOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, normalizeOrder, normalizeItem, STATUS_LABELS };
