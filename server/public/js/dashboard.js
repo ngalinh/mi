@@ -2,10 +2,13 @@
   let orders = [];
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
-  let currentGroup = 'all'; // nhóm trạng thái đang xem ('all' | 'todo' | 'arrival' | 'ship' | 'failed')
-  let currentGroupBy = ''; // gom dòng theo khách ('' = không gom | 'customer' = theo khách hàng)
+  let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
+  let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách
   const openRows = new Set();
-  const excluded = new Set(); // id các đơn bị TICK loại trừ khỏi "Báo hàng loạt"
+  const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
+
+  // Bộ lọc nâng cao (popover): khoảng ngày (server-side) + loại trừ/ghi chú (client-side)
+  const F = { from: '', to: '', exclude: 'all', note: 'all' };
 
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
@@ -14,15 +17,13 @@
 
   const DONE = new Set(['notified_arrival', 'notified_ship']);
   // "Đã báo" = web đã đánh dấu, HOẶC mi đã gửi (bot 'success' / đã báo tay 'manual').
-  // Dùng để loại khỏi "Báo hàng loạt" -> tránh gửi trùng cho khách đã nhắn.
   const SENT_LOCAL = new Set(['success', 'manual']);
   const isNotified = (o) => DONE.has(o.statusCode) || (o.autoNotified && SENT_LOCAL.has(o.autoNotified.status));
   // Vì sao 1 đơn bị coi là "đã báo" cho loại tin đang gửi (để cảnh báo khi gửi lẻ) — null nếu chưa báo.
-  // Báo ship: chỉ chặn khi đã báo ship; đơn mới "Đã báo hàng" vẫn được báo ship bình thường.
   const notifiedReason = (o, kind = 'hang') => {
     const done = kind === 'ship' ? o.statusCode === 'notified_ship' : DONE.has(o.statusCode);
     if (done) return `web đang ở trạng thái "${o.status}"`;
-    if (kind === 'ship') return null; // dấu auto_notified là của báo hàng, không áp cho báo ship
+    if (kind === 'ship') return null;
     if (o.autoNotified && o.autoNotified.status === 'success') return 'bot đã tự gửi';
     if (o.autoNotified && o.autoNotified.status === 'manual') return 'đã báo tay trước đó';
     return null;
@@ -36,26 +37,12 @@
 
   const byId = (id) => orders.find((o) => String(o.id) === String(id));
 
-  // Gom đơn về 4 nhóm theo trạng thái báo. "arrival" gộp cả khi bot/tay đã gửi
-  // báo hàng nhưng web vẫn 'not_sent' (coi như đã báo hàng).
-  const GROUPS = [
-    ['todo', 'Chưa báo'],
-    ['arrival', 'Đã báo hàng'],
-    ['ship', 'Đã báo ship'],
-    ['failed', 'Lỗi - Báo lại'],
-  ];
+  // Gom đơn về 4 nhóm theo trạng thái báo.
   function groupOf(o) {
     if (o.statusCode === 'send_failed' || o.statusCode === 'error') return 'failed';
     if (o.statusCode === 'notified_ship') return 'ship';
     if (o.statusCode === 'notified_arrival') return 'arrival';
     if (o.autoNotified && SENT_LOCAL.has(o.autoNotified.status)) return 'arrival';
-    return 'todo';
-  }
-  // Map nhanh từ mã trạng thái (dropdown) sang nhóm, không cần cả object.
-  function groupOfCode(code) {
-    if (code === 'notified_ship') return 'ship';
-    if (code === 'notified_arrival') return 'arrival';
-    if (code === 'send_failed' || code === 'error') return 'failed';
     return 'todo';
   }
   function groupCounts() {
@@ -64,10 +51,7 @@
     return c;
   }
 
-  // Gửi đơn đầy đủ field lên server (không để server tra lại theo id -> tránh lỗi
-  // "Không tìm thấy đơn" khi dữ liệu nhiều/phân trang/đang lọc theo nhân viên).
-  // Mã ĐH (orderCode) nằm trên từng SP — nếu đã mở rộng/đã tải SP thì gửi kèm để report
-  // hiển thị đúng mã đơn mà server khỏi phải tra lại. Chưa tải thì để server tự tra.
+  // Gửi đơn đầy đủ field lên server (không để server tra lại theo id).
   const orderCodeOf = (o) => {
     const items = o._items || [];
     const codes = [...new Set(items.map((it) => it.orderCode).filter(Boolean))];
@@ -81,19 +65,35 @@
   });
 
   // ---------------- Tabs nhân viên ----------------
+  // Avatar viết tắt + màu ổn định theo tên (để mỗi NV có 1 màu riêng dễ nhận).
+  const AV_COLORS = [
+    ['#eaf2fe', '#3b82f6'], ['#d8f2e3', '#36a86f'], ['#efecfd', '#6c5ce0'],
+    ['#fdeecd', '#d18a13'], ['#fde4ea', '#e1496b'], ['#e0f3f1', '#199e8f'],
+    ['#fbe8f3', '#cc4499'], ['#fdecdd', '#d97a2b'],
+  ];
+  function initials(name) {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2);
+    return (parts[0][0] + parts[parts.length - 1][0]);
+  }
+  function avColor(name) {
+    let h = 0; const s = String(name || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return AV_COLORS[h % AV_COLORS.length];
+  }
   function renderTabs() {
     const el = $('staffTabs');
-    const tabs = [{ user_id: '', name: 'Tất cả' }, ...tabUsers];
-    el.innerHTML = tabs.map((t) =>
-      `<button class="tab ${String(t.user_id) === String(currentStaff) ? 'active' : ''}" data-staff="${App.esc(t.user_id)}">${App.esc(t.name)}</button>`
-    ).join('');
-  }
-  function populateStaff() {
-    const sel = $('fStaff');
-    const list = tabUsers.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    sel.innerHTML = '<option value="">Tất cả</option>' +
-      list.map((u) => `<option value="${App.esc(u.user_id)}">${App.esc(u.name)}</option>`).join('');
-    sel.value = currentStaff;
+    const list = tabUsers.slice().sort((a, b) =>
+      String(a.name).localeCompare(String(b.name), 'vi', { sensitivity: 'base' }));
+    const allTab = `<button class="tab ${currentStaff === '' ? 'active' : ''}" data-staff="">
+      <span class="tab-av all"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Tất cả</button>`;
+    el.innerHTML = allTab + list.map((t) => {
+      const [bg, fg] = avColor(t.name);
+      const ini = App.esc(initials(t.name).toUpperCase());
+      return `<button class="tab ${String(t.user_id) === String(currentStaff) ? 'active' : ''}" data-staff="${App.esc(t.user_id)}">
+        <span class="tab-av" style="--av-bg:${bg};--av-fg:${fg};">${ini}</span>${App.esc(t.name)}</button>`;
+    }).join('');
   }
 
   // ---------------- Render bảng ----------------
@@ -103,7 +103,6 @@
     return `<select class="status-sel" data-code="${App.esc(o.statusCode)}" data-id="${App.esc(o.id)}">${opts}</select>`;
   }
 
-  // Dấu "bot tự động đã gửi" — lưu local trong mi (không phụ thuộc trạng thái web Basso)
   function botTag(o) {
     const a = o.autoNotified;
     if (!a) return '';
@@ -140,9 +139,7 @@
     return lines.join('<br>');
   }
 
-  // Mã ĐH dẫn tới trang chi tiết đơn trên web Basso (giống hệ thống basso).
   const ORDER_DETAIL_BASE = 'https://basso.vn/basso/customer_order/detail/';
-  // Tên khách dẫn tới trang profile khách hàng trên web Basso.
   const CUSTOMER_DETAIL_BASE = 'https://basso.vn/management/customer/detail/';
   function customerNameCell(o) {
     const name = App.esc(o.customerName);
@@ -181,7 +178,6 @@
     }).join('');
   }
 
-  // Render khối sản phẩm theo trạng thái load của dòng (idle/loading/loaded/error)
   function itemsSection(o) {
     const st = o._itemsState || 'idle';
     let body;
@@ -231,7 +227,7 @@
     refreshItemsSection(o);
   }
 
-  // grouped = dòng thuộc nhóm khách có ≥2 đơn (thêm class để kẻ vạch nối + thụt lề).
+  // grouped = dòng thuộc nhóm có ≥2 đơn (thêm class để kẻ vạch nối + thụt lề).
   function rowHtml(o, grouped = false) {
     const open = openRows.has(String(o.id));
     const canBulk = !isNotified(o); // chỉ đơn chưa báo mới được loại trừ
@@ -270,16 +266,12 @@
     return main + detail;
   }
 
-  // ---------------- Gom dòng theo khách hàng ----------------
-  // Khoá gom: ưu tiên customerId (chắc chắn cùng 1 khách), không có thì gộp theo tên.
+  // ---------------- Gom dòng (theo khách / theo ngày) ----------------
   function customerKey(o) {
     if (o.customerId != null && String(o.customerId) !== '') return 'id:' + o.customerId;
     return 'name:' + String(o.customerName || '').trim().toLowerCase();
   }
 
-  // Đếm SL sản phẩm của 1 nhóm (gộp các đơn của khách). SL = số dòng SP đã về,
-  // khớp với số "(N)" ở khối "Sản phẩm đã về". Items load lazy nên trả kèm cờ
-  // allLoaded để biết đã đủ dữ liệu chưa (chưa đủ thì hiện "…").
   function groupProductCount(items) {
     let n = 0, allLoaded = true;
     for (const o of items) {
@@ -293,8 +285,8 @@
     return allLoaded ? `${n} sản phẩm` : '… sản phẩm';
   }
 
-  // Header 1 nhóm khách: tên + SĐT + số đơn + SL sản phẩm, có nút mở/đóng tất cả đơn.
-  function groupHeaderHtml(key, items) {
+  // Header nhóm theo KHÁCH: tên + SĐT + số đơn + SL sản phẩm.
+  function customerHeaderHtml(key, items) {
     const o0 = items[0];
     const allOpen = items.every((o) => openRows.has(String(o.id)));
     const phone = o0.phone ? ` · ${App.esc(o0.phone)}` : '';
@@ -304,33 +296,49 @@
     </tr>`;
   }
 
-  // Gom danh sách theo khách, sắp xếp nhóm theo tên khách để dễ tra.
-  function groupList(list) {
+  // Header nhóm theo NGÀY: ngày + số đơn + số chưa báo.
+  function dateHeaderHtml(key, items) {
+    const chua = items.filter((o) => !isNotified(o)).length;
+    const sub = `${items.length} đơn` + (chua ? ` · ${chua} chưa báo` : '');
+    return `<tr class="group-row" data-group-key="${App.esc(key)}">
+      <td colspan="11"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
+    </tr>`;
+  }
+
+  // Gom danh sách theo khoá; sắp xếp nhóm (khách → tên A-Z, ngày → mới nhất trước).
+  function groupListBy(list, mode) {
+    const keyFn = mode === 'date' ? (o) => o.warehouseDate || '—' : customerKey;
     const groups = new Map();
     for (const o of list) {
-      const k = customerKey(o);
+      const k = keyFn(o);
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(o);
     }
-    return [...groups.entries()]
-      .sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'));
+    const entries = [...groups.entries()];
+    if (mode === 'date') {
+      entries.sort((a, b) => parseDMY(b[0]) - parseDMY(a[0]));
+    } else {
+      entries.sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'));
+    }
+    return entries;
   }
 
-  // Render gom nhóm: chỉ khách có ≥2 đơn mới có header gom (đỡ rối khi đa số
-  // khách chỉ 1 đơn). Khách 1 đơn render như dòng thường, vẫn sắp theo tên.
-  function groupedRowsHtml(list) {
-    return groupList(list)
+  function groupedRowsHtml(list, mode) {
+    if (mode === 'date') {
+      return groupListBy(list, 'date')
+        .map(([k, items]) => dateHeaderHtml(k, items) + items.map((o) => rowHtml(o, true)).join(''))
+        .join('');
+    }
+    // theo khách: chỉ khách ≥2 đơn mới có header gom
+    return groupListBy(list, 'customer')
       .map(([k, items]) => items.length > 1
-        ? groupHeaderHtml(k, items) + items.map((o) => rowHtml(o, true)).join('')
+        ? customerHeaderHtml(k, items) + items.map((o) => rowHtml(o, true)).join('')
         : rowHtml(items[0]))
       .join('');
   }
 
-  // Nạp SP cho các đơn trong nhóm (chỉ nhóm có header, ≥2 đơn) để đếm SL sản
-  // phẩm, rồi cập nhật header tại chỗ (không render lại cả bảng -> không phá
-  // thao tác đang gõ ghi chú).
   function fillGroupProductCounts(list) {
-    for (const [key, items] of groupList(list)) {
+    for (const [key, items] of groupListBy(list, 'customer')) {
       if (items.length < 2) continue;
       if (items.every((o) => o._itemsState === 'loaded')) { updateGroupSp(key, items); continue; }
       Promise.all(items.map((o) => loadItems(o))).then(() => updateGroupSp(key, items));
@@ -341,7 +349,6 @@
     if (span) span.textContent = productText(items);
   }
 
-  // Bấm header nhóm: mở hết nếu đang có dòng đóng, ngược lại đóng hết.
   function toggleGroup(key) {
     const list = visibleOrders().filter((o) => customerKey(o) === key);
     if (!list.length) return;
@@ -350,45 +357,44 @@
     render();
   }
 
-  // ---------------- Nhóm trạng thái ----------------
-  function renderGroupBar() {
+  // ---------------- Thẻ lọc trạng thái ----------------
+  function renderStatusTabs() {
     const counts = groupCounts();
-    $('groupBar').innerHTML = GROUPS.map(([key, label]) =>
-      `<button class="group-card g-${key} ${currentGroup === key ? 'active' : ''}" data-group="${key}">
-         <span class="gc-label"><span class="gc-dot"></span>${label}</span>
-         <span class="gc-num">${counts[key]}</span>
-       </button>`).join('');
+    document.querySelectorAll('#statusTabs .status-tab').forEach((tab) => {
+      const key = tab.dataset.filter;
+      const num = tab.querySelector('.st-num');
+      if (num) num.textContent = counts[key] ?? 0;
+      tab.classList.toggle('active', key === currentGroup);
+    });
   }
 
-  // Đơn hiển thị = lọc theo nhóm + theo dropdown trạng thái (đều client-side)
+  // Đơn hiển thị = lọc theo nhóm trạng thái + bộ lọc nâng cao (client-side).
   function visibleOrders() {
-    let list = orders;
-    if (currentGroup !== 'all') list = list.filter((o) => groupOf(o) === currentGroup);
-    const st = $('fStatus').value;
-    if (st && st !== 'all') list = list.filter((o) => o.statusCode === st);
+    let list = orders.filter((o) => groupOf(o) === currentGroup);
+    if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
+    if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
+    if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
+    if (F.note === 'none') list = list.filter((o) => !(o.note || '').trim());
     return list;
   }
 
   function render() {
-    renderGroupBar();
+    renderStatusTabs();
     const list = visibleOrders();
     if (!list.length) {
-      const msg = orders.length ? 'Không có đơn trong nhóm này' : 'Không có dữ liệu';
+      const msg = orders.length ? 'Không có đơn nào ở trạng thái này.' : 'Không có dữ liệu';
       rowsEl.innerHTML = `<tr><td colspan="11" class="empty">${msg}</td></tr>`;
       updateCount(list);
       return;
     }
-    rowsEl.innerHTML = currentGroupBy === 'customer'
-      ? groupedRowsHtml(list)
+    rowsEl.innerHTML = currentGroupBy
+      ? groupedRowsHtml(list, currentGroupBy)
       : list.map((o) => rowHtml(o)).join('');
     updateCount(list);
-    // Dòng đang mở: load (hoặc render lại) chi tiết sản phẩm
     list.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
-    // Gom nhóm: nạp SP để đếm SL sản phẩm trên header (cập nhật khi tải xong)
     if (currentGroupBy === 'customer') fillGroupProductCounts(list);
   }
 
-  // Đơn sẽ được gửi khi bấm "Báo hàng loạt": chưa báo VÀ không bị tick loại trừ.
   function bulkTargets() {
     return orders.filter((o) => !isNotified(o) && !excluded.has(String(o.id)));
   }
@@ -396,7 +402,7 @@
     const chua = orders.filter((o) => !isNotified(o)).length;
     const willSend = bulkTargets().length;
     const exclNote = chua - willSend > 0 ? ` (loại ${chua - willSend})` : '';
-    $('countInfo').textContent = `Hiển thị ${list.length} đơn · ${chua} chưa báo${exclNote}`;
+    $('countInfo').textContent = `${list.length} đơn · ${chua} chưa báo${exclNote}`;
     $('bulkBtn').disabled = willSend === 0;
   }
 
@@ -431,7 +437,6 @@
       await updateRow(o, { status: code, note: o.note || '' });
       o.statusCode = code;
       App.toast('✅ Đã cập nhật trạng thái');
-      // Render lại: cập nhật số đếm nhóm + lọc dòng theo nhóm đang xem
       render();
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
@@ -472,7 +477,6 @@
     $('modalBg').classList.add('show');
     autoGrowMsg();
   }
-  // Cho textarea cao vừa đủ nội dung (trong giới hạn max-height của CSS) để khỏi phải scroll.
   function autoGrowMsg() {
     const ta = $('modalMsg');
     ta.style.height = 'auto';
@@ -489,8 +493,6 @@
   // ---------------- Gửi Zalo ----------------
   async function sendZalo(id, messageOverride, btnEl, kind = 'hang') {
     const o = byId(id); if (!o) return;
-    // Chốt chặn báo trùng: gửi lẻ không tự loại đơn đã báo như "Báo hàng loạt",
-    // nên nếu đơn đã báo (web/bot/tay) thì hỏi lại trước khi gửi tiếp.
     const reason = notifiedReason(o, kind);
     if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
     const btn = btnEl || rowsEl.querySelector(`.send-zalo[data-id="${cssEsc(String(id))}"][data-kind="${kind}"]`);
@@ -513,7 +515,6 @@
     }
   }
 
-  // Bấm "Báo hàng loạt" -> popup xác nhận số lượng (kèm số đã loại trừ).
   function openBulkModal() {
     const willSend = bulkTargets().length;
     if (!willSend) { App.toast('Không có khách nào để báo', 4000); return; }
@@ -548,15 +549,13 @@
   }
 
   // ---------------- Load ----------------
-  // opts.auto = true: đồng bộ nền — không hiện "Đang tải...", giữ dòng đang mở, báo khách mới.
   async function load(opts = {}) {
     const auto = opts.auto === true;
     if (!auto) rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Đang tải...</td></tr>';
-    // Không lọc trạng thái ở server nữa (để đếm đủ 3 nhóm); chỉ lọc staff/ngày/tìm kiếm.
     const params = new URLSearchParams();
-    const f = $('fFrom').value, t = $('fTo').value, q = $('fQ').value;
-    if (f) params.set('from', f);
-    if (t) params.set('to', t);
+    const q = $('fQ').value;
+    if (F.from) params.set('from', F.from);
+    if (F.to) params.set('to', F.to);
     if (currentStaff) params.set('staff', currentStaff);
     if (q) params.set('q', q);
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
@@ -564,10 +563,8 @@
       const res = await App.api('/api/orders?' + params.toString());
       orders = res.orders || [];
       if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
-      // Giữ các dòng đang mở, bỏ id không còn tồn tại
       const existing = new Set(orders.map((o) => String(o.id)));
       [...openRows].forEach((id) => { if (!existing.has(id)) openRows.delete(id); });
-      // Bỏ tick loại trừ với đơn không còn / đã chuyển sang đã báo
       const stillTodo = new Set(orders.filter((o) => !isNotified(o)).map((o) => String(o.id)));
       [...excluded].forEach((id) => { if (!stillTodo.has(id)) excluded.delete(id); });
       if (auto) {
@@ -576,131 +573,68 @@
       }
       $('syncInfo').textContent = `Cập nhật ${App.fmtDateTime(new Date().toISOString())}`;
       renderTabs();
-      populateStaff();
       render();
     } catch (e) {
       if (!auto) rowsEl.innerHTML = `<tr><td colspan="11" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
-  // Đồng bộ nền định kỳ: bỏ qua khi đang gõ / mở modal / tab ẩn để không phá thao tác.
   function autoSync() {
     if (document.hidden) return;
     if ($('modalBg').classList.contains('show')) return;
     if ($('bulkModalBg').classList.contains('show')) return;
+    if (!$('filterPop').hidden) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
     load({ auto: true });
   }
 
+  // ---------------- Health (chỉ cờ MOCK / TEST trên topbar) ----------------
   async function loadHealth() {
     try {
       const h = await App.api('/api/health');
-      const lb = $('localBadge');
-      lb.textContent = 'Local-runner: ' + (h.localRunner.online ? 'online' : 'offline');
-      lb.className = 'badge-status ' + (h.localRunner.online ? 'badge-online' : 'badge-offline');
       $('mockBadge').style.display = h.mock ? '' : 'none';
       const tb = $('testBadge');
-      if (h.localRunner.testMode) {
+      if (h.localRunner && h.localRunner.testMode) {
         tb.style.display = '';
         tb.textContent = '🧪 TEST: chỉ gửi ' + ((h.localRunner.testPhones || []).join(', ') || '(trống)');
       } else {
         tb.style.display = 'none';
       }
-      if (h.autoNotify) renderAutoBadge(h.autoNotify);
     } catch { /* ignore */ }
   }
 
-  // ---------------- Tự động báo hàng ----------------
-  let autoEnabled = false;
-  function renderAutoBadge(a) {
-    autoEnabled = !!a.enabled;
-    const el = $('autoBadge');
-    const every = Math.round((a.intervalMs || 0) / 1000);
-    el.textContent = 'Tự động: ' + (autoEnabled ? `Bật (mỗi ${every}s)` : 'Tắt');
-    el.className = 'badge-status badge-clickable ' + (autoEnabled ? 'badge-online' : 'badge-offline');
-    const last = a.lastResult;
-    el.title = autoEnabled
-      ? `Tự gửi báo hàng cho đơn "Chưa báo".${last ? ` Lần gần nhất: ✅${last.sent || 0} ❌${last.failed || 0}` : ''} · Bấm để tắt`
-      : 'Bấm để BẬT tự động báo hàng khi có đơn về';
+  // ---------------- Bộ lọc nâng cao (popover) ----------------
+  function activeFilterCount() {
+    let n = 0;
+    if (F.from || F.to) n++;
+    if (F.exclude !== 'all') n++;
+    if (F.note !== 'all') n++;
+    return n;
   }
-
-  async function toggleAuto() {
-    const next = !autoEnabled;
-    if (next && !confirm('Bật TỰ ĐỘNG báo hàng? Hệ thống sẽ tự gửi tin cho mọi đơn "Chưa báo".')) return;
-    try {
-      const a = await App.api('/api/auto-notify/toggle', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: next }),
-      });
-      renderAutoBadge(a);
-      App.toast(next ? '✅ Đã bật tự động báo hàng' : 'Đã tắt tự động báo hàng');
-    } catch (e) {
-      App.toast(`❌ ${e.message}`, 5000);
-    }
-  }
-
-  // ---------------- Test kết nối Basso ----------------
-  async function pingBasso() {
-    const btn = $('bassoBtn');
-    const label = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang kiểm tra...';
-    try {
-      const r = await App.api('/api/basso/ping');
-      if (r.connected) {
-        const s = r.sample ? ` · đơn mẫu: ${r.sample.customerName}` : ' · danh sách trống';
-        App.toast(`✅ Basso OK (${r.ms}ms · ${r.total ?? 0} đơn${s})`, 6000);
-      } else if (r.mock) {
-        App.toast('⚠️ Đang ở chế độ MOCK — chưa nối Basso thật (đặt BASSO_API_BASE_URL, USE_MOCK=false).', 7000);
-      } else {
-        App.toast(`❌ Không kết nối được Basso: ${r.error}`, 8000);
-      }
-    } catch (e) {
-      App.toast(`❌ ${e.message}`, 6000);
-    } finally {
-      btn.disabled = false; btn.innerHTML = label;
-    }
+  function updateFilterBadge() {
+    const cnt = $('filterBtn').querySelector('.cnt');
+    const n = activeFilterCount();
+    cnt.textContent = n;
+    cnt.classList.toggle('zero', n === 0);
   }
 
   // ---------------- Events ----------------
-  $('bassoBtn').addEventListener('click', pingBasso);
   $('syncBtn').addEventListener('click', () => load());
-  // Dropdown trạng thái lọc client-side (đã có đủ đơn) + đồng bộ highlight nhóm
-  $('fStatus').addEventListener('change', (e) => {
-    const v = e.target.value;
-    currentGroup = (v && v !== 'all') ? groupOfCode(v) : 'all';
-    render();
-  });
-  $('fStaff').addEventListener('change', (e) => { currentStaff = e.target.value; load(); });
-  // Gom theo khách là thao tác client-side (đã có đủ đơn) -> chỉ render lại.
-  $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
-  ['fFrom', 'fTo'].forEach((id) => $(id).addEventListener('change', load));
 
-  // Bộ lọc nâng cao: thu gọn mặc định, ô tìm kiếm luôn hiện.
-  // Đếm số filter đang bật để hiện badge -> tránh "ẩn rồi quên đang lọc".
-  function updateFilterCount() {
-    let n = 0;
-    if ($('fFrom').value) n++;
-    if ($('fTo').value) n++;
-    if ($('fStatus').value && $('fStatus').value !== 'all') n++;
-    if ($('fStaff').value) n++;
-    const badge = $('filterCount');
-    badge.textContent = n;
-    badge.hidden = n === 0;
-  }
-  $('filterToggle').addEventListener('click', () => {
-    const panel = $('advFilters');
-    const open = panel.hidden;
-    panel.hidden = !open;
-    $('filterToggle').setAttribute('aria-expanded', String(open));
-  });
-  ['fFrom', 'fTo', 'fStatus', 'fStaff'].forEach((id) => $(id).addEventListener('change', updateFilterCount));
-  updateFilterCount();
+  $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
+
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
   $('bulkBtn').addEventListener('click', openBulkModal);
-  $('autoBadge').addEventListener('click', toggleAuto);
+
+  // Thẻ trạng thái: chọn 1 (luôn có 1 thẻ active).
+  $('statusTabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.status-tab');
+    if (!tab) return;
+    currentGroup = tab.dataset.filter;
+    render();
+  });
 
   $('staffTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.tab');
@@ -709,14 +643,40 @@
     load();
   });
 
-  // Bấm thẻ nhóm = lọc client-side (bấm lại để bỏ lọc). Reset dropdown trạng thái.
-  $('groupBar').addEventListener('click', (e) => {
-    const card = e.target.closest('.group-card');
-    if (!card) return;
-    const key = card.dataset.group;
-    currentGroup = (currentGroup === key) ? 'all' : key;
-    $('fStatus').value = 'all';
-    render();
+  // Popover bộ lọc
+  const filterBtn = $('filterBtn');
+  const filterPop = $('filterPop');
+  filterBtn.addEventListener('click', (e) => { e.stopPropagation(); filterPop.hidden = !filterPop.hidden; });
+  filterPop.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { filterPop.hidden = true; });
+
+  filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
+    seg.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      seg.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+    });
+  });
+
+  $('fApply').addEventListener('click', () => {
+    const prevFrom = F.from, prevTo = F.to;
+    F.from = $('fFrom').value;
+    F.to = $('fTo').value;
+    F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
+    F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
+    updateFilterBadge();
+    filterPop.hidden = true;
+    // Khoảng ngày lọc ở server -> cần load lại; loại trừ/ghi chú lọc client -> chỉ render.
+    if (F.from !== prevFrom || F.to !== prevTo) load(); else render();
+  });
+  $('fClear').addEventListener('click', () => {
+    const hadDate = F.from || F.to;
+    F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all';
+    $('fFrom').value = ''; $('fTo').value = '';
+    filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
+      seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
+    });
+    updateFilterBadge();
+    if (hadDate) load(); else render();
   });
 
   // Delegation cho bảng
@@ -726,7 +686,6 @@
     const exp = t.closest('.expand-btn'); if (exp) return toggleDetail(exp.dataset.id);
     const vc = t.closest('.view-content'); if (vc) return openModal(vc.dataset.id, vc.dataset.kind);
     const sz = t.closest('.send-zalo'); if (sz) return sendZalo(sz.dataset.id, undefined, sz, sz.dataset.kind || 'hang');
-    const ec = t.closest('.edit-content'); if (ec) return openModal(ec.dataset.id, 'hang');
     const sn = t.closest('.save-note'); if (sn) return saveNote(sn.dataset.id);
   });
   rowsEl.addEventListener('change', (e) => {
@@ -746,11 +705,17 @@
   $('modalSend').addEventListener('click', sendFromModal);
   $('modalMsg').addEventListener('input', autoGrowMsg);
   $('modalBg').addEventListener('click', (e) => { if (e.target.id === 'modalBg') closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeModal(); closeBulkModal(); } });
 
-  // Modal xác nhận báo hàng loạt
   $('bulkConfirm').addEventListener('click', bulkSend);
   $('bulkCancel').addEventListener('click', closeBulkModal);
   $('bulkModalBg').addEventListener('click', (e) => { if (e.target.id === 'bulkModalBg') closeBulkModal(); });
+
+  // parseDMY: "19/06/2026" -> Date (cho sắp xếp nhóm theo ngày)
+  function parseDMY(s) {
+    const m = String(s || '').split('/');
+    return m.length === 3 ? new Date(+m[2], +m[1] - 1, +m[0]) : new Date(0);
+  }
 
   loadHealth();
   setInterval(loadHealth, 15000);

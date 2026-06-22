@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mi · Cài đặt</title>
+  <link rel="icon" href="/mi-logo.png" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar: icon rail -->
+    <aside class="sidebar">
+      <div class="brand" title="Mi">
+        <img class="brand-logo" src="/mi-logo.png" alt="Mi" />
+      </div>
+      <nav class="rail-nav">
+        <a class="nav" href="/index.html" title="Hàng về VN"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span></a>
+        <a class="nav" href="/reports.html" title="Lịch sử báo"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span></a>
+      </nav>
+      <div class="side-foot">
+        <a class="nav active" href="/settings.html" title="Cài đặt"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span></a>
+        <span class="rail-sep"></span>
+        <div class="avatar" title="Mi Bot">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1>Cài đặt</h1>
+          <div class="sub">Quản lý nhân viên, tài khoản Zalo &amp; chế độ hệ thống</div>
+        </div>
+      </header>
+
+      <div class="container">
+        <!-- Settings sub-nav -->
+        <div class="tabs" id="settingsTabs" style="margin-top:0;">
+          <button class="tab active" data-panel="nhanvien">Danh sách nhân viên</button>
+          <button class="tab" data-panel="zalo">Tài khoản Zalo</button>
+          <button class="tab" data-panel="mode">Chế độ</button>
+        </div>
+
+        <div class="card" data-panel-content="nhanvien" style="margin-top:14px;">
+          <div class="card-header">
+            <h1>Danh sách nhân viên</h1>
+            <button class="btn small" id="addEmpBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Thêm nhân viên
+            </button>
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Tài khoản đăng nhập hệ thống Mi cho từng nhân viên. <em>(Bản mẫu — chưa lưu vào hệ thống.)</em></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nhân viên</th>
+                  <th>Tài khoản đăng nhập</th>
+                  <th>Mật khẩu</th>
+                  <th>Vai trò</th>
+                  <th class="center">Trạng thái</th>
+                  <th style="width:80px"></th>
+                </tr>
+              </thead>
+              <tbody id="empRows">
+                <tr class="main-row">
+                  <td class="cust">Quản trị</td>
+                  <td>admin</td>
+                  <td><span class="pw">••••••••</span></td>
+                  <td><span class="pill" style="background:var(--primary-soft); color:var(--primary);">Admin</span></td>
+                  <td class="center"><span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Hoạt động</span></td>
+                  <td><button class="link-btn">Sửa</button></td>
+                </tr>
+                <tr class="main-row">
+                  <td class="cust">Linh Dương</td>
+                  <td>linhduong</td>
+                  <td><span class="pw">••••••••</span></td>
+                  <td><span class="pill" style="background:#eaf2fe; color:#2f6fd0;">Quản lý</span></td>
+                  <td class="center"><span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Hoạt động</span></td>
+                  <td><button class="link-btn">Sửa</button></td>
+                </tr>
+                <tr class="main-row">
+                  <td class="cust">Linh Thảo</td>
+                  <td>linhthao</td>
+                  <td><span class="pw">••••••••</span></td>
+                  <td><span class="pill chua">Nhân viên</span></td>
+                  <td class="center"><span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Hoạt động</span></td>
+                  <td><button class="link-btn">Sửa</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card hidden" data-panel-content="zalo" style="margin-top:14px;">
+          <div class="card-header">
+            <h1>Tài khoản Zalo</h1>
+            <button class="btn small">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Thêm tài khoản
+            </button>
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Mỗi nhân viên gắn với một tài khoản Zalo dùng để gửi báo hàng cho khách. <em>(Bản mẫu — chưa lưu vào hệ thống.)</em></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nhân viên</th>
+                  <th>Tên Zalo</th>
+                  <th>SĐT Zalo</th>
+                  <th>Kết nối</th>
+                  <th class="center">Tự động báo</th>
+                  <th style="width:80px"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="main-row">
+                  <td class="cust">Linh Dương</td>
+                  <td>Linh Dương Shop</td>
+                  <td>0985 093 767</td>
+                  <td><span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Đã kết nối</span></td>
+                  <td class="center"><span class="pill da">Bật</span></td>
+                  <td><button class="link-btn">Sửa</button></td>
+                </tr>
+                <tr class="main-row">
+                  <td class="cust">Linh Thảo</td>
+                  <td>Thảo Linh</td>
+                  <td>0966 566 888</td>
+                  <td><span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Đã kết nối</span></td>
+                  <td class="center"><span class="pill da">Bật</span></td>
+                  <td><button class="link-btn">Sửa</button></td>
+                </tr>
+                <tr class="main-row">
+                  <td class="cust">Trâm</td>
+                  <td>Trâm Nguyễn</td>
+                  <td>0978 040 653</td>
+                  <td><span class="badge-status badge-offline" style="box-shadow:none; padding:5px 12px;">Mất kết nối</span></td>
+                  <td class="center"><span class="pill chua">Tắt</span></td>
+                  <td><button class="link-btn">Sửa</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card hidden" data-panel-content="mode" style="margin-top:14px;">
+          <div class="card-header"><h1>Chế độ hệ thống</h1></div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 6px;">Cấu hình tự động hoá và kết nối hệ thống.</div>
+          <div class="mode-row">
+            <div class="mode-info">
+              <div class="mode-title">Tự động báo hàng</div>
+              <div class="mode-desc">Bot tự động gửi báo hàng cho đơn mới về.</div>
+            </div>
+            <button class="badge-status badge-clickable badge-offline" id="autoBadge" title="Bật/tắt tự động báo hàng">Tự động: ...</button>
+          </div>
+          <div class="mode-row">
+            <div class="mode-info">
+              <div class="mode-title">Local-runner</div>
+              <div class="mode-desc">Tiến trình chạy bot trên máy local.</div>
+            </div>
+            <span class="badge-status badge-offline" id="localBadge">Local-runner: ...</span>
+          </div>
+          <div class="mode-row">
+            <div class="mode-info">
+              <div class="mode-title">Chế độ dữ liệu</div>
+              <div class="mode-desc">Nguồn dữ liệu đơn hàng đang dùng.</div>
+            </div>
+            <span class="badge-status badge-mock" id="modeMockBadge" style="display:none;">MOCK DATA</span>
+            <span class="badge-status badge-online" id="modeLiveBadge" style="display:none;">Basso (live)</span>
+          </div>
+          <div class="mode-row">
+            <div class="mode-info">
+              <div class="mode-title">Kết nối Basso API</div>
+              <div class="mode-desc">Kiểm tra kết nối tới hệ thống Basso.</div>
+            </div>
+            <button class="btn secondary" id="bassoBtn" title="Kiểm tra kết nối tới Basso API">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>
+              Test Basso
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Popup thêm / sửa nhân viên -->
+  <div class="modal-bg" id="empModal">
+    <div class="modal" style="width:480px;">
+      <h3 id="emTitle">Thêm nhân viên</h3>
+      <p class="muted">Tài khoản đăng nhập hệ thống Mi.</p>
+      <div class="form-grid">
+        <div class="field full"><label>Họ tên</label><input id="emName" type="text" placeholder="Vd: Nguyễn Văn A" /></div>
+        <div class="field"><label>Tài khoản đăng nhập</label><input id="emUser" type="text" placeholder="vd: nguyenvana" /></div>
+        <div class="field"><label>Mật khẩu</label><input id="emPass" type="text" placeholder="••••••••" /></div>
+        <div class="field"><label>Vai trò</label><select id="emRole"><option>Admin</option><option>Quản lý</option><option selected>Nhân viên</option></select></div>
+        <div class="field"><label>Trạng thái</label><select id="emStatus"><option selected>Hoạt động</option><option>Tạm khoá</option></select></div>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="emCancel">Huỷ</button>
+        <button class="btn accent" id="emSave">Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/js/app.js"></script>
+  <script src="/js/settings.js"></script>
+</body>
+</html>
