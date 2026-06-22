@@ -95,6 +95,8 @@ async function notifyOne(order, opts = {}) {
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
     images: meta.images,
+    // Audit: ai gửi tin này. 'bot' (tự động) hoặc danh tính nhân viên do gateway forward.
+    sentBy: opts.actor || null,
   });
 
   return { order, ...result, updateError, report };

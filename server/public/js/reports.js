@@ -36,8 +36,16 @@
     return App.esc(firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine);
   }
 
+  // Người gửi: 'bot' = tự động; chuỗi khác = nhân viên (gateway forward); rỗng = không rõ.
+  function senderCell(v) {
+    const s = String(v || '').trim();
+    if (!s) return '<span class="muted">—</span>';
+    if (s === 'bot') return '<span class="pill">🤖 Bot</span>';
+    return App.esc(s);
+  }
+
   async function load() {
-    rowsEl.innerHTML = '<tr><td colspan="9" class="empty">Đang tải...</td></tr>';
+    rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     const st = $('fStatus').value, q = $('fQ').value;
     if (st) params.set('status', st);
@@ -49,7 +57,7 @@
       $('sFailed').textContent = res.stats.failed;
       const items = res.items || [];
       if (!items.length) {
-        rowsEl.innerHTML = '<tr><td colspan="9" class="empty">Chưa có lượt báo nào</td></tr>';
+        rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Chưa có lượt báo nào</td></tr>';
         return;
       }
       rowsEl.innerHTML = items.map((r) => `<tr>
@@ -59,12 +67,13 @@
         <td class="cust">${App.esc(r.customer_name)}</td>
         <td>${App.esc(r.phone)}</td>
         <td>${App.esc(r.staff)}</td>
+        <td>${senderCell(r.sent_by)}</td>
         <td class="msg-cell" title="${App.esc(r.message)}">${msgPreview(r.message)}</td>
         <td>${resultPill(r.status)}</td>
         <td class="err-cell" style="color:var(--red)" title="${App.esc(r.error)}">${errPreview(r.error)}</td>
       </tr>`).join('');
     } catch (e) {
-      rowsEl.innerHTML = `<tr><td colspan="9" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td colspan="10" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 

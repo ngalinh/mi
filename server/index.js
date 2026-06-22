@@ -11,8 +11,19 @@ const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
 
 const app = express();
-app.use(cors());
+// CORS: mặc định mở (gateway ai.basso.vn là lối vào duy nhất). Đặt CORS_ORIGIN để siết.
+app.use(config.corsOrigins.length ? cors({ origin: config.corsOrigins }) : cors());
 app.use(express.json({ limit: '5mb' }));
+
+// Audit: lấy danh tính nhân viên do gateway forward (xem config.auth.userHeaders).
+// null = không rõ (vd gọi thẳng app, bỏ qua gateway).
+function getActor(req) {
+  for (const h of config.auth.userHeaders) {
+    const v = req.get(h);
+    if (v && String(v).trim()) return String(v).trim();
+  }
+  return null;
+}
 // Tắt cache asset tĩnh (dev): tránh trình duyệt giữ JS/CSS cũ sau khi sửa code
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
@@ -118,7 +129,7 @@ app.get('/api/arrived-items', async (req, res) => {
 app.post('/api/notify', async (req, res) => {
   try {
     const { orders, orderIds, profile, account, messageOverride, kind } = req.body || {};
-    const opts = { profile, account, messageOverride, kind };
+    const opts = { profile, account, messageOverride, kind, actor: getActor(req) };
     if (Array.isArray(orders) && orders.length) {
       const result = await notifyOrders(orders, opts);
       return res.json({ ok: true, ...result });

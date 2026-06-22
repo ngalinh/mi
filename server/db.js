@@ -29,6 +29,10 @@ db.exec(`
 // "ADD COLUMN IF NOT EXISTS" -> bọc try/catch, chạy lại không sao.
 try { db.exec('ALTER TABLE reports ADD COLUMN images TEXT'); } catch (_) { /* đã có cột */ }
 
+// Migration: ghi NGƯỜI GỬI (audit). 'bot' = luồng tự động; còn lại là danh tính nhân
+// viên do gateway ai.basso.vn forward (xem config.auth.userHeaders). null = không rõ.
+try { db.exec('ALTER TABLE reports ADD COLUMN sent_by TEXT'); } catch (_) { /* đã có cột */ }
+
 db.exec(`  -- Chống gửi trùng cho luồng TỰ ĐỘNG báo hàng: mỗi đơn (order_id) chỉ tự gửi 1 lần thành công.
   -- Khi lỗi, tăng attempts; quá maxRetries thì thôi (tránh spam khi local-runner offline).
   CREATE TABLE IF NOT EXISTS auto_notified (
@@ -40,8 +44,8 @@ db.exec(`  -- Chống gửi trùng cho luồng TỰ ĐỘNG báo hàng: mỗi đ
 `);
 
 const insertStmt = db.prepare(`
-  INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, created_at)
-  VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @images, @created_at)
+  INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, created_at)
+  VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @images, @sent_by, @created_at)
 `);
 
 function addReport(row) {
@@ -55,6 +59,7 @@ function addReport(row) {
     error: row.error ?? null,
     job_id: row.jobId ?? null,
     images: Array.isArray(row.images) && row.images.length ? JSON.stringify(row.images) : null,
+    sent_by: row.sentBy ?? null,
     created_at: new Date().toISOString(),
   };
   const info = insertStmt.run(data);

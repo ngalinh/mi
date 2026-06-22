@@ -12,6 +12,17 @@ module.exports = {
   port: parseInt(process.env.PORT || process.env.SERVER_PORT || '8080', 10),
   apiKey: process.env.API_KEY || '',
   playwrightLocalUrl: process.env.PLAYWRIGHT_LOCAL_URL || 'http://localhost:8090',
+  // Đăng nhập do gateway ai.basso.vn lo (đứng trước app). Gateway forward danh tính nhân
+  // viên qua header để app GHI LẠI "ai gửi tin" vào lịch sử. Danh sách header thử lần lượt,
+  // lấy giá trị đầu tiên có. Đổi qua AUTH_USER_HEADER (phân tách bằng dấu phẩy).
+  auth: {
+    userHeaders: (process.env.AUTH_USER_HEADER ||
+      'x-user-email,x-forwarded-email,x-forwarded-user,x-auth-request-email,x-authenticated-user')
+      .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  },
+  // Siết CORS: liệt kê origin được phép (phân tách bằng dấu phẩy) trong CORS_ORIGIN.
+  // Để trống = mở cho mọi origin (mặc định cũ — phù hợp khi gateway là lối vào duy nhất).
+  corsOrigins: (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean),
   basso: {
     baseUrl: bassoBase.replace(/\/$/, ''),
     partnerApiKey: process.env.BASSO_API_KEY || '',

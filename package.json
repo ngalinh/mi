@@ -17,7 +17,7 @@
     "test:basso": "node scripts/test-basso.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   },
   "dependencies": {
     "cors": "^2.8.5",

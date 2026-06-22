@@ -113,6 +113,7 @@ async function runAutoNotify(opts = {}) {
           kind: 'hang',
           skipWebUpdate: !cfg.updateWeb, // mặc định chỉ đánh dấu trong mi, không cập nhật web Basso
           strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
+          actor: 'bot',                  // audit: luồng tự động
         });
 
         if (r.ok) {
