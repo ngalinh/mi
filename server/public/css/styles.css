@@ -537,6 +537,13 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   font-family: inherit; cursor: pointer; min-width: 140px;
 }
 .delay-reason:focus { outline: none; box-shadow: 0 0 0 3px rgba(225,73,107,.16); }
+/* Ô nhập lý do tự do khi chọn "Khác". */
+.delay-other {
+  margin-top: 4px; padding: 5px 9px; border: 1px dashed var(--red);
+  border-radius: var(--radius-sm); background: #fff; color: var(--text);
+  font-size: 12px; font-family: inherit; min-width: 140px; max-width: 180px;
+}
+.delay-other:focus { outline: none; box-shadow: 0 0 0 3px rgba(225,73,107,.16); }
 
 /* note inline */
 .note-cell { display: flex; gap: 6px; align-items: center; }
