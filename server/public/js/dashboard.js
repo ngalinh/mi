@@ -35,7 +35,9 @@
     ['send_failed', 'Gửi lỗi'],
   ];
   // Lý do delay (lưu ở mi cùng cờ Loại trừ) cho đơn chưa báo ngay.
-  const DELAY_REASONS = ['Đợi bank', 'Đợi hàng về thêm', 'Khách hẹn', 'Khác'];
+  // Các lý do dựng sẵn; ngoài ra có "Khác" cho phép nhập tự do.
+  const DELAY_REASONS = ['Đợi bank', 'Đợi hàng về thêm', 'Khách hẹn'];
+  const DELAY_OTHER = 'Khác';
 
   const byId = (id) => orders.find((o) => String(o.id) === String(id));
 
@@ -112,13 +114,20 @@
   }
 
   // Dropdown lý do delay — chỉ hiện khi đơn đang bị Loại trừ (tick Delay).
+  // Lý do không nằm trong danh sách dựng sẵn => coi là "Khác" (nhập tự do).
   function delayReasonTag(o) {
     if (!excluded.has(String(o.id))) return '';
     const cur = o.delayReason || '';
+    const isPreset = DELAY_REASONS.includes(cur);
+    const isOther = o._delayOther || (cur !== '' && !isPreset);
+    const selVal = isPreset ? cur : (isOther ? DELAY_OTHER : '');
     const opts = DELAY_REASONS.map((r) =>
-      `<option value="${App.esc(r)}" ${r === cur ? 'selected' : ''}>${App.esc(r)}</option>`).join('');
+      `<option value="${App.esc(r)}" ${r === selVal ? 'selected' : ''}>${App.esc(r)}</option>`).join('');
+    const otherInput = isOther
+      ? `<input class="delay-other" data-id="${App.esc(o.id)}" value="${App.esc(isPreset ? '' : cur)}" placeholder="Nhập lý do..." title="Nhập lý do tạm hoãn" />`
+      : '';
     return `<select class="delay-reason" data-id="${App.esc(o.id)}" title="Lý do tạm hoãn báo hàng">
-      <option value="" ${cur ? '' : 'selected'}>— Lý do delay —</option>${opts}</select>`;
+      <option value="" ${selVal ? '' : 'selected'}>— Lý do delay —</option>${opts}<option value="${DELAY_OTHER}" ${selVal === DELAY_OTHER ? 'selected' : ''}>${DELAY_OTHER}</option></select>${otherInput}`;
   }
 
   function botTag(o) {
@@ -274,6 +283,10 @@
       <td><div class="status-cell">${statusSelect(o)}${botTag(o)}${delayReasonTag(o)}</div></td>
       <td><div class="note-cell">
         <input class="note-input" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
+        <select class="note-preset" data-id="${App.esc(o.id)}" title="Chèn mẫu ghi chú">
+          <option value="" selected>＋ Mẫu</option>
+          ${DELAY_REASONS.map((r) => `<option value="${App.esc(r)}">${App.esc(r)}</option>`).join('')}
+        </select>
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
       </div></td>
       <td>${actionsCell}</td>
@@ -474,7 +487,7 @@
     const o = byId(id); if (!o) return;
     const want = cb.checked;
     const prevReason = o.delayReason || '';
-    if (want) { excluded.add(id); } else { excluded.delete(id); o.delayReason = ''; }
+    if (want) { excluded.add(id); } else { excluded.delete(id); o.delayReason = ''; o._delayOther = false; }
     o.delayed = want;
     render(); // vẽ lại để hiện/ẩn dropdown lý do delay theo trạng thái mới
     updateCount();
@@ -495,7 +508,22 @@
     }
   }
 
-  // Lưu lý do delay khi nhân viên chọn từ dropdown.
+  // Chọn lý do từ dropdown. "Khác" -> hiện ô nhập tự do (chưa lưu tới khi gõ).
+  function changeDelayReason(id, value) {
+    const o = byId(id); if (!o) return;
+    if (value === DELAY_OTHER) {
+      o._delayOther = true;
+      if (DELAY_REASONS.includes(o.delayReason)) o.delayReason = ''; // xoá preset cũ để nhập mới
+      render();
+      const inp = rowsEl.querySelector(`.delay-other[data-id="${cssEsc(String(id))}"]`);
+      if (inp) inp.focus();
+      return;
+    }
+    o._delayOther = false;
+    saveDelayReason(id, value);
+  }
+
+  // Lưu lý do delay (preset, chuỗi tự do, hoặc '' để xoá lý do).
   async function saveDelayReason(id, reason) {
     const o = byId(id); if (!o) return;
     const prev = o.delayReason || '';
@@ -513,6 +541,19 @@
       if (sel) sel.value = prev;
       App.toast(`❌ Không lưu được lý do: ${e.message}`, 5000);
     }
+  }
+
+  // Chèn nhanh một mẫu lý do vào ô Ghi chú (nối thêm, không ghi đè). Để nhân viên
+  // sửa tiếp (vd thêm ngày) rồi bấm Lưu. Reset dropdown về nhãn "＋ Mẫu".
+  function insertNotePreset(sel) {
+    const phrase = sel.value;
+    sel.value = '';
+    if (!phrase) return;
+    const input = rowsEl.querySelector(`.note-input[data-id="${cssEsc(String(sel.dataset.id))}"]`);
+    if (!input) return;
+    const cur = input.value.trim();
+    input.value = cur ? `${cur} ${phrase}` : phrase;
+    input.focus();
   }
 
   async function saveNote(id) {
@@ -763,7 +804,11 @@
     const sel = e.target.closest('.status-sel');
     if (sel) return changeStatus(sel.dataset.id, sel.value);
     const rsn = e.target.closest('.delay-reason');
-    if (rsn) return saveDelayReason(rsn.dataset.id, rsn.value);
+    if (rsn) return changeDelayReason(rsn.dataset.id, rsn.value);
+    const other = e.target.closest('.delay-other');
+    if (other) return saveDelayReason(other.dataset.id, other.value.trim());
+    const np = e.target.closest('.note-preset');
+    if (np) return insertNotePreset(np);
     const cb = e.target.closest('.excl-cb');
     if (cb) return toggleDelay(cb);
   });
