@@ -51,6 +51,9 @@ db.exec(`  -- Cờ "Delay / Loại trừ": đánh dấu đơn tạm hoãn để 
   );
 `);
 
+// Migration: thêm lý do delay (vd "Đợi bank", "Đợi hàng về thêm"). Chạy lại không sao.
+try { db.exec('ALTER TABLE delayed_orders ADD COLUMN reason TEXT'); } catch (_) { /* đã có cột */ }
+
 const insertStmt = db.prepare(`
   INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, created_at)
   VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @images, @sent_by, @created_at)
@@ -133,22 +136,24 @@ function recordAutoNotified(orderId, status, attempts) {
 }
 
 // ---- Cờ Delay / Loại trừ (lưu cục bộ ở mi) ----
-const getDelayedStmt = db.prepare('SELECT order_key FROM delayed_orders');
+const getDelayedStmt = db.prepare('SELECT order_key, reason FROM delayed_orders');
 const setDelayedStmt = db.prepare(`
-  INSERT INTO delayed_orders (order_key, updated_at) VALUES (@order_key, @updated_at)
-  ON CONFLICT(order_key) DO UPDATE SET updated_at = @updated_at
+  INSERT INTO delayed_orders (order_key, reason, updated_at) VALUES (@order_key, @reason, @updated_at)
+  ON CONFLICT(order_key) DO UPDATE SET reason = @reason, updated_at = @updated_at
 `);
 const delDelayedStmt = db.prepare('DELETE FROM delayed_orders WHERE order_key = @order_key');
 
-/** Tập các khoá đơn đang bị đánh dấu Delay. */
-function getDelayedKeys() {
-  return new Set(getDelayedStmt.all().map((r) => r.order_key));
+/** Map khoá đơn -> lý do delay (chuỗi, có thể rỗng) cho các đơn đang bị Delay. */
+function getDelayedMap() {
+  const m = new Map();
+  for (const r of getDelayedStmt.all()) m.set(r.order_key, r.reason || '');
+  return m;
 }
 
-/** Bật/tắt cờ Delay cho 1 đơn (key = autoKey(order)). */
-function setDelayed(orderKey, delayed) {
+/** Bật/tắt cờ Delay cho 1 đơn (key = autoKey(order)), kèm lý do tuỳ chọn. */
+function setDelayed(orderKey, delayed, reason) {
   const order_key = String(orderKey);
-  if (delayed) setDelayedStmt.run({ order_key, updated_at: new Date().toISOString() });
+  if (delayed) setDelayedStmt.run({ order_key, reason: reason || null, updated_at: new Date().toISOString() });
   else delDelayedStmt.run({ order_key });
   return !!delayed;
 }
@@ -164,4 +169,4 @@ function stats() {
   return { total: row.total || 0, success: row.success || 0, failed: row.failed || 0 };
 }
 
-module.exports = { db, addReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey, getDelayedKeys, setDelayed };
+module.exports = { db, addReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey, getDelayedMap, setDelayed };

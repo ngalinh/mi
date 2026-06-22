@@ -34,6 +34,8 @@
     ['notified_ship', 'Đã báo ship'],
     ['send_failed', 'Gửi lỗi'],
   ];
+  // Lý do delay (lưu ở mi cùng cờ Loại trừ) cho đơn chưa báo ngay.
+  const DELAY_REASONS = ['Đợi bank', 'Đợi hàng về thêm', 'Khách hẹn', 'Khác'];
 
   const byId = (id) => orders.find((o) => String(o.id) === String(id));
 
@@ -107,6 +109,16 @@
     const opts = STATUS_OPTS.map(([v, l]) =>
       `<option value="${v}" ${v === o.statusCode ? 'selected' : ''}>${l}</option>`).join('');
     return `<select class="status-sel" data-code="${App.esc(o.statusCode)}" data-id="${App.esc(o.id)}">${opts}</select>`;
+  }
+
+  // Dropdown lý do delay — chỉ hiện khi đơn đang bị Loại trừ (tick Delay).
+  function delayReasonTag(o) {
+    if (!excluded.has(String(o.id))) return '';
+    const cur = o.delayReason || '';
+    const opts = DELAY_REASONS.map((r) =>
+      `<option value="${App.esc(r)}" ${r === cur ? 'selected' : ''}>${App.esc(r)}</option>`).join('');
+    return `<select class="delay-reason" data-id="${App.esc(o.id)}" title="Lý do tạm hoãn báo hàng">
+      <option value="" ${cur ? '' : 'selected'}>— Lý do delay —</option>${opts}</select>`;
   }
 
   function botTag(o) {
@@ -259,7 +271,7 @@
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
-      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>
+      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}${delayReasonTag(o)}</div></td>
       <td><div class="note-cell">
         <input class="note-input" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
@@ -461,24 +473,45 @@
     const id = String(cb.dataset.id);
     const o = byId(id); if (!o) return;
     const want = cb.checked;
-    if (want) excluded.add(id); else excluded.delete(id);
-    const tr = cb.closest('.main-row');
-    if (tr) tr.classList.toggle('row-excluded', want);
+    const prevReason = o.delayReason || '';
+    if (want) { excluded.add(id); } else { excluded.delete(id); o.delayReason = ''; }
+    o.delayed = want;
+    render(); // vẽ lại để hiện/ẩn dropdown lý do delay theo trạng thái mới
     updateCount();
     try {
       await App.api('/api/delay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: o.customerId, dateInventory: o.dateInventory, id: o.id, delayed: want }),
+        body: JSON.stringify({ customerId: o.customerId, dateInventory: o.dateInventory, id: o.id, delayed: want, reason: want ? o.delayReason : '' }),
       });
-      o.delayed = want;
     } catch (e) {
       // Lỗi lưu -> hoàn tác trạng thái trên UI để khớp với server.
       if (want) excluded.delete(id); else excluded.add(id);
-      cb.checked = !want;
-      if (tr) tr.classList.toggle('row-excluded', !want);
+      o.delayed = !want;
+      o.delayReason = prevReason;
+      render();
       updateCount();
       App.toast(`❌ Không lưu được Loại trừ: ${e.message}`, 5000);
+    }
+  }
+
+  // Lưu lý do delay khi nhân viên chọn từ dropdown.
+  async function saveDelayReason(id, reason) {
+    const o = byId(id); if (!o) return;
+    const prev = o.delayReason || '';
+    o.delayReason = reason;
+    try {
+      await App.api('/api/delay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: o.customerId, dateInventory: o.dateInventory, id: o.id, delayed: true, reason }),
+      });
+      App.toast('✅ Đã lưu lý do delay');
+    } catch (e) {
+      o.delayReason = prev;
+      const sel = rowsEl.querySelector(`.delay-reason[data-id="${cssEsc(String(id))}"]`);
+      if (sel) sel.value = prev;
+      App.toast(`❌ Không lưu được lý do: ${e.message}`, 5000);
     }
   }
 
@@ -729,6 +762,8 @@
   rowsEl.addEventListener('change', (e) => {
     const sel = e.target.closest('.status-sel');
     if (sel) return changeStatus(sel.dataset.id, sel.value);
+    const rsn = e.target.closest('.delay-reason');
+    if (rsn) return saveDelayReason(rsn.dataset.id, rsn.value);
     const cb = e.target.closest('.excl-cb');
     if (cb) return toggleDelay(cb);
   });
