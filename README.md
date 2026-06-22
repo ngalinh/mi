@@ -143,6 +143,16 @@ Thứ tự ưu tiên chọn account khi gửi (cả báo tay lẫn tự động)
 Kiểm tra nhanh số NV đã map ở `GET /api/health` → `zaloAccountMapped`. Tên account phải **khớp
 đúng** tên hiện trong dropdown Salework, nếu không `selectZaloAccount` báo `KHONG_THAY_TAI_KHOAN_ZALO`.
 
+**Xem 1 profile đang đăng nhập những Zalo nào** (chạy trên máy runner, dùng session đã lưu):
+
+```powershell
+npm run accounts              # profile mặc định "default"
+npm run accounts -- ten_acc   # profile khác
+```
+
+In ra trạng thái đăng nhập + danh sách tên tài khoản Zalo đang thấy (kèm ảnh
+`screenshots/02a-account-search.png`). Copy đúng tên ở đây để điền vào `ZALO_ACCOUNT_MAP`.
+
 ## Ráp API website thật (ĐÃ tích hợp Basso Partner API)
 
 Chỉ cần điền `.env` là chạy thật:
