@@ -247,8 +247,8 @@
     // Luôn hiện cả 2 nút; nút nào chưa có nội dung thì disable, không cho gửi.
     const actionsCell = `<div class="action-cell">
       <div class="action-btns">
-        <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang" ${hasHang ? '' : 'disabled'} title="${hasHang ? 'Gửi báo hàng qua Zalo' : 'Chưa có nội dung báo hàng'}">${App.icon('send')} Báo hàng</button>
-        <button class="btn small outline send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" ${hasShip ? '' : 'disabled'} title="${hasShip ? 'Gửi báo ship qua Zalo' : 'Chưa có nội dung báo ship'}">${App.icon('box')} Báo ship</button>
+        <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang" ${hasHang ? '' : 'disabled'} title="${hasHang ? 'Gửi báo hàng qua Zalo' : 'Chưa có nội dung báo hàng'}">${App.icon('box')} Báo hàng</button>
+        <button class="btn small outline send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" ${hasShip ? '' : 'disabled'} title="${hasShip ? 'Gửi báo ship qua Zalo' : 'Chưa có nội dung báo ship'}">${App.icon('truck')} Báo ship</button>
       </div>
     </div>`;
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
@@ -508,7 +508,7 @@
     $('modalTitle').textContent = `${isShip ? 'Báo ship' : 'Báo hàng'} — ${o.customerName}`;
     $('modalSub').textContent = `SĐT: ${o.phone || '—'} · NV: ${o.staff || '—'}`;
     $('modalMsg').value = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
-    $('modalSend').innerHTML = (isShip ? App.icon('box') : App.icon('send')) +
+    $('modalSend').innerHTML = (isShip ? App.icon('truck') : App.icon('box')) +
       (isShip ? ' Gửi báo ship qua Zalo' : ' Gửi báo hàng qua Zalo');
     $('modalSend').style.display = '';
     $('modalBg').classList.add('show');
