@@ -77,8 +77,22 @@
     }
   }
 
+  // Đồng bộ thẻ thống kê đang active với giá trị filter ('' | 'success' | 'failed')
+  function syncStatCards(val) {
+    document.querySelectorAll('#statCards .status-tab').forEach((c) =>
+      c.classList.toggle('active', c.dataset.filter === val));
+  }
+
   $('reloadBtn').addEventListener('click', load);
-  $('fStatus').addEventListener('change', load);
+  $('fStatus').addEventListener('change', () => { syncStatCards($('fStatus').value); load(); });
+  // Bấm thẻ thống kê = lọc theo loại (Tổng = tất cả, Thành công, Thất bại)
+  $('statCards').addEventListener('click', (e) => {
+    const card = e.target.closest('.status-tab');
+    if (!card) return;
+    $('fStatus').value = card.dataset.filter;
+    syncStatCards(card.dataset.filter);
+    load();
+  });
   let t;
   $('fQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 400); });
   load();
