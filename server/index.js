@@ -47,6 +47,8 @@ app.get('/api/health', async (req, res) => {
       registered: localRegistry.getInfo(),
     },
     autoNotify: autoNotify.getStatus(),
+    // Số nhân viên đã ánh xạ sang tài khoản Zalo (ZALO_ACCOUNT_MAP) — để kiểm tra cấu hình.
+    zaloAccountMapped: Object.keys(config.zaloAccountMap).length,
   });
 });
 

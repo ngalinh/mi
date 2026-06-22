@@ -54,11 +54,17 @@ async function notifyOne(order, opts = {}) {
   // Tìm khách: dùng SĐT (whitelist + tìm) và tên (khớp hội thoại)
   const keyword = order.phone || order.customerName;
 
+  // Tài khoản Zalo để gửi, theo thứ tự ưu tiên:
+  //   1) account truyền thẳng vào lệnh (vd người dùng chọn cụ thể)
+  //   2) ánh xạ theo NHÂN VIÊN phụ trách đơn (ZALO_ACCOUNT_MAP) — để mỗi NV gửi bằng Zalo của mình
+  //   3) account mặc định của luồng (auto: AUTO_NOTIFY_ACCOUNT; tay: để trống -> runner dùng DEFAULT_ZALO_ACCOUNT)
+  const account = opts.account || config.zaloAccountForOrder(order) || opts.defaultAccount || undefined;
+
   let result;
   try {
     result = await sendBaoHang({
       profile: opts.profile || 'default',
-      account: opts.account,
+      account,
       keyword,
       name: order.customerName,
       message,

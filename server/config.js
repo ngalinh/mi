@@ -6,7 +6,36 @@ const bassoBase = process.env.BASSO_API_BASE_URL || '';
 const useMockEnv = (process.env.USE_MOCK || '').toLowerCase();
 const useMock = useMockEnv === 'true' ? true : useMockEnv === 'false' ? false : !bassoBase;
 
+// Ánh xạ NHÂN VIÊN -> tên tài khoản Zalo (đúng tên hiện trong dropdown Salework). Khai báo
+// JSON trong ZALO_ACCOUNT_MAP; key = user_id NV (ưu tiên) HOẶC tên nhân viên, value = tên
+// account Zalo. Để mỗi đơn tự gửi bằng Zalo của nhân viên phụ trách. Sai JSON -> bỏ qua (map rỗng).
+function parseZaloAccountMap(raw) {
+  if (!raw || !String(raw).trim()) return {};
+  try {
+    const obj = JSON.parse(raw);
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v != null && String(v).trim()) out[String(k).trim().toLowerCase()] = String(v).trim();
+    }
+    return out;
+  } catch (e) {
+    console.warn('[config] ZALO_ACCOUNT_MAP không phải JSON hợp lệ -> bỏ qua:', e.message);
+    return {};
+  }
+}
+const zaloAccountMap = parseZaloAccountMap(process.env.ZALO_ACCOUNT_MAP);
+
+/** Tên account Zalo cho 1 đơn theo nhân viên phụ trách (userId ưu tiên, rồi tới tên). '' nếu không có. */
+function zaloAccountForOrder(order) {
+  if (!order) return '';
+  const byId = order.userId != null ? zaloAccountMap[String(order.userId).trim().toLowerCase()] : '';
+  if (byId) return byId;
+  return (order.staff && zaloAccountMap[String(order.staff).trim().toLowerCase()]) || '';
+}
+
 module.exports = {
+  zaloAccountMap,
+  zaloAccountForOrder,
   // Ưu tiên PORT (nền tảng host như ai.basso.vn thường cấp port động qua biến này),
   // sau đó tới SERVER_PORT (cấu hình thủ công), cuối cùng mặc định 8080 cho chạy local.
   port: parseInt(process.env.PORT || process.env.SERVER_PORT || '8080', 10),
