@@ -8,35 +8,35 @@
 
 :root {
   /* surfaces — nền gradient hồng cam (theo ảnh Zenith) */
-  --bg: #f7f3ec;             /* kem trung tính cho bề mặt mềm / header bảng */
-  --bg-soft: #f0eae1;
+  --bg: #f3efe8;             /* kem trung tính cho bề mặt mềm / header bảng */
+  --bg-soft: #ebe5db;
   --card: #ffffff;
-  --rail: #f2845c;           /* sidebar coral */
-  --border: #ece6dd;
-  --border-strong: #e3dccf;
-  /* gradient nền trang: greige -> kem -> ửng đào rất nhẹ (theo ảnh Moonwalk) */
-  --page-grad: linear-gradient(165deg, #f0ede7 0%, #faf7f1 45%, #f6ece4 100%);
+  --rail: #1b1c2e;           /* sidebar navy đậm */
+  --border: #e8e2d8;
+  --border-strong: #ded7ca;
+  /* gradient nền trang: kem trung tính, rất nhẹ (theo ảnh Runway) */
+  --page-grad: linear-gradient(165deg, #eee9e1 0%, #f4f0e9 50%, #efe9e0 100%);
 
-  /* text — charcoal ấm (theo ảnh Moonwalk) */
-  --text: #3f3b38;
-  --text-soft: #6e6a65;
-  --muted: #9a958d;
+  /* text — navy đậm gần đen (theo ảnh Runway) */
+  --text: #1b1c2e;
+  --text-soft: #6f6c6a;
+  --muted: #a39e97;
 
-  /* brand / accents — pastel (ít bão hòa, dịu mắt) */
-  --primary: #f0a88c;        /* coral pastel */
-  --primary-dark: #e2916f;
-  --primary-soft: #fdeee4;
-  --primary-grad: linear-gradient(135deg, #f8c8ad, #f2ab92);
-  --green: #7cc3a3;          /* mint pastel */
-  --green-soft: #e4f4ec;
-  --red: #ec9aac;            /* rose pastel */
-  --red-soft: #fce8ed;
-  --amber: #e8b67e;          /* apricot pastel */
-  --amber-soft: #fbeed9;
-  --violet: #f0a88c;
-  --violet-soft: #fdeee4;
-  --pink: #efa3b8;           /* hồng pastel */
-  --pink-soft: #fde8ee;
+  /* brand / accents — cam tươi điểm nhấn + navy */
+  --primary: #f26b1f;        /* cam Runway */
+  --primary-dark: #de5d12;
+  --primary-soft: #fde7d6;
+  --primary-grad: linear-gradient(135deg, #f5853a, #ef6311);
+  --green: #4fb286;          /* mint */
+  --green-soft: #e0f3ea;
+  --red: #e26079;            /* rose */
+  --red-soft: #fce0e7;
+  --amber: #e0992f;          /* apricot */
+  --amber-soft: #fbecd2;
+  --violet: #f26b1f;
+  --violet-soft: #fde7d6;
+  --pink: #e86a9a;
+  --pink-soft: #fce0ec;
 
   /* numeric font cho số liệu */
   --font-num: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -49,7 +49,7 @@
   --shadow-sm: 0 8px 24px -16px rgba(120, 70, 50, .16);
   --shadow: 0 12px 30px -10px rgba(120, 70, 50, .18);
   --shadow-lg: 0 24px 60px -16px rgba(120, 70, 50, .26);
-  --shadow-primary: 0 10px 22px -8px rgba(239, 139, 94, .45);
+  --shadow-primary: 0 10px 22px -8px rgba(242, 107, 31, .38);
   --ease: cubic-bezier(.4, 0, .2, 1);
 }
 
@@ -100,7 +100,7 @@ a { color: var(--primary); text-decoration: none; }
 
 /* ---- Sidebar = icon rail (gradient cam -> coral -> hồng) ---- */
 .sidebar {
-  background: linear-gradient(180deg, #f8c2a8 0%, #f3ad9f 55%, #efa9bb 100%);
+  background: linear-gradient(180deg, #232440 0%, #1b1c2e 60%, #16172a 100%);
   display: flex; flex-direction: column; align-items: center;
   gap: 16px; padding: 20px 0;
   position: sticky; top: 0; height: 100vh;
@@ -196,7 +196,7 @@ a { color: var(--primary); text-decoration: none; }
   font-size: 11px; font-weight: 600; color: var(--green); background: var(--green-soft);
   border: 1px solid rgba(54,168,111,.25); white-space: nowrap; }
 .bot-tag.bot-fail { color: var(--red); background: var(--red-soft); border-color: rgba(225,73,107,.25); }
-.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: rgba(239,139,94,.30); }
+.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: rgba(242,107,31,.28); }
 
 /* ============================================================
    Cards
@@ -238,7 +238,7 @@ a { color: var(--primary); text-decoration: none; }
 .field input:focus, .field select:focus {
   outline: none; background: #fff;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(239,139,94,.18);
+  box-shadow: 0 0 0 3px rgba(242,107,31,.16);
 }
 .field input::placeholder { color: var(--muted); }
 
@@ -424,16 +424,16 @@ a { color: var(--primary); text-decoration: none; }
   transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
 }
 .toolbar-bar .tb-search input::placeholder { color: var(--muted); }
-.toolbar-bar .tb-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
+.toolbar-bar .tb-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(242,107,31,.16); }
 .toolbar-bar .tb-select {
   padding: 8px 36px 8px 16px; border: 1px solid var(--primary);
   border-radius: var(--radius-pill); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   color: var(--primary); -webkit-appearance: none; -moz-appearance: none; appearance: none;
   background-color: #fff;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ef8b5e' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23f26b1f' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 16px center;
 }
-.toolbar-bar .tb-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
+.toolbar-bar .tb-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(242,107,31,.16); }
 .toolbar-bar .tb-filter .cnt { background: var(--primary-soft); color: var(--primary); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
 .toolbar-bar .tb-filter .cnt.zero { display: none; }
 
@@ -457,7 +457,7 @@ a { color: var(--primary); text-decoration: none; }
   padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   font: inherit; font-size: 13px; color: var(--text); width: 100%; background: #fff;
 }
-.filter-pop input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
+.filter-pop input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(242,107,31,.16); }
 .fp-seg { display: flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
 .fp-seg button {
   flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
@@ -522,7 +522,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border-radius: var(--radius-sm); background: #fff; font-size: 13px;
   font-weight: 600; min-width: 140px; cursor: pointer; font-family: inherit;
 }
-.status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
+.status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(242,107,31,.16); }
 .status-sel[data-code="notified_arrival"] { color: #6f8fc4; border-color: #dce6f7; background: #eef3fc; }
 .status-sel[data-code="notified_ship"] { color: var(--green); border-color: var(--green-soft); background: var(--green-soft); }
 .status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
@@ -534,7 +534,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   flex: 1; min-width: 140px; padding: 9px 12px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit;
 }
-.note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
+.note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(242,107,31,.16); }
 .save-note {
   background: none; border: none; cursor: pointer; color: var(--muted);
   padding: 6px; border-radius: 9px; transition: .15s var(--ease);
@@ -663,7 +663,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical;
 }
-.modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
+.modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(242,107,31,.16); }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 
 /* Khung nội dung tin nhắn báo hàng */
