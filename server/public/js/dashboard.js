@@ -454,6 +454,32 @@
     }
   }
 
+  // Bật/tắt cờ Delay (Loại trừ) — lưu lên server mi để giữ sau khi reload.
+  async function toggleDelay(cb) {
+    const id = String(cb.dataset.id);
+    const o = byId(id); if (!o) return;
+    const want = cb.checked;
+    if (want) excluded.add(id); else excluded.delete(id);
+    const tr = cb.closest('.main-row');
+    if (tr) tr.classList.toggle('row-excluded', want);
+    updateCount();
+    try {
+      await App.api('/api/delay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customerId: o.customerId, dateInventory: o.dateInventory, id: o.id, delayed: want }),
+      });
+      o.delayed = want;
+    } catch (e) {
+      // Lỗi lưu -> hoàn tác trạng thái trên UI để khớp với server.
+      if (want) excluded.delete(id); else excluded.add(id);
+      cb.checked = !want;
+      if (tr) tr.classList.toggle('row-excluded', !want);
+      updateCount();
+      App.toast(`❌ Không lưu được Loại trừ: ${e.message}`, 5000);
+    }
+  }
+
   async function saveNote(id) {
     const o = byId(id); if (!o) return;
     const input = rowsEl.querySelector(`.note-input[data-id="${cssEsc(String(id))}"]`);
@@ -574,8 +600,9 @@
       if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
       const existing = new Set(orders.map((o) => String(o.id)));
       [...openRows].forEach((id) => { if (!existing.has(id)) openRows.delete(id); });
-      const stillTodo = new Set(orders.filter((o) => !isNotified(o)).map((o) => String(o.id)));
-      [...excluded].forEach((id) => { if (!stillTodo.has(id)) excluded.delete(id); });
+      // Cờ Delay / Loại trừ lấy từ server (lưu ở mi) — giữ được sau khi reload.
+      excluded.clear();
+      orders.forEach((o) => { if (o.delayed) excluded.add(String(o.id)); });
       if (auto) {
         const fresh = orders.filter((o) => groupOf(o) === 'todo' && !prevTodo.has(String(o.id)));
         if (fresh.length) App.toast(`🆕 ${fresh.length} khách mới cần báo`, 5000);
@@ -701,13 +728,7 @@
     const sel = e.target.closest('.status-sel');
     if (sel) return changeStatus(sel.dataset.id, sel.value);
     const cb = e.target.closest('.excl-cb');
-    if (cb) {
-      const id = String(cb.dataset.id);
-      if (cb.checked) excluded.add(id); else excluded.delete(id);
-      const tr = cb.closest('.main-row');
-      if (tr) tr.classList.toggle('row-excluded', cb.checked);
-      updateCount();
-    }
+    if (cb) return toggleDelay(cb);
   });
 
   $('modalCancel').addEventListener('click', closeModal);
