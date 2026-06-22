@@ -34,10 +34,8 @@
     ['notified_ship', 'Đã báo ship'],
     ['send_failed', 'Gửi lỗi'],
   ];
-  // Lý do delay (lưu ở mi cùng cờ Loại trừ) cho đơn chưa báo ngay.
-  // Các lý do dựng sẵn; ngoài ra có "Khác" cho phép nhập tự do.
+  // Mẫu lý do gợi ý cho ô Ghi chú (datalist) — đơn chưa báo ngay.
   const DELAY_REASONS = ['Đợi bank', 'Đợi hàng về thêm', 'Khách hẹn'];
-  const DELAY_OTHER = 'Khác';
 
   const byId = (id) => orders.find((o) => String(o.id) === String(id));
 
@@ -111,23 +109,6 @@
     const opts = STATUS_OPTS.map(([v, l]) =>
       `<option value="${v}" ${v === o.statusCode ? 'selected' : ''}>${l}</option>`).join('');
     return `<select class="status-sel" data-code="${App.esc(o.statusCode)}" data-id="${App.esc(o.id)}">${opts}</select>`;
-  }
-
-  // Dropdown lý do delay — chỉ hiện khi đơn đang bị Loại trừ (tick Delay).
-  // Lý do không nằm trong danh sách dựng sẵn => coi là "Khác" (nhập tự do).
-  function delayReasonTag(o) {
-    if (!excluded.has(String(o.id))) return '';
-    const cur = o.delayReason || '';
-    const isPreset = DELAY_REASONS.includes(cur);
-    const isOther = o._delayOther || (cur !== '' && !isPreset);
-    const selVal = isPreset ? cur : (isOther ? DELAY_OTHER : '');
-    const opts = DELAY_REASONS.map((r) =>
-      `<option value="${App.esc(r)}" ${r === selVal ? 'selected' : ''}>${App.esc(r)}</option>`).join('');
-    const otherInput = isOther
-      ? `<input class="delay-other" data-id="${App.esc(o.id)}" value="${App.esc(isPreset ? '' : cur)}" placeholder="Nhập lý do..." title="Nhập lý do tạm hoãn" />`
-      : '';
-    return `<select class="delay-reason" data-id="${App.esc(o.id)}" title="Lý do tạm hoãn báo hàng">
-      <option value="" ${selVal ? '' : 'selected'}>— Lý do delay —</option>${opts}<option value="${DELAY_OTHER}" ${selVal === DELAY_OTHER ? 'selected' : ''}>${DELAY_OTHER}</option></select>${otherInput}`;
   }
 
   function botTag(o) {
@@ -280,7 +261,7 @@
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
-      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}${delayReasonTag(o)}</div></td>
+      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>
       <td><div class="note-cell">
         <input class="note-input" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
@@ -482,60 +463,25 @@
     const id = String(cb.dataset.id);
     const o = byId(id); if (!o) return;
     const want = cb.checked;
-    const prevReason = o.delayReason || '';
-    if (want) { excluded.add(id); } else { excluded.delete(id); o.delayReason = ''; o._delayOther = false; }
+    if (want) excluded.add(id); else excluded.delete(id);
     o.delayed = want;
-    render(); // vẽ lại để hiện/ẩn dropdown lý do delay theo trạng thái mới
+    const tr = cb.closest('.main-row');
+    if (tr) tr.classList.toggle('row-excluded', want);
     updateCount();
     try {
       await App.api('/api/delay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: o.customerId, dateInventory: o.dateInventory, id: o.id, delayed: want, reason: want ? o.delayReason : '' }),
+        body: JSON.stringify({ customerId: o.customerId, dateInventory: o.dateInventory, id: o.id, delayed: want }),
       });
     } catch (e) {
       // Lỗi lưu -> hoàn tác trạng thái trên UI để khớp với server.
       if (want) excluded.delete(id); else excluded.add(id);
       o.delayed = !want;
-      o.delayReason = prevReason;
-      render();
+      cb.checked = !want;
+      if (tr) tr.classList.toggle('row-excluded', !want);
       updateCount();
       App.toast(`❌ Không lưu được Loại trừ: ${e.message}`, 5000);
-    }
-  }
-
-  // Chọn lý do từ dropdown. "Khác" -> hiện ô nhập tự do (chưa lưu tới khi gõ).
-  function changeDelayReason(id, value) {
-    const o = byId(id); if (!o) return;
-    if (value === DELAY_OTHER) {
-      o._delayOther = true;
-      if (DELAY_REASONS.includes(o.delayReason)) o.delayReason = ''; // xoá preset cũ để nhập mới
-      render();
-      const inp = rowsEl.querySelector(`.delay-other[data-id="${cssEsc(String(id))}"]`);
-      if (inp) inp.focus();
-      return;
-    }
-    o._delayOther = false;
-    saveDelayReason(id, value);
-  }
-
-  // Lưu lý do delay (preset, chuỗi tự do, hoặc '' để xoá lý do).
-  async function saveDelayReason(id, reason) {
-    const o = byId(id); if (!o) return;
-    const prev = o.delayReason || '';
-    o.delayReason = reason;
-    try {
-      await App.api('/api/delay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ customerId: o.customerId, dateInventory: o.dateInventory, id: o.id, delayed: true, reason }),
-      });
-      App.toast('✅ Đã lưu lý do delay');
-    } catch (e) {
-      o.delayReason = prev;
-      const sel = rowsEl.querySelector(`.delay-reason[data-id="${cssEsc(String(id))}"]`);
-      if (sel) sel.value = prev;
-      App.toast(`❌ Không lưu được lý do: ${e.message}`, 5000);
     }
   }
 
@@ -786,10 +732,6 @@
   rowsEl.addEventListener('change', (e) => {
     const sel = e.target.closest('.status-sel');
     if (sel) return changeStatus(sel.dataset.id, sel.value);
-    const rsn = e.target.closest('.delay-reason');
-    if (rsn) return changeDelayReason(rsn.dataset.id, rsn.value);
-    const other = e.target.closest('.delay-other');
-    if (other) return saveDelayReason(other.dataset.id, other.value.trim());
     const cb = e.target.closest('.excl-cb');
     if (cb) return toggleDelay(cb);
   });
