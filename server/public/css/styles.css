@@ -352,9 +352,9 @@ a { color: var(--primary); text-decoration: none; }
 .status-tabs.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .status-tabs.cols-3 .status-tab { cursor: default; }
 .status-tabs.cols-3 .status-tab:hover { transform: none; box-shadow: none; }
-.status-tab.st-total   { --st-color: var(--primary); --st-tint: var(--primary-soft); }
-.status-tab.st-success { --st-color: var(--green);   --st-tint: #e6f6ee; }
-.status-tab.st-fail    { --st-color: var(--red);     --st-tint: #fdeaef; }
+.status-tab.st-total   { --st-color: #e05c14; --st-tint: #fdeede; }
+.status-tab.st-success { --st-color: #3a9b71; --st-tint: #e9f5ef; }
+.status-tab.st-fail    { --st-color: #d44f6b; --st-tint: #fce9ee; }
 
 @media (max-width: 720px) {
   .status-tabs, .status-tabs.cols-3 { grid-template-columns: repeat(2, 1fr); }
@@ -583,10 +583,16 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .pill.success { background: var(--green-soft); color: var(--green); }
 .pill.failed { background: var(--red-soft); color: var(--red); }
 
-.msg-cell { max-width: 360px; white-space: pre-wrap; color: var(--text-soft); font-size: 13px; line-height: 1.5; }
+.msg-cell { min-width: 240px; max-width: 360px; white-space: pre-wrap; color: var(--text-soft); font-size: 13px; line-height: 1.5; }
 
 /* Cột lỗi: cắt gọn 1 dòng, xem đầy đủ qua tooltip để không phình bảng */
-.err-cell { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; cursor: help; }
+.err-cell { min-width: 160px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; cursor: help; }
+
+/* Lịch sử báo: chống các cột ngắn (Thời gian / Mã đơn / SĐT / NV / Người gửi)
+   xuống dòng vụn; bảng tự giãn & cuộn ngang trong .table-wrap nếu cần. */
+.reports-table th, .reports-table td { white-space: nowrap; vertical-align: top; }
+.reports-table .msg-cell, .reports-table .cust { white-space: normal; }
+.reports-table .cust { min-width: 130px; }
 
 /* ============================================================
    Stat cards
