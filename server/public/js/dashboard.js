@@ -283,6 +283,10 @@
       <td><div class="status-cell">${statusSelect(o)}${botTag(o)}${delayReasonTag(o)}</div></td>
       <td><div class="note-cell">
         <input class="note-input" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
+        <select class="note-preset" data-id="${App.esc(o.id)}" title="Chèn mẫu ghi chú">
+          <option value="" selected>＋ Mẫu</option>
+          ${DELAY_REASONS.map((r) => `<option value="${App.esc(r)}">${App.esc(r)}</option>`).join('')}
+        </select>
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
       </div></td>
       <td>${actionsCell}</td>
@@ -539,6 +543,19 @@
     }
   }
 
+  // Chèn nhanh một mẫu lý do vào ô Ghi chú (nối thêm, không ghi đè). Để nhân viên
+  // sửa tiếp (vd thêm ngày) rồi bấm Lưu. Reset dropdown về nhãn "＋ Mẫu".
+  function insertNotePreset(sel) {
+    const phrase = sel.value;
+    sel.value = '';
+    if (!phrase) return;
+    const input = rowsEl.querySelector(`.note-input[data-id="${cssEsc(String(sel.dataset.id))}"]`);
+    if (!input) return;
+    const cur = input.value.trim();
+    input.value = cur ? `${cur} ${phrase}` : phrase;
+    input.focus();
+  }
+
   async function saveNote(id) {
     const o = byId(id); if (!o) return;
     const input = rowsEl.querySelector(`.note-input[data-id="${cssEsc(String(id))}"]`);
@@ -790,6 +807,8 @@
     if (rsn) return changeDelayReason(rsn.dataset.id, rsn.value);
     const other = e.target.closest('.delay-other');
     if (other) return saveDelayReason(other.dataset.id, other.value.trim());
+    const np = e.target.closest('.note-preset');
+    if (np) return insertNotePreset(np);
     const cb = e.target.closest('.excl-cb');
     if (cb) return toggleDelay(cb);
   });
