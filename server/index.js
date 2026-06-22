@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
-const { listReports, stats, getAutoRecord } = require('./db');
+const { listReports, stats, getAutoRecord, getDelayedKeys, setDelayed } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
@@ -100,9 +100,12 @@ app.get('/api/orders', async (req, res) => {
     // Gắn dấu "bot đã tự gửi" (lưu local trong mi) để dashboard phân biệt, kể cả khi
     // không cập nhật trạng thái về web Basso.
     if (Array.isArray(data.orders)) {
+      const delayedKeys = getDelayedKeys();
       data.orders = data.orders.map((o) => {
         const a = getAutoRecord(autoNotify.autoKey(o));
-        return a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
+        const delayed = delayedKeys.has(autoNotify.autoKey(o));
+        const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
+        return delayed ? { ...withAuto, delayed: true } : withAuto;
       });
     }
     res.json({ ok: true, ...data });
@@ -154,6 +157,22 @@ app.post('/api/update-row', async (req, res) => {
     if (customerId == null) return res.status(400).json({ ok: false, error: 'Thiếu customerId' });
     const result = await updateOrderStatus({ customerId, dateInventory, status, note });
     res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Cờ Delay / Loại trừ (lưu cục bộ ở mi, không sync về Basso) ----
+// body: { customerId, dateInventory, id?, delayed: boolean }
+app.post('/api/delay', (req, res) => {
+  try {
+    const { customerId, dateInventory, id, delayed } = req.body || {};
+    if (customerId == null && id == null) {
+      return res.status(400).json({ ok: false, error: 'Cần id hoặc customerId' });
+    }
+    const key = autoNotify.autoKey({ customerId, dateInventory, id });
+    const result = setDelayed(key, !!delayed);
+    res.json({ ok: true, delayed: result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

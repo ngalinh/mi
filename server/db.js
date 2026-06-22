@@ -43,6 +43,14 @@ db.exec(`  -- Chống gửi trùng cho luồng TỰ ĐỘNG báo hàng: mỗi đ
   );
 `);
 
+db.exec(`  -- Cờ "Delay / Loại trừ": đánh dấu đơn tạm hoãn để bỏ khỏi "Báo hàng loạt".
+  -- Lưu ở mi (KHÔNG đồng bộ về Basso) nên giữ được sau khi reload trang.
+  CREATE TABLE IF NOT EXISTS delayed_orders (
+    order_key   TEXT PRIMARY KEY,        -- dùng autoKey(order) làm khoá ổn định
+    updated_at  TEXT NOT NULL            -- ISO string
+  );
+`);
+
 const insertStmt = db.prepare(`
   INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, created_at)
   VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @images, @sent_by, @created_at)
@@ -124,6 +132,27 @@ function recordAutoNotified(orderId, status, attempts) {
   });
 }
 
+// ---- Cờ Delay / Loại trừ (lưu cục bộ ở mi) ----
+const getDelayedStmt = db.prepare('SELECT order_key FROM delayed_orders');
+const setDelayedStmt = db.prepare(`
+  INSERT INTO delayed_orders (order_key, updated_at) VALUES (@order_key, @updated_at)
+  ON CONFLICT(order_key) DO UPDATE SET updated_at = @updated_at
+`);
+const delDelayedStmt = db.prepare('DELETE FROM delayed_orders WHERE order_key = @order_key');
+
+/** Tập các khoá đơn đang bị đánh dấu Delay. */
+function getDelayedKeys() {
+  return new Set(getDelayedStmt.all().map((r) => r.order_key));
+}
+
+/** Bật/tắt cờ Delay cho 1 đơn (key = autoKey(order)). */
+function setDelayed(orderKey, delayed) {
+  const order_key = String(orderKey);
+  if (delayed) setDelayedStmt.run({ order_key, updated_at: new Date().toISOString() });
+  else delDelayedStmt.run({ order_key });
+  return !!delayed;
+}
+
 function stats() {
   const row = db.prepare(`
     SELECT
@@ -135,4 +164,4 @@ function stats() {
   return { total: row.total || 0, success: row.success || 0, failed: row.failed || 0 };
 }
 
-module.exports = { db, addReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey };
+module.exports = { db, addReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey, getDelayedKeys, setDelayed };
