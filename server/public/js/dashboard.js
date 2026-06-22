@@ -239,9 +239,15 @@
     const canBulk = !isNotified(o); // chỉ đơn chưa báo mới được loại trừ
     const isExcl = excluded.has(String(o.id));
     const gc = grouped ? ' grouped-child' : '';
+    const hasShip = o.noiDungBaoShip && o.noiDungBaoShip.trim();
     const excludeCell = canBulk
-      ? `<input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt" />`
+      ? `<label class="excl-wrap" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt"><input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} />Loại trừ</label>`
       : '';
+    const actionsCell = `<div class="action-cell">
+      <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">${App.icon('send')} Gửi báo hàng qua Zalo</button>
+      ${hasShip ? `<button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="ship">${App.icon('box')} Gửi báo ship qua Zalo</button>` : ''}
+      ${excludeCell}
+    </div>`;
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
@@ -251,7 +257,7 @@
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>
-      <td class="center">${excludeCell}</td>
+      <td>${actionsCell}</td>
       <td><div class="note-cell">
         <input class="note-input" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
@@ -262,11 +268,6 @@
     const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
       <td colspan="11"><div class="detail-box">
         ${itemsSection(o)}
-        <div class="full detail-actions">
-          <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang">${App.icon('send')} Gửi báo hàng qua Zalo</button>
-          ${o.noiDungBaoShip && o.noiDungBaoShip.trim()
-            ? `<button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="ship">${App.icon('box')} Gửi báo ship qua Zalo</button>` : ''}
-        </div>
       </div></td>
     </tr>`;
     return main + detail;
