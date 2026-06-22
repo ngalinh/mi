@@ -22,21 +22,21 @@
   --text-soft: #8c7d73;
   --muted: #b3a499;
 
-  /* brand / accents — cam coral */
-  --primary: #ef8b5e;        /* cam coral */
-  --primary-dark: #e06a3c;
-  --primary-soft: #fde7da;
-  --primary-grad: linear-gradient(135deg, #f9a86b, #f47e5e);
-  --green: #36a86f;
-  --green-soft: #d8f2e3;
-  --red: #e1496b;
-  --red-soft: #fde4ea;
-  --amber: #f5a623;
-  --amber-soft: #fdeecd;
-  --violet: #ef8b5e;
-  --violet-soft: #fde7da;
-  --pink: #ec6a86;
-  --pink-soft: #fde0e6;
+  /* brand / accents — pastel (ít bão hòa, dịu mắt) */
+  --primary: #f0a88c;        /* coral pastel */
+  --primary-dark: #e2916f;
+  --primary-soft: #fdeee4;
+  --primary-grad: linear-gradient(135deg, #f8c8ad, #f2ab92);
+  --green: #7cc3a3;          /* mint pastel */
+  --green-soft: #e4f4ec;
+  --red: #ec9aac;            /* rose pastel */
+  --red-soft: #fce8ed;
+  --amber: #e8b67e;          /* apricot pastel */
+  --amber-soft: #fbeed9;
+  --violet: #f0a88c;
+  --violet-soft: #fdeee4;
+  --pink: #efa3b8;           /* hồng pastel */
+  --pink-soft: #fde8ee;
 
   /* numeric font cho số liệu */
   --font-num: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -100,7 +100,7 @@ a { color: var(--primary); text-decoration: none; }
 
 /* ---- Sidebar = icon rail (gradient cam -> coral -> hồng) ---- */
 .sidebar {
-  background: linear-gradient(180deg, #f7a079 0%, #f08f7e 55%, #ed8198 100%);
+  background: linear-gradient(180deg, #f8c2a8 0%, #f3ad9f 55%, #efa9bb 100%);
   display: flex; flex-direction: column; align-items: center;
   gap: 16px; padding: 20px 0;
   position: sticky; top: 0; height: 100vh;
@@ -336,11 +336,11 @@ a { color: var(--primary); text-decoration: none; }
 }
 .status-tab .st-icon .icon { width: 19px; height: 19px; }
 
-/* màu theo trạng thái (dùng biến để gọn) */
-.status-tab.st-todo    { --st-color: var(--amber); --st-tint: #fef6e6; }
-.status-tab.st-arrival { --st-color: #3b82f6;      --st-tint: #eaf2fe; }
-.status-tab.st-ship    { --st-color: var(--green);  --st-tint: #e6f6ee; }
-.status-tab.st-error   { --st-color: var(--red);    --st-tint: #fdeaef; }
+/* màu theo trạng thái — pastel (dùng biến để gọn) */
+.status-tab.st-todo    { --st-color: var(--amber); --st-tint: #fdf3e4; }
+.status-tab.st-arrival { --st-color: #9bb6e6;      --st-tint: #eef3fc; }
+.status-tab.st-ship    { --st-color: var(--green);  --st-tint: #e8f5ef; }
+.status-tab.st-error   { --st-color: var(--red);    --st-tint: #fceaef; }
 
 /* tab đang chọn: viền đậm theo màu + vầng sáng để nổi bật */
 .status-tab.active {
@@ -523,7 +523,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   font-weight: 600; min-width: 140px; cursor: pointer; font-family: inherit;
 }
 .status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
-.status-sel[data-code="notified_arrival"] { color: #2f6fd0; border-color: #cfe1fb; background: #eaf2fe; }
+.status-sel[data-code="notified_arrival"] { color: #6f8fc4; border-color: #dce6f7; background: #eef3fc; }
 .status-sel[data-code="notified_ship"] { color: var(--green); border-color: var(--green-soft); background: var(--green-soft); }
 .status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
 .status-sel[data-code="not_sent"] { color: var(--amber); border-color: var(--amber-soft); background: var(--amber-soft); }
