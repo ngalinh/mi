@@ -530,21 +530,6 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .status-sel[data-code="notified_ship"] { color: var(--green); border-color: var(--green-soft); background: var(--green-soft); }
 .status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
 .status-sel[data-code="not_sent"] { color: var(--amber); border-color: var(--amber-soft); background: var(--amber-soft); }
-/* Dropdown lý do delay — nhỏ, tông hồng/rose để báo "tạm hoãn". */
-.delay-reason {
-  padding: 4px 8px; border: 1px dashed var(--red); border-radius: var(--radius-sm);
-  background: var(--red-soft); color: var(--red); font-size: 12px; font-weight: 600;
-  font-family: inherit; cursor: pointer; min-width: 140px;
-}
-.delay-reason:focus { outline: none; box-shadow: 0 0 0 3px rgba(225,73,107,.16); }
-/* Ô nhập lý do tự do khi chọn "Khác". */
-.delay-other {
-  margin-top: 4px; padding: 5px 9px; border: 1px dashed var(--red);
-  border-radius: var(--radius-sm); background: #fff; color: var(--text);
-  font-size: 12px; font-family: inherit; min-width: 140px; max-width: 180px;
-}
-.delay-other:focus { outline: none; box-shadow: 0 0 0 3px rgba(225,73,107,.16); }
-
 /* note inline */
 .note-cell { display: flex; gap: 6px; align-items: center; }
 .note-input {
