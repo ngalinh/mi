@@ -8,14 +8,14 @@
 
 :root {
   /* surfaces — nền gradient hồng cam (theo ảnh Zenith) */
-  --bg: #fcefe6;             /* đào kem cho bề mặt mềm / header bảng */
-  --bg-soft: #f9e0d3;
+  --bg: #fdf4ef;             /* kem đào rất nhạt cho bề mặt mềm / header bảng */
+  --bg-soft: #fbe9e1;
   --card: #ffffff;
   --rail: #f2845c;           /* sidebar coral */
-  --border: #f3e4da;
-  --border-strong: #ecd9cc;
-  /* gradient nền trang: kem -> đào -> hồng cam */
-  --page-grad: linear-gradient(180deg, #fdf4ec 0%, #fbe4d6 46%, #f8d2c4 100%);
+  --border: #f4e8e0;
+  --border-strong: #eeddd3;
+  /* gradient nền trang: kem trắng -> đào nhạt -> hồng đào dịu (nhạt như ảnh mẫu) */
+  --page-grad: linear-gradient(180deg, #fefaf6 0%, #fdf1ea 50%, #fbe6e0 100%);
 
   /* text — charcoal ấm */
   --text: #2e2a28;
@@ -100,7 +100,7 @@ a { color: var(--primary); text-decoration: none; }
 
 /* ---- Sidebar = icon rail (gradient cam -> coral -> hồng) ---- */
 .sidebar {
-  background: linear-gradient(180deg, #f6915f 0%, #ee7e63 55%, #ec6a86 100%);
+  background: linear-gradient(180deg, #f7a079 0%, #f08f7e 55%, #ed8198 100%);
   display: flex; flex-direction: column; align-items: center;
   gap: 16px; padding: 20px 0;
   position: sticky; top: 0; height: 100vh;
