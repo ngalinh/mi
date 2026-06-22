@@ -7,34 +7,36 @@
 @import url("https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,400;6..12,600;6..12,700;6..12,800&family=JetBrains+Mono:wght@400;500&family=Baloo+2:wght@700;800&display=swap");
 
 :root {
-  /* surfaces */
-  --bg: #f6f1fb;             /* lavender mờ */
-  --bg-soft: #ece4f5;
+  /* surfaces — nền gradient hồng cam (theo ảnh Zenith) */
+  --bg: #fcefe6;             /* đào kem cho bề mặt mềm / header bảng */
+  --bg-soft: #f9e0d3;
   --card: #ffffff;
-  --rail: #7a60c8;           /* sidebar violet (theo top-nav CFlow) */
-  --border: #ededf2;
-  --border-strong: #e2e2ec;
+  --rail: #f2845c;           /* sidebar coral */
+  --border: #f3e4da;
+  --border-strong: #ecd9cc;
+  /* gradient nền trang: kem -> đào -> hồng cam */
+  --page-grad: linear-gradient(180deg, #fdf4ec 0%, #fbe4d6 46%, #f8d2c4 100%);
 
-  /* text */
-  --text: #3a3a4f;           /* navy-charcoal */
-  --text-soft: #7c7c95;
-  --muted: #9a9ab0;
+  /* text — charcoal ấm */
+  --text: #2e2a28;
+  --text-soft: #8c7d73;
+  --muted: #b3a499;
 
-  /* brand / accents */
-  --primary: #7a60c8;        /* violet */
-  --primary-dark: #614aad;
-  --primary-soft: #efeafb;
-  --primary-grad: linear-gradient(135deg, #8c74da, #a06fc6);
+  /* brand / accents — cam coral */
+  --primary: #ef8b5e;        /* cam coral */
+  --primary-dark: #e06a3c;
+  --primary-soft: #fde7da;
+  --primary-grad: linear-gradient(135deg, #f9a86b, #f47e5e);
   --green: #36a86f;
   --green-soft: #d8f2e3;
   --red: #e1496b;
   --red-soft: #fde4ea;
   --amber: #f5a623;
   --amber-soft: #fdeecd;
-  --violet: #7a60c8;
-  --violet-soft: #efeafb;
-  --pink: #e670bc;
-  --pink-soft: #fce0f0;
+  --violet: #ef8b5e;
+  --violet-soft: #fde7da;
+  --pink: #ec6a86;
+  --pink-soft: #fde0e6;
 
   /* numeric font cho số liệu */
   --font-num: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -44,10 +46,10 @@
   --radius-md: 10px;
   --radius-sm: 8px;
   --radius-pill: 999px;
-  --shadow-sm: 0 8px 24px -16px rgba(40, 40, 80, .16);
-  --shadow: 0 12px 30px -10px rgba(40, 40, 80, .20);
-  --shadow-lg: 0 24px 60px -16px rgba(40, 40, 80, .30);
-  --shadow-primary: 0 10px 22px -8px rgba(122, 96, 200, .42);
+  --shadow-sm: 0 8px 24px -16px rgba(120, 70, 50, .16);
+  --shadow: 0 12px 30px -10px rgba(120, 70, 50, .18);
+  --shadow-lg: 0 24px 60px -16px rgba(120, 70, 50, .26);
+  --shadow-primary: 0 10px 22px -8px rgba(239, 139, 94, .45);
   --ease: cubic-bezier(.4, 0, .2, 1);
 }
 
@@ -58,7 +60,7 @@ html, body { height: 100%; }
 body {
   margin: 0;
   font-family: "Nunito Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  background: var(--bg);
+  background: var(--page-grad) fixed;
   color: var(--text);
   font-size: 14px;
   line-height: 1.5;
@@ -96,9 +98,9 @@ a { color: var(--primary); text-decoration: none; }
   min-height: 100vh;
 }
 
-/* ---- Sidebar = icon rail (violet) ---- */
+/* ---- Sidebar = icon rail (gradient cam -> coral -> hồng) ---- */
 .sidebar {
-  background: linear-gradient(180deg, #7d61cc 0%, #8a63c0 60%, #a06fac 100%);
+  background: linear-gradient(180deg, #f6915f 0%, #ee7e63 55%, #ec6a86 100%);
   display: flex; flex-direction: column; align-items: center;
   gap: 16px; padding: 20px 0;
   position: sticky; top: 0; height: 100vh;
@@ -194,7 +196,7 @@ a { color: var(--primary); text-decoration: none; }
   font-size: 11px; font-weight: 600; color: var(--green); background: var(--green-soft);
   border: 1px solid rgba(54,168,111,.25); white-space: nowrap; }
 .bot-tag.bot-fail { color: var(--red); background: var(--red-soft); border-color: rgba(225,73,107,.25); }
-.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: rgba(122,96,200,.25); }
+.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: rgba(239,139,94,.30); }
 
 /* ============================================================
    Cards
@@ -236,7 +238,7 @@ a { color: var(--primary); text-decoration: none; }
 .field input:focus, .field select:focus {
   outline: none; background: #fff;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(122, 96, 200, .16);
+  box-shadow: 0 0 0 3px rgba(239,139,94,.18);
 }
 .field input::placeholder { color: var(--muted); }
 
@@ -422,16 +424,16 @@ a { color: var(--primary); text-decoration: none; }
   transition: border-color .15s var(--ease), box-shadow .15s var(--ease);
 }
 .toolbar-bar .tb-search input::placeholder { color: var(--muted); }
-.toolbar-bar .tb-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(122,96,200,.16); }
+.toolbar-bar .tb-search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
 .toolbar-bar .tb-select {
   padding: 8px 36px 8px 16px; border: 1px solid var(--primary);
   border-radius: var(--radius-pill); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   color: var(--primary); -webkit-appearance: none; -moz-appearance: none; appearance: none;
   background-color: #fff;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%237a60c8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23ef8b5e' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 16px center;
 }
-.toolbar-bar .tb-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(122,96,200,.16); }
+.toolbar-bar .tb-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
 .toolbar-bar .tb-filter .cnt { background: var(--primary-soft); color: var(--primary); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
 .toolbar-bar .tb-filter .cnt.zero { display: none; }
 
@@ -455,7 +457,7 @@ a { color: var(--primary); text-decoration: none; }
   padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   font: inherit; font-size: 13px; color: var(--text); width: 100%; background: #fff;
 }
-.filter-pop input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(122,96,200,.16); }
+.filter-pop input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
 .fp-seg { display: flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
 .fp-seg button {
   flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
@@ -520,7 +522,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border-radius: var(--radius-sm); background: #fff; font-size: 13px;
   font-weight: 600; min-width: 140px; cursor: pointer; font-family: inherit;
 }
-.status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(122,96,200,.16); }
+.status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
 .status-sel[data-code="notified_arrival"] { color: #2f6fd0; border-color: #cfe1fb; background: #eaf2fe; }
 .status-sel[data-code="notified_ship"] { color: var(--green); border-color: var(--green-soft); background: var(--green-soft); }
 .status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
@@ -532,7 +534,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   flex: 1; min-width: 140px; padding: 9px 12px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit;
 }
-.note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(122,96,200,.16); }
+.note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
 .save-note {
   background: none; border: none; cursor: pointer; color: var(--muted);
   padding: 6px; border-radius: 9px; transition: .15s var(--ease);
@@ -661,7 +663,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   font-family: inherit; font-size: 15px; line-height: 1.6; resize: vertical;
 }
-.modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(122,96,200,.16); }
+.modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(239,139,94,.18); }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
 
 /* Khung nội dung tin nhắn báo hàng */
