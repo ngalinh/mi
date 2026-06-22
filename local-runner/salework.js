@@ -173,13 +173,22 @@ async function listZaloAccounts(page) {
   // Cho danh sách kịp render sau khi mở dropdown.
   await page.waitForTimeout(500);
 
-  // Quét tên account KHÔNG phụ thuộc class (giao diện Salework dùng dropdown tùy biến, không
-  // phải Element-UI). Bám theo ô "Tìm kiếm tài khoản…" làm mốc: các dòng account nằm NGAY DƯỚI
-  // ô đó và cùng cột. Lấy phần tử "lá" (không có con cùng text) để tránh trùng cha/con.
+  // Quét tên account KHÔNG phụ thuộc class (Salework dùng dropdown tùy biến). Hai chốt chặn:
+  //  1) Chỉ quét TRONG khung popup (ancestor nổi - position absolute/fixed - của ô "Tìm kiếm
+  //     tài khoản…") -> loại hẳn danh sách hội thoại nằm ở panel khác.
+  //  2) Lọc bỏ dòng trông như HỘI THOẠI (có giờ HH:MM, SĐT, "[Hình ảnh]", hay preview "Tên: …").
   return page.evaluate(() => {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const search = [...document.querySelectorAll('input')]
       .find((i) => /tìm kiếm tài khoản/i.test(i.placeholder || ''));
+
+    // Dòng hội thoại (KHÔNG phải account): có giờ, SĐT dài, ảnh/preview, hoặc dạng "Tên: tin nhắn".
+    const looksLikeConversation = (t) =>
+      /\b\d{1,2}:\d{2}\b/.test(t)        // giờ 17:25
+      || /\[[^\]]+\]/.test(t)            // [Hình ảnh]
+      || /\d{8,}/.test(t)               // SĐT
+      || /:\s/.test(t)                   // "Ngọc Nguyễn: ..."
+      || /,/.test(t);                    // câu/preview hội thoại (tên account không có dấu phẩy)
 
     const names = [];
     const seen = new Set();
@@ -187,30 +196,37 @@ async function listZaloAccounts(page) {
       if (!t || t.length > 60 || seen.has(t)) return;
       if (/tìm kiếm tài khoản/i.test(t)) return;
       if (/^tất cả tài khoản$/i.test(t)) return; // tùy chọn gộp, không phải account gửi được
+      if (looksLikeConversation(t)) return;
       seen.add(t); names.push(t);
     };
-    // Gom theo HÌNH HỌC rồi loại trùng bằng Set: 1 dòng account có thể là div bọc span con
-    // (cùng text) -> Set gộp lại; phần tử bao cả danh sách có height lớn -> bị loại (height<80).
-    const collectByGeometry = (within) => {
+    // Gom các dòng trong 1 root, loại trùng bằng Set (div bọc span con cùng text tự gộp);
+    // phần tử bao cả danh sách có height lớn -> bị loại (height<80).
+    const collect = (root) => {
       const cands = [];
-      for (const el of document.querySelectorAll('li,div,span,a,p,[class*="item"],[class*="option"]')) {
+      for (const el of root.querySelectorAll('li,div,span,a,p,[class*="item"],[class*="option"]')) {
+        if (search && (el === search || el.contains(search))) continue;
         const r = el.getBoundingClientRect();
         if (!(r.height >= 18 && r.height < 80 && r.width > 60)) continue;
-        if (within && !within(r)) continue;
         const t = clean(el.textContent);
         if (t) cands.push({ t, top: r.top });
       }
       cands.sort((a, b) => a.top - b.top).forEach((c) => add(c.t));
     };
 
+    // Tìm khung popup = ancestor gần nhất của ô search có position absolute/fixed (lớp nổi).
+    let popup = null;
     if (search) {
-      const sr = search.getBoundingClientRect();
-      collectByGeometry((r) =>
-        r.top >= sr.bottom - 2 && r.top <= sr.bottom + 600   // nằm DƯỚI ô search, trong tầm popup
-        && r.left >= sr.left - 40 && r.left <= sr.right + 60); // cùng cột với ô search
+      let el = search.parentElement;
+      while (el && el !== document.body) {
+        const pos = getComputedStyle(el).position;
+        if (pos === 'absolute' || pos === 'fixed') { popup = el; break; }
+        el = el.parentElement;
+      }
     }
-    // Fallback (không thấy ô search): quét toàn trang theo hình học (kém chính xác hơn).
-    if (!names.length) collectByGeometry(null);
+
+    if (popup) collect(popup);
+    // Fallback: không khoanh được popup -> quét toàn trang (đã có bộ lọc hội thoại ở add()).
+    if (!names.length) collect(document.body);
     return names;
   });
 }
