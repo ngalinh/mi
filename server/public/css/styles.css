@@ -558,11 +558,10 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border-radius: var(--radius-sm); padding: 13px 15px; line-height: 1.55;
 }
 .detail-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.action-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.action-cell { display: flex; }
 .action-btns { display: flex; gap: 7px; flex-wrap: nowrap; }
 .action-cell .btn.small { padding: 6px 13px; font-size: 12px; justify-content: center; white-space: nowrap; flex: 0 0 auto; }
-.excl-wrap { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-soft); cursor: pointer; user-select: none; }
-.excl-wrap:hover { color: var(--red); }
+.excl-wrap { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 
 /* bảng sản phẩm đã về trong dòng mở rộng */
 .items-table { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }

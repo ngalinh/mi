@@ -241,14 +241,13 @@
     const gc = grouped ? ' grouped-child' : '';
     const hasShip = o.noiDungBaoShip && o.noiDungBaoShip.trim();
     const excludeCell = canBulk
-      ? `<label class="excl-wrap" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt"><input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} />Loại trừ</label>`
+      ? `<label class="excl-wrap" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt"><input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} /></label>`
       : '';
     const actionsCell = `<div class="action-cell">
       <div class="action-btns">
         <button class="btn small send-zalo" data-id="${App.esc(o.id)}" data-kind="hang" title="Gửi báo hàng qua Zalo">${App.icon('send')} Báo hàng</button>
         ${hasShip ? `<button class="btn small outline send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" title="Gửi báo ship qua Zalo">${App.icon('box')} Báo ship</button>` : ''}
       </div>
-      ${excludeCell}
     </div>`;
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
@@ -264,11 +263,12 @@
         <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
       </div></td>
       <td>${actionsCell}</td>
+      <td class="center">${excludeCell}</td>
       <td>${App.esc(o.staff)}</td>
     </tr>`;
 
     const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
-      <td colspan="11"><div class="detail-box">
+      <td colspan="12"><div class="detail-box">
         ${itemsSection(o)}
       </div></td>
     </tr>`;
@@ -301,7 +301,7 @@
     const phone = o0.phone ? ` · ${App.esc(o0.phone)}` : '';
     return `<tr class="group-row" data-group-key="${App.esc(key)}">
       <td class="center"><button class="group-expand ${allOpen ? 'open' : ''}" data-group-key="${App.esc(key)}" title="Mở/đóng tất cả đơn của khách">${App.icon('chevron')}</button></td>
-      <td colspan="10"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn · <span class="group-sp">${productText(items)}</span></span></td>
+      <td colspan="11"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn · <span class="group-sp">${productText(items)}</span></span></td>
     </tr>`;
   }
 
@@ -310,7 +310,7 @@
     const chua = items.filter((o) => !isNotified(o)).length;
     const sub = `${items.length} đơn` + (chua ? ` · ${chua} chưa báo` : '');
     return `<tr class="group-row" data-group-key="${App.esc(key)}">
-      <td colspan="11"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
+      <td colspan="12"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
     </tr>`;
   }
 
@@ -392,7 +392,7 @@
     const list = visibleOrders();
     if (!list.length) {
       const msg = orders.length ? 'Không có đơn nào ở trạng thái này.' : 'Không có dữ liệu';
-      rowsEl.innerHTML = `<tr><td colspan="11" class="empty">${msg}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td colspan="12" class="empty">${msg}</td></tr>`;
       updateCount(list);
       return;
     }
@@ -560,7 +560,7 @@
   // ---------------- Load ----------------
   async function load(opts = {}) {
     const auto = opts.auto === true;
-    if (!auto) rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Đang tải...</td></tr>';
+    if (!auto) rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     const q = $('fQ').value;
     if (F.from) params.set('from', F.from);
@@ -584,7 +584,7 @@
       renderTabs();
       render();
     } catch (e) {
-      if (!auto) rowsEl.innerHTML = `<tr><td colspan="11" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
+      if (!auto) rowsEl.innerHTML = `<tr><td colspan="12" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
