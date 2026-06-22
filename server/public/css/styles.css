@@ -570,6 +570,11 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .action-cell .btn.small { padding: 6px 13px; font-size: 12px; justify-content: center; white-space: nowrap; flex: 0 0 auto; }
 .action-cell .btn.icon-only { padding: 8px; min-width: 0; }
 .action-cell .btn.icon-only .icon { width: 19px; height: 19px; }
+/* Disable = xám rõ ràng (không phải cam nhạt) để phân biệt với nút bật được. */
+.action-cell .btn.icon-only:disabled {
+  opacity: 1; background: var(--bg-soft); background-image: none;
+  border-color: var(--border); color: var(--muted); box-shadow: none;
+}
 .excl-wrap { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 
 /* bảng sản phẩm đã về trong dòng mở rộng */
@@ -739,8 +744,10 @@ tbody tr.grouped-child > td:first-child { box-shadow: inset 4px 0 0 color-mix(in
 
 /* Ô tick Delay (loại trừ khỏi báo hàng loạt) + dòng đã loại trừ */
 .excl-cb { width: 17px; height: 17px; accent-color: var(--red); cursor: pointer; vertical-align: middle; }
-tr.row-excluded { opacity: .55; }
-tr.row-excluded .cust a, tr.row-excluded .cust { text-decoration: line-through; }
+/* Đơn bị Loại trừ: nền mờ + gạch tên KH để báo "tạm hoãn", nhưng KHÔNG dùng
+   opacity trên cả <tr> (sẽ làm mờ luôn dropdown lý do delay, khó tick). */
+tr.row-excluded { background: var(--bg-soft); }
+tr.row-excluded .cust a, tr.row-excluded .cust { text-decoration: line-through; color: var(--muted); }
 
 /* Khối chi tiết khi mở rộng dòng */
 .detail-box .full h4 { margin: 0 0 8px; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; font-weight: 700; }
