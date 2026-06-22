@@ -8,19 +8,19 @@
 
 :root {
   /* surfaces — nền gradient hồng cam (theo ảnh Zenith) */
-  --bg: #fdf4ef;             /* kem đào rất nhạt cho bề mặt mềm / header bảng */
-  --bg-soft: #fbe9e1;
+  --bg: #f7f3ec;             /* kem trung tính cho bề mặt mềm / header bảng */
+  --bg-soft: #f0eae1;
   --card: #ffffff;
   --rail: #f2845c;           /* sidebar coral */
-  --border: #f4e8e0;
-  --border-strong: #eeddd3;
-  /* gradient nền trang: kem trắng -> đào nhạt -> hồng đào dịu (nhạt như ảnh mẫu) */
-  --page-grad: linear-gradient(180deg, #fefaf6 0%, #fdf1ea 50%, #fbe6e0 100%);
+  --border: #ece6dd;
+  --border-strong: #e3dccf;
+  /* gradient nền trang: greige -> kem -> ửng đào rất nhẹ (theo ảnh Moonwalk) */
+  --page-grad: linear-gradient(165deg, #f0ede7 0%, #faf7f1 45%, #f6ece4 100%);
 
-  /* text — charcoal ấm */
-  --text: #2e2a28;
-  --text-soft: #8c7d73;
-  --muted: #b3a499;
+  /* text — charcoal ấm (theo ảnh Moonwalk) */
+  --text: #3f3b38;
+  --text-soft: #6e6a65;
+  --muted: #9a958d;
 
   /* brand / accents — pastel (ít bão hòa, dịu mắt) */
   --primary: #f0a88c;        /* coral pastel */
