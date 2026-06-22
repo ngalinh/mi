@@ -3,26 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Doraemi · Báo hàng về</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+  <title>Mi · Báo hàng về</title>
+  <link rel="icon" href="/mi-logo.png" />
   <link rel="stylesheet" href="/css/styles.css" />
 </head>
 <body>
   <div class="app">
     <!-- Sidebar: icon rail -->
     <aside class="sidebar">
-      <div class="brand" title="Doraemi">
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+      <div class="brand" title="Mi">
+        <img class="brand-logo" src="/mi-logo.png" alt="Mi" />
       </div>
       <nav class="rail-nav">
         <a class="nav active" href="/index.html" title="Hàng về VN"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span></a>
         <a class="nav" href="/reports.html" title="Lịch sử báo"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span></a>
       </nav>
       <div class="side-foot">
+        <a class="nav" href="/settings.html" title="Cài đặt"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span></a>
         <span class="rail-sep"></span>
-        <div class="avatar" title="Doraemi Bot">
+        <div class="avatar" title="Mi Bot">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
       </div>
@@ -33,19 +32,13 @@
       <header class="topbar">
         <div>
           <h1>Hàng về <span class="accent">VN</span></h1>
-          <div class="sub">Danh sách đơn hàng & gửi thông báo qua Zalo</div>
+          <div class="sub">Danh sách đơn hàng &amp; gửi thông báo qua Zalo</div>
         </div>
         <span class="spacer"></span>
-        <span id="syncInfo" class="sync-info"></span>
         <span id="testBadge" class="badge-status badge-test" style="display:none"></span>
         <span id="mockBadge" class="badge-status badge-mock" style="display:none">MOCK DATA</span>
-        <button id="autoBadge" class="badge-status badge-clickable badge-offline" title="Tự động báo hàng khi có đơn về">Tự động: ...</button>
-        <span id="localBadge" class="badge-status badge-offline">Local-runner: ...</span>
-        <button id="bassoBtn" class="btn secondary" title="Kiểm tra kết nối tới Basso API">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>
-          Test Basso
-        </button>
-        <button id="syncBtn" class="btn">
+        <span id="syncInfo" class="sync-info"></span>
+        <button id="syncBtn" class="btn accent">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
           Đồng bộ ngay
         </button>
@@ -56,55 +49,83 @@
           <!-- Tab nhân viên (pill) -->
           <div class="tabs" id="staffTabs"></div>
 
-          <!-- Nhóm trạng thái (đếm theo nhân viên đang chọn) -->
-          <div class="group-bar" id="groupBar"></div>
+          <!-- Lọc theo trạng thái (thẻ màu) — bấm để lọc danh sách -->
+          <div class="status-tabs" id="statusTabs">
+            <button class="status-tab st-todo active" data-filter="todo">
+              <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+              <span class="st-label">Chưa báo</span>
+              <span class="st-num">0</span>
+            </button>
+            <button class="status-tab st-arrival" data-filter="arrival">
+              <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
+              <span class="st-label">Đã báo hàng</span>
+              <span class="st-num">0</span>
+            </button>
+            <button class="status-tab st-ship" data-filter="ship">
+              <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M14 9h4l4 4v4a1 1 0 0 1-1 1h-1"/><circle cx="8" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg></span>
+              <span class="st-label">Đã báo ship</span>
+              <span class="st-num">0</span>
+            </button>
+            <button class="status-tab st-error" data-filter="failed">
+              <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+              <span class="st-label">Lỗi - Báo lại</span>
+              <span class="st-num">0</span>
+            </button>
+          </div>
 
-          <!-- Thanh thao tác bot (gửi hàng loạt) -->
-          <div class="bot-bar">
-            <span id="countInfo" class="muted"></span>
-            <span class="grow"></span>
-            <button id="bulkBtn" class="btn small">
+          <!-- Thanh công cụ gộp: tìm kiếm · nhóm · lọc · thao tác -->
+          <div class="toolbar-bar">
+            <div class="input-icon tb-search">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="fQ" placeholder="Tìm tên / SĐT khách..." />
+            </div>
+            <select id="fGroupBy" class="tb-select">
+              <option value="">- Group -</option>
+              <option value="date">Group theo ngày</option>
+              <option value="customer">Group theo KH</option>
+            </select>
+            <div class="tb-filter-wrap">
+              <button class="btn secondary small tb-filter" id="filterBtn" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                Bộ lọc <span class="cnt zero">0</span>
+              </button>
+              <div class="filter-pop" id="filterPop" hidden>
+                <div class="fp-head">Bộ lọc nâng cao</div>
+                <div class="fp-group">
+                  <label>Khoảng ngày nhập kho</label>
+                  <div class="fp-row2">
+                    <input type="date" id="fFrom" />
+                    <span class="muted">—</span>
+                    <input type="date" id="fTo" />
+                  </div>
+                </div>
+                <div class="fp-group">
+                  <label>Loại trừ (Delay)</label>
+                  <div class="fp-seg" data-key="exclude">
+                    <button type="button" data-v="all" class="active">Tất cả</button>
+                    <button type="button" data-v="excluded">Đã loại trừ</button>
+                    <button type="button" data-v="not">Chưa</button>
+                  </div>
+                </div>
+                <div class="fp-group">
+                  <label>Ghi chú</label>
+                  <div class="fp-seg" data-key="note">
+                    <button type="button" data-v="all" class="active">Tất cả</button>
+                    <button type="button" data-v="has">Có ghi chú</button>
+                    <button type="button" data-v="none">Chưa có</button>
+                  </div>
+                </div>
+                <div class="fp-foot">
+                  <button type="button" class="btn secondary small" id="fClear">Xoá lọc</button>
+                  <button type="button" class="btn accent small" id="fApply">Áp dụng</button>
+                </div>
+              </div>
+            </div>
+            <span id="countInfo" class="tb-count"></span>
+            <button class="btn accent small tb-action" id="bulkBtn">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
               Báo hàng loạt (chưa báo)
             </button>
-          </div>
-
-          <!-- Tìm kiếm + bộ lọc (ngay trên bảng) -->
-          <div class="filter-bar">
-            <div class="field grow"><label>Tìm kiếm</label>
-              <div class="input-icon">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="text" id="fQ" placeholder="Tên / SĐT khách" />
-              </div>
-            </div>
-            <div class="field field-group"><label>Nhóm</label>
-              <select id="fGroupBy">
-                <option value="">Không nhóm</option>
-                <option value="customer">Theo khách hàng</option>
-              </select>
-            </div>
-            <button type="button" id="filterToggle" class="btn secondary filter-toggle" aria-expanded="false" aria-controls="advFilters">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
-              Bộ lọc
-              <span id="filterCount" class="filter-count" hidden>0</span>
-            </button>
-          </div>
-
-          <div class="filters" id="advFilters" hidden>
-            <div class="field"><label>Từ ngày</label><input type="date" id="fFrom" /></div>
-            <div class="field"><label>Đến ngày</label><input type="date" id="fTo" /></div>
-            <div class="field"><label>Trạng thái</label>
-              <select id="fStatus">
-                <option value="all">Tất cả</option>
-                <option value="not_sent">Chưa báo</option>
-                <option value="notified_arrival">Đã báo hàng</option>
-                <option value="notified_ship">Đã báo ship</option>
-                <option value="send_failed">Gửi lỗi</option>
-              </select>
-            </div>
-            <div class="field"><label>Nhân viên</label>
-              <select id="fStaff"><option value="">Tất cả</option></select>
-            </div>
           </div>
 
           <div class="table-wrap">
@@ -140,7 +161,7 @@
       <textarea id="modalMsg"></textarea>
       <div class="row">
         <button class="btn secondary" id="modalCancel">Đóng</button>
-        <button class="btn" id="modalSend">
+        <button class="btn btn-zalo" id="modalSend">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.54 21.69a.5.5 0 0 0 .94-.03l6.5-19a.5.5 0 0 0-.64-.63l-19 6.5a.5.5 0 0 0-.02.93l7.93 3.18a2 2 0 0 1 1.1 1.11z"/><path d="m21.85 2.15-10.94 10.94"/></svg>
           Gửi báo hàng qua Zalo
         </button>
@@ -150,12 +171,12 @@
 
   <!-- Modal xác nhận báo hàng loạt -->
   <div class="modal-bg" id="bulkModalBg">
-    <div class="modal modal-sm">
+    <div class="modal" style="width:440px;">
       <h3>Xác nhận báo hàng loạt</h3>
       <p class="muted" id="bulkSummary"></p>
       <div class="row">
         <button class="btn secondary" id="bulkCancel">Huỷ</button>
-        <button class="btn" id="bulkConfirm">Báo hàng</button>
+        <button class="btn accent" id="bulkConfirm">Báo hàng</button>
       </div>
     </div>
   </div>
