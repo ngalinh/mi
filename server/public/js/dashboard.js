@@ -16,7 +16,7 @@
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
 
-  const AUTO_SYNC_MS = 120000; // tự động đồng bộ danh sách mỗi 2 phút
+  const AUTO_SYNC_MS = 60000; // tự động đồng bộ danh sách mỗi 60 giây
 
   const DONE = new Set(['notified_arrival', 'notified_ship']);
   // "Đã báo" = web đã đánh dấu, HOẶC mi đã gửi (bot 'success' / đã báo tay 'manual').
