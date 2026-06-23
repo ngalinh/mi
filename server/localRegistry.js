@@ -16,10 +16,17 @@ const FRESH_MS = 90 * 1000;
 
 let state = { url: '', lastSeen: 0 };
 
-/** Runner gọi để khai báo URL của mình. */
+/**
+ * Runner gọi để khai báo URL của mình. CHỈ nhận URL http/https hợp lệ — chặn các scheme lạ
+ * (file:, javascript:, gopher:…) để giảm rủi ro SSRF: server sẽ forward request KÈM x-api-key
+ * và dữ liệu khách tới URL này. (Việc xác thực apiKey nằm ở tầng route /api/register-local.)
+ */
 function register(url) {
   const clean = String(url || '').trim().replace(/\/$/, '');
   if (!clean) return false;
+  let parsed;
+  try { parsed = new URL(clean); } catch { return false; }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
   state = { url: clean, lastSeen: Date.now() };
   return true;
 }

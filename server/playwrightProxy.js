@@ -90,8 +90,16 @@ async function sendBaoHang(payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60
  * Dùng cho các route /api/accounts của dashboard (server cloud không giữ account — runner giữ).
  */
 async function forwardAccounts(method, path, { body, query } = {}) {
-  const qs = query && Object.keys(query).length
-    ? `?${new URLSearchParams(query).toString()}` : '';
+  // Chỉ lấy các query value kiểu nguyên thuỷ (string/number/bool) — tránh URLSearchParams
+  // serialize sai khi Express parse query thành mảng/object (vd ?x[]=1).
+  const sp = new URLSearchParams();
+  if (query && typeof query === 'object') {
+    for (const [k, v] of Object.entries(query)) {
+      if (v == null) continue;
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') sp.append(k, String(v));
+    }
+  }
+  const qs = sp.toString() ? `?${sp.toString()}` : '';
   const res = await fetch(localUrl(`${path}${qs}`), {
     method,
     headers: headers(),

@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
-const { getPage, closeContext } = require('./browser');
+const { getPage, closeContext, withProfileLock } = require('./browser');
 
 /**
  * Tự động gửi tin nhắn báo hàng về qua giao diện quản lý Zalo.
@@ -215,6 +215,10 @@ async function listZaloAccounts(page) {
  * @param {object} p { name, phone, strictMatch }
  */
 async function searchAndClickConversation(page, { name, phone, strictMatch = false }) {
+  // TEST_MODE: whitelist chỉ chặn theo SĐT (phoneAllowed). Nếu cho khớp theo TÊN, có thể mở
+  // nhầm hội thoại của 1 khách KHÁC trùng tên (không nằm trong whitelist). -> Khi TEST_MODE,
+  // CHỈ khớp theo SĐT đã whitelist, bỏ qua tìm theo tên cho an toàn.
+  if (config.testMode && phone) name = undefined;
   const searchBox = page
     .locator(
       'input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], '
@@ -462,31 +466,38 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
     throw new Error(`TEST_MODE: bỏ qua "${keyword}" — không nằm trong TEST_PHONES (an toàn, không gửi).`);
   }
 
-  const page = await getPage(profile);
-  try {
-    await gotoSalework(page);
-    await ensureLoggedIn(page);
+  // Tuần tự hoá theo profile: không mở trùng userDataDir với lệnh đăng nhập/kiểm tra cùng profile.
+  return withProfileLock(profile, async () => {
+    const page = await getPage(profile);
+    try {
+      await gotoSalework(page);
+      await ensureLoggedIn(page);
 
-    // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env.
-    // HUỶ gửi nếu không xác minh được đúng tài khoản — thà báo lỗi rõ ràng còn hơn âm thầm gửi
-    // bằng tài khoản mặc định ("Tất cả Zalo") → gửi nhầm khách của tài khoản khác.
-    const acct = account || config.defaultZaloAccount;
-    if (acct) {
-      const ok = await selectZaloAccount(page, acct);
-      if (!ok) {
-        throw new Error(`KHONG_CHON_DUNG_TAI_KHOAN: không chọn/xác minh được tài khoản Zalo "${acct}". Đã huỷ gửi để tránh gửi nhầm tài khoản — mở lại Zalo Basso kiểm tra danh sách tài khoản đã kết nối.`);
+      // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env.
+      // HUỶ gửi nếu không xác minh được đúng tài khoản — thà báo lỗi rõ ràng còn hơn âm thầm gửi
+      // bằng tài khoản mặc định ("Tất cả Zalo") → gửi nhầm khách của tài khoản khác.
+      const acct = account || config.defaultZaloAccount;
+      if (acct) {
+        const ok = await selectZaloAccount(page, acct);
+        if (!ok) {
+          throw new Error(`KHONG_CHON_DUNG_TAI_KHOAN: không chọn/xác minh được tài khoản Zalo "${acct}". Đã huỷ gửi để tránh gửi nhầm tài khoản — mở lại Zalo Basso kiểm tra danh sách tài khoản đã kết nối.`);
+        }
+      } else if (strictMatch) {
+        // Luồng TỰ ĐỘNG (strictMatch) mà KHÔNG biết gửi bằng account nào -> KHÔNG gửi. Nếu để
+        // trống, ô lọc đang ở "Tất cả Zalo" sẽ quét hội thoại của MỌI account -> dễ gửi nhầm
+        // khách của account khác. Cấu hình account cho NV (UI Tài khoản Zalo) hoặc AUTO_NOTIFY_ACCOUNT.
+        throw new Error('KHONG_RO_TAI_KHOAN: luồng tự động không xác định được tài khoản Zalo để gửi (chưa map NV → account, cũng chưa đặt AUTO_NOTIFY_ACCOUNT). Đã huỷ để tránh gửi nhầm tài khoản.');
       }
+
+      await searchAndClickConversation(page, { name, phone: keyword, strictMatch });
+      await typeAndSend(page, message, imagePaths);
+    } finally {
+      // Gửi xong (kể cả khi lỗi) thì đóng trình duyệt để giải phóng tài nguyên.
+      // Tắt bằng CLOSE_AFTER_SEND=false nếu muốn giữ context sống cho lần gửi sau.
+      if (config.closeAfterSend) await closeContext(profile);
     }
-
-    await searchAndClickConversation(page, { name, phone: keyword, strictMatch });
-    await typeAndSend(page, message, imagePaths);
-  } finally {
-    // Gửi xong (kể cả khi lỗi) thì đóng trình duyệt để giải phóng tài nguyên.
-    // Tắt bằng CLOSE_AFTER_SEND=false nếu muốn giữ context sống cho lần gửi sau.
-    if (config.closeAfterSend) await closeContext(profile);
-  }
-
-  return { ok: true };
+    return { ok: true };
+  });
 }
 
 /**
@@ -495,16 +506,18 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
  * @returns {Promise<{loggedIn:boolean, error?:string}>}
  */
 async function checkLoggedIn(profile = 'default') {
-  const page = await getPage(profile);
-  try {
-    await gotoSalework(page);
-    await ensureLoggedIn(page);
-    return { loggedIn: true };
-  } catch (e) {
-    return { loggedIn: false, error: e.message };
-  } finally {
-    if (config.closeAfterSend) await closeContext(profile);
-  }
+  return withProfileLock(profile, async () => {
+    const page = await getPage(profile);
+    try {
+      await gotoSalework(page);
+      await ensureLoggedIn(page);
+      return { loggedIn: true };
+    } catch (e) {
+      return { loggedIn: false, error: e.message };
+    } finally {
+      if (config.closeAfterSend) await closeContext(profile);
+    }
+  });
 }
 
 module.exports = { sendBaoHang, gotoSalework, ensureLoggedIn, listZaloAccounts, checkLoggedIn };

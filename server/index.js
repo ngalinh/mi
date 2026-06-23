@@ -1,5 +1,6 @@
 'use strict';
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
@@ -23,6 +24,13 @@ function getActor(req) {
     if (v && String(v).trim()) return String(v).trim();
   }
   return null;
+}
+
+// So sánh chuỗi bí mật theo thời gian hằng định (chống dò theo timing). Khác độ dài -> false.
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
 // Tắt cache asset tĩnh (dev): tránh trình duyệt giữ JS/CSS cũ sau khi sửa code
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -235,7 +243,7 @@ app.post('/api/auto-notify/run', async (req, res) => {
 // Bảo vệ tùy chọn bằng header `x-webhook-secret` khớp AUTO_NOTIFY_WEBHOOK_SECRET.
 app.post('/api/webhook/arrived', async (req, res) => {
   const secret = config.autoNotify.webhookSecret;
-  if (secret && req.get('x-webhook-secret') !== secret) {
+  if (secret && !safeEqual(req.get('x-webhook-secret'), secret)) {
     return res.status(401).json({ ok: false, error: 'Sai webhook secret' });
   }
   try {
