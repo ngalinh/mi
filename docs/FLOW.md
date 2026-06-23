@@ -107,6 +107,7 @@ runAutoNotify()
    ① R3: fetchAllNotSent() — quét HẾT các trang đơn "Chưa báo"
    ② lọc ứng viên (isCandidate):
         - statusCode === 'not_sent'
+        - CÓ "ND báo hàng" từ Basso (noiDungBaoHang) — trống thì BỎ QUA, không dùng template
         - dedup: chưa 'success'/'manual', và attempts < maxRetries
         (khách có Zalo hay không xác định lúc gửi: tìm SĐT không ra hội thoại → lỗi)
    ③ mỗi ứng viên ▶ notifyOne({ skipWebUpdate:!updateWeb, strictMatch:true }):
