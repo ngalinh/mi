@@ -49,6 +49,9 @@ function isTransientError(msg) {
 /** Đơn có đủ điều kiện tự gửi không? */
 function isCandidate(order) {
   if (order.statusCode !== 'not_sent') return false; // chỉ "Chưa báo"
+  // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo hàng" (raw.content). Đơn trống nội
+  // dung -> bỏ qua hoàn toàn, KHÔNG dùng template mặc định để tránh gửi câu chung chung.
+  if (!order.noiDungBaoHang || !String(order.noiDungBaoHang).trim()) return false;
   const rec = getAutoRecord(autoKey(order));
   if (!rec) return true;
   // Đã gửi (bot 'success' hoặc đã báo tay 'manual') -> bot không gửi lại.
@@ -100,6 +103,10 @@ async function runAutoNotify(opts = {}) {
     await withLock(async () => {
       const orders = await fetchAllNotSent();
       summary.scanned = orders.length;
+      // Đơn "Chưa báo" nhưng Basso chưa soạn "ND báo hàng" -> bỏ qua (không gửi).
+      summary.skippedNoContent = orders.filter(
+        (o) => o.statusCode === 'not_sent' && !(o.noiDungBaoHang && String(o.noiDungBaoHang).trim()),
+      ).length;
       const candidates = orders.filter(isCandidate);
       summary.candidates = candidates.length;
 
@@ -111,7 +118,7 @@ async function runAutoNotify(opts = {}) {
           profile: cfg.profile,
           defaultAccount: cfg.account,   // fallback khi NV không có trong ZALO_ACCOUNT_MAP
           kind: 'hang',
-          skipWebUpdate: !cfg.updateWeb, // mặc định chỉ đánh dấu trong mi, không cập nhật web Basso
+          skipWebUpdate: !cfg.updateWeb, // mặc định đẩy trạng thái về web Basso (tắt qua AUTO_NOTIFY_UPDATE_WEB=false)
           strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
           actor: 'bot',                  // audit: luồng tự động
         });
@@ -138,8 +145,9 @@ async function runAutoNotify(opts = {}) {
         });
       }
 
-      if (candidates.length) {
-        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo)`);
+      if (candidates.length || summary.skippedNoContent) {
+        const skip = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
+        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skip})`);
       }
     });
   } catch (err) {

@@ -73,8 +73,9 @@ module.exports = {
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
     // Bot gửi xong có đẩy trạng thái "Đã báo hàng" về web Basso không?
-    // Mặc định false: chỉ lưu/đánh dấu trong mi, không động vào web.
-    updateWeb: String(process.env.AUTO_NOTIFY_UPDATE_WEB || 'false').toLowerCase() === 'true',
+    // Mặc định true: đồng bộ trạng thái về Basso như luồng báo tay. Đặt
+    // AUTO_NOTIFY_UPDATE_WEB=false nếu muốn bot chỉ đánh dấu trong mi.
+    updateWeb: String(process.env.AUTO_NOTIFY_UPDATE_WEB || 'true').toLowerCase() === 'true',
     // Số lần thử lại tối đa cho 1 đơn nếu gửi lỗi (tránh spam khi local-runner offline)
     maxRetries: Math.max(parseInt(process.env.AUTO_NOTIFY_MAX_RETRIES || '3', 10) || 3, 1),
     // Bí mật bảo vệ webhook /api/webhook/arrived (so khớp header x-webhook-secret). Trống = không kiểm tra.

@@ -561,6 +561,9 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .save-note .icon { width: 17px; height: 17px; }
 .save-note:hover { color: var(--primary); background: var(--primary-soft); }
 .save-note.saved { color: var(--green); }
+/* Ghi chú đã gõ nhưng chưa lưu: viền cam nhạt + nút lưu nổi bật để nhắc bấm lưu. */
+.note-input.dirty { border-color: var(--primary); background: rgba(242,107,31,.05); }
+.save-note.dirty { color: var(--primary); background: var(--primary-soft); }
 
 /* detail row */
 .detail-row > td { background: var(--bg); padding: 14px 20px; }

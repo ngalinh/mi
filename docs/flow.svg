@@ -99,5 +99,5 @@
 <rect x="648" y="1224" width="288" height="70" rx="12" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
 <text x="664" y="1252" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="14.5" font-weight="700" fill="#16a34a" text-anchor="start">✓ quét hết trang</text>
 <text x="664" y="1276" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#475569" text-anchor="start">không bỏ sót đơn &gt;100</text>
-<text x="40" y="1476" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#64748b" text-anchor="start">* Bot mặc định KHÔNG cập nhật web Basso (AUTO_NOTIFY_UPDATE_WEB=false) — chỉ đánh dấu trong mi (badge 🤖). Chi tiết: docs/FLOW.md</text>
+<text x="40" y="1476" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="13" font-weight="400" fill="#64748b" text-anchor="start">* Bot mặc định CẬP NHẬT web Basso (AUTO_NOTIFY_UPDATE_WEB=true) + đánh dấu trong mi (badge 🤖). Đặt =false để chỉ đánh dấu trong mi. Chi tiết: docs/FLOW.md</text>
 </svg>
