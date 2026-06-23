@@ -221,6 +221,12 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
 | POST | `/api/register-local` `{url, apiKey}` | Runner tự khai báo URL (Xeko pattern) — server lưu trong RAM + dùng forward |
 | GET | `/api/health` | Trạng thái server + local-runner + auto-notify |
+| GET/POST | `/api/accounts` | Liệt kê / thêm tài khoản Zalo (forward xuống runner) |
+| PUT | `/api/accounts/:key` | Sửa account (tên, saleworkName, staffId, autoEnabled, proxy…) |
+| POST | `/api/accounts/:key/login` · `/check` | Mở lại Chromium đăng nhập · kiểm tra còn đăng nhập |
+| DELETE | `/api/accounts/zalo/:key` | Xoá account (kèm session) |
+
+Quản lý tài khoản Zalo trên **dashboard** (tab *Cài đặt → Tài khoản Zalo*): server cloud chỉ **forward** xuống local-runner (runner mới là nơi lưu account + mở Chromium).
 
 Local-runner (bảo vệ bằng header `x-api-key`):
 
@@ -228,14 +234,24 @@ Local-runner (bảo vệ bằng header `x-api-key`):
 |---|---|---|
 | POST | `/api/zalo/send` `{profile, account?, keyword, name?, message, strictMatch?, imagePaths?}` | Gửi báo hàng (trả `jobId`) |
 | GET | `/api/job/:id` | Trạng thái job gửi |
-| GET | `/api/accounts` | Liệt kê tài khoản Zalo + cờ `loggedIn` |
-| POST | `/api/accounts` `{type:'zalo', key, name, saleworkName, proxy?}` | Thêm account → mở Chromium đăng nhập + chọn tài khoản |
-| POST | `/api/accounts/:key/login` | Mở lại Chromium để đăng nhập lại profile có sẵn |
+| GET | `/api/accounts` | Liệt kê tài khoản + `loggedIn` + `connection` |
+| POST | `/api/accounts` `{type:'zalo', key, name, saleworkName, phone?, staffId?, autoEnabled?, proxy?}` | Thêm account → mở Chromium đăng nhập + chọn tài khoản |
+| PUT | `/api/accounts/:key` | Sửa account |
+| POST | `/api/accounts/:key/login` | Mở lại Chromium đăng nhập lại |
+| POST | `/api/accounts/:key/check` | Kiểm tra profile còn đăng nhập (mở browser) |
+| GET | `/api/accounts/:key/history` | Lịch sử đăng nhập của profile |
 | DELETE | `/api/accounts/zalo/:key` (`?keepProfile=1` để giữ session) | Xoá account (kèm thư mục session) |
 | GET | `/api/profile/:name` | Kiểm tra profile đã có session chưa |
 | GET | `/health` | Trạng thái runner |
 
-> Quản lý tài khoản Zalo port từ flow `/api/accounts` của Xeko. `key` cũng là tên profile browser (`playwright-data/salework-<key>`); `saleworkName` là tên account như hiện trong dropdown `zalo.basso.vn` (dùng để chọn account khi gửi). `proxy` được lưu để tương thích Xeko nhưng **chưa áp dụng** — mi chạy trên máy nhân viên (IP thật).
+### Mô hình tài khoản (Hướng B — giống Xeko)
+
+Mỗi tài khoản Zalo = **1 profile trình duyệt riêng** (`playwright-data/salework-<key>`). Khi gửi, luồng tự động **chọn account theo NV phụ trách đơn**: `accountResolver` khớp `order.userId/staff` → account trong store → gửi bằng `profile=key` + chọn đúng `saleworkName` (có read-back verify, sai thì huỷ để khỏi gửi nhầm).
+
+- `key` = mã profile; `saleworkName` = tên account trong dropdown `zalo.basso.vn`.
+- `staffId`/`name` để khớp đơn → account; `autoEnabled` tắt thì luồng tự động bỏ qua đơn của NV đó (để báo tay).
+- Fallback khi store rỗng/không khớp: `ZALO_ACCOUNT_MAP` (env, legacy) → `AUTO_NOTIFY_PROFILE`/`AUTO_NOTIFY_ACCOUNT`.
+- `proxy` lưu để tương thích Xeko nhưng **chưa áp dụng** — mi chạy trên máy nhân viên (IP thật).
 
 ## Tự đăng ký URL runner lên cloud (Xeko pattern) 🆕
 

@@ -5,6 +5,7 @@ const { sendBaoHang } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
 const { addReport, getAutoRecord, recordAutoNotified, autoKey } = require('./db');
 const { withLock } = require('./lock');
+const { resolveForOrder } = require('./accountResolver');
 
 /**
  * Báo hàng/ship cho 1 đơn: build tin nhắn -> gửi qua local-runner -> (tùy chọn) cập nhật
@@ -54,17 +55,15 @@ async function notifyOne(order, opts = {}) {
   // Tìm khách: dùng SĐT (whitelist + tìm) và tên (khớp hội thoại)
   const keyword = order.phone || order.customerName;
 
-  // Tài khoản Zalo để gửi, theo thứ tự ưu tiên:
-  //   1) account truyền thẳng vào lệnh (vd người dùng chọn cụ thể)
-  //   2) ánh xạ theo NHÂN VIÊN phụ trách đơn (ZALO_ACCOUNT_MAP) — để mỗi NV gửi bằng Zalo của mình
-  //   3) account mặc định của luồng (auto: AUTO_NOTIFY_ACCOUNT; tay: để trống -> runner dùng DEFAULT_ZALO_ACCOUNT)
-  const account = opts.account || config.zaloAccountForOrder(order) || opts.defaultAccount || undefined;
+  // MÔ HÌNH B: mỗi tài khoản Zalo 1 profile riêng. Resolver quyết định profile + saleworkName
+  // theo NV phụ trách đơn (accountsStore trên runner), fallback ZALO_ACCOUNT_MAP / mặc định.
+  const resolved = await resolveForOrder(order, opts);
 
   let result;
   try {
     result = await sendBaoHang({
-      profile: opts.profile || 'default',
-      account,
+      profile: resolved.profile || 'default',
+      account: resolved.account,
       keyword,
       name: order.customerName,
       message,

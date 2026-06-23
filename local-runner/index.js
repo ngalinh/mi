@@ -6,6 +6,8 @@ const { createJob, getJob } = require('./jobQueue');
 const { sendBaoHang } = require('./salework');
 const { profileExists, profilePath, openForLogin } = require('./browser');
 const accountsStore = require('./accountsStore');
+const loginHistory = require('./loginHistory');
+const { checkLoggedIn } = require('./salework');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -60,27 +62,36 @@ app.get('/api/job/:id', (req, res) => {
 // "key" của account cũng là tên profile browser (playwright-data/salework-<key>).
 // ============================================================================
 
-/** GET /api/accounts — liệt kê tài khoản Zalo + cờ đã đăng nhập (có thư mục profile chưa). */
+// Trạng thái kết nối suy ra: chưa có session -> 'never'; có session + lần ghi gần nhất là
+// session_expired -> 'expired'; ngược lại 'connected' (đã từng login/được xác nhận).
+function connectionStatus(key) {
+  if (!profileExists(key)) return 'never';
+  const last = loginHistory.latest(key);
+  if (last && last.type === 'session_expired') return 'expired';
+  return 'connected';
+}
+
+function decorate(a) {
+  return { ...a, loggedIn: profileExists(a.key), connection: connectionStatus(a.key) };
+}
+
+/** GET /api/accounts — liệt kê tài khoản Zalo + cờ đăng nhập + trạng thái kết nối. */
 app.get('/api/accounts', (req, res) => {
-  const zalo = accountsStore.list().map((a) => ({
-    ...a,
-    loggedIn: profileExists(a.key),
-  }));
-  res.json({ zalo });
+  res.json({ zalo: accountsStore.list().map(decorate) });
 });
 
 /**
  * POST /api/accounts — thêm tài khoản Zalo mới rồi mở Chromium để đăng nhập + chọn account.
- * body: { type:'zalo', key, name, saleworkName, proxy? }
+ * body: { type:'zalo', key, name, saleworkName, phone?, staffId?, autoEnabled?, proxy? }
  */
 app.post('/api/accounts', (req, res) => {
-  const { type, key, name, saleworkName, proxy } = req.body || {};
+  const { type, key, name, saleworkName, phone, staffId, autoEnabled, proxy } = req.body || {};
   if (type && type !== 'zalo') {
     return res.status(400).json({ ok: false, error: 'Chỉ hỗ trợ type="zalo"' });
   }
   let account;
   try {
-    account = accountsStore.add({ key, name, saleworkName, proxy });
+    account = accountsStore.add({ key, name, saleworkName, phone, staffId, autoEnabled, proxy });
   } catch (e) {
     return res.status(400).json({ ok: false, error: e.message });
   }
@@ -88,7 +99,7 @@ app.post('/api/accounts', (req, res) => {
   const already = profileExists(account.key);
   res.json({
     ok: true,
-    account: { ...account, loggedIn: already },
+    account: decorate(account),
     message: already
       ? `Đã thêm tài khoản Zalo "${account.name}". Profile đã có session — xoá rồi thêm lại nếu muốn setup lại.`
       : `Đang mở Chromium để đăng nhập Zalo Basso và chọn tài khoản "${account.name}". Chọn xong thì đóng cửa sổ.`,
@@ -96,10 +107,24 @@ app.post('/api/accounts', (req, res) => {
 
   // Chưa có session -> mở Chromium cho nhân viên đăng nhập thủ công (không chặn response).
   if (!already) {
-    openForLogin(account.key, config.saleworkLoginUrl, (ev) =>
-      console.log(`[accounts] profile "${account.key}" ${ev === 'opened' ? 'đã mở Chromium đăng nhập' : 'đã đóng — session đã lưu'}`))
-      .catch((e) => console.error(`[accounts] mở Chromium lỗi: ${e.message}`));
+    openForLogin(account.key, config.saleworkLoginUrl, (ev) => {
+      if (ev === 'opened') loginHistory.add(account.key, account.name, 'login', 'Mở Chromium để đăng nhập + chọn tài khoản');
+      else loginHistory.add(account.key, account.name, 'login', 'Đã đóng cửa sổ — session đã lưu');
+    }).catch((e) => console.error(`[accounts] mở Chromium lỗi: ${e.message}`));
   }
+});
+
+/** PUT /api/accounts/:key — sửa thông tin account (không đổi key). */
+app.put('/api/accounts/:key', (req, res) => {
+  const { key } = req.params;
+  const { name, saleworkName, phone, staffId, autoEnabled, proxy } = req.body || {};
+  const patch = {};
+  for (const [k, v] of Object.entries({ name, saleworkName, phone, staffId, autoEnabled, proxy })) {
+    if (v !== undefined) patch[k] = v;
+  }
+  const updated = accountsStore.update(key, patch);
+  if (!updated) return res.status(404).json({ ok: false, error: `Không tìm thấy tài khoản "${key}"` });
+  res.json({ ok: true, account: decorate(updated) });
 });
 
 /** POST /api/accounts/:key/login — mở lại Chromium cho profile có sẵn để đăng nhập lại. */
@@ -110,8 +135,30 @@ app.post('/api/accounts/:key/login', (req, res) => {
 
   res.json({ ok: true, message: `Đang mở Chromium cho "${account.name}". Đăng nhập xong thì đóng cửa sổ.` });
   openForLogin(key, config.saleworkLoginUrl, (ev) =>
-    console.log(`[accounts] re-login profile "${key}" ${ev === 'opened' ? 'đã mở' : 'đã đóng'}`))
+    loginHistory.add(key, account.name, 'login', ev === 'opened' ? 'Mở lại để đăng nhập' : 'Đã đóng — session đã lưu'))
     .catch((e) => console.error(`[accounts] re-login lỗi: ${e.message}`));
+});
+
+/** POST /api/accounts/:key/check — kiểm tra profile còn đăng nhập không (mở browser headless). */
+app.post('/api/accounts/:key/check', async (req, res) => {
+  const { key } = req.params;
+  const account = accountsStore.get(key);
+  if (!account) return res.status(404).json({ ok: false, error: `Không tìm thấy tài khoản "${key}"` });
+  if (!profileExists(key)) {
+    return res.json({ ok: true, loggedIn: false, connection: 'never', error: 'Chưa từng đăng nhập' });
+  }
+  try {
+    const r = await checkLoggedIn(key);
+    loginHistory.add(key, account.name, r.loggedIn ? 'session_ok' : 'session_expired', r.error || '');
+    res.json({ ok: true, loggedIn: r.loggedIn, connection: r.loggedIn ? 'connected' : 'expired', error: r.error || null });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+/** GET /api/accounts/:key/history — lịch sử đăng nhập của 1 profile. */
+app.get('/api/accounts/:key/history', (req, res) => {
+  res.json({ ok: true, history: loginHistory.list(req.params.key) });
 });
 
 /** DELETE /api/accounts/:type/:key — xoá tài khoản Zalo (kèm xoá thư mục profile session). */
@@ -119,6 +166,7 @@ app.delete('/api/accounts/:type/:key', (req, res) => {
   const { type, key } = req.params;
   if (type !== 'zalo') return res.status(400).json({ ok: false, error: 'Chỉ hỗ trợ type="zalo"' });
 
+  const account = accountsStore.get(key);
   const removed = accountsStore.remove(key);
   if (!removed) return res.status(404).json({ ok: false, error: `Không tìm thấy tài khoản "${key}"` });
 
@@ -133,6 +181,7 @@ app.delete('/api/accounts/:type/:key', (req, res) => {
       console.warn(`[accounts] xoá profile dir lỗi: ${e.message}`);
     }
   }
+  loginHistory.add(key, account ? account.name : key, 'delete', 'Đã xoá tài khoản');
   res.json({ ok: true, message: `Đã xoá tài khoản Zalo "${key}"` });
 });
 

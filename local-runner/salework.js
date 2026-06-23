@@ -489,4 +489,22 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
   return { ok: true };
 }
 
-module.exports = { sendBaoHang, gotoSalework, ensureLoggedIn, listZaloAccounts };
+/**
+ * Kiểm tra 1 profile còn đăng nhập Zalo Basso không (mở trang chat rồi thử ensureLoggedIn).
+ * Dùng cho cột "Kết nối" trên UI — gọi theo yêu cầu (không tự chạy mỗi lần load vì tốn browser).
+ * @returns {Promise<{loggedIn:boolean, error?:string}>}
+ */
+async function checkLoggedIn(profile = 'default') {
+  const page = await getPage(profile);
+  try {
+    await gotoSalework(page);
+    await ensureLoggedIn(page);
+    return { loggedIn: true };
+  } catch (e) {
+    return { loggedIn: false, error: e.message };
+  } finally {
+    if (config.closeAfterSend) await closeContext(profile);
+  }
+}
+
+module.exports = { sendBaoHang, gotoSalework, ensureLoggedIn, listZaloAccounts, checkLoggedIn };

@@ -6,7 +6,7 @@ const config = require('./config');
 const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
-const { getLocalHealth, effectiveBaseUrl } = require('./playwrightProxy');
+const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
 
@@ -66,6 +66,35 @@ app.post('/api/register-local', (req, res) => {
   }
   res.json({ ok: true, url: localRegistry.getInfo().url });
 });
+
+// ---- Quản lý tài khoản Zalo (dashboard → forward xuống local-runner) ----
+// Server cloud KHÔNG giữ account; runner (máy có Chrome) là nơi lưu + mở Chromium đăng nhập.
+// Mỗi route chỉ chuyển tiếp request và trả nguyên kết quả của runner.
+async function proxyAccounts(req, res, method, pathName, useBody) {
+  try {
+    const { status, data } = await forwardAccounts(method, pathName, {
+      body: useBody ? req.body : undefined,
+      query: req.query,
+    });
+    if (method !== 'GET') invalidateAccountsCache(); // thay đổi -> resolve lần sau lấy bản mới
+    res.status(status).json(data);
+  } catch (e) {
+    res.status(504).json({ ok: false, error: `Không kết nối được local-runner: ${e.message}` });
+  }
+}
+
+app.get('/api/accounts', (req, res) => proxyAccounts(req, res, 'GET', '/api/accounts', false));
+app.post('/api/accounts', (req, res) => proxyAccounts(req, res, 'POST', '/api/accounts', true));
+app.put('/api/accounts/:key', (req, res) =>
+  proxyAccounts(req, res, 'PUT', `/api/accounts/${encodeURIComponent(req.params.key)}`, true));
+app.post('/api/accounts/:key/login', (req, res) =>
+  proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/login`, false));
+app.post('/api/accounts/:key/check', (req, res) =>
+  proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/check`, false));
+app.get('/api/accounts/:key/history', (req, res) =>
+  proxyAccounts(req, res, 'GET', `/api/accounts/${encodeURIComponent(req.params.key)}/history`, false));
+app.delete('/api/accounts/:type/:key', (req, res) =>
+  proxyAccounts(req, res, 'DELETE', `/api/accounts/${encodeURIComponent(req.params.type)}/${encodeURIComponent(req.params.key)}`, false));
 
 // ---- Test kết nối Basso (chỉ đọc): dùng cho nút "Test Basso" trên dashboard ----
 // Luôn trả HTTP 200 + cờ `connected` để frontend hiển thị được cả khi lỗi.
