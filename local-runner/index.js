@@ -1,5 +1,6 @@
 'use strict';
 const fs = require('fs');
+const crypto = require('crypto');
 const express = require('express');
 const config = require('./config');
 const { createJob, getJob } = require('./jobQueue');
@@ -12,11 +13,18 @@ const { checkLoggedIn } = require('./salework');
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 
+// So sánh secret theo thời gian hằng định (chống dò timing). Khác độ dài -> false.
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+
 // --- Xác thực bằng x-api-key (trừ /health) ---
 app.use((req, res, next) => {
   if (req.path === '/health') return next();
   if (!config.apiKey) return next(); // chưa đặt key => bỏ qua (dev)
-  if (req.get('x-api-key') !== config.apiKey) {
+  if (!safeEqual(req.get('x-api-key'), config.apiKey)) {
     return res.status(401).json({ ok: false, error: 'Sai hoặc thiếu x-api-key' });
   }
   next();
@@ -184,6 +192,13 @@ app.delete('/api/accounts/:type/:key', (req, res) => {
   loginHistory.add(key, account ? account.name : key, 'delete', 'Đã xoá tài khoản');
   res.json({ ok: true, message: `Đã xoá tài khoản Zalo "${key}"` });
 });
+
+// Fail-closed: production / REQUIRE_API_KEY bắt buộc phải có API_KEY (nếu không, mọi endpoint
+// điều khiển browser sẽ mở toang). Dừng hẳn thay vì chạy không bảo vệ.
+if (config.requireApiKey && !config.apiKey) {
+  console.error('[local-runner] FATAL: REQUIRE_API_KEY/production nhưng chưa đặt API_KEY. Đặt API_KEY rồi chạy lại.');
+  process.exit(1);
+}
 
 app.listen(config.port, () => {
   console.log(`[local-runner] listening on http://localhost:${config.port}`);

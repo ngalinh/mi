@@ -5,6 +5,9 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 module.exports = {
   port: parseInt(process.env.LOCAL_PORT || '8090', 10),
   apiKey: process.env.API_KEY || '',
+  // Bắt buộc có API_KEY (fail-closed) khi production / REQUIRE_API_KEY=true. Dev vẫn chạy được khi trống.
+  requireApiKey: String(process.env.REQUIRE_API_KEY || '').toLowerCase() === 'true'
+    || process.env.NODE_ENV === 'production',
   // Trang quản lý Zalo. Trước đây dùng Salework (zalo.salework.net), nay chuyển sang
   // Zalo Basso (self-hosted, giao diện Vuetify giống Salework) — giống hệt Xeko. Vẫn cho
   // override qua SALEWORK_URL nếu muốn quay lại salework.net.

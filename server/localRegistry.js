@@ -1,4 +1,5 @@
 'use strict';
+const config = require('./config');
 
 /**
  * Sổ đăng ký local-runner — lưu URL runner trong RAM (giống Xeko).
@@ -16,6 +17,18 @@ const FRESH_MS = 90 * 1000;
 
 let state = { url: '', lastSeen: 0 };
 
+// Host có khớp allowlist không. Hỗ trợ wildcard "*.domain" (khớp domain và mọi subdomain).
+function hostAllowed(hostname) {
+  const list = config.registerAllowedHosts;
+  if (!list || !list.length) return true; // trống = cho tất cả (như cũ)
+  const h = String(hostname || '').toLowerCase();
+  return list.some((pat) => {
+    const p = pat.toLowerCase();
+    if (p.startsWith('*.')) { const base = p.slice(2); return h === base || h.endsWith(`.${base}`); }
+    return h === p;
+  });
+}
+
 /**
  * Runner gọi để khai báo URL của mình. CHỈ nhận URL http/https hợp lệ — chặn các scheme lạ
  * (file:, javascript:, gopher:…) để giảm rủi ro SSRF: server sẽ forward request KÈM x-api-key
@@ -27,6 +40,7 @@ function register(url) {
   let parsed;
   try { parsed = new URL(clean); } catch { return false; }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  if (!hostAllowed(parsed.hostname)) return false;
   state = { url: clean, lastSeen: Date.now() };
   return true;
 }

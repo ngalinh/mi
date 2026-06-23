@@ -40,6 +40,16 @@ module.exports = {
   // sau đó tới SERVER_PORT (cấu hình thủ công), cuối cùng mặc định 8080 cho chạy local.
   port: parseInt(process.env.PORT || process.env.SERVER_PORT || '8080', 10),
   apiKey: process.env.API_KEY || '',
+  // Bắt buộc có API_KEY (fail-closed) khi chạy production hoặc REQUIRE_API_KEY=true. Dev (mặc
+  // định) vẫn chạy được khi để trống key.
+  requireApiKey: String(process.env.REQUIRE_API_KEY || '').toLowerCase() === 'true'
+    || process.env.NODE_ENV === 'production',
+  // Secret dùng chung gateway↔app: nếu đặt, mọi route /api/* (trừ health/register-local/webhook)
+  // phải kèm header X-Gateway-Secret khớp -> chặn gọi thẳng app bỏ qua gateway. Trống = bỏ qua.
+  gatewaySecret: process.env.GATEWAY_SECRET || '',
+  // Allowlist host được phép đăng ký qua /api/register-local (vd "*.trycloudflare.com,localhost").
+  // Trống = cho tất cả (như cũ). Hỗ trợ wildcard "*.domain".
+  registerAllowedHosts: (process.env.REGISTER_ALLOWED_HOSTS || '').split(',').map((s) => s.trim()).filter(Boolean),
   playwrightLocalUrl: process.env.PLAYWRIGHT_LOCAL_URL || 'http://localhost:8090',
   // Đăng nhập do gateway ai.basso.vn lo (đứng trước app). Gateway forward danh tính nhân
   // viên qua header để app GHI LẠI "ai gửi tin" vào lịch sử. Danh sách header thử lần lượt,

@@ -39,6 +39,21 @@ app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-store'),
 }));
 
+// ---- Secret gateway↔app (tuỳ chọn) ----
+// Nếu đặt GATEWAY_SECRET: chỉ chấp nhận request /api/* có header X-Gateway-Secret khớp
+// (gateway ai.basso.vn gắn vào khi forward) -> chặn gọi thẳng app, giả mạo danh tính.
+// MIỄN TRỪ: /api/health (probe), /api/register-local (runner gọi, dùng x-api-key riêng),
+// /api/webhook/arrived (Basso gọi, dùng x-webhook-secret riêng).
+const GATEWAY_EXEMPT = new Set(['/api/health', '/api/register-local', '/api/webhook/arrived']);
+app.use((req, res, next) => {
+  if (!config.gatewaySecret) return next();
+  if (!req.path.startsWith('/api/') || GATEWAY_EXEMPT.has(req.path)) return next();
+  if (!safeEqual(req.get('x-gateway-secret'), config.gatewaySecret)) {
+    return res.status(401).json({ ok: false, error: 'Thiếu/sai X-Gateway-Secret' });
+  }
+  return next();
+});
+
 // ---- Health & cấu hình hiển thị ----
 app.get('/api/health', async (req, res) => {
   const h = await getLocalHealth();
@@ -66,7 +81,7 @@ app.get('/api/health', async (req, res) => {
 app.post('/api/register-local', (req, res) => {
   const { url, apiKey } = req.body || {};
   // Bảo vệ bằng API_KEY dùng chung (nếu server có đặt). Trống = bỏ qua kiểm tra (dev).
-  if (config.apiKey && apiKey !== config.apiKey) {
+  if (config.apiKey && !safeEqual(apiKey, config.apiKey)) {
     return res.status(401).json({ ok: false, error: 'Sai hoặc thiếu apiKey' });
   }
   if (!localRegistry.register(url)) {
@@ -265,8 +280,17 @@ app.get('/api/reports', (req, res) => {
   }
 });
 
+// Fail-closed: production (hoặc REQUIRE_API_KEY=true) bắt buộc phải có API_KEY — nếu không,
+// register-local/forward sẽ không được bảo vệ. Dừng hẳn thay vì chạy hớ.
+if (config.requireApiKey && !config.apiKey) {
+  console.error('[server] FATAL: REQUIRE_API_KEY/production nhưng chưa đặt API_KEY. Đặt API_KEY rồi chạy lại.');
+  process.exit(1);
+}
+
 app.listen(config.port, () => {
   console.log(`[server] http://localhost:${config.port}`);
   console.log(`[server] mock=${config.basso.useMock} | local-runner=${config.playwrightLocalUrl}`);
+  if (config.gatewaySecret) console.log('[server] Gateway secret: BẬT (yêu cầu X-Gateway-Secret cho /api/*)');
+  if (config.registerAllowedHosts.length) console.log(`[server] register-local allowlist: ${config.registerAllowedHosts.join(', ')}`);
   autoNotify.startAutoNotify();
 });
