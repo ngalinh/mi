@@ -109,9 +109,9 @@ runAutoNotify()
         - statusCode === 'not_sent'
         - dedup: chưa 'success'/'manual', và attempts < maxRetries
         (khách có Zalo hay không xác định lúc gửi: tìm SĐT không ra hội thoại → lỗi)
-   ③ mỗi ứng viên ▶ notifyOne({ skipWebUpdate:true, strictMatch:true }):
+   ③ mỗi ứng viên ▶ notifyOne({ skipWebUpdate:!updateWeb, strictMatch:true }):
         → gửi qua local-runner (FLOW D)
-        → KHÔNG cập nhật web Basso (chỉ đánh dấu trong mi)  [trừ khi AUTO_NOTIFY_UPDATE_WEB=true]
+        → cập nhật trạng thái về web Basso (mặc định)  [tắt bằng AUTO_NOTIFY_UPDATE_WEB=false]
         → ghi reports
    ④ ghi auto_notified:
         OK            → 'success' (khóa vĩnh viễn)
@@ -170,7 +170,7 @@ BASSO_API_BASE_URL=...         # trống = MOCK
 AUTO_UPDATE_STATUS=true        # báo TAY có cập nhật web không
 AUTO_NOTIFY=false              # bật bot chạy nền (cũng bật/tắt được trên dashboard)
 AUTO_NOTIFY_INTERVAL_MS=120000 # chu kỳ quét bot (ms)
-AUTO_NOTIFY_UPDATE_WEB=false   # bot có cập nhật web không (mặc định KHÔNG)
+AUTO_NOTIFY_UPDATE_WEB=true    # bot có cập nhật web không (mặc định CÓ)
 AUTO_NOTIFY_MAX_RETRIES=3      # số lần thử lại / đơn khi lỗi cấp-đơn
 AUTO_NOTIFY_WEBHOOK_SECRET=    # bảo vệ webhook /api/webhook/arrived
 TEST_MODE=true / TEST_PHONES=  # chế độ an toàn ở runner

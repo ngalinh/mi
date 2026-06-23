@@ -183,7 +183,7 @@ safety.forEach((s, i) => {
 });
 
 // footer
-text(40, H - 24, '* Bot mặc định KHÔNG cập nhật web Basso (AUTO_NOTIFY_UPDATE_WEB=false) — chỉ đánh dấu trong mi (badge 🤖). Chi tiết: docs/FLOW.md', { size: 13, fill: '#64748b' });
+text(40, H - 24, '* Bot mặc định CẬP NHẬT web Basso (AUTO_NOTIFY_UPDATE_WEB=true) + đánh dấu trong mi (badge 🤖). Đặt =false để chỉ đánh dấu trong mi. Chi tiết: docs/FLOW.md', { size: 13, fill: '#64748b' });
 
 add('</svg>');
 

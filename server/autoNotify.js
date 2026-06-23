@@ -111,7 +111,7 @@ async function runAutoNotify(opts = {}) {
           profile: cfg.profile,
           defaultAccount: cfg.account,   // fallback khi NV không có trong ZALO_ACCOUNT_MAP
           kind: 'hang',
-          skipWebUpdate: !cfg.updateWeb, // mặc định chỉ đánh dấu trong mi, không cập nhật web Basso
+          skipWebUpdate: !cfg.updateWeb, // mặc định đẩy trạng thái về web Basso (tắt qua AUTO_NOTIFY_UPDATE_WEB=false)
           strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
           actor: 'bot',                  // audit: luồng tự động
         });
