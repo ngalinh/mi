@@ -70,9 +70,9 @@
 
   // ---------------- Tabs nhân viên ----------------
   // Avatar viết tắt + màu ổn định theo tên (để mỗi NV có 1 màu riêng dễ nhận).
-  // Bảng màu avatar — tông trầm ấm, hợp theme navy + cam + kem
+  // Bảng màu avatar — tông pastel, hợp theme lavender + hồng + kem
   const AV_COLORS = [
-    ['#fde7d6', '#d9692a'], // cam
+    ['#eee6fa', '#8a6cc6'], // lavender
     ['#e9e7f0', '#5b5e7e'], // xám navy
     ['#e9f1ec', '#3a9b71'], // mint trầm
     ['#fbeed9', '#c0871f'], // amber
