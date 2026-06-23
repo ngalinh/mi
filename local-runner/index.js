@@ -34,15 +34,15 @@ app.get('/api/profile/:name', (req, res) => {
 
 /**
  * POST /api/zalo/send
- * body: { profile, account?, keyword, message }
+ * body: { profile, account?, keyword, name?, message, strictMatch?, imagePaths? }
  * => trả { ok, jobId } ngay; poll /api/job/:id để lấy kết quả.
  */
 app.post('/api/zalo/send', (req, res) => {
-  const { profile, account, keyword, name, message, strictMatch } = req.body || {};
-  if ((!keyword && !name) || !message) {
-    return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc message' });
+  const { profile, account, keyword, name, message, strictMatch, imagePaths } = req.body || {};
+  if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
+    return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, account, keyword, name, message, strictMatch }, sendBaoHang);
+  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths }, sendBaoHang);
   res.json({ ok: true, jobId });
 });
 

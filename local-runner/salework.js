@@ -5,14 +5,24 @@ const config = require('./config');
 const { getPage, closeContext } = require('./browser');
 
 /**
- * Tự động gửi tin nhắn báo hàng về qua giao diện Salework Zalo (https://zalo.salework.net).
- * Port từ pattern salework.js của Xeko, có bổ sung log + screenshot từng bước.
+ * Tự động gửi tin nhắn báo hàng về qua giao diện quản lý Zalo.
  *
- * Lưu ý selector: Salework dùng Element-UI (Vue). Các selector có nhiều fallback
- * vì giao diện có thể đổi nhẹ. Khi UI thay đổi, sửa tập trung trong file này.
+ * Trước đây dùng Salework (zalo.salework.net, giao diện Element-UI). Nay PORT Y HỆT flow
+ * Zalo của Xeko: chuyển sang Zalo Basso (https://zalo.basso.vn) — self-hosted, giao diện
+ * Vuetify. Vì giao diện đổi nên logic CHỌN TÀI KHOẢN và GỬI TIN được viết lại theo selector
+ * Vuetify của basso.vn (.v-list / .acc-tick / textarea.msg-textarea / .send-btn ...).
+ *
+ * KHÁC Xeko ở mục tiêu gửi: Xeko đăng vào NHÓM, còn mi báo hàng cho TỪNG KHÁCH nên GIỮ NGUYÊN
+ * phần tìm hội thoại theo SĐT/tên (searchAndClickConversation) + chế độ strictMatch của mi.
+ *
+ * Khi UI thay đổi, sửa tập trung trong file này.
  */
 
 const norm = (s) => (s == null ? '' : String(s).normalize('NFC').trim());
+
+// Chuẩn hoá tên tài khoản để so khớp: NFC, gộp khoảng trắng (tên "Basso  Order Hàng Mỹ" có
+// 2 dấu cách trong DOM), bỏ đầu/cuối, lowercase. (Giống ACC_NORM của Xeko.)
+const ACC_NORM = (s) => (s || '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
 
 // Chuẩn hóa SĐT để so khớp whitelist (bỏ ký tự không phải số, bỏ 84/0 đầu)
 const normPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
@@ -21,6 +31,9 @@ function phoneAllowed(phone) {
   const t = normPhone(phone);
   return config.testPhones.some((tp) => normPhone(tp) === t && t !== '');
 }
+
+const sleep = (page, ms) => page.waitForTimeout(ms);
+const randomDelay = (page, min, max) => page.waitForTimeout(min + Math.floor(Math.random() * (max - min)));
 
 function shot(page, name) {
   try {
@@ -32,13 +45,14 @@ function shot(page, name) {
 }
 
 async function gotoSalework(page) {
-  await page.goto(config.saleworkUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForTimeout(2000);
+  // Mở thẳng trang chat (nơi có dropdown chọn tài khoản + danh sách hội thoại).
+  await page.goto(config.saleworkChatUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForTimeout(3000);
   await shot(page, '01-loaded');
 }
 
 /**
- * Kiểm tra đã đăng nhập Salework chưa: nếu còn thấy ô đăng nhập / form login => chưa.
+ * Kiểm tra đã đăng nhập chưa: nếu còn thấy ô đăng nhập / form login => chưa.
  */
 async function ensureLoggedIn(page) {
   const url = page.url();
@@ -48,214 +62,171 @@ async function ensureLoggedIn(page) {
     .isVisible()
     .catch(() => false);
   if (hasLogin || /login|signin/i.test(url)) {
-    throw new Error('CHUA_DANG_NHAP: Salework chưa đăng nhập. Hãy chạy `npm run local:debug`, đăng nhập thủ công 1 lần để lưu session.');
+    throw new Error('CHUA_DANG_NHAP: Zalo Basso chưa đăng nhập. Hãy chạy `npm run login`, đăng nhập thủ công 1 lần để lưu session.');
   }
 }
 
-const deaccent = (s) => norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+// ============================================================================
+// CHỌN TÀI KHOẢN ZALO trên zalo.basso.vn (giao diện Vuetify) — PORT Y HỆT Xeko.
+// ----------------------------------------------------------------------------
+// Nút "Tất cả Zalo" (span.acc-btn-text) mở ra dropdown .v-list; mỗi tài khoản là 1
+// .v-list-item:
+//     .v-list-item
+//        .v-list-item-title                     → tên tài khoản
+//        .v-list-item__append > span.acc-tick   → ô tick; THÊM class "on" khi ĐANG chọn
+// Dòng đầu "Tất cả Zalo" KHÔNG có .acc-tick.
+//
+// Đây là multi-select (lọc hội thoại theo tài khoản). Để gửi đúng 1 tài khoản:
+//   1. Mở dropdown.
+//   2. Bỏ tick mọi tài khoản đang "on" KHÁC tài khoản cần gửi.
+//   3. Tick đúng tài khoản cần gửi.
+//   4. READ-BACK: CHỈ tài khoản đó "on" → sai thì HUỶ để KHÔNG gửi nhầm tài khoản.
+// ============================================================================
 
-/**
- * Đóng mọi dropdown/popper Element-UI đang mở (vd dropdown chọn tài khoản) và CHỜ tới khi
- * nó thực sự biến mất. Poll nhanh và TRẢ VỀ NGAY khi đã đóng — tránh chờ cứng làm chậm
- * khúc chuyển "chọn kênh → tìm khách". Cần đóng vì lớp el-popper che + chặn pointer events,
- * nếu còn mở thì click ô tìm kiếm hội thoại sẽ "intercepts pointer events" -> timeout 30s.
- */
-async function closeOpenDropdown(page, { timeout = 1200 } = {}) {
-  // Chỉ nhắm đúng popper của dropdown CHỌN TÀI KHOẢN (cái thực sự che + chặn pointer events).
-  // KHÔNG dùng `.el-popper` trần: class đó quá chung (tooltip... luôn hiển thị) khiến vòng lặp
-  // không bao giờ thoát sớm -> chạy đủ deadline mỗi lần gọi. `.el-select-dropdown` đã là popper
-  // của el-select, còn ô "Tìm kiếm tài khoản" là dấu hiệu dropdown account còn mở.
-  const popper = page
-    .locator('.el-select-dropdown, input[placeholder*="Tìm kiếm tài khoản" i]')
-    .first();
-  const deadline = Date.now() + timeout;
-  // Nếu đã đóng sẵn thì không tốn 1ms nào.
-  while (await popper.isVisible().catch(() => false)) {
-    await page.keyboard.press('Escape').catch(() => {});
-    if (Date.now() >= deadline) break;
-    await page.waitForTimeout(150);
-  }
+// Dropdown danh sách tài khoản đang hiển thị chưa? (chỉ v-list của dropdown này mới có
+// .acc-tick — danh sách hội thoại không có → không bị nhầm).
+async function accountListVisible(page) {
+  return page.locator('.v-list:has(.acc-tick)').first().isVisible().catch(() => false);
 }
 
-/**
- * Chọn tài khoản Zalo trong dropdown của Salework (giao diện zalo.salework.net mới —
- * KHÔNG phải Element-UI). Dropdown có ô "Tìm kiếm tài khoản..." và danh sách tài khoản.
- * Bỏ qua êm nếu không mở được dropdown (giao diện chỉ 1 account).
- */
-async function selectZaloAccount(page, accountLabel) {
-  if (!accountLabel) return false;
-  const target = norm(accountLabel);
-
-  // 1) Mở dropdown chọn tài khoản: thử vài opener
-  const accSearchSel = 'input[placeholder*="Tìm kiếm tài khoản" i]';
-  const isOpen = () => page.locator(accSearchSel).first().isVisible().catch(() => false);
-  if (!(await isOpen())) {
-    const openers = [
-      page.getByText('Tất cả tài khoản', { exact: false }).first(),
-      page.locator('.el-select, .el-select .el-input__inner, .el-select__caret').first(),
-      page.locator('[aria-haspopup], [aria-expanded]').first(),
-      page.getByRole('combobox').first(),
-    ];
-    for (const op of openers) {
-      if (await isOpen()) break;
-      await op.click({ timeout: 3000 }).catch(() => {});
-      await page.waitForTimeout(600);
-    }
+// Mở dropdown chọn tài khoản. Nút mở hiển thị nhãn span.acc-btn-text ("Tất cả Zalo" hoặc
+// tên tài khoản đã chọn lần trước). Thử vài selector phòng khi DOM đổi.
+async function openAccountDropdown(page) {
+  if (await accountListVisible(page)) return true;
+  const tries = ['.acc-btn-text', '.acc-btn', '[class*="acc-btn"]', '[aria-haspopup="menu"]', '[aria-haspopup]'];
+  for (const sel of tries) {
+    const loc = page.locator(sel).first();
+    if (!(await loc.count().catch(() => 0))) continue;
+    try { await loc.click({ timeout: 3000, force: true }); } catch { continue; }
+    await sleep(page, 800);
+    if (await accountListVisible(page)) return true;
   }
-
-  // 2) Nếu có ô tìm kiếm tài khoản thì gõ để lọc (không bắt buộc)
-  const accSearch = page.locator(accSearchSel).first();
-  if (await accSearch.isVisible().catch(() => false)) {
-    await accSearch.fill('').catch(() => {});
-    await accSearch.type(target, { delay: 30 }).catch(() => {});
-    await page.waitForTimeout(500);
-  }
-  await shot(page, '02a-account-search');
-
-  // 3) Quét DOM tìm phần tử khớp tên -> click bằng TOẠ ĐỘ chuột (cách Xeko, ăn event Vue/React)
-  const rect = await page.evaluate((name) => {
-    const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
-      .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-    const tgt = deacc(name);
-    const els = document.querySelectorAll(
-      '[class*="dropdown"] li, [class*="option"], li, [class*="item"], div, span, a'
-    );
-    let exact = null;
-    let partial = null;
-    for (const el of els) {
-      const r = el.getBoundingClientRect();
-      if (!(r.width > 0 && r.height > 0 && r.height < 120)) continue;
-      const t = deacc(el.textContent);
-      if (!t) continue;
-      if (t === tgt) { exact = { x: r.left + r.width / 2, y: r.top + r.height / 2 }; break; }
-      if (!partial && t.includes(tgt) && t.length <= tgt.length + 14) {
-        partial = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-      }
-    }
-    return exact || partial;
-  }, target);
-
-  if (rect) {
-    await page.mouse.click(rect.x, rect.y);
-    // Dropdown Salework là Element-UI multi-select (is-multiple) -> KHÔNG tự đóng khi chọn
-    // option. KHÔNG đóng ở đây: searchAndClickConversation() gọi closeOpenDropdown() ngay đầu
-    // nên đóng 2 lần chỉ tốn thêm thời gian (mỗi lần poll tới timeout). Để 1 chỗ đóng là đủ.
-    await shot(page, '02-account-selected');
-    return true;
-  }
-  await shot(page, '02b-account-notfound');
-  throw new Error(`KHONG_THAY_TAI_KHOAN_ZALO: không chọn được tài khoản Zalo "${accountLabel}". Xem ảnh screenshots/02a-account-search.png.`);
+  return accountListVisible(page);
 }
 
-/**
- * Liệt kê TẤT CẢ tài khoản Zalo mà profile đang thấy trong dropdown chọn account của Salework.
- * Mở dropdown (tái dùng opener như selectZaloAccount) rồi quét nhãn các option. Dùng để kiểm
- * tra "profile này đang đăng nhập những Zalo nào" + lấy đúng tên điền ZALO_ACCOUNT_MAP.
- * @returns {Promise<string[]>} danh sách tên account (đã loại trùng/rỗng), [] nếu không đọc được.
- */
-async function listZaloAccounts(page) {
-  const accSearchSel = 'input[placeholder*="Tìm kiếm tài khoản" i]';
-  const isOpen = () => page.locator(accSearchSel).first().isVisible().catch(() => false);
-  if (!(await isOpen())) {
-    const openers = [
-      page.getByText('Tất cả tài khoản', { exact: false }).first(),
-      page.locator('.el-select, .el-select .el-input__inner, .el-select__caret').first(),
-      page.locator('[aria-haspopup], [aria-expanded]').first(),
-      page.getByRole('combobox').first(),
-    ];
-    for (const op of openers) {
-      if (await isOpen()) break;
-      await op.click({ timeout: 3000 }).catch(() => {});
-      await page.waitForTimeout(600);
-    }
-  }
-  await shot(page, '02a-account-search');
-  // Cho danh sách kịp render sau khi mở dropdown.
-  await page.waitForTimeout(500);
-
-  // Quét tên account KHÔNG phụ thuộc class (Salework dùng dropdown tùy biến). Hai chốt chặn:
-  //  1) Chỉ quét TRONG khung popup (ancestor nổi - position absolute/fixed - của ô "Tìm kiếm
-  //     tài khoản…") -> loại hẳn danh sách hội thoại nằm ở panel khác.
-  //  2) Lọc bỏ dòng trông như HỘI THOẠI (có giờ HH:MM, SĐT, "[Hình ảnh]", hay preview "Tên: …").
+// Đọc trạng thái các dòng tài khoản trong dropdown, đồng thời ĐÁNH SỐ mỗi dòng (data-mi-idx)
+// để click lại bằng locator. Bỏ qua dòng "Tất cả Zalo" (không có .acc-tick). PHẢI đọc lại
+// trước mỗi lần click vì Vue re-render xoá data-mi-idx.
+async function readAccountRows(page) {
   return page.evaluate(() => {
-    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-    const search = [...document.querySelectorAll('input')]
-      .find((i) => /tìm kiếm tài khoản/i.test(i.placeholder || ''));
-
-    // Dòng hội thoại (KHÔNG phải account): có giờ, SĐT dài, ảnh/preview, hoặc dạng "Tên: tin nhắn".
-    const looksLikeConversation = (t) =>
-      /\b\d{1,2}:\d{2}\b/.test(t)        // giờ 17:25
-      || /\[[^\]]+\]/.test(t)            // [Hình ảnh]
-      || /\d{8,}/.test(t)               // SĐT
-      || /:\s/.test(t)                   // "Ngọc Nguyễn: ..."
-      || /,/.test(t);                    // câu/preview hội thoại (tên account không có dấu phẩy)
-
-    const names = [];
-    const seen = new Set();
-    const add = (t) => {
-      if (!t || t.length > 60 || seen.has(t)) return;
-      if (/tìm kiếm tài khoản/i.test(t)) return;
-      if (/^tất cả tài khoản$/i.test(t)) return; // tùy chọn gộp, không phải account gửi được
-      if (looksLikeConversation(t)) return;
-      seen.add(t); names.push(t);
-    };
-    // Gom các dòng trong 1 root, loại trùng bằng Set (div bọc span con cùng text tự gộp);
-    // phần tử bao cả danh sách có height lớn -> bị loại (height<80).
-    const collect = (root) => {
-      const cands = [];
-      for (const el of root.querySelectorAll('li,div,span,a,p,[class*="item"],[class*="option"]')) {
-        if (search && (el === search || el.contains(search))) continue;
-        const r = el.getBoundingClientRect();
-        if (!(r.height >= 18 && r.height < 80 && r.width > 60)) continue;
-        const t = clean(el.textContent);
-        if (t) cands.push({ t, top: r.top });
-      }
-      cands.sort((a, b) => a.top - b.top).forEach((c) => add(c.t));
-    };
-
-    // Tìm khung popup = ancestor gần nhất của ô search có position absolute/fixed (lớp nổi).
-    let popup = null;
-    if (search) {
-      let el = search.parentElement;
-      while (el && el !== document.body) {
-        const pos = getComputedStyle(el).position;
-        if (pos === 'absolute' || pos === 'fixed') { popup = el; break; }
-        el = el.parentElement;
-      }
-    }
-
-    if (popup) collect(popup);
-    // Fallback: không khoanh được popup -> quét toàn trang (đã có bộ lọc hội thoại ở add()).
-    if (!names.length) collect(document.body);
-    return names;
+    const normJs = (s) => (s || '').normalize('NFC').replace(/\s+/g, ' ').trim();
+    const rows = [];
+    Array.from(document.querySelectorAll('.v-list .v-list-item')).forEach((el, i) => {
+      el.setAttribute('data-mi-idx', String(i));
+      const tick = el.querySelector('.acc-tick');
+      if (!tick) return;                       // dòng "Tất cả Zalo" — bỏ qua
+      const titleEl = el.querySelector('.v-list-item-title');
+      rows.push({
+        idx: i,
+        title: titleEl ? normJs(titleEl.textContent) : '',
+        on: tick.classList.contains('on'),
+      });
+    });
+    return rows;
   });
 }
 
+async function clickAccountRowByIdx(page, idx) {
+  const loc = page.locator(`.v-list-item[data-mi-idx="${idx}"]`).first();
+  try { await loc.scrollIntoViewIfNeeded({ timeout: 2000 }); } catch {}
+  await loc.click({ timeout: 4000 });
+  await sleep(page, 500);
+}
+
 /**
- * Tìm và mở hội thoại khách. GÕ THẲNG SĐT vào ô tìm kiếm trước (SĐT là duy nhất nên
- * khớp chính xác hơn tên — tránh trùng tên / sai dấu), khớp hàng theo SĐT HOẶC tên
- * (hàng hội thoại thường hiển thị tên); nếu gõ SĐT không ra mới tìm theo TÊN.
- * Click bằng toạ độ chuột thật.
- * @param {object} p { name, phone }
+ * Chọn đúng 1 tài khoản Zalo trong dropdown Vuetify của basso.vn. Trả về true nếu xác minh
+ * (read-back) đúng 1 tài khoản cần gửi đang "on", ngược lại false (caller nên HUỶ gửi).
+ */
+async function selectZaloAccount(page, accountLabel) {
+  if (!accountLabel) return false;
+  const want = ACC_NORM(accountLabel);
+
+  if (!(await openAccountDropdown(page))) {
+    await shot(page, '02b-account-dropdown-fail');
+    return false;
+  }
+  await sleep(page, 500);
+
+  // Hội tụ về trạng thái mong muốn: mỗi vòng sửa ĐÚNG 1 việc rồi đọc lại (vì click làm Vue
+  // re-render → phải re-mark data-mi-idx). Tối đa 8 vòng cho an toàn.
+  for (let pass = 0; pass < 8; pass += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const rows = await readAccountRows(page);
+    const target = rows.find((r) => ACC_NORM(r.title) === want);
+    if (!target) {
+      // List có thể chưa render xong ở vòng đầu — chờ rồi thử lại vài lần.
+      if (pass < 2) { await sleep(page, 700); continue; }
+      await shot(page, '02b-account-notfound');
+      throw new Error(`KHONG_THAY_TAI_KHOAN_ZALO: không thấy tài khoản "${accountLabel}". Có: ${JSON.stringify(rows.map((r) => r.title))}`);
+    }
+    const wrongOn = rows.find((r) => r.on && r.idx !== target.idx);
+    if (wrongOn) {                               // còn tài khoản KHÁC đang chọn → bỏ tick
+      await clickAccountRowByIdx(page, wrongOn.idx);
+      continue;
+    }
+    if (!target.on) {                            // tài khoản cần gửi chưa tick → tick
+      await clickAccountRowByIdx(page, target.idx);
+      continue;
+    }
+    break;                                       // target "on" + không thừa → xong
+  }
+
+  // READ-BACK xác minh: CHỈ đúng 1 tài khoản "on" và đó là tài khoản cần gửi.
+  const onRows = (await readAccountRows(page)).filter((r) => r.on).map((r) => r.title);
+  const ok = onRows.length === 1 && ACC_NORM(onRows[0]) === want;
+
+  // Đóng dropdown để bước tìm hội thoại đọc đúng danh sách đã lọc + không bị overlay che click.
+  await page.keyboard.press('Escape').catch(() => {});
+  await page.click('body', { position: { x: 700, y: 400 }, force: true }).catch(() => {});
+  await sleep(page, 800);
+
+  await shot(page, '02-account-selected');
+  if (!ok) {
+    await shot(page, '02c-account-verify-fail');
+  }
+  return ok;
+}
+
+/**
+ * Liệt kê TẤT CẢ tài khoản Zalo mà profile đang thấy trong dropdown chọn account.
+ * Dùng cho `npm run accounts` để kiểm tra profile đăng nhập những Zalo nào + lấy đúng tên
+ * điền ZALO_ACCOUNT_MAP. Trả về string[] (đã loại "Tất cả Zalo"), [] nếu không đọc được.
+ */
+async function listZaloAccounts(page) {
+  if (!(await openAccountDropdown(page))) {
+    await shot(page, '02b-account-dropdown-fail');
+    return [];
+  }
+  await sleep(page, 600);
+  await shot(page, '02a-account-search');
+  const rows = await readAccountRows(page);
+  // Đóng dropdown lại cho gọn.
+  await page.keyboard.press('Escape').catch(() => {});
+  const seen = new Set();
+  return rows
+    .map((r) => norm(r.title))
+    .filter((t) => t && !seen.has(t) && (seen.add(t), true));
+}
+
+/**
+ * Tìm và mở hội thoại khách. GÕ THẲNG SĐT vào ô tìm kiếm trước (SĐT là duy nhất nên khớp
+ * chính xác hơn tên — tránh trùng tên / sai dấu), khớp hàng theo SĐT HOẶC tên; nếu gõ SĐT
+ * không ra mới tìm theo TÊN. Click bằng toạ độ chuột thật (cách Vue/React ăn đủ pointer events).
+ * @param {object} p { name, phone, strictMatch }
  */
 async function searchAndClickConversation(page, { name, phone, strictMatch = false }) {
-  // An toàn: nếu còn popper/dropdown nào mở (vd dropdown chọn tài khoản) thì đóng lại,
-  // tránh việc nó che + chặn pointer events khi click ô tìm kiếm. Poll, đóng xong đi tiếp ngay.
-  await closeOpenDropdown(page);
-
-  // Loại trừ ô "Tìm kiếm tài khoản..." (của dropdown account) để không khớp nhầm.
   const searchBox = page
     .locator(
-      'input[placeholder*="Tìm kiếm"]:not([placeholder*="tài khoản" i]), '
+      'input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], '
       + 'input[placeholder*="Search"], input[type="search"]'
     )
     .first();
   if (!(await searchBox.isVisible().catch(() => false))) {
-    throw new Error('KHONG_THAY_O_TIM_KIEM: Không tìm thấy ô tìm kiếm hội thoại trên Salework.');
+    throw new Error('KHONG_THAY_O_TIM_KIEM: Không tìm thấy ô tìm kiếm hội thoại.');
   }
 
-  // typeTerm: từ khoá GÕ vào ô tìm (ưu tiên SĐT). matchTerms: danh sách chuỗi để khớp
-  // hàng hội thoại (SĐT và/hoặc tên) — null/[] -> lấy hàng trên cùng.
+  // typeTerm: từ khoá GÕ vào ô tìm (ưu tiên SĐT). matchTerms: danh sách chuỗi để khớp hàng
+  // hội thoại (SĐT và/hoặc tên) — null/[] -> lấy hàng trên cùng.
   async function attempt(typeTerm, matchTerms) {
     if (!typeTerm) return null;
     await searchBox.click().catch(() => {});
@@ -265,7 +236,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     const scan = () => page.evaluate(({ matchTerms }) => {
       const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
         .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-      // Lõi SĐT: bỏ ký tự không phải số + tiền tố 84/0 để khớp dù định dạng khác (có dấu cách, +84...).
+      // Lõi SĐT: bỏ ký tự không phải số + tiền tố 84/0 để khớp dù định dạng khác.
       const phoneCore = (s) => (s || '').replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
       const terms = (matchTerms || [])
         .map((m) => ({
@@ -295,8 +266,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       return terms.length ? null : topmost;
     }, { matchTerms });
 
-    // Salework debounce kết quả tìm kiếm -> poll, TRẢ VỀ NGAY khi có kết quả
-    // thay vì chờ cứng (trước đây 2500ms cho mọi lần tìm).
+    // Kết quả tìm kiếm có debounce -> poll, TRẢ VỀ NGAY khi có kết quả.
     let rect = null;
     const deadline = Date.now() + 3000;
     do {
@@ -313,8 +283,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // Fallback: gõ SĐT không ra (khách lưu khác số) thì tìm theo TÊN.
   if (!rect && name) rect = await attempt(name, [name]);
   if (strictMatch) {
-    // Luồng bot tự động: KHÔNG "lấy đại đơn trên cùng" vì không có người soát ->
-    // tránh gửi nhầm khách. Không khớp chắc chắn thì báo lỗi để xử lý tay.
+    // Luồng bot tự động: KHÔNG "lấy đại đơn trên cùng" -> tránh gửi nhầm khách.
     if (!rect) {
       await shot(page, '03b-conversation-notfound');
       throw new Error(`KHONG_THAY_HOI_THOAI (strict): không khớp chắc chắn hội thoại cho "${phone || name}". Bỏ qua để gửi tay, tránh gửi nhầm.`);
@@ -333,70 +302,160 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   await shot(page, '04-conversation-opened');
 }
 
-/**
- * Nhập và gửi tin nhắn. Dùng paste để giữ xuống dòng, tránh Enter gửi sớm.
- */
-async function typeAndSend(page, message) {
-  const input = page
-    .locator('[placeholder*="Nhập tin nhắn"], [contenteditable="true"], textarea')
-    .first();
-
-  if (!(await input.isVisible().catch(() => false))) {
-    throw new Error('KHONG_THAY_O_NHAP: Không tìm thấy ô nhập tin nhắn.');
+// Bấm nút Gửi (.send-btn) — Playwright tự chờ tới khi hết disabled (nút bật khi ô soạn có
+// nội dung/ảnh). Fallback nút theo chữ "Gửi"/"Send". Trả false nếu không bấm được.
+async function clickSend(page) {
+  await randomDelay(page, 500, 1000);
+  try {
+    await page.locator('button.send-btn').first().click({ timeout: 8000 });
+    await randomDelay(page, 1500, 2400);
+    return true;
+  } catch { /* thử fallback */ }
+  for (const sel of ['button:has-text("Gửi")', 'button:has-text("Send")']) {
+    try {
+      const btn = page.locator(sel).first();
+      if (await btn.count() && await btn.isEnabled().catch(() => false)) {
+        await btn.click({ timeout: 5000 });
+        await randomDelay(page, 1500, 2400);
+        return true;
+      }
+    } catch {}
   }
-  await input.click();
+  return false;
+}
 
-  // Paste qua clipboard để giữ nguyên xuống dòng (không bị Enter gửi giữa chừng)
-  await page.evaluate(async (text) => {
-    try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
-  }, message);
+// Đính ảnh vào ô soạn tin. CÁCH CHÍNH: DÁN (paste) ảnh từ clipboard — dựng File rồi dispatch
+// 'paste' kèm DataTransfer (gán clipboardData qua defineProperty vì constructor ClipboardEvent
+// bỏ qua nó). DỰ PHÒNG: input[type=file] sẵn có / nút .ic-violet → menu "Hình ảnh" → filechooser.
+// Trả true nếu đính được. (PORT Y HỆT Xeko.)
+async function attachImages(page, imagePaths) {
+  let uploaded = false;
 
-  const pasted = await page
-    .evaluate(async () => {
-      try { await navigator.clipboard.readText(); return true; } catch { return false; }
-    })
-    .catch(() => false);
+  // (a) DÁN ảnh vào textarea.
+  try {
+    const files = imagePaths.map((p) => {
+      const ext = path.extname(p).toLowerCase();
+      const type = ext === '.png' ? 'image/png' : ext === '.gif' ? 'image/gif'
+        : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+      return { name: path.basename(p), type, b64: fs.readFileSync(p).toString('base64') };
+    });
+    await page.locator('textarea.msg-textarea, textarea:visible').first().click({ timeout: 5000 }).catch(() => {});
+    uploaded = await page.evaluate((files) => {
+      const ta = document.querySelector('textarea.msg-textarea') || document.querySelector('textarea') || document.activeElement;
+      if (!ta) return false;
+      const dt = new DataTransfer();
+      for (const f of files) {
+        const bin = atob(f.b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i += 1) arr[i] = bin.charCodeAt(i);
+        dt.items.add(new File([arr], f.name, { type: f.type }));
+      }
+      const evt = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(evt, 'clipboardData', { value: dt });
+      ta.focus();
+      ta.dispatchEvent(evt);
+      return true;
+    }, files);
+    await sleep(page, 2000);
+  } catch {
+    uploaded = false;
+  }
 
-  if (pasted) {
-    await page.keyboard.press('Control+V');
-  } else {
-    // fallback: gõ từng dòng, dùng Shift+Enter để xuống dòng
-    const lines = message.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      await input.type(lines[i], { delay: 15 });
-      if (i < lines.length - 1) await page.keyboard.press('Shift+Enter');
+  // (b) DỰ PHÒNG: input[type=file] sẵn có; rồi .ic-violet → menu "Hình ảnh" → filechooser.
+  if (!uploaded) {
+    const setOnAnyInput = async () => {
+      for (const input of await page.$$('input[type="file"]')) {
+        try { await input.setInputFiles(imagePaths); return true; } catch {}
+      }
+      return false;
+    };
+    uploaded = await setOnAnyInput();
+    if (!uploaded) {
+      try {
+        const attach = page.locator('button.ic-violet').first();
+        const menuId = await attach.getAttribute('aria-controls').catch(() => null);
+        let [chooser] = await Promise.all([
+          page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null),
+          attach.click({ timeout: 5000 }).catch(() => {}),
+        ]);
+        if (!chooser) {
+          await sleep(page, 600);
+          const scope = menuId ? page.locator(`#${menuId}`) : page.locator('.v-overlay__content').last();
+          const imgItem = scope.locator('.v-list-item, [role="menuitem"]')
+            .filter({ hasText: /hình ảnh|ảnh|hình|image|photo/i }).first();
+          if (await imgItem.count().catch(() => 0)) {
+            [chooser] = await Promise.all([
+              page.waitForEvent('filechooser', { timeout: 6000 }).catch(() => null),
+              imgItem.click({ timeout: 4000 }).catch(() => {}),
+            ]);
+          }
+        }
+        if (chooser) { await chooser.setFiles(imagePaths); uploaded = true; }
+        else { await sleep(page, 800); uploaded = await setOnAnyInput(); }
+      } catch {}
     }
   }
-  await page.waitForTimeout(500);
-  await shot(page, '05-message-typed');
 
-  // Bấm nút gửi; fallback Enter
-  const sendBtn = page
-    .locator('button:has-text("Gửi"), button:has-text("Send"), [class*="send"] button, button[class*="send"]')
-    .first();
+  await sleep(page, 1500);
+  await shot(page, '05-after-upload');
+  return uploaded;
+}
 
-  if (await sendBtn.isVisible().catch(() => false)) {
-    await sendBtn.click().catch(() => {});
-  } else {
-    await page.keyboard.press('Enter');
+/**
+ * Nhập và gửi tin nhắn (+ ảnh tuỳ chọn). PORT Y HỆT Xeko: GỬI ẢNH TRƯỚC thành 1 tin riêng,
+ * RỒI GỬI TEXT thành tin riêng. textarea bind Vue v-model → fill() + bắn 'input' để BẬT nút Gửi;
+ * KHÔNG gõ Enter (Enter chỉ xuống dòng).
+ */
+async function typeAndSend(page, message, imagePaths = []) {
+  let sentAny = false;
+
+  // ----- 1. ẢNH: đính rồi gửi (1 tin riêng) -----
+  if (imagePaths && imagePaths.length > 0) {
+    const uploaded = await attachImages(page, imagePaths);
+    if (uploaded) {
+      if (await clickSend(page)) sentAny = true;
+      await sleep(page, 1500); // chờ tin ảnh gửi xong + ô soạn reset trước khi nhập text
+    }
   }
+
+  // ----- 2. TEXT: nhập vào textarea.msg-textarea rồi gửi -----
+  if (message) {
+    const ta = page.locator('textarea.msg-textarea, textarea[placeholder*="Nhập tin nhắn"], textarea:visible').first();
+    if (!(await ta.isVisible().catch(() => false))) {
+      throw new Error('KHONG_THAY_O_NHAP: Không tìm thấy ô nhập tin nhắn.');
+    }
+    await ta.click({ timeout: 5000 });
+    await ta.fill(message);
+    await ta.evaluate((el, val) => {
+      el.value = val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, message);
+    await shot(page, '05-message-typed');
+    if (await clickSend(page)) sentAny = true;
+  }
+
   await page.waitForTimeout(1500);
   await shot(page, '06-sent');
+  if (!sentAny) {
+    throw new Error('KHONG_GUI_DUOC: không gửi được tin nào (ảnh & text đều thất bại).');
+  }
 }
 
 /**
  * Hàm chính: gửi 1 tin nhắn báo hàng về.
  * @param {object} p
- * @param {string} p.profile        - tên profile (account zalo) để load session
- * @param {string} [p.account]      - label account để chọn trong dropdown (nếu có)
- * @param {string} p.keyword        - SĐT khách (dùng để tìm + kiểm tra whitelist)
- * @param {string} [p.name]         - tên khách (dùng để tìm/khớp hội thoại)
- * @param {string} p.message        - nội dung tin nhắn
- * @returns {Promise<{ok:boolean, step?:string}>}
+ * @param {string} p.profile         - tên profile (account zalo) để load session
+ * @param {string} [p.account]       - label account để chọn trong dropdown (nếu có)
+ * @param {string} p.keyword         - SĐT khách (dùng để tìm + kiểm tra whitelist)
+ * @param {string} [p.name]          - tên khách (dùng để tìm/khớp hội thoại)
+ * @param {string} p.message         - nội dung tin nhắn
+ * @param {string[]} [p.imagePaths]  - ảnh đính kèm (gửi trước, rồi mới gửi text). Mặc định text-only.
+ * @returns {Promise<{ok:boolean}>}
  */
-async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false }) {
+async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [] }) {
   if (!keyword && !name) throw new Error('Thiếu keyword (SĐT) hoặc name (tên khách).');
-  if (!message) throw new Error('Thiếu nội dung tin nhắn.');
+  if (!message && !(imagePaths && imagePaths.length)) throw new Error('Thiếu nội dung tin nhắn.');
 
   // CHẶN AN TOÀN: ở chế độ TEST chỉ gửi tới số nằm trong TEST_PHONES
   if (!phoneAllowed(keyword)) {
@@ -407,11 +466,20 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
   try {
     await gotoSalework(page);
     await ensureLoggedIn(page);
-    // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env
+
+    // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env.
+    // HUỶ gửi nếu không xác minh được đúng tài khoản — thà báo lỗi rõ ràng còn hơn âm thầm gửi
+    // bằng tài khoản mặc định ("Tất cả Zalo") → gửi nhầm khách của tài khoản khác.
     const acct = account || config.defaultZaloAccount;
-    if (acct) await selectZaloAccount(page, acct);
+    if (acct) {
+      const ok = await selectZaloAccount(page, acct);
+      if (!ok) {
+        throw new Error(`KHONG_CHON_DUNG_TAI_KHOAN: không chọn/xác minh được tài khoản Zalo "${acct}". Đã huỷ gửi để tránh gửi nhầm tài khoản — mở lại Zalo Basso kiểm tra danh sách tài khoản đã kết nối.`);
+      }
+    }
+
     await searchAndClickConversation(page, { name, phone: keyword, strictMatch });
-    await typeAndSend(page, message);
+    await typeAndSend(page, message, imagePaths);
   } finally {
     // Gửi xong (kể cả khi lỗi) thì đóng trình duyệt để giải phóng tài nguyên.
     // Tắt bằng CLOSE_AFTER_SEND=false nếu muốn giữ context sống cho lần gửi sau.

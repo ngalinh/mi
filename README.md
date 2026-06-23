@@ -4,7 +4,7 @@ Chatbot tự động thông báo "hàng đã về kho VN" cho khách, gồm 3 ph
 
 1. **Dashboard** hiển thị danh sách hàng về (lấy từ API website — hiện dùng dữ liệu MOCK, ráp API thật sau).
 2. **Trang lịch sử báo** — log mọi lượt nhắn tin (thành công/thất bại, nội dung, thời gian).
-3. **Automation Playwright** trên tài khoản **Salework Zalo** (`https://zalo.salework.net`), port theo pattern của [Xeko](https://github.com/ngalinh/Xeko).
+3. **Automation Playwright** trên trang quản lý **Zalo Basso** (`https://zalo.basso.vn`, giao diện Vuetify), port y hệt flow Zalo của [Xeko](https://github.com/ngalinh/Xeko). (Trước đây dùng `zalo.salework.net` — vẫn override được qua `SALEWORK_URL`.)
 
 ## Kiến trúc (giống Xeko)
 
@@ -12,7 +12,7 @@ Chatbot tự động thông báo "hàng đã về kho VN" cho khách, gồm 3 ph
 ┌────────────────────────┐       HTTP (tunnel/localhost)      ┌──────────────────────────┐
 │  server/  (ai.basso.vn) │  ──── POST /api/zalo/send ───────▶ │ local-runner/ (máy có Chrome)│
 │  • Dashboard + Reports  │  ◀─── poll /api/job/:id  ───────── │ • Playwright persistent ctx │
-│  • bassoApi (đọc orders)│                                    │ • Điều khiển zalo.salework  │
+│  • bassoApi (đọc orders)│                                    │ • Điều khiển zalo.basso.vn  │
 │  • SQLite log lịch sử   │                                    │ • Lưu session đăng nhập     │
 └────────────────────────┘                                    └──────────────────────────┘
 ```
@@ -38,7 +38,7 @@ Trong `.env` đặt `API_KEY` (chuỗi ngẫu nhiên, giống nhau cho cả 2 pr
 ```powershell
 npm run local:debug        # mở cửa sổ browser (HEADLESS=false)
 ```
-Lần đầu hãy mở `https://zalo.salework.net` trong cửa sổ browser do bot bật lên và **đăng nhập thủ công 1 lần**. Session được lưu vào `playwright-data/salework-default/` nên các lần sau không phải login lại.
+Lần đầu hãy mở `https://zalo.basso.vn` trong cửa sổ browser do bot bật lên và **đăng nhập thủ công 1 lần**. Session được lưu vào `playwright-data/salework-default/` nên các lần sau không phải login lại.
 
 > Tip: profile mặc định là `default`. Mỗi account Salework/Zalo nên dùng 1 profile riêng (truyền `profile` khi gọi `/api/notify`).
 

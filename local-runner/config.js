@@ -5,12 +5,19 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 module.exports = {
   port: parseInt(process.env.LOCAL_PORT || '8090', 10),
   apiKey: process.env.API_KEY || '',
-  saleworkUrl: process.env.SALEWORK_URL || 'https://zalo.salework.net',
-  // Tài khoản Zalo (trong Salework) chọn trước khi gửi, khi 1 login có nhiều Zalo.
-  // Để trống = dùng account đang active. Điền đúng TÊN như hiện trong dropdown Salework.
+  // Trang quản lý Zalo. Trước đây dùng Salework (zalo.salework.net), nay chuyển sang
+  // Zalo Basso (self-hosted, giao diện Vuetify giống Salework) — giống hệt Xeko. Vẫn cho
+  // override qua SALEWORK_URL nếu muốn quay lại salework.net.
+  saleworkUrl: process.env.SALEWORK_URL || 'https://zalo.basso.vn',
+  // Trang chat (nơi có dropdown chọn tài khoản + danh sách hội thoại). Mở mỗi lần gửi tin.
+  // Ưu tiên SALEWORK_CHAT_URL; nếu không có thì suy ra từ SALEWORK_URL (+ "/chat").
+  saleworkChatUrl: process.env.SALEWORK_CHAT_URL
+    || `${(process.env.SALEWORK_URL || 'https://zalo.basso.vn').replace(/\/+$/, '')}/chat`,
+  // Tài khoản Zalo (trong Salework/Basso) chọn trước khi gửi, khi 1 login có nhiều Zalo.
+  // Để trống = dùng account đang active. Điền đúng TÊN như hiện trong dropdown.
   defaultZaloAccount: process.env.DEFAULT_ZALO_ACCOUNT || '',
   // URL trang đăng nhập (có thể khác trang chat). Mặc định dùng luôn saleworkUrl.
-  saleworkLoginUrl: process.env.SALEWORK_LOGIN_URL || process.env.SALEWORK_URL || 'https://zalo.salework.net',
+  saleworkLoginUrl: process.env.SALEWORK_LOGIN_URL || process.env.SALEWORK_URL || 'https://zalo.basso.vn',
   headless: String(process.env.HEADLESS || 'false').toLowerCase() === 'true',
   // Làm chậm mỗi thao tác (ms) — chỉ để dễ nhìn khi debug. Đặt 0 khi chạy thật cho nhanh.
   slowMo: parseInt(process.env.SLOW_MO || '0', 10),

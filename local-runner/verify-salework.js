@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Kiểm tra nhanh: Playwright mở được zalo.salework.net và render trang (login) hay không.
+ * Kiểm tra nhanh: Playwright mở được zalo.basso.vn (config.saleworkUrl) và render trang (login) hay không.
  * Chạy headless, KHÔNG đụng tới profile "default" (dùng context tạm, đóng ngay sau khi xong).
  *   node local-runner/verify-salework.js
  */
