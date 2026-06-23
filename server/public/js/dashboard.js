@@ -6,6 +6,9 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
+  // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
+  // từ Basso không xoá mất phần đang soạn dở. Xoá khỏi map ngay khi lưu thành công.
+  const dirtyNotes = new Map();
 
   // Bộ lọc nâng cao (popover): khoảng ngày (server-side) + loại trừ/ghi chú (client-side)
   const F = { from: '', to: '', exclude: 'all', note: 'all' };
@@ -262,6 +265,10 @@
     const gc = grouped ? ' grouped-child' : '';
     const hasHang = o.noiDungBaoHang && o.noiDungBaoHang.trim();
     const hasShip = o.noiDungBaoShip && o.noiDungBaoShip.trim();
+    // Nếu đang có ghi chú soạn dở (chưa lưu) thì hiển thị lại text đó, không để
+    // giá trị từ Basso đè lên khi render lại sau đồng bộ.
+    const noteDirty = dirtyNotes.has(String(o.id));
+    const noteVal = noteDirty ? dirtyNotes.get(String(o.id)) : o.note;
     const excludeCell = canBulk
       ? `<label class="excl-wrap" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt"><input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${isExcl ? 'checked' : ''} /></label>`
       : '';
@@ -282,8 +289,8 @@
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${botTag(o)}${delayReasonTag(o)}</div></td>
       <td><div class="note-cell">
-        <input class="note-input" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(o.note)}" placeholder="Ghi chú..." />
-        <button class="save-note" data-id="${App.esc(o.id)}" title="Lưu ghi chú">${App.icon('save')}</button>
+        <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
+        <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>
       </div></td>
       <td>${actionsCell}</td>
       <td class="center">${excludeCell}</td>
@@ -547,7 +554,9 @@
     try {
       await updateRow(o, { status: o.statusCode, note: val });
       o.note = val;
-      if (btn) { btn.classList.add('saved'); setTimeout(() => btn.classList.remove('saved'), 1200); }
+      dirtyNotes.delete(String(id)); // đã lưu -> không còn "chưa lưu"
+      if (input) input.classList.remove('dirty');
+      if (btn) { btn.classList.remove('dirty'); btn.classList.add('saved'); setTimeout(() => btn.classList.remove('saved'), 1200); }
       App.toast('✅ Đã lưu ghi chú');
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
@@ -659,6 +668,13 @@
       if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
       const existing = new Set(orders.map((o) => String(o.id)));
       [...openRows].forEach((id) => { if (!existing.has(id)) openRows.delete(id); });
+      // Dọn ghi chú "chưa lưu": bỏ đơn không còn trong danh sách, và bỏ đơn mà
+      // nội dung trên Basso đã trùng phần đang gõ (coi như đã được lưu nơi khác).
+      [...dirtyNotes.keys()].forEach((id) => {
+        if (!existing.has(id)) { dirtyNotes.delete(id); return; }
+        const o = orders.find((x) => String(x.id) === id);
+        if (o && (o.note || '') === dirtyNotes.get(id)) dirtyNotes.delete(id);
+      });
       // Cờ Delay / Loại trừ lấy từ server (lưu ở mi) — giữ được sau khi reload.
       excluded.clear();
       orders.forEach((o) => { if (o.delayed) excluded.add(String(o.id)); });
@@ -782,6 +798,25 @@
     const vc = t.closest('.view-content'); if (vc) return openModal(vc.dataset.id, vc.dataset.kind);
     const sz = t.closest('.send-zalo'); if (sz) return sendZalo(sz.dataset.id, undefined, sz, sz.dataset.kind || 'hang');
     const sn = t.closest('.save-note'); if (sn) return saveNote(sn.dataset.id);
+  });
+  // Theo dõi ghi chú đang gõ: đánh dấu "chưa lưu" để render lại không làm mất,
+  // và để auto-sync biết có nội dung cần giữ.
+  rowsEl.addEventListener('input', (e) => {
+    const inp = e.target.closest('.note-input');
+    if (!inp) return;
+    const id = String(inp.dataset.id);
+    const o = byId(id);
+    const saved = o ? (o.note || '') : '';
+    const btn = rowsEl.querySelector(`.save-note[data-id="${cssEsc(id)}"]`);
+    if (inp.value === saved) {
+      dirtyNotes.delete(id);
+      inp.classList.remove('dirty');
+      if (btn) btn.classList.remove('dirty');
+    } else {
+      dirtyNotes.set(id, inp.value);
+      inp.classList.add('dirty');
+      if (btn) btn.classList.add('dirty');
+    }
   });
   rowsEl.addEventListener('change', (e) => {
     const sel = e.target.closest('.status-sel');
