@@ -65,6 +65,23 @@ function profileExists(profileName) {
   return fs.existsSync(profilePath(profileName));
 }
 
+/**
+ * Mở Chromium (headed) cho 1 profile để ĐĂNG NHẬP THỦ CÔNG + chọn tài khoản, rồi TRẢ VỀ NGAY
+ * (không chờ user đóng). Dùng cho endpoint thêm/re-login tài khoản Zalo: nhân viên đăng nhập
+ * trên cửa sổ vừa mở, đóng lại là session được lưu vào userDataDir.
+ * @param {string} profileName
+ * @param {string} url  trang để mở (vd config.saleworkLoginUrl)
+ * @param {(ev:'opened'|'closed')=>void} [onEvent] callback để ghi log lịch sử
+ * @returns {Promise<void>} resolve khi cửa sổ đã mở & điều hướng xong
+ */
+async function openForLogin(profileName, url, onEvent) {
+  const context = await getContext(profileName);
+  const page = context.pages()[0] || (await context.newPage());
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  if (typeof onEvent === 'function') onEvent('opened');
+  context.on('close', () => { if (typeof onEvent === 'function') onEvent('closed'); });
+}
+
 /** Đóng trình duyệt của 1 profile (session đăng nhập vẫn lưu trong userDataDir nên lần sau mở lại vẫn đăng nhập). */
 async function closeContext(profileName) {
   const entry = contexts.get(profileName);
@@ -80,4 +97,4 @@ async function closeAll() {
   }
 }
 
-module.exports = { getContext, getPage, profileExists, profilePath, closeContext, closeAll };
+module.exports = { getContext, getPage, profileExists, profilePath, closeContext, closeAll, openForLogin };

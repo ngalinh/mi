@@ -30,4 +30,6 @@ module.exports = {
   // Nơi lưu session đăng nhập Salework theo từng "profile" (account zalo)
   dataDir: path.join(__dirname, '..', 'playwright-data'),
   screenshotDir: path.join(__dirname, '..', 'screenshots'),
+  // File lưu danh sách tài khoản Zalo (key, name, saleworkName, proxy) — quản lý qua /api/accounts.
+  zaloAccountsFile: path.join(__dirname, '..', 'config', 'zalo-accounts.json'),
 };

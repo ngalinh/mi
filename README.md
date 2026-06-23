@@ -222,7 +222,20 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | POST | `/api/register-local` `{url, apiKey}` | Runner tự khai báo URL (Xeko pattern) — server lưu trong RAM + dùng forward |
 | GET | `/api/health` | Trạng thái server + local-runner + auto-notify |
 
-Local-runner: `POST /api/zalo/send`, `GET /api/job/:id`, `GET /health` (bảo vệ bằng header `x-api-key`).
+Local-runner (bảo vệ bằng header `x-api-key`):
+
+| Method | Path | Mô tả |
+|---|---|---|
+| POST | `/api/zalo/send` `{profile, account?, keyword, name?, message, strictMatch?, imagePaths?}` | Gửi báo hàng (trả `jobId`) |
+| GET | `/api/job/:id` | Trạng thái job gửi |
+| GET | `/api/accounts` | Liệt kê tài khoản Zalo + cờ `loggedIn` |
+| POST | `/api/accounts` `{type:'zalo', key, name, saleworkName, proxy?}` | Thêm account → mở Chromium đăng nhập + chọn tài khoản |
+| POST | `/api/accounts/:key/login` | Mở lại Chromium để đăng nhập lại profile có sẵn |
+| DELETE | `/api/accounts/zalo/:key` (`?keepProfile=1` để giữ session) | Xoá account (kèm thư mục session) |
+| GET | `/api/profile/:name` | Kiểm tra profile đã có session chưa |
+| GET | `/health` | Trạng thái runner |
+
+> Quản lý tài khoản Zalo port từ flow `/api/accounts` của Xeko. `key` cũng là tên profile browser (`playwright-data/salework-<key>`); `saleworkName` là tên account như hiện trong dropdown `zalo.basso.vn` (dùng để chọn account khi gửi). `proxy` được lưu để tương thích Xeko nhưng **chưa áp dụng** — mi chạy trên máy nhân viên (IP thật).
 
 ## Tự đăng ký URL runner lên cloud (Xeko pattern) 🆕
 
