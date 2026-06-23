@@ -21,12 +21,19 @@ const App = {
   // Timeout (ms) cho mỗi request — tránh kẹt "Đang tải..." vô thời hạn khi server/Basso
   // chậm. Đặt dài hơn timeout phía server (12s) để lỗi server nổi lên trước.
   API_TIMEOUT_MS: 20000,
+
+  // Tiền tố base path: trên ai.basso.vn bot chạy dưới /b/<id>/ nên API phải gọi
+  // /b/<id>/api/... (giống Xeko). Suy từ đường dẫn trang hiện tại (bỏ tên file cuối).
+  // Chạy local ở '/' -> BASE = '' -> giữ nguyên /api/...
+  BASE: window.location.pathname.replace(/\/[^/]*$/, '').replace(/\/$/, ''),
+
   async api(path, opts = {}) {
+    const url = (this.BASE && typeof path === 'string' && path.startsWith('/')) ? this.BASE + path : path;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.API_TIMEOUT_MS);
     let res;
     try {
-      res = await fetch(path, { ...opts, signal: ctrl.signal });
+      res = await fetch(url, { ...opts, signal: ctrl.signal });
     } catch (e) {
       if (e.name === 'AbortError') throw new Error('Quá thời gian chờ — kết nối chậm, thử lại sau');
       throw e;
