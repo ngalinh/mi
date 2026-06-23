@@ -343,8 +343,8 @@ a { color: var(--primary); text-decoration: none; }
 .status-tab .st-icon .icon { width: 19px; height: 19px; }
 
 /* màu theo trạng thái — số đậm để dễ đọc, tint nền nhạt & đồng đều */
-.status-tab.st-todo    { --st-color: #bd8743; --st-tint: #f6ebd8; }
-.status-tab.st-arrival { --st-color: #7d78cf; --st-tint: #ecebf9; }
+.status-tab.st-todo    { --st-color: #8a6cc6; --st-tint: #eee6fa; }
+.status-tab.st-arrival { --st-color: #5183cc; --st-tint: #eaf1fb; }
 .status-tab.st-ship    { --st-color: #3a9b71; --st-tint: #e9f5ef; }
 .status-tab.st-error   { --st-color: #d44f6b; --st-tint: #fce9ee; }
 
@@ -377,12 +377,12 @@ a { color: var(--primary); text-decoration: none; }
 }
 .group-card:hover { border-color: var(--primary-soft); }
 .group-card.active { border-width: 2px; padding: 13px 15px; }
-.group-card.g-todo.active   { border-color: var(--amber); background: var(--amber-soft); }
+.group-card.g-todo.active   { border-color: var(--primary); background: var(--primary-soft); }
 .group-card.g-failed.active { border-color: var(--red);   background: var(--red-soft); }
 .group-card.g-done.active   { border-color: var(--green); background: var(--green-soft); }
 .group-card .gc-label { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-soft); }
 .group-card .gc-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.group-card.g-todo   .gc-dot { background: var(--amber); }
+.group-card.g-todo   .gc-dot { background: var(--primary); }
 .group-card.g-failed .gc-dot { background: var(--red); }
 .group-card.g-done   .gc-dot { background: var(--green); }
 .group-card .gc-num { font-family: var(--font-num); font-size: 26px; font-weight: 500; margin-top: 4px; letter-spacing: -.5px; }
@@ -527,10 +527,10 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   font-weight: 600; min-width: 140px; cursor: pointer; font-family: inherit;
 }
 .status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(143,114,201,.18); }
-.status-sel[data-code="notified_arrival"] { color: #7d78cf; border-color: #e0def5; background: #ecebf9; }
+.status-sel[data-code="notified_arrival"] { color: #5183cc; border-color: #d9e4f5; background: #eef3fc; }
 .status-sel[data-code="notified_ship"] { color: var(--green); border-color: var(--green-soft); background: var(--green-soft); }
 .status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
-.status-sel[data-code="not_sent"] { color: var(--amber); border-color: var(--amber-soft); background: var(--amber-soft); }
+.status-sel[data-code="not_sent"] { color: var(--primary); border-color: var(--primary-soft); background: var(--primary-soft); }
 /* Dropdown lý do delay — nhỏ, tông hồng/rose để báo "tạm hoãn". */
 .delay-reason {
   padding: 4px 8px; border: 1px dashed var(--red); border-radius: var(--radius-sm);
