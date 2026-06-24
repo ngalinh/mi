@@ -428,7 +428,8 @@
     const chua = orders.filter((o) => !isNotified(o)).length;
     const willSend = bulkTargets().length;
     const exclNote = chua - willSend > 0 ? ` (loại ${chua - willSend})` : '';
-    $('countInfo').textContent = `${list.length} đơn · ${chua} chưa báo${exclNote}`;
+    const ci = $('countInfo');
+    if (ci) ci.textContent = `${list.length} đơn · ${chua} chưa báo${exclNote}`;
     $('bulkBtn').disabled = willSend === 0;
   }
 
