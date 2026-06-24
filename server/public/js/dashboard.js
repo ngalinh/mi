@@ -396,7 +396,7 @@
 
   // Đơn hiển thị = lọc theo nhóm trạng thái + bộ lọc nâng cao (client-side).
   function visibleOrders() {
-    let list = orders.filter((o) => groupOf(o) === currentGroup);
+    let list = currentGroup ? orders.filter((o) => groupOf(o) === currentGroup) : orders.slice();
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -726,11 +726,12 @@
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
   $('bulkBtn').addEventListener('click', openBulkModal);
 
-  // Thẻ trạng thái: chọn 1 (luôn có 1 thẻ active).
+  // Thẻ trạng thái: bấm để lọc; bấm lại thẻ đang chọn để bỏ lọc (xem tất cả).
   $('statusTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.status-tab');
     if (!tab) return;
-    currentGroup = tab.dataset.filter;
+    const key = tab.dataset.filter;
+    currentGroup = (key === currentGroup) ? '' : key;
     render();
   });
 
