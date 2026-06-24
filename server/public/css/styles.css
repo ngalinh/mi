@@ -503,7 +503,7 @@ thead th {
   background: var(--head-tint); position: sticky; top: 0;
 }
 tbody tr { transition: background .12s var(--ease); }
-tbody tr.main-row:hover { background: var(--bg); }
+tbody tr.main-row:hover { background: var(--head-tint); }
 tbody tr:last-child td { border-bottom: none; }
 td.center, th.center { text-align: center; }
 .cust { color: var(--text); font-weight: 700; white-space: nowrap; }
