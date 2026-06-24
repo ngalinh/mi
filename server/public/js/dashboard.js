@@ -72,41 +72,14 @@
   });
 
   // ---------------- Tabs nhân viên ----------------
-  // Avatar viết tắt + màu ổn định theo tên (để mỗi NV có 1 màu riêng dễ nhận).
-  // Bảng màu avatar — tông ấm, hợp theme kem + navy + hồng cánh sen
-  const AV_COLORS = [
-    ['#fbe4ee', '#e84c8e'], // hồng cánh sen
-    ['#e7edfb', '#3b5bbf'], // navy
-    ['#e3f5ec', '#1e9e5a'], // green
-    ['#fbeede', '#c0871f'], // amber
-    ['#f4e7df', '#b5664a'], // terracotta
-    ['#e7eef0', '#4f7c86'], // teal trầm
-    ['#efe9e0', '#8a7d6a'], // taupe
-    ['#e7edfb', '#3b82f6'], // blue
-  ];
-  function initials(name) {
-    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-    if (!parts.length) return '?';
-    if (parts.length === 1) return parts[0].slice(0, 2);
-    return (parts[0][0] + parts[parts.length - 1][0]);
-  }
-  function avColor(name) {
-    let h = 0; const s = String(name || '');
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    return AV_COLORS[h % AV_COLORS.length];
-  }
   function renderTabs() {
     const el = $('staffTabs');
     const list = tabUsers.slice().sort((a, b) =>
       String(a.name).localeCompare(String(b.name), 'vi', { sensitivity: 'base' }));
-    const allTab = `<button class="tab ${currentStaff === '' ? 'active' : ''}" data-staff="">
-      <span class="tab-av all"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Tất cả</button>`;
-    el.innerHTML = allTab + list.map((t) => {
-      const [bg, fg] = avColor(t.name);
-      const ini = App.esc(initials(t.name).toUpperCase());
-      return `<button class="tab ${String(t.user_id) === String(currentStaff) ? 'active' : ''}" data-staff="${App.esc(t.user_id)}">
-        <span class="tab-av" style="--av-bg:${bg};--av-fg:${fg};">${ini}</span>${App.esc(t.name)}</button>`;
-    }).join('');
+    const allTab = `<button class="tab ${currentStaff === '' ? 'active' : ''}" data-staff="">Tất cả</button>`;
+    el.innerHTML = allTab + list.map((t) =>
+      `<button class="tab ${String(t.user_id) === String(currentStaff) ? 'active' : ''}" data-staff="${App.esc(t.user_id)}">${App.esc(t.name)}</button>`
+    ).join('');
   }
 
   // ---------------- Render bảng ----------------
