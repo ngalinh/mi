@@ -1,11 +1,35 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { DatabaseSync } = require('node:sqlite'); // built-in, không cần compile (Node >= 22.5)
 const config = require('./config');
 
+// Mở SQLite linh hoạt theo Node:
+//   - Node >= 22.5: dùng node:sqlite (built-in, KHÔNG cần compile).
+//   - Node cũ hơn / không có node:sqlite: fallback better-sqlite3 (optionalDependency).
+// API hai driver gần như giống hệt (prepare/run/all/get, named param @name) nên phần
+// còn lại của file dùng chung không cần đổi.
+function openDb(dbPath) {
+  try {
+    // eslint-disable-next-line global-require
+    const { DatabaseSync } = require('node:sqlite');
+    if (DatabaseSync) return new DatabaseSync(dbPath);
+  } catch (_) {
+    /* Node < 22.5 hoặc node:sqlite cần cờ --experimental-sqlite -> thử better-sqlite3 */
+  }
+  try {
+    // eslint-disable-next-line global-require
+    const Database = require('better-sqlite3');
+    return new Database(dbPath);
+  } catch (e) {
+    throw new Error(
+      'Không mở được SQLite. Cần Node >= 22.5 (node:sqlite) HOẶC cài better-sqlite3 '
+      + `(npm i better-sqlite3). Chi tiết: ${e.message}`,
+    );
+  }
+}
+
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
-const db = new DatabaseSync(config.dbPath);
+const db = openDb(config.dbPath);
 db.exec('PRAGMA journal_mode = WAL;');
 
 db.exec(`

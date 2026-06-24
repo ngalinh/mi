@@ -21,7 +21,7 @@ Kiến trúc giống Xeko: **2 phần** chạy ở 2 nơi.
 
 | | Yêu cầu |
 |---|---|
-| Node trên ai.basso.vn | **≥ 22.5** (server dùng `node:sqlite` built-in — Node cũ hơn sẽ crash khi khởi động) |
+| Node trên ai.basso.vn | **≥ 22.5** dùng `node:sqlite` built-in (khỏi compile). Node cũ hơn vẫn chạy được nếu cài `better-sqlite3` (xem §1.5). |
 | Máy local-runner | Windows/máy có Chrome, Node ≥ 22.5, mạng ra Internet |
 | Tunnel (khuyến nghị) | cloudflared / ngrok để server gọi vào runner mà không mở cổng |
 
@@ -39,8 +39,22 @@ Kiến trúc giống Xeko: **2 phần** chạy ở 2 nơi.
 ### 1.2 Base path `/b/<id>/` — đã xử lý
 Dashboard mi đã dùng đường dẫn **tương đối** + tự suy `BASE` từ URL nên chạy đúng dưới `/b/<id>/` (giống Xeko). Không cần cấu hình gì thêm.
 
-### 1.3 Volume bền cho `data/` (QUAN TRỌNG)
-SQLite ở `data/doraemi.sqlite` chứa **Lịch sử báo** + **khóa chống gửi trùng**. Container ai.basso.vn là *ephemeral* — phải map `data/` vào **ổ đĩa/volume bền**, nếu không mỗi lần restart sẽ mất khóa chống trùng → **nhắn trùng cho khách**.
+### 1.3 Lưu trữ bền cho dữ liệu (QUAN TRỌNG)
+SQLite (`doraemi.sqlite`) chứa **Lịch sử báo** + **khóa chống gửi trùng**, và nằm trên server ai.basso.vn. Container là *ephemeral* — restart là mất nếu không bền. **Hai cách** (chọn 1):
+
+- **Có volume**: map 1 volume bền (vd `/data`) rồi đặt `DATA_DIR=/data` (db = `/data/doraemi.sqlite`).
+  Hoặc map volume thẳng vào `./data` của app — khi đó không cần đặt biến gì.
+- **Không/không rõ volume**: hỏi nền tảng đường dẫn ổ ghi-bền rồi trỏ `DB_PATH` vào đó
+  (vd `DB_PATH=/var/lib/mi/doraemi.sqlite`).
+
+> ⚠️ Nếu KHÔNG có nơi bền nào, mỗi lần redeploy/restart sẽ mất khóa chống trùng → bot **nhắn lại trùng** cho khách. Bắt buộc cấu hình 1 trong 2 cách trên trước khi go-live.
+>
+> 📌 *Chỉ* SQLite này nằm trên ai.basso.vn. **Session đăng nhập Zalo + danh sách tài khoản** nằm trên **máy local-runner** (`playwright-data/`, `config/`), không ở cloud.
+
+### 1.5 Node < 22.5? (fallback better-sqlite3)
+`db.js` tự dò: có `node:sqlite` (Node ≥ 22.5) thì dùng built-in; không thì fallback **`better-sqlite3`** (đã khai báo `optionalDependencies`). Nếu Node của nền tảng < 22.5:
+- Đảm bảo bước install build được `better-sqlite3` (cần build-tools/prebuilt). Nếu `npm install` bỏ qua optional, chạy `npm i better-sqlite3` trong build step.
+- Không cần sửa code — driver tự chọn lúc khởi động.
 
 ### 1.4 Biến môi trường cho SERVER (đặt trong phần Env của bot)
 
