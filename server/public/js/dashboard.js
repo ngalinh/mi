@@ -165,9 +165,11 @@
       const img = it.image
         ? `<img class="sp-thumb" src="${App.esc(it.image)}" alt="" loading="lazy" />`
         : '<span class="muted">—</span>';
-      const tinhTrang = it.shippedDate
-        ? `${App.esc(it.shipStatusLabel)}<br><span class="muted">${App.esc(it.shippedDate)}</span>`
-        : App.esc(it.shipStatusLabel);
+      const shipped = !!it.shippedDate;
+      const statusTag = `<span class="pill ${shipped ? 'da' : 'chua'}">${App.esc(it.shipStatusLabel)}</span>`;
+      const tinhTrang = shipped
+        ? `${statusTag}<div class="muted" style="margin-top:5px;">${App.esc(it.shippedDate)}</div>`
+        : statusTag;
       return `<tr>
         <td>${tinhTrang}</td>
         <td>${orderCodeCell(it)}</td>
