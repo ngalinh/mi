@@ -73,16 +73,16 @@
 
   // ---------------- Tabs nhân viên ----------------
   // Avatar viết tắt + màu ổn định theo tên (để mỗi NV có 1 màu riêng dễ nhận).
-  // Bảng màu avatar — tông pastel, hợp theme lavender + hồng + kem
+  // Bảng màu avatar — tông ấm, hợp theme kem + navy + hồng cánh sen
   const AV_COLORS = [
-    ['#eee6fa', '#8a6cc6'], // lavender
-    ['#e9e7f0', '#5b5e7e'], // xám navy
-    ['#e9f1ec', '#3a9b71'], // mint trầm
-    ['#fbeed9', '#c0871f'], // amber
+    ['#fbe4ee', '#e84c8e'], // hồng cánh sen
+    ['#e7edfb', '#3b5bbf'], // navy
+    ['#e3f5ec', '#1e9e5a'], // green
+    ['#fbeede', '#c0871f'], // amber
     ['#f4e7df', '#b5664a'], // terracotta
     ['#e7eef0', '#4f7c86'], // teal trầm
     ['#efe9e0', '#8a7d6a'], // taupe
-    ['#fce4ea', '#c45f7e'], // hồng trầm
+    ['#e7edfb', '#3b82f6'], // blue
   ];
   function initials(name) {
     const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
