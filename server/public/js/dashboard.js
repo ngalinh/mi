@@ -3,7 +3,7 @@
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
-  let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách
+  let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
@@ -317,9 +317,20 @@
     </tr>`;
   }
 
-  // Gom danh sách theo khoá; sắp xếp nhóm (khách → tên A-Z, ngày → mới nhất trước).
+  // Header nhóm theo KÊNH (nhân viên): tên kênh + số đơn + số chưa báo.
+  function channelHeaderHtml(key, items) {
+    const chua = items.filter((o) => !isNotified(o)).length;
+    const sub = `${items.length} đơn` + (chua ? ` · ${chua} chưa báo` : '');
+    return `<tr class="group-row" data-group-key="${App.esc(key)}">
+      <td colspan="12"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
+    </tr>`;
+  }
+
+  // Gom danh sách theo khoá; sắp xếp nhóm (khách/kênh → tên A-Z, ngày → mới nhất trước).
   function groupListBy(list, mode) {
-    const keyFn = mode === 'date' ? (o) => o.warehouseDate || '—' : customerKey;
+    const keyFn = mode === 'date' ? (o) => o.warehouseDate || '—'
+      : mode === 'channel' ? (o) => o.staff || '—'
+      : customerKey;
     const groups = new Map();
     for (const o of list) {
       const k = keyFn(o);
@@ -329,6 +340,8 @@
     const entries = [...groups.entries()];
     if (mode === 'date') {
       entries.sort((a, b) => parseDMY(b[0]) - parseDMY(a[0]));
+    } else if (mode === 'channel') {
+      entries.sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'vi', { sensitivity: 'base' }));
     } else {
       entries.sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'));
     }
@@ -336,9 +349,10 @@
   }
 
   function groupedRowsHtml(list, mode) {
-    if (mode === 'date') {
-      return groupListBy(list, 'date')
-        .map(([k, items]) => dateHeaderHtml(k, items) + items.map((o) => rowHtml(o, true)).join(''))
+    if (mode === 'date' || mode === 'channel') {
+      const headerFn = mode === 'date' ? dateHeaderHtml : channelHeaderHtml;
+      return groupListBy(list, mode)
+        .map(([k, items]) => headerFn(k, items) + items.map((o) => rowHtml(o, true)).join(''))
         .join('');
     }
     // theo khách: chỉ khách ≥2 đơn mới có header gom
