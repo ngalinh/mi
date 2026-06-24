@@ -14,7 +14,7 @@ const config = require('./config');
  *   - phone       : (tuỳ chọn) SĐT Zalo — chỉ để hiển thị
  *   - staffId     : (tuỳ chọn) user_id của NV phụ trách — để khớp đơn → account (ưu tiên hơn tên)
  *   - autoEnabled : có cho luồng TỰ ĐỘNG gửi bằng account này không (mặc định true)
- *   - proxy       : (tuỳ chọn) lưu để tương thích Xeko; mi chạy IP máy thật nên CHƯA áp dụng
+ *   - proxy       : (tuỳ chọn) "host:port" hoặc "user:pass@host:port" — ÁP DỤNG khi mở Chromium cho profile này
  *
  * Lưu ở file JSON (config.zaloAccountsFile) — đơn giản, không cần DB.
  */

@@ -41,6 +41,7 @@
         <div class="tabs" id="settingsTabs" style="margin-top:0;">
           <button class="tab active" data-panel="nhanvien">Danh sách nhân viên</button>
           <button class="tab" data-panel="zalo">Tài khoản Zalo</button>
+          <button class="tab" data-panel="proxy">Proxy</button>
           <button class="tab" data-panel="mode">Chế độ</button>
         </div>
 
@@ -123,6 +124,33 @@
           </div>
         </div>
 
+        <div class="card hidden" data-panel-content="proxy" style="margin-top:14px;">
+          <div class="card-header">
+            <h1>Proxy theo tài khoản Zalo</h1>
+            <button class="btn small secondary" id="proxyReload">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+              Tải lại
+            </button>
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Mỗi tài khoản Zalo có thể gán một proxy riêng (dạng <code>host:port</code> hoặc <code>user:pass@host:port</code>) để mở trình duyệt local-runner qua proxy đó. Để trống = không dùng proxy. Sửa xong bấm <strong>Lưu</strong>.</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nhân viên</th>
+                  <th>Tài khoản Zalo</th>
+                  <th style="min-width:280px">Proxy</th>
+                  <th class="center">Trạng thái</th>
+                  <th style="width:120px"></th>
+                </tr>
+              </thead>
+              <tbody id="proxyRows">
+                <tr><td colspan="5" class="muted" style="padding:16px;">Đang tải…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="card hidden" data-panel-content="mode" style="margin-top:14px;">
           <div class="card-header"><h1>Chế độ hệ thống</h1></div>
           <div class="muted" style="font-size:13px; margin:-10px 0 6px;">Cấu hình tự động hoá và kết nối hệ thống.</div>
@@ -193,7 +221,7 @@
         <div class="field full"><label>Tên Zalo trong dropdown (saleworkName)</label><input id="zaSalework" type="text" placeholder="Đúng tên hiện trong dropdown zalo.basso.vn" /></div>
         <div class="field"><label>SĐT Zalo (tuỳ chọn)</label><input id="zaPhone" type="text" placeholder="vd: 0985 093 767" /></div>
         <div class="field"><label>Mã NV phụ trách / staffId (tuỳ chọn)</label><input id="zaStaffId" type="text" placeholder="khớp userId đơn" /></div>
-        <div class="field full"><label>Proxy (tuỳ chọn — lưu để tương thích, chưa áp dụng)</label><input id="zaProxy" type="text" placeholder="host:port hoặc user:pass@host:port" /></div>
+        <div class="field full"><label>Proxy (tuỳ chọn — áp dụng khi mở Chromium cho tài khoản này)</label><input id="zaProxy" type="text" placeholder="host:port hoặc user:pass@host:port" /></div>
         <div class="field"><label>Tự động báo</label><select id="zaAuto"><option value="true" selected>Bật</option><option value="false">Tắt</option></select></div>
       </div>
       <div class="row">

@@ -3,7 +3,7 @@
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
-  let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách
+  let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
@@ -72,41 +72,14 @@
   });
 
   // ---------------- Tabs nhân viên ----------------
-  // Avatar viết tắt + màu ổn định theo tên (để mỗi NV có 1 màu riêng dễ nhận).
-  // Bảng màu avatar — tông ấm, hợp theme kem + navy + hồng cánh sen
-  const AV_COLORS = [
-    ['#fbe4ee', '#e84c8e'], // hồng cánh sen
-    ['#e7edfb', '#3b5bbf'], // navy
-    ['#e3f5ec', '#1e9e5a'], // green
-    ['#fbeede', '#c0871f'], // amber
-    ['#f4e7df', '#b5664a'], // terracotta
-    ['#e7eef0', '#4f7c86'], // teal trầm
-    ['#efe9e0', '#8a7d6a'], // taupe
-    ['#e7edfb', '#3b82f6'], // blue
-  ];
-  function initials(name) {
-    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-    if (!parts.length) return '?';
-    if (parts.length === 1) return parts[0].slice(0, 2);
-    return (parts[0][0] + parts[parts.length - 1][0]);
-  }
-  function avColor(name) {
-    let h = 0; const s = String(name || '');
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-    return AV_COLORS[h % AV_COLORS.length];
-  }
   function renderTabs() {
     const el = $('staffTabs');
     const list = tabUsers.slice().sort((a, b) =>
       String(a.name).localeCompare(String(b.name), 'vi', { sensitivity: 'base' }));
-    const allTab = `<button class="tab ${currentStaff === '' ? 'active' : ''}" data-staff="">
-      <span class="tab-av all"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Tất cả</button>`;
-    el.innerHTML = allTab + list.map((t) => {
-      const [bg, fg] = avColor(t.name);
-      const ini = App.esc(initials(t.name).toUpperCase());
-      return `<button class="tab ${String(t.user_id) === String(currentStaff) ? 'active' : ''}" data-staff="${App.esc(t.user_id)}">
-        <span class="tab-av" style="--av-bg:${bg};--av-fg:${fg};">${ini}</span>${App.esc(t.name)}</button>`;
-    }).join('');
+    const allTab = `<button class="tab ${currentStaff === '' ? 'active' : ''}" data-staff="">Tất cả</button>`;
+    el.innerHTML = allTab + list.map((t) =>
+      `<button class="tab ${String(t.user_id) === String(currentStaff) ? 'active' : ''}" data-staff="${App.esc(t.user_id)}">${App.esc(t.name)}</button>`
+    ).join('');
   }
 
   // ---------------- Render bảng ----------------
@@ -287,7 +260,7 @@
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
-      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}${delayReasonTag(o)}</div></td>
+      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>
       <td><div class="note-cell">
         <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
         <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>
@@ -344,9 +317,20 @@
     </tr>`;
   }
 
-  // Gom danh sách theo khoá; sắp xếp nhóm (khách → tên A-Z, ngày → mới nhất trước).
+  // Header nhóm theo KÊNH (nhân viên): tên kênh + số đơn + số chưa báo.
+  function channelHeaderHtml(key, items) {
+    const chua = items.filter((o) => !isNotified(o)).length;
+    const sub = `${items.length} đơn` + (chua ? ` · ${chua} chưa báo` : '');
+    return `<tr class="group-row" data-group-key="${App.esc(key)}">
+      <td colspan="12"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
+    </tr>`;
+  }
+
+  // Gom danh sách theo khoá; sắp xếp nhóm (khách/kênh → tên A-Z, ngày → mới nhất trước).
   function groupListBy(list, mode) {
-    const keyFn = mode === 'date' ? (o) => o.warehouseDate || '—' : customerKey;
+    const keyFn = mode === 'date' ? (o) => o.warehouseDate || '—'
+      : mode === 'channel' ? (o) => o.staff || '—'
+      : customerKey;
     const groups = new Map();
     for (const o of list) {
       const k = keyFn(o);
@@ -356,6 +340,8 @@
     const entries = [...groups.entries()];
     if (mode === 'date') {
       entries.sort((a, b) => parseDMY(b[0]) - parseDMY(a[0]));
+    } else if (mode === 'channel') {
+      entries.sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'vi', { sensitivity: 'base' }));
     } else {
       entries.sort((a, b) => String(a[1][0].customerName || '').localeCompare(String(b[1][0].customerName || ''), 'vi'));
     }
@@ -363,9 +349,10 @@
   }
 
   function groupedRowsHtml(list, mode) {
-    if (mode === 'date') {
-      return groupListBy(list, 'date')
-        .map(([k, items]) => dateHeaderHtml(k, items) + items.map((o) => rowHtml(o, true)).join(''))
+    if (mode === 'date' || mode === 'channel') {
+      const headerFn = mode === 'date' ? dateHeaderHtml : channelHeaderHtml;
+      return groupListBy(list, mode)
+        .map(([k, items]) => headerFn(k, items) + items.map((o) => rowHtml(o, true)).join(''))
         .join('');
     }
     // theo khách: chỉ khách ≥2 đơn mới có header gom
@@ -409,7 +396,7 @@
 
   // Đơn hiển thị = lọc theo nhóm trạng thái + bộ lọc nâng cao (client-side).
   function visibleOrders() {
-    let list = orders.filter((o) => groupOf(o) === currentGroup);
+    let list = currentGroup ? orders.filter((o) => groupOf(o) === currentGroup) : orders.slice();
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -441,7 +428,8 @@
     const chua = orders.filter((o) => !isNotified(o)).length;
     const willSend = bulkTargets().length;
     const exclNote = chua - willSend > 0 ? ` (loại ${chua - willSend})` : '';
-    $('countInfo').textContent = `${list.length} đơn · ${chua} chưa báo${exclNote}`;
+    const ci = $('countInfo');
+    if (ci) ci.textContent = `${list.length} đơn · ${chua} chưa báo${exclNote}`;
     $('bulkBtn').disabled = willSend === 0;
   }
 
@@ -739,11 +727,12 @@
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
   $('bulkBtn').addEventListener('click', openBulkModal);
 
-  // Thẻ trạng thái: chọn 1 (luôn có 1 thẻ active).
+  // Thẻ trạng thái: bấm để lọc; bấm lại thẻ đang chọn để bỏ lọc (xem tất cả).
   $('statusTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.status-tab');
     if (!tab) return;
-    currentGroup = tab.dataset.filter;
+    const key = tab.dataset.filter;
+    currentGroup = (key === currentGroup) ? '' : key;
     render();
   });
 

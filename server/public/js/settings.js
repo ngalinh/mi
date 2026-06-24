@@ -10,6 +10,7 @@
     tabs.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
     const p = t.dataset.panel;
     panels.forEach((pl) => pl.classList.toggle('hidden', pl.dataset.panelContent !== p));
+    if (p === 'proxy') loadProxy();
   });
 
   // ---------------- Nhân viên (bản mẫu — chưa nối backend) ----------------
@@ -220,6 +221,74 @@
     rowAction(b.dataset.action, tr.dataset.key, tr.children[0].textContent.trim());
   });
   loadZalo();
+
+  // ---------------- Proxy theo tài khoản Zalo (nối backend thật) ----------------
+  const proxyRows = $('proxyRows');
+
+  function proxyStatusPill(p) {
+    return p
+      ? '<span class="pill da">Đang dùng</span>'
+      : '<span class="pill chua">Không dùng</span>';
+  }
+  function renderProxy(list) {
+    if (!list || !list.length) {
+      proxyRows.innerHTML = '<tr><td colspan="5" class="muted" style="padding:16px;">Chưa có tài khoản Zalo nào. Thêm tài khoản ở tab “Tài khoản Zalo”.</td></tr>';
+      return;
+    }
+    proxyRows.innerHTML = list.map((a) => `
+      <tr class="main-row" data-key="${App.esc(a.key)}">
+        <td class="cust">${App.esc(a.name || a.key)}</td>
+        <td>${App.esc(a.saleworkName || '')}</td>
+        <td>
+          <div class="note-cell">
+            <input class="note-input proxy-input" data-key="${App.esc(a.key)}" value="${App.esc(a.proxy || '')}" placeholder="host:port hoặc user:pass@host:port" />
+          </div>
+        </td>
+        <td class="center" data-cell="status">${proxyStatusPill(a.proxy)}</td>
+        <td>
+          <button class="link-btn" data-action="save-proxy">Lưu</button>
+          <button class="link-btn" data-action="clear-proxy" style="color:var(--danger,#d33)">Xoá</button>
+        </td>
+      </tr>`).join('');
+  }
+  async function loadProxy() {
+    proxyRows.innerHTML = '<tr><td colspan="5" class="muted" style="padding:16px;">Đang tải…</td></tr>';
+    try {
+      const r = await App.api('/api/accounts');
+      renderProxy(r.zalo || []);
+    } catch (e) {
+      proxyRows.innerHTML = `<tr><td colspan="5" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+    }
+  }
+  async function saveProxy(key, proxy, tr) {
+    try {
+      await App.api(`/api/accounts/${encodeURIComponent(key)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxy }),
+      });
+      const cell = tr && tr.querySelector('[data-cell="status"]');
+      if (cell) cell.innerHTML = proxyStatusPill(proxy);
+      App.toast(proxy ? '✅ Đã lưu proxy cho tài khoản này' : 'Đã xoá proxy của tài khoản này');
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 6000);
+    }
+  }
+
+  proxyRows.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-action]'); if (!b) return;
+    const tr = b.closest('tr.main-row'); if (!tr) return;
+    const key = tr.dataset.key;
+    const input = tr.querySelector('.proxy-input');
+    if (b.dataset.action === 'clear-proxy') { if (input) input.value = ''; return saveProxy(key, '', tr); }
+    return saveProxy(key, input ? input.value.trim() : '', tr);
+  });
+  proxyRows.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const input = e.target.closest('.proxy-input'); if (!input) return;
+    const tr = input.closest('tr.main-row');
+    saveProxy(tr.dataset.key, input.value.trim(), tr);
+  });
+  $('proxyReload').addEventListener('click', loadProxy);
 
   // ---------------- Chế độ (nối backend thật) ----------------
   let autoEnabled = false;
