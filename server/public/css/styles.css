@@ -597,6 +597,8 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .items-table thead th { position: static; background: #fff; border-bottom: 1.5px solid var(--border-strong); white-space: nowrap; vertical-align: middle; }
 .items-table tbody tr:last-child td { border-bottom: none; }
 .items-table td.num, .items-table th.num { text-align: right; white-space: nowrap; font-weight: 600; font-family: var(--font-num); }
+/* Cột Tổng giá: tô hồng để hút mắt vào con số quan trọng & phá thế đơn sắc navy. */
+.items-table td.num { color: var(--primary); font-weight: 700; }
 .items-table td.info-cell { font-size: 12.5px; line-height: 1.7; white-space: nowrap; }
 .items-table a { color: var(--text); font-weight: 600; text-decoration: none; }
 .items-table a:hover { color: var(--primary); text-decoration: underline; }
