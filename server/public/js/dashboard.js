@@ -4,6 +4,8 @@
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
+  let currentPage = 1;     // trang hiện tại của danh sách đơn
+  const PAGE_SIZE = 50;    // số đơn mỗi trang
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
@@ -413,14 +415,48 @@
       const msg = orders.length ? 'Không có đơn nào ở trạng thái này.' : 'Không có dữ liệu';
       rowsEl.innerHTML = `<tr><td colspan="12" class="empty">${msg}</td></tr>`;
       updateCount(list);
+      renderPager(1);
       return;
     }
+    // Phân trang: cắt theo trang hiện tại (kẹp về khoảng hợp lệ khi danh sách đổi).
+    const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const pageList = list.slice(start, start + PAGE_SIZE);
     rowsEl.innerHTML = currentGroupBy
-      ? groupedRowsHtml(list, currentGroupBy)
-      : list.map((o) => rowHtml(o)).join('');
+      ? groupedRowsHtml(pageList, currentGroupBy)
+      : pageList.map((o) => rowHtml(o)).join('');
     updateCount(list);
-    list.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
-    if (currentGroupBy === 'customer') fillGroupProductCounts(list);
+    pageList.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
+    if (currentGroupBy === 'customer') fillGroupProductCounts(pageList);
+    renderPager(totalPages);
+  }
+
+  // ---------------- Phân trang ----------------
+  // Danh sách nút trang dạng cửa sổ: 1 … (cur-1) cur (cur+1) … N.
+  function pageItems(total, cur) {
+    const out = [];
+    for (let p = 1; p <= total; p++) {
+      if (p === 1 || p === total || (p >= cur - 1 && p <= cur + 1)) out.push(p);
+      else if (out[out.length - 1] !== '…') out.push('…');
+    }
+    return out;
+  }
+  function renderPager(totalPages) {
+    const el = $('pager');
+    if (!el) return;
+    if (totalPages <= 1) { el.innerHTML = ''; el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const cur = currentPage;
+    const parts = [`<button class="pg-btn pg-nav" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''} aria-label="Trang trước">‹</button>`];
+    for (const p of pageItems(totalPages, cur)) {
+      parts.push(p === '…'
+        ? '<span class="pg-ellip">…</span>'
+        : `<button class="pg-btn ${p === cur ? 'active' : ''}" data-page="${p}">${p}</button>`);
+    }
+    parts.push(`<button class="pg-btn pg-nav" data-page="${cur + 1}" ${cur === totalPages ? 'disabled' : ''} aria-label="Trang sau">›</button>`);
+    el.innerHTML = parts.join('');
   }
 
   function bulkTargets() {
@@ -644,7 +680,7 @@
   // ---------------- Load ----------------
   async function load(opts = {}) {
     const auto = opts.auto === true;
-    if (!auto) rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>';
+    if (!auto) { currentPage = 1; rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>'; }
     const params = new URLSearchParams();
     const q = $('fQ').value;
     if (F.from) params.set('from', F.from);
@@ -723,7 +759,7 @@
   // ---------------- Events ----------------
   $('syncBtn').addEventListener('click', () => load());
 
-  $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
+  $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; currentPage = 1; render(); });
 
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
@@ -735,6 +771,7 @@
     if (!tab) return;
     const key = tab.dataset.filter;
     currentGroup = (key === currentGroup) ? '' : key;
+    currentPage = 1;
     render();
   });
 
@@ -743,6 +780,17 @@
     if (!tab) return;
     currentStaff = tab.dataset.staff || '';
     load();
+  });
+
+  $('pager').addEventListener('click', (e) => {
+    const b = e.target.closest('.pg-btn');
+    if (!b || b.disabled) return;
+    const p = parseInt(b.dataset.page, 10);
+    if (!p || p === currentPage) return;
+    currentPage = p;
+    render();
+    const tw = document.querySelector('.table-wrap');
+    if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   // Popover bộ lọc
@@ -767,6 +815,7 @@
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
     updateFilterBadge();
     filterPop.hidden = true;
+    currentPage = 1;
     // Khoảng ngày lọc ở server -> cần load lại; loại trừ/ghi chú lọc client -> chỉ render.
     if (F.from !== prevFrom || F.to !== prevTo) load(); else render();
   });
@@ -778,6 +827,7 @@
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
     updateFilterBadge();
+    currentPage = 1;
     if (hadDate) load(); else render();
   });
 

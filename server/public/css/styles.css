@@ -610,6 +610,23 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .link-btn:hover { background: var(--bg); }
 
 /* ============================================================
+   Phân trang (dưới bảng danh sách)
+   ============================================================ */
+.pager { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+.pg-btn {
+  min-width: 34px; height: 34px; padding: 0 11px;
+  border: 1px solid var(--border-strong); background: #fff; color: var(--text);
+  border-radius: var(--radius-sm); font: inherit; font-weight: 600; font-size: 13px;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  transition: border-color .15s var(--ease), color .15s var(--ease), background .15s var(--ease);
+}
+.pg-btn.pg-nav { font-size: 18px; line-height: 1; }
+.pg-btn:hover:not(:disabled):not(.active) { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.pg-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); cursor: default; }
+.pg-btn:disabled { opacity: .45; cursor: not-allowed; }
+.pg-ellip { padding: 0 4px; color: var(--muted); font-weight: 700; }
+
+/* ============================================================
    Pills
    ============================================================ */
 .pill {
