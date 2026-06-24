@@ -356,7 +356,7 @@ a { color: var(--primary); text-decoration: none; }
 
 /* Biến thể 3 thẻ thống kê (trang Lịch sử báo) — bấm để lọc theo loại */
 .status-tabs.cols-3 { grid-template-columns: repeat(3, 1fr); }
-.status-tab.st-total   { --st-color: var(--ink);   --st-tint: var(--bg-soft); }
+.status-tab.st-total   { --st-color: var(--amber); --st-tint: var(--amber-soft); }
 .status-tab.st-success { --st-color: var(--green); --st-tint: var(--green-soft); }
 .status-tab.st-fail    { --st-color: var(--red);   --st-tint: var(--red-soft); }
 
@@ -433,6 +433,7 @@ a { color: var(--primary); text-decoration: none; }
   padding: 8px 36px 8px 16px; border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   color: var(--text); -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  box-shadow: var(--shadow-sm);
   background-color: #fff;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23a9a28a' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 16px center;
