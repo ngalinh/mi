@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
 const config = require('./config');
+const accountsStore = require('./accountsStore');
 
 /**
  * Quản lý 1 persistent context cho mỗi profile (account Salework/Zalo).
@@ -30,9 +31,45 @@ function profilePath(profileName) {
   return path.join(config.dataDir, `salework-${safe}`);
 }
 
-async function safeLaunchPersistentContext(userDataDir) {
+/**
+ * Phân tích chuỗi proxy đã gán cho tài khoản thành option proxy của Playwright.
+ * Hỗ trợ: "host:port", "user:pass@host:port", có/không tiền tố scheme (http://, socks5://...).
+ * @param {string} raw
+ * @returns {{server:string, username?:string, password?:string}|null} null nếu rỗng/không có host:port.
+ */
+function parseProxy(raw) {
+  let rest = String(raw || '').trim();
+  if (!rest) return null;
+  let scheme = 'http://';
+  const m = rest.match(/^([a-z0-9]+:\/\/)/i);
+  if (m) { scheme = m[1]; rest = rest.slice(m[1].length); }
+  let username; let password;
+  const at = rest.lastIndexOf('@');
+  if (at !== -1) {
+    const cred = rest.slice(0, at);
+    rest = rest.slice(at + 1);
+    const ci = cred.indexOf(':');
+    if (ci !== -1) { username = cred.slice(0, ci); password = cred.slice(ci + 1); }
+    else { username = cred; }
+  }
+  if (!rest) return null; // thiếu host:port
+  const opt = { server: scheme + rest };
+  if (username != null) opt.username = username;
+  if (password != null) opt.password = password;
+  return opt;
+}
+
+// Lấy proxy đã gán cho profile (account key) từ store. Lỗi đọc store -> không dùng proxy.
+function proxyForProfile(profileName) {
+  try {
+    const a = accountsStore.get(profileName);
+    return a ? parseProxy(a.proxy) : null;
+  } catch { return null; }
+}
+
+async function safeLaunchPersistentContext(userDataDir, proxy) {
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
-  return chromium.launchPersistentContext(userDataDir, {
+  const opts = {
     headless: config.headless,
     slowMo: config.slowMo,
     viewport: { width: 1366, height: 850 },
@@ -41,7 +78,9 @@ async function safeLaunchPersistentContext(userDataDir) {
       '--no-sandbox',
       '--disable-dev-shm-usage',
     ],
-  });
+  };
+  if (proxy) opts.proxy = proxy;
+  return chromium.launchPersistentContext(userDataDir, opts);
 }
 
 /**
@@ -59,7 +98,9 @@ async function getContext(profileName) {
       contexts.delete(profileName);
     }
   }
-  const context = await safeLaunchPersistentContext(profilePath(profileName));
+  const proxy = proxyForProfile(profileName);
+  if (proxy) console.log(`[browser] profile "${profileName}" dùng proxy ${proxy.server}${proxy.username ? ' (có auth)' : ''}`);
+  const context = await safeLaunchPersistentContext(profilePath(profileName), proxy);
   context.on('close', () => contexts.delete(profileName));
   entry = { context, lastUsed: Date.now() };
   contexts.set(profileName, entry);
