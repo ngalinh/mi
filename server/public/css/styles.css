@@ -571,7 +571,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .detail-row > td { background: var(--bg); padding: 14px 20px; }
 .detail-box { padding: 20px 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
 .detail-box .full { grid-column: 1 / -1; }
-.detail-box h4 { margin: 0 0 8px; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; font-weight: 700; }
+.detail-box h4 { margin: 0 0 8px; font-size: 11.5px; color: var(--text); text-transform: uppercase; letter-spacing: .4px; font-weight: 700; }
 .detail-box pre {
   white-space: pre-wrap; font-family: inherit; font-size: 14px; margin: 0;
   color: var(--text); background: #fff; border: 1px solid var(--border);
@@ -593,7 +593,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 /* bảng sản phẩm đã về trong dòng mở rộng */
 .items-table { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
 .items-table th, .items-table td { padding: 9px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
-.items-table thead th { position: static; background: var(--bg-soft); white-space: nowrap; vertical-align: middle; }
+.items-table thead th { position: static; background: #fff; border-bottom: 1.5px solid var(--border-strong); white-space: nowrap; vertical-align: middle; }
 .items-table tbody tr:last-child td { border-bottom: none; }
 .items-table td.num, .items-table th.num { text-align: right; white-space: nowrap; font-weight: 600; font-family: var(--font-num); }
 .items-table td.info-cell { font-size: 12.5px; line-height: 1.7; white-space: nowrap; }
@@ -764,7 +764,7 @@ tr.row-excluded { background: var(--bg-soft); }
 tr.row-excluded .cust a, tr.row-excluded .cust { text-decoration: line-through; color: var(--muted); }
 
 /* Khối chi tiết khi mở rộng dòng */
-.detail-box .full h4 { margin: 0 0 8px; font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; font-weight: 700; }
+.detail-box .full h4 { margin: 0 0 8px; font-size: 11.5px; color: var(--text); text-transform: uppercase; letter-spacing: .4px; font-weight: 700; }
 
 /* Thumbnail ảnh SP trên Lịch sử báo (tối đa 4 + "+N") */
 .rp-thumbs { display: flex; align-items: center; gap: 4px; }
