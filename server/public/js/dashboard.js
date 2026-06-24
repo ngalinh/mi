@@ -172,7 +172,7 @@
         : statusTag;
       return `<tr>
         <td>${tinhTrang}</td>
-        <td>${orderCodeCell(it)}</td>
+        <td class="code-cell">${orderCodeCell(it)}</td>
         <td class="center">${i + 1}</td>
         <td class="center">${img}</td>
         <td>${nameCell}</td>
