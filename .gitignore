@@ -11,6 +11,10 @@ data/
 playwright-data/
 screenshots/
 
+# Danh sách tài khoản Zalo + lịch sử đăng nhập (tạo lúc chạy) — runtime data, KHÔNG commit
+config/zalo-accounts.json
+config/login-history.json
+
 # Cấu hình Claude Code cá nhân (máy-specific)
 .claude/settings.local.json
 

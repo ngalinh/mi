@@ -17,7 +17,7 @@ gồm cả **báo tay** và **báo tự động**. Xem thêm tổng quan ở [`R
 │  server/  (deploy ai.basso) │ ── x-api-key ───────▶ │ local-runner/ (máy có Chrome) │
 │  • Dashboard + API          │                       │ • Playwright (trình duyệt thật)│
 │  • Đọc Basso, lưu SQLite    │ ◀── jobId / kết quả ── │ • Giữ session đăng nhập Zalo   │
-│  • Bot tự động (auto-notify)│                       │ • Điều khiển zalo.salework     │
+│  • Bot tự động (auto-notify)│                       │ • Điều khiển zalo.basso.vn     │
 └─────────────────────────────┘                       └──────────────────────────────┘
 ```
 
@@ -136,14 +136,16 @@ server.sendBaoHang(payload)  ──POST /api/zalo/send──▶ runner
 
 runner xử lý job (tuần tự qua jobQueue) ▶ salework.sendBaoHang():
    ① CHẶN AN TOÀN: TEST_MODE → chỉ gửi số trong TEST_PHONES, ngoài ra ném lỗi
-   ② mở trình duyệt (profile đã lưu session) → vào zalo.salework.net
+   ② mở trình duyệt (profile đã lưu session) → vào zalo.basso.vn/chat
    ③ kiểm tra đã đăng nhập (chưa → lỗi CHUA_DANG_NHAP)
-   ④ (nếu cần) chọn đúng tài khoản Zalo trong dropdown
+   ④ (nếu cần) chọn đúng tài khoản Zalo trong dropdown Vuetify (.v-list/.acc-tick),
+       read-back xác minh CHỈ 1 account "on" → sai thì HUỶ gửi (tránh gửi nhầm tài khoản)
    ⑤ tìm & mở hội thoại khách:
         - theo TÊN (khớp text) → theo SĐT
         - strictMatch (bot): KHÔNG khớp chắc → báo lỗi, KHÔNG gửi
         - thường (tay): fallback lấy kết quả trên cùng
-   ⑥ dán nội dung (giữ xuống dòng) → bấm Gửi
+   ⑥ (nếu có ảnh) dán ảnh vào ô soạn → bấm Gửi (1 tin ảnh riêng), rồi nhập nội dung
+       (textarea.msg-textarea, bắn 'input' bật nút) → bấm Gửi (.send-btn) — giống Xeko
    ⑦ trả { ok:true }  (hoặc ném lỗi ở bước nào đó → server ghi failed)
 ```
 

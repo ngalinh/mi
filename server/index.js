@@ -1,12 +1,13 @@
 'use strict';
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
-const { getLocalHealth, effectiveBaseUrl } = require('./playwrightProxy');
+const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
 
@@ -24,12 +25,34 @@ function getActor(req) {
   }
   return null;
 }
+
+// So sánh chuỗi bí mật theo thời gian hằng định (chống dò theo timing). Khác độ dài -> false.
+function safeEqual(a, b) {
+  const ba = Buffer.from(String(a || ''));
+  const bb = Buffer.from(String(b || ''));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
 // Tắt cache asset tĩnh (dev): tránh trình duyệt giữ JS/CSS cũ sau khi sửa code
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   lastModified: false,
   setHeaders: (res) => res.setHeader('Cache-Control', 'no-store'),
 }));
+
+// ---- Secret gateway↔app (tuỳ chọn) ----
+// Nếu đặt GATEWAY_SECRET: chỉ chấp nhận request /api/* có header X-Gateway-Secret khớp
+// (gateway ai.basso.vn gắn vào khi forward) -> chặn gọi thẳng app, giả mạo danh tính.
+// MIỄN TRỪ: /api/health (probe), /api/register-local (runner gọi, dùng x-api-key riêng),
+// /api/webhook/arrived (Basso gọi, dùng x-webhook-secret riêng).
+const GATEWAY_EXEMPT = new Set(['/api/health', '/api/register-local', '/api/webhook/arrived']);
+app.use((req, res, next) => {
+  if (!config.gatewaySecret) return next();
+  if (!req.path.startsWith('/api/') || GATEWAY_EXEMPT.has(req.path)) return next();
+  if (!safeEqual(req.get('x-gateway-secret'), config.gatewaySecret)) {
+    return res.status(401).json({ ok: false, error: 'Thiếu/sai X-Gateway-Secret' });
+  }
+  return next();
+});
 
 // ---- Health & cấu hình hiển thị ----
 app.get('/api/health', async (req, res) => {
@@ -58,7 +81,7 @@ app.get('/api/health', async (req, res) => {
 app.post('/api/register-local', (req, res) => {
   const { url, apiKey } = req.body || {};
   // Bảo vệ bằng API_KEY dùng chung (nếu server có đặt). Trống = bỏ qua kiểm tra (dev).
-  if (config.apiKey && apiKey !== config.apiKey) {
+  if (config.apiKey && !safeEqual(apiKey, config.apiKey)) {
     return res.status(401).json({ ok: false, error: 'Sai hoặc thiếu apiKey' });
   }
   if (!localRegistry.register(url)) {
@@ -66,6 +89,35 @@ app.post('/api/register-local', (req, res) => {
   }
   res.json({ ok: true, url: localRegistry.getInfo().url });
 });
+
+// ---- Quản lý tài khoản Zalo (dashboard → forward xuống local-runner) ----
+// Server cloud KHÔNG giữ account; runner (máy có Chrome) là nơi lưu + mở Chromium đăng nhập.
+// Mỗi route chỉ chuyển tiếp request và trả nguyên kết quả của runner.
+async function proxyAccounts(req, res, method, pathName, useBody) {
+  try {
+    const { status, data } = await forwardAccounts(method, pathName, {
+      body: useBody ? req.body : undefined,
+      query: req.query,
+    });
+    if (method !== 'GET') invalidateAccountsCache(); // thay đổi -> resolve lần sau lấy bản mới
+    res.status(status).json(data);
+  } catch (e) {
+    res.status(504).json({ ok: false, error: `Không kết nối được local-runner: ${e.message}` });
+  }
+}
+
+app.get('/api/accounts', (req, res) => proxyAccounts(req, res, 'GET', '/api/accounts', false));
+app.post('/api/accounts', (req, res) => proxyAccounts(req, res, 'POST', '/api/accounts', true));
+app.put('/api/accounts/:key', (req, res) =>
+  proxyAccounts(req, res, 'PUT', `/api/accounts/${encodeURIComponent(req.params.key)}`, true));
+app.post('/api/accounts/:key/login', (req, res) =>
+  proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/login`, false));
+app.post('/api/accounts/:key/check', (req, res) =>
+  proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/check`, false));
+app.get('/api/accounts/:key/history', (req, res) =>
+  proxyAccounts(req, res, 'GET', `/api/accounts/${encodeURIComponent(req.params.key)}/history`, false));
+app.delete('/api/accounts/:type/:key', (req, res) =>
+  proxyAccounts(req, res, 'DELETE', `/api/accounts/${encodeURIComponent(req.params.type)}/${encodeURIComponent(req.params.key)}`, false));
 
 // ---- Test kết nối Basso (chỉ đọc): dùng cho nút "Test Basso" trên dashboard ----
 // Luôn trả HTTP 200 + cờ `connected` để frontend hiển thị được cả khi lỗi.
@@ -206,7 +258,7 @@ app.post('/api/auto-notify/run', async (req, res) => {
 // Bảo vệ tùy chọn bằng header `x-webhook-secret` khớp AUTO_NOTIFY_WEBHOOK_SECRET.
 app.post('/api/webhook/arrived', async (req, res) => {
   const secret = config.autoNotify.webhookSecret;
-  if (secret && req.get('x-webhook-secret') !== secret) {
+  if (secret && !safeEqual(req.get('x-webhook-secret'), secret)) {
     return res.status(401).json({ ok: false, error: 'Sai webhook secret' });
   }
   try {
@@ -228,8 +280,17 @@ app.get('/api/reports', (req, res) => {
   }
 });
 
+// Fail-closed: production (hoặc REQUIRE_API_KEY=true) bắt buộc phải có API_KEY — nếu không,
+// register-local/forward sẽ không được bảo vệ. Dừng hẳn thay vì chạy hớ.
+if (config.requireApiKey && !config.apiKey) {
+  console.error('[server] FATAL: REQUIRE_API_KEY/production nhưng chưa đặt API_KEY. Đặt API_KEY rồi chạy lại.');
+  process.exit(1);
+}
+
 app.listen(config.port, () => {
   console.log(`[server] http://localhost:${config.port}`);
   console.log(`[server] mock=${config.basso.useMock} | local-runner=${config.playwrightLocalUrl}`);
+  if (config.gatewaySecret) console.log('[server] Gateway secret: BẬT (yêu cầu X-Gateway-Secret cho /api/*)');
+  if (config.registerAllowedHosts.length) console.log(`[server] register-local allowlist: ${config.registerAllowedHosts.join(', ')}`);
   autoNotify.startAutoNotify();
 });

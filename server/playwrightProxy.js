@@ -85,4 +85,57 @@ async function sendBaoHang(payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60
   return { ok: false, jobId, error: 'Hết thời gian chờ local-runner (timeout)' };
 }
 
-module.exports = { sendBaoHang, checkLocalHealth, getLocalHealth, effectiveBaseUrl };
+/**
+ * Forward chung 1 request quản lý tài khoản xuống local-runner. Trả { status, data }.
+ * Dùng cho các route /api/accounts của dashboard (server cloud không giữ account — runner giữ).
+ */
+async function forwardAccounts(method, path, { body, query } = {}) {
+  // Chỉ lấy các query value kiểu nguyên thuỷ (string/number/bool) — tránh URLSearchParams
+  // serialize sai khi Express parse query thành mảng/object (vd ?x[]=1).
+  const sp = new URLSearchParams();
+  if (query && typeof query === 'object') {
+    for (const [k, v] of Object.entries(query)) {
+      if (v == null) continue;
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') sp.append(k, String(v));
+    }
+  }
+  const qs = sp.toString() ? `?${sp.toString()}` : '';
+  const res = await fetch(localUrl(`${path}${qs}`), {
+    method,
+    headers: headers(),
+    body: body ? JSON.stringify(body) : undefined,
+    timeout: 20000,
+  });
+  const text = await res.text().catch(() => '');
+  let data;
+  try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text || `HTTP ${res.status}` }; }
+  return { status: res.status, data };
+}
+
+// Cache danh sách account (để resolve đơn -> account mà không gọi runner mỗi lần).
+let _accountsCache = { at: 0, list: [] };
+const ACCOUNTS_TTL_MS = 60_000;
+
+/** Lấy danh sách account Zalo từ runner (cache 60s). [] nếu runner offline. */
+async function getAccountsCached() {
+  if (Date.now() - _accountsCache.at < ACCOUNTS_TTL_MS) return _accountsCache.list;
+  try {
+    const { status, data } = await forwardAccounts('GET', '/api/accounts');
+    if (status >= 200 && status < 300 && Array.isArray(data.zalo)) {
+      _accountsCache = { at: Date.now(), list: data.zalo };
+    }
+  } catch {
+    /* runner offline -> giữ cache cũ */
+  }
+  return _accountsCache.list;
+}
+
+/** Xoá cache (gọi sau khi thêm/sửa/xoá account để lần resolve kế tiếp lấy bản mới). */
+function invalidateAccountsCache() {
+  _accountsCache = { at: 0, list: [] };
+}
+
+module.exports = {
+  sendBaoHang, checkLocalHealth, getLocalHealth, effectiveBaseUrl,
+  forwardAccounts, getAccountsCached, invalidateAccountsCache,
+};

@@ -79,7 +79,7 @@ lines(950, y1 + 62, [
   'Máy có Chrome thật',
   '• Playwright + session Zalo',
   '• THỰC THI việc gửi',
-  '• zalo.salework.net',
+  '• zalo.basso.vn',
 ], { size: 13.5, fill: '#064e3b' });
 
 arrow(340, y1 + 60, 400, y1 + 60, C.bassoB, 'đọc');

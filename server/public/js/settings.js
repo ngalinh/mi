@@ -76,6 +76,151 @@
     App.toast('Đã lưu (bản mẫu — chưa đồng bộ hệ thống)');
   });
 
+  // ---------------- Tài khoản Zalo (nối backend thật) ----------------
+  const zaloRows = $('zaloRows');
+  const zm = $('zaloModal');
+  const zaKey = $('zaKey'), zaName = $('zaName'), zaSalework = $('zaSalework'),
+    zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaProxy = $('zaProxy'), zaAuto = $('zaAuto');
+  let zEditing = null; // key đang sửa, null = thêm mới
+
+  function connBadge(c) {
+    if (c === 'connected') return '<span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Đã kết nối</span>';
+    if (c === 'expired') return '<span class="badge-status badge-offline" style="box-shadow:none; padding:5px 12px;">Mất kết nối</span>';
+    return '<span class="badge-status badge-offline" style="box-shadow:none; padding:5px 12px;">Chưa đăng nhập</span>';
+  }
+  function autoPill(a) {
+    return a.autoEnabled === false
+      ? '<span class="pill chua" data-action="auto" style="cursor:pointer" title="Bấm để bật">Tắt</span>'
+      : '<span class="pill da" data-action="auto" style="cursor:pointer" title="Bấm để tắt">Bật</span>';
+  }
+  function renderZalo(list) {
+    if (!list || !list.length) {
+      zaloRows.innerHTML = '<tr><td colspan="6" class="muted" style="padding:16px;">Chưa có tài khoản Zalo nào. Bấm “Thêm tài khoản”.</td></tr>';
+      return;
+    }
+    zaloRows.innerHTML = list.map((a) => `
+      <tr class="main-row" data-key="${App.esc(a.key)}">
+        <td class="cust">${App.esc(a.name || a.key)}</td>
+        <td>${App.esc(a.saleworkName || '')}</td>
+        <td>${App.esc(a.phone || '')}</td>
+        <td>${connBadge(a.connection)}</td>
+        <td class="center">${autoPill(a)}</td>
+        <td>
+          <button class="link-btn" data-action="edit">Sửa</button>
+          <button class="link-btn" data-action="login">Đăng nhập</button>
+          <button class="link-btn" data-action="check">Kiểm tra</button>
+          <button class="link-btn" data-action="del" style="color:var(--danger,#d33)">Xoá</button>
+        </td>
+      </tr>`).join('');
+  }
+  async function loadZalo() {
+    try {
+      const r = await App.api('/api/accounts');
+      renderZalo(r.zalo || []);
+    } catch (e) {
+      zaloRows.innerHTML = `<tr><td colspan="6" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+    }
+  }
+  function openZalo(a) {
+    zEditing = a ? a.key : null;
+    $('zaTitle').textContent = a ? 'Sửa tài khoản Zalo' : 'Thêm tài khoản Zalo';
+    $('zaHint').style.display = a ? 'none' : '';
+    zaKey.value = a ? a.key : '';
+    zaKey.disabled = !!a; // không đổi key khi sửa
+    zaName.value = a ? (a.name || '') : '';
+    zaSalework.value = a ? (a.saleworkName || '') : '';
+    zaPhone.value = a ? (a.phone || '') : '';
+    zaStaffId.value = a ? (a.staffId || '') : '';
+    zaProxy.value = a ? (a.proxy || '') : '';
+    zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
+    zm.classList.add('show');
+  }
+  function closeZalo() { zm.classList.remove('show'); }
+
+  async function saveZalo() {
+    const key = zaKey.value.trim();
+    const body = {
+      name: zaName.value.trim(), saleworkName: zaSalework.value.trim(),
+      phone: zaPhone.value.trim(), staffId: zaStaffId.value.trim(),
+      proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
+    };
+    if (!key || !body.name || !body.saleworkName) {
+      App.toast('❌ Cần điền: Mã profile, Tên nhân viên, Tên Zalo trong dropdown', 5000);
+      return;
+    }
+    try {
+      if (zEditing) {
+        await App.api(`/api/accounts/${encodeURIComponent(zEditing)}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        App.toast('✅ Đã lưu tài khoản Zalo');
+      } else {
+        const r = await App.api('/api/accounts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'zalo', key, ...body }),
+        });
+        App.toast(`✅ ${r.message || 'Đã thêm tài khoản'}`, 7000);
+      }
+      closeZalo();
+      loadZalo();
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 6000);
+    }
+  }
+
+  async function rowAction(action, key, name) {
+    if (action === 'edit') {
+      const r = await App.api('/api/accounts').catch(() => ({ zalo: [] }));
+      const a = (r.zalo || []).find((x) => x.key === key);
+      return openZalo(a || { key });
+    }
+    if (action === 'login') {
+      try { const r = await App.api(`/api/accounts/${encodeURIComponent(key)}/login`, { method: 'POST' });
+        App.toast(`🖥️ ${r.message || 'Đang mở Chromium trên máy local-runner'}`, 7000);
+      } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+      return undefined;
+    }
+    if (action === 'check') {
+      App.toast('⏳ Đang kiểm tra kết nối (mở trình duyệt)…', 4000);
+      try { const r = await App.api(`/api/accounts/${encodeURIComponent(key)}/check`, { method: 'POST' });
+        App.toast(r.loggedIn ? '✅ Còn đăng nhập' : `⚠️ Mất kết nối — cần đăng nhập lại${r.error ? ` (${r.error})` : ''}`, 6000);
+        loadZalo();
+      } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+      return undefined;
+    }
+    if (action === 'del') {
+      if (!confirm(`Xoá tài khoản Zalo "${name || key}"? Session đăng nhập cũng bị xoá.`)) return undefined;
+      try { await App.api(`/api/accounts/zalo/${encodeURIComponent(key)}`, { method: 'DELETE' });
+        App.toast('Đã xoá tài khoản'); loadZalo();
+      } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+      return undefined;
+    }
+    if (action === 'auto') {
+      const r = await App.api('/api/accounts').catch(() => ({ zalo: [] }));
+      const a = (r.zalo || []).find((x) => x.key === key);
+      const next = !(a && a.autoEnabled !== false);
+      try { await App.api(`/api/accounts/${encodeURIComponent(key)}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoEnabled: next }),
+        });
+        App.toast(next ? 'Đã BẬT tự động báo cho tài khoản này' : 'Đã TẮT tự động báo cho tài khoản này');
+        loadZalo();
+      } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+    }
+    return undefined;
+  }
+
+  $('addZaloBtn').addEventListener('click', () => openZalo(null));
+  $('zaCancel').addEventListener('click', closeZalo);
+  $('zaSave').addEventListener('click', saveZalo);
+  zm.addEventListener('click', (e) => { if (e.target === zm) closeZalo(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeZalo(); });
+  zaloRows.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-action]'); if (!b) return;
+    const tr = b.closest('tr.main-row'); if (!tr) return;
+    rowAction(b.dataset.action, tr.dataset.key, tr.children[0].textContent.trim());
+  });
+  loadZalo();
+
   // ---------------- Chế độ (nối backend thật) ----------------
   let autoEnabled = false;
 

@@ -5,6 +5,7 @@ const { notifyOne } = require('./notifyService');
 const { getAutoRecord, recordAutoNotified, autoKey } = require('./db');
 const { checkLocalHealth } = require('./playwrightProxy');
 const { withLock } = require('./lock');
+const { resolveForOrder } = require('./accountResolver');
 
 /**
  * TỰ ĐỘNG BÁO HÀNG.
@@ -113,6 +114,16 @@ async function runAutoNotify(opts = {}) {
       for (const order of candidates) {
         const key = autoKey(order);
         const prev = getAutoRecord(key);
+
+        // MÔ HÌNH B: nếu account của NV phụ trách bị TẮT "Tự động báo" (autoEnabled=false)
+        // thì bỏ qua đơn này (không gửi, không trừ lượt) — để NV tự báo tay.
+        // eslint-disable-next-line no-await-in-loop
+        const acct = await resolveForOrder(order, { defaultAccount: cfg.account, profile: cfg.profile });
+        if (acct.source === 'store' && acct.autoEnabled === false) {
+          summary.skippedAutoOff = (summary.skippedAutoOff || 0) + 1;
+          continue;
+        }
+
         // eslint-disable-next-line no-await-in-loop
         const r = await notifyOne(order, {
           profile: cfg.profile,
@@ -146,8 +157,9 @@ async function runAutoNotify(opts = {}) {
       }
 
       if (candidates.length || summary.skippedNoContent) {
-        const skip = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
-        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skip})`);
+        const skipNo = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
+        const skipOff = summary.skippedAutoOff ? `, bỏ qua ${summary.skippedAutoOff} đơn (account tắt auto)` : '';
+        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipOff})`);
       }
     });
   } catch (err) {
