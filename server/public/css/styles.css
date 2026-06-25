@@ -612,7 +612,17 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 /* ============================================================
    Phân trang (dưới bảng danh sách)
    ============================================================ */
-.pager { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.pg-info { color: var(--muted); font-size: 13px; }
+.pg-info b { color: var(--text); font-weight: 700; }
+.pg-pages { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pg-jump { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.pg-jump-input {
+  width: 56px; height: 34px; padding: 0 8px; text-align: center;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  font: inherit; font-size: 13px; color: var(--text); background: #fff;
+}
+.pg-jump-input:focus { outline: none; border-color: var(--primary); }
 .pg-btn {
   min-width: 34px; height: 34px; padding: 0 11px;
   border: 1px solid var(--border-strong); background: #fff; color: var(--text);

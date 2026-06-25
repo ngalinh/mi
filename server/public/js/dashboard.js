@@ -5,7 +5,7 @@
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
-  const PAGE_SIZE = 50;    // số đơn mỗi trang (yêu cầu xuống server)
+  const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   // Số đếm thật cho 4 thẻ trạng thái (lấy từ /api/order-counts, không chỉ trang hiện tại).
   let counts = { todo: 0, arrival: 0, ship: 0, failed: 0, total: 0 };
@@ -442,17 +442,37 @@
   function renderPager(totalPages) {
     const el = $('pager');
     if (!el) return;
-    if (totalPages <= 1) { el.innerHTML = ''; el.classList.add('hidden'); return; }
+    if (!serverTotal) { el.innerHTML = ''; el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
     const cur = currentPage;
-    const parts = [`<button class="pg-btn pg-nav" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''} aria-label="Trang trước">‹</button>`];
-    for (const p of pageItems(totalPages, cur)) {
-      parts.push(p === '…'
-        ? '<span class="pg-ellip">…</span>'
-        : `<button class="pg-btn ${p === cur ? 'active' : ''}" data-page="${p}">${p}</button>`);
+    // Trái: tổng bản ghi + trang hiện tại (giống Basso "Tổng 1193 bản ghi — Trang 1 / 60").
+    const info = `<span class="pg-info">Tổng <b>${serverTotal}</b> bản ghi — Trang <b>${cur}</b> / <b>${totalPages}</b></span>`;
+    let pages = '';
+    let jump = '';
+    if (totalPages > 1) {
+      const parts = [`<button class="pg-btn" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''}>Trước</button>`];
+      for (const p of pageItems(totalPages, cur)) {
+        parts.push(p === '…'
+          ? '<span class="pg-ellip">…</span>'
+          : `<button class="pg-btn ${p === cur ? 'active' : ''}" data-page="${p}">${p}</button>`);
+      }
+      parts.push(`<button class="pg-btn" data-page="${cur + 1}" ${cur === totalPages ? 'disabled' : ''}>Sau</button>`);
+      pages = `<span class="pg-pages">${parts.join('')}</span>`;
+      // Phải: ô nhảy nhanh tới trang (giống Basso "Đến trang [ ] Đi").
+      jump = `<span class="pg-jump">Đến trang <input class="pg-jump-input" type="number" min="1" max="${totalPages}" value="${cur}" aria-label="Đến trang" /> <button class="pg-btn pg-go" id="pgGo">Đi</button></span>`;
     }
-    parts.push(`<button class="pg-btn pg-nav" data-page="${cur + 1}" ${cur === totalPages ? 'disabled' : ''} aria-label="Trang sau">›</button>`);
-    el.innerHTML = parts.join('');
+    el.innerHTML = info + pages + jump;
+  }
+
+  // Nhảy tới 1 trang (kẹp về [1, totalPages]) rồi tải từ server.
+  function goToPage(p) {
+    const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
+    p = Math.min(Math.max(1, parseInt(p, 10) || 1), totalPages);
+    if (p === currentPage) return;
+    currentPage = p;
+    load({ keepPage: true });
+    const tw = document.querySelector('.table-wrap');
+    if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function updateCount(list = orders) {
@@ -796,12 +816,18 @@
   $('pager').addEventListener('click', (e) => {
     const b = e.target.closest('.pg-btn');
     if (!b || b.disabled) return;
-    const p = parseInt(b.dataset.page, 10);
-    if (!p || p === currentPage) return;
-    currentPage = p;
-    load({ keepPage: true }); // tải đúng trang từ server
-    const tw = document.querySelector('.table-wrap');
-    if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (b.classList.contains('pg-go')) { // nút "Đi" -> nhảy theo giá trị ô nhập
+      const inp = $('pager').querySelector('.pg-jump-input');
+      return goToPage(inp ? inp.value : currentPage);
+    }
+    goToPage(b.dataset.page);
+  });
+  // Enter trong ô "Đến trang" cũng nhảy trang.
+  $('pager').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.classList.contains('pg-jump-input')) {
+      e.preventDefault();
+      goToPage(e.target.value);
+    }
   });
 
   // Popover bộ lọc
