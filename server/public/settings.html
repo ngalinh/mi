@@ -52,44 +52,20 @@
               Thêm nhân viên
             </button>
           </div>
-          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Tài khoản đăng nhập hệ thống Mi cho từng nhân viên. <em>(Bản mẫu — chưa lưu vào hệ thống.)</em></div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Email đăng nhập hệ thống Mi cho từng nhân viên. Đăng nhập do nền tảng ai.basso.vn xử lý — danh sách này gán <strong>vai trò</strong> và <strong>trạng thái</strong> theo email.</div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Nhân viên</th>
-                  <th>Tài khoản đăng nhập</th>
-                  <th>Mật khẩu</th>
+                  <th>Email đăng nhập</th>
                   <th>Vai trò</th>
                   <th class="center">Trạng thái</th>
-                  <th style="width:80px"></th>
+                  <th style="width:120px"></th>
                 </tr>
               </thead>
               <tbody id="empRows">
-                <tr class="main-row">
-                  <td class="cust">Quản trị</td>
-                  <td>admin</td>
-                  <td><span class="pw">••••••••</span></td>
-                  <td><span class="pill" style="background:var(--primary-soft); color:var(--primary);">Admin</span></td>
-                  <td class="center"><span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Hoạt động</span></td>
-                  <td><button class="link-btn">Sửa</button></td>
-                </tr>
-                <tr class="main-row">
-                  <td class="cust">Linh Dương</td>
-                  <td>linhduong</td>
-                  <td><span class="pw">••••••••</span></td>
-                  <td><span class="pill" style="background:#eaf2fe; color:#2f6fd0;">Quản lý</span></td>
-                  <td class="center"><span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Hoạt động</span></td>
-                  <td><button class="link-btn">Sửa</button></td>
-                </tr>
-                <tr class="main-row">
-                  <td class="cust">Linh Thảo</td>
-                  <td>linhthao</td>
-                  <td><span class="pw">••••••••</span></td>
-                  <td><span class="pill chua">Nhân viên</span></td>
-                  <td class="center"><span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Hoạt động</span></td>
-                  <td><button class="link-btn">Sửa</button></td>
-                </tr>
+                <tr><td colspan="5" class="muted" style="padding:16px;">Đang tải…</td></tr>
               </tbody>
             </table>
           </div>
@@ -167,11 +143,10 @@
   <div class="modal-bg" id="empModal">
     <div class="modal" style="width:480px;">
       <h3 id="emTitle">Thêm nhân viên</h3>
-      <p class="muted">Tài khoản đăng nhập hệ thống Mi.</p>
+      <p class="muted">Email đăng nhập hệ thống Mi (đăng nhập do ai.basso.vn xử lý).</p>
       <div class="form-grid">
         <div class="field full"><label>Họ tên</label><input id="emName" type="text" placeholder="Vd: Nguyễn Văn A" /></div>
-        <div class="field"><label>Tài khoản đăng nhập</label><input id="emUser" type="text" placeholder="vd: nguyenvana" /></div>
-        <div class="field"><label>Mật khẩu</label><input id="emPass" type="text" placeholder="••••••••" /></div>
+        <div class="field full"><label>Email đăng nhập</label><input id="emEmail" type="email" placeholder="vd: nguyenvana@basso.vn" /></div>
         <div class="field"><label>Vai trò</label><select id="emRole"><option>Admin</option><option>Quản lý</option><option selected>Nhân viên</option></select></div>
         <div class="field"><label>Trạng thái</label><select id="emStatus"><option selected>Hoạt động</option><option>Tạm khoá</option></select></div>
       </div>

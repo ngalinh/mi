@@ -12,12 +12,13 @@
     panels.forEach((pl) => pl.classList.toggle('hidden', pl.dataset.panelContent !== p));
   });
 
-  // ---------------- Nhân viên (bản mẫu — chưa nối backend) ----------------
+  // ---------------- Nhân viên (lưu thật ở server: SQLite /api/staff) ----------------
+  // Login do gateway ai.basso.vn lo; bảng này chỉ map EMAIL -> vai trò + trạng thái.
   const empRows = $('empRows');
   const em = $('empModal');
   const emTitle = $('emTitle');
-  const emName = $('emName'), emUser = $('emUser'), emPass = $('emPass'), emRole = $('emRole'), emStatus = $('emStatus');
-  let editing = null;
+  const emName = $('emName'), emEmail = $('emEmail'), emRole = $('emRole'), emStatus = $('emStatus');
+  let editing = null; // email đang sửa, null = thêm mới
 
   function rolePillHtml(role) {
     if (role === 'Nhân viên') return '<span class="pill chua">Nhân viên</span>';
@@ -28,53 +29,88 @@
     const cls = status === 'Tạm khoá' ? 'badge-offline' : 'badge-online';
     return `<span class="badge-status ${cls}" style="box-shadow:none; padding:5px 12px;">${App.esc(status)}</span>`;
   }
-  function fillRow(tr, d) {
-    tr.children[0].textContent = d.name;
-    tr.children[1].textContent = d.user;
-    tr.children[2].innerHTML = '<span class="pw">••••••••</span>';
-    tr.children[3].innerHTML = rolePillHtml(d.role);
-    tr.children[4].innerHTML = statusBadgeHtml(d.status);
-  }
-  function makeRow(d) {
-    const tr = document.createElement('tr');
-    tr.className = 'main-row';
-    tr.innerHTML = '<td class="cust"></td><td></td><td></td><td></td><td class="center"></td><td><button class="link-btn">Sửa</button></td>';
-    fillRow(tr, d);
-    return tr;
-  }
-  function openEmp(tr) {
-    editing = tr || null;
-    if (tr) {
-      emTitle.textContent = 'Sửa nhân viên';
-      emName.value = tr.children[0].textContent.trim();
-      emUser.value = tr.children[1].textContent.trim();
-      emPass.value = '';
-      emRole.value = tr.children[3].textContent.trim();
-      emStatus.value = tr.children[4].textContent.trim();
-    } else {
-      emTitle.textContent = 'Thêm nhân viên';
-      emName.value = ''; emUser.value = ''; emPass.value = '';
-      emRole.value = 'Nhân viên'; emStatus.value = 'Hoạt động';
+  function renderStaff(list) {
+    if (!list || !list.length) {
+      empRows.innerHTML = '<tr><td colspan="5" class="muted" style="padding:16px;">Chưa có nhân viên nào. Bấm “Thêm nhân viên”.</td></tr>';
+      return;
     }
+    empRows.innerHTML = list.map((s) => `
+      <tr class="main-row" data-email="${App.esc(s.email)}">
+        <td class="cust">${App.esc(s.name)}</td>
+        <td>${App.esc(s.email)}</td>
+        <td>${rolePillHtml(s.role)}</td>
+        <td class="center">${statusBadgeHtml(s.status)}</td>
+        <td>
+          <button class="link-btn" data-action="edit">Sửa</button>
+          <button class="link-btn" data-action="del" style="color:var(--danger,#d33)">Xoá</button>
+        </td>
+      </tr>`).join('');
+  }
+  async function loadStaff() {
+    try {
+      const r = await App.api('/api/staff');
+      renderStaff(r.staff || []);
+    } catch (e) {
+      empRows.innerHTML = `<tr><td colspan="5" class="muted" style="padding:16px;">Không tải được danh sách: ${App.esc(e.message)}</td></tr>`;
+    }
+  }
+  function openEmp(s) {
+    editing = s ? s.email : null;
+    emTitle.textContent = s ? 'Sửa nhân viên' : 'Thêm nhân viên';
+    emName.value = s ? s.name : '';
+    emEmail.value = s ? s.email : '';
+    emEmail.disabled = !!s; // email là khoá đăng nhập — không đổi khi sửa
+    emRole.value = s ? s.role : 'Nhân viên';
+    emStatus.value = s ? s.status : 'Hoạt động';
     em.classList.add('show');
   }
   function closeEmp() { em.classList.remove('show'); }
 
   $('addEmpBtn').addEventListener('click', () => openEmp(null));
-  empRows.addEventListener('click', (e) => {
+  empRows.addEventListener('click', async (e) => {
     const b = e.target.closest('.link-btn'); if (!b) return;
-    openEmp(b.closest('tr.main-row'));
+    const tr = b.closest('tr.main-row'); if (!tr) return;
+    const email = tr.dataset.email;
+    if (b.dataset.action === 'del') {
+      if (!confirm(`Xoá nhân viên ${email}?`)) return;
+      try {
+        await App.api(`/api/staff/${encodeURIComponent(email)}`, { method: 'DELETE' });
+        App.toast('✅ Đã xoá nhân viên');
+        loadStaff();
+      } catch (err) { App.toast(`❌ ${err.message}`, 6000); }
+      return;
+    }
+    openEmp({
+      email,
+      name: tr.children[0].textContent.trim(),
+      role: tr.children[2].textContent.trim(),
+      status: tr.children[3].textContent.trim(),
+    });
   });
   $('emCancel').addEventListener('click', closeEmp);
   em.addEventListener('click', (e) => { if (e.target === em) closeEmp(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeEmp(); });
-  $('emSave').addEventListener('click', () => {
-    const d = { name: emName.value.trim() || 'Nhân viên mới', user: emUser.value.trim(), role: emRole.value, status: emStatus.value };
-    if (editing) fillRow(editing, d);
-    else empRows.appendChild(makeRow(d));
-    closeEmp();
-    App.toast('Đã lưu (bản mẫu — chưa đồng bộ hệ thống)');
+  $('emSave').addEventListener('click', async () => {
+    const body = { name: emName.value.trim(), email: emEmail.value.trim(), role: emRole.value, status: emStatus.value };
+    if (!body.name || !body.email) { App.toast('❌ Cần điền Họ tên và Email đăng nhập', 5000); return; }
+    try {
+      if (editing) {
+        await App.api(`/api/staff/${encodeURIComponent(editing)}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+      } else {
+        await App.api('/api/staff', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+      }
+      App.toast('✅ Đã lưu nhân viên');
+      closeEmp();
+      loadStaff();
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 6000);
+    }
   });
+  loadStaff();
 
   // ---------------- Tài khoản Zalo (nối backend thật) ----------------
   const zaloRows = $('zaloRows');
