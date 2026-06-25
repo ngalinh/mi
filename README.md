@@ -299,12 +299,12 @@ test an toàn rồi go-live).
 
 ## Vận hành & bảo mật ⚙️
 
-- **Yêu cầu Node ≥ 22.5**: server dùng `node:sqlite` (built-in, khỏi compile). Node cũ hơn sẽ
-  lỗi ngay khi khởi động.
-- **Giữ bền thư mục `data/` (QUAN TRỌNG)**: SQLite (`data/doraemi.sqlite`) chứa **Lịch sử báo**
-  và **khóa chống gửi trùng** (bảng `auto_notified`). Container trên cloud là *ephemeral* — nếu
-  `data/` không nằm trên **volume bền**, mỗi lần restart sẽ mất khóa chống trùng → bot có thể
-  **nhắn lại trùng** cho khách. Hãy map `data/` vào ổ đĩa bền khi deploy.
+- **SQLite tự chọn driver**: Node ≥ 22.5 dùng `node:sqlite` (built-in, khỏi compile); Node cũ
+  hơn tự fallback `better-sqlite3` (đã khai báo `optionalDependencies`). Không cần sửa code.
+- **Giữ bền dữ liệu (QUAN TRỌNG)**: SQLite chứa **Lịch sử báo** + **khóa chống gửi trùng**.
+  Container cloud là *ephemeral* — trỏ DB vào ổ bền bằng `DATA_DIR=/data` (db = `/data/doraemi.sqlite`)
+  hoặc `DB_PATH=/đường/dẫn/doraemi.sqlite`; hoặc map volume bền vào `./data`. Không bền → restart
+  mất khóa chống trùng → bot **nhắn lại trùng** cho khách. (Session Zalo nằm ở máy runner, không ở cloud.)
 - **Đăng nhập do gateway ai.basso.vn lo** (mỗi nhân viên 1 tài khoản, đứng trước app). App này
   **không tự xác thực** — chỉ chạy phía sau gateway. Hệ quả & cấu hình:
   - **Audit "ai gửi tin"**: app ghi cột `sent_by` vào Lịch sử báo. `bot` = luồng tự động; còn
