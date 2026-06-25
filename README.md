@@ -272,8 +272,24 @@ npm run runner      # = node start.js  (spawn runner + heartbeat đăng ký)
 Server ưu tiên URL đã đăng ký (còn "tươi" trong ~90s); hết hạn thì fallback
 `PLAYWRIGHT_LOCAL_URL`. Xem trạng thái ở `GET /api/health` → `localRunner.registered`.
 
-> Giữ launcher sống bền: bọc thêm `pm2 start start.js --name mi-runner` (hoặc NSSM/Task
-> Scheduler trên Windows) để auto-restart khi crash + auto-start cùng máy.
+> Giữ launcher sống bền: dùng PM2 (có sẵn [`ecosystem.config.js`](ecosystem.config.js)).
+> File cấu hình đã đặt `max_memory_restart` (Chrome rò rỉ RAM) + chính sách restart chống
+> crash-loop. **Không** ép `HEADLESS` — để `.env` tự quyết (Zalo chạy hiện cửa sổ).
+>
+> ```powershell
+> pm2 start ecosystem.config.js --only mi-runner   # runner trên máy Windows có Chrome
+> pm2 save                                          # lưu danh sách tiến trình
+> ```
+>
+> **Auto-start khi đăng nhập (Windows):** máy này đã cài sẵn [`pm2-windows-startup`]
+> (https://www.npmjs.com/package/pm2-windows-startup) — có HKCU Run key gọi `pm2 resurrect`
+> mỗi lần user đăng nhập (giống Xeko, dùng chung cơ chế). Vì `pm2 resurrect` khôi phục **toàn
+> bộ** tiến trình đã `pm2 save`, nên sau khi chạy 2 lệnh trên là `mi` **tự bật cùng Xeko**
+> mỗi lần đăng nhập — KHÔNG cần cài hay cấu hình thêm.
+>
+> Lưu ý: cơ chế này chạy trong **phiên đăng nhập của user** (có desktop) nên Chrome hiện cửa
+> sổ vẽ được. Để tự bật sau khi reboot mà không cần ai bấm, máy cần bật **auto-login**. Đừng
+> chạy PM2 dưới dạng Windows Service nền (Session 0) — sẽ không có màn hình cho Chrome headed.
 
 ## Deploy lên ai.basso.vn 🚀
 
