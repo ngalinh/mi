@@ -4,8 +4,13 @@
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
-  let currentPage = 1;     // trang hiện tại của danh sách đơn
-  const PAGE_SIZE = 50;    // số đơn mỗi trang
+  let currentPage = 1;     // trang hiện tại (server-side)
+  const PAGE_SIZE = 50;    // số đơn mỗi trang (yêu cầu xuống server)
+  let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
+  // Số đếm thật cho 4 thẻ trạng thái (lấy từ /api/order-counts, không chỉ trang hiện tại).
+  let counts = { todo: 0, arrival: 0, ship: 0, failed: 0, total: 0 };
+  // Nhóm trạng thái trên thẻ -> mã trạng thái Basso để lọc/phân trang server-side.
+  const STATUS_FOR_GROUP = { todo: 'not_sent', arrival: 'notified_arrival', ship: 'notified_ship', failed: 'send_failed' };
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
@@ -53,11 +58,6 @@
     if (o.statusCode === 'notified_arrival') return 'arrival';
     if (o.autoNotified && SENT_LOCAL.has(o.autoNotified.status)) return 'arrival';
     return 'todo';
-  }
-  function groupCounts() {
-    const c = { todo: 0, arrival: 0, ship: 0, failed: 0 };
-    for (const o of orders) c[groupOf(o)]++;
-    return c;
   }
 
   // Gửi đơn đầy đủ field lên server (không để server tra lại theo id).
@@ -389,7 +389,6 @@
 
   // ---------------- Thẻ lọc trạng thái ----------------
   function renderStatusTabs() {
-    const counts = groupCounts();
     document.querySelectorAll('#statusTabs .status-tab').forEach((tab) => {
       const key = tab.dataset.filter;
       const num = tab.querySelector('.st-num');
@@ -398,9 +397,10 @@
     });
   }
 
-  // Đơn hiển thị = lọc theo nhóm trạng thái + bộ lọc nâng cao (client-side).
+  // Đơn hiển thị = trang hiện tại (server đã lọc theo trạng thái) + bộ lọc nâng cao
+  // (loại trừ/ghi chú lọc client-side, chỉ trong phạm vi trang đang xem).
   function visibleOrders() {
-    let list = currentGroup ? orders.filter((o) => groupOf(o) === currentGroup) : orders.slice();
+    let list = orders.slice();
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -410,24 +410,20 @@
 
   function render() {
     renderStatusTabs();
-    const list = visibleOrders();
-    if (!list.length) {
-      const msg = orders.length ? 'Không có đơn nào ở trạng thái này.' : 'Không có dữ liệu';
+    // `orders` đã là 1 trang do server trả về; chỉ áp thêm lọc client-side (exclude/note).
+    const pageList = visibleOrders();
+    const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
+    if (!pageList.length) {
+      const msg = serverTotal ? 'Không có đơn khớp bộ lọc trên trang này.' : 'Không có dữ liệu';
       rowsEl.innerHTML = `<tr><td colspan="12" class="empty">${msg}</td></tr>`;
-      updateCount(list);
-      renderPager(1);
+      updateCount(pageList);
+      renderPager(totalPages);
       return;
     }
-    // Phân trang: cắt theo trang hiện tại (kẹp về khoảng hợp lệ khi danh sách đổi).
-    const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
-    if (currentPage > totalPages) currentPage = totalPages;
-    if (currentPage < 1) currentPage = 1;
-    const start = (currentPage - 1) * PAGE_SIZE;
-    const pageList = list.slice(start, start + PAGE_SIZE);
     rowsEl.innerHTML = currentGroupBy
       ? groupedRowsHtml(pageList, currentGroupBy)
       : pageList.map((o) => rowHtml(o)).join('');
-    updateCount(list);
+    updateCount(pageList);
     pageList.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
     if (currentGroupBy === 'customer') fillGroupProductCounts(pageList);
     renderPager(totalPages);
@@ -459,16 +455,11 @@
     el.innerHTML = parts.join('');
   }
 
-  function bulkTargets() {
-    return orders.filter((o) => !isNotified(o) && !excluded.has(String(o.id)));
-  }
   function updateCount(list = orders) {
-    const chua = orders.filter((o) => !isNotified(o)).length;
-    const willSend = bulkTargets().length;
-    const exclNote = chua - willSend > 0 ? ` (loại ${chua - willSend})` : '';
     const ci = $('countInfo');
-    if (ci) ci.textContent = `${list.length} đơn · ${chua} chưa báo${exclNote}`;
-    $('bulkBtn').disabled = willSend === 0;
+    // Trang hiện tại + tổng "chưa báo" thật (toàn bộ dữ liệu) lấy từ server.
+    if (ci) ci.textContent = `${list.length} đơn (trang ${currentPage}) · ${counts.todo} chưa báo`;
+    $('bulkBtn').disabled = counts.todo === 0;
   }
 
   // ---------------- Mở rộng dòng ----------------
@@ -502,7 +493,7 @@
       await updateRow(o, { status: code, note: o.note || '' });
       o.statusCode = code;
       App.toast('✅ Đã cập nhật trạng thái');
-      render();
+      load({ keepPage: true }); // dòng có thể rời nhóm + số đếm thẻ đổi -> tải lại
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
       const sel = rowsEl.querySelector(`.status-sel[data-id="${cssEsc(String(id))}"]`);
@@ -636,7 +627,7 @@
       const r = res.results[0];
       if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
       else App.toast(`❌ ${r.error}`, 6000);
-      await load();
+      await load({ keepPage: true });
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
@@ -645,28 +636,29 @@
   }
 
   function openBulkModal() {
-    const willSend = bulkTargets().length;
-    if (!willSend) { App.toast('Không có khách nào để báo', 4000); return; }
-    const chua = orders.filter((o) => !isNotified(o)).length;
-    const exclN = chua - willSend;
-    $('bulkSummary').innerHTML = `Sẽ gửi báo hàng cho <strong>${willSend}</strong> khách chưa báo`
-      + (exclN > 0 ? ` <span class="muted">(đã loại trừ ${exclN} khách)</span>` : '') + '.';
-    $('bulkConfirm').innerHTML = App.icon('megaphone') + ` Báo hàng (${willSend})`;
+    if (!counts.todo) { App.toast('Không có khách nào để báo', 4000); return; }
+    // Server gửi cho TẤT CẢ đơn "Chưa báo" (mọi trang), tự bỏ qua đơn đã Delay/đã báo.
+    $('bulkSummary').innerHTML = `Sẽ gửi báo hàng cho toàn bộ <strong>${counts.todo}</strong> khách "Chưa báo"`
+      + ` <span class="muted">(các đơn đã Delay hoặc đã báo sẽ tự bỏ qua)</span>.`;
+    $('bulkConfirm').innerHTML = App.icon('megaphone') + ` Báo hàng (${counts.todo})`;
     $('bulkModalBg').classList.add('show');
   }
   function closeBulkModal() { $('bulkModalBg').classList.remove('show'); }
 
   async function bulkSend() {
-    const sel = bulkTargets();
-    if (!sel.length) return;
+    if (!counts.todo) return;
     closeBulkModal();
     const btn = $('bulkBtn');
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
     try {
-      const res = await App.api('/api/notify', {
+      const q = $('fQ').value;
+      const res = await App.api('/api/notify-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: sel.map(orderPayload) }),
+        body: JSON.stringify({
+          from: F.from || undefined, to: F.to || undefined,
+          staff: currentStaff || undefined, q: q || undefined,
+        }),
       });
       App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
       await load();
@@ -680,26 +672,44 @@
   // ---------------- Load ----------------
   async function load(opts = {}) {
     const auto = opts.auto === true;
-    if (!auto) { currentPage = 1; rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>'; }
-    const params = new URLSearchParams();
+    const keepPage = auto || opts.keepPage === true; // autosync/pager/refresh: giữ nguyên trang
+    if (!keepPage) currentPage = 1;
+    if (!auto) rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>';
     const q = $('fQ').value;
-    if (F.from) params.set('from', F.from);
-    if (F.to) params.set('to', F.to);
-    if (currentStaff) params.set('staff', currentStaff);
-    if (q) params.set('q', q);
+    // Bộ lọc dùng chung cho cả danh sách lẫn số đếm (ngày/NV/tìm kiếm — lọc server-side).
+    const base = new URLSearchParams();
+    if (F.from) base.set('from', F.from);
+    if (F.to) base.set('to', F.to);
+    if (currentStaff) base.set('staff', currentStaff);
+    if (q) base.set('q', q);
+    const params = new URLSearchParams(base);
+    const status = currentGroup ? STATUS_FOR_GROUP[currentGroup] : undefined;
+    if (status) params.set('status', status);
+    params.set('page', currentPage);
+    params.set('pageSize', PAGE_SIZE);
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
     try {
-      const res = await App.api('/api/orders?' + params.toString());
+      const [res, cnt] = await Promise.all([
+        App.api('/api/orders?' + params.toString()),
+        App.api('/api/order-counts?' + base.toString()).catch(() => null),
+      ]);
       orders = res.orders || [];
-      if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
-      const existing = new Set(orders.map((o) => String(o.id)));
-      [...openRows].forEach((id) => { if (!existing.has(id)) openRows.delete(id); });
-      // Dọn ghi chú "chưa lưu": bỏ đơn không còn trong danh sách, và bỏ đơn mà
-      // nội dung trên Basso đã trùng phần đang gõ (coi như đã được lưu nơi khác).
-      [...dirtyNotes.keys()].forEach((id) => {
-        if (!existing.has(id)) { dirtyNotes.delete(id); return; }
-        const o = orders.find((x) => String(x.id) === id);
-        if (o && (o.note || '') === dirtyNotes.get(id)) dirtyNotes.delete(id);
+      serverTotal = res.total != null ? res.total : orders.length;
+      if (cnt && cnt.counts) counts = cnt.counts;
+      if (cnt && cnt.tabUsers && cnt.tabUsers.length) tabUsers = cnt.tabUsers;
+      else if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
+      // Trang hiện tại vượt quá tổng (vd sau khi báo loạt làm đơn rời nhóm) -> nhảy về trang cuối.
+      if (!orders.length && currentPage > 1 && serverTotal > 0) {
+        currentPage = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
+        return load({ keepPage: true });
+      }
+      // LƯU Ý phân trang: `orders` giờ chỉ là 1 trang, nên KHÔNG xoá openRows/dirtyNotes
+      // chỉ vì đơn không có mặt ở trang hiện tại (đơn đó có thể ở trang khác) — nếu không
+      // sẽ mất trạng thái mở rộng & ghi chú đang soạn dở khi chuyển trang.
+      // Chỉ dọn ghi chú "chưa lưu" khi nội dung trên Basso đã trùng phần đang gõ (đã lưu nơi khác).
+      orders.forEach((o) => {
+        const id = String(o.id);
+        if (dirtyNotes.has(id) && (o.note || '') === dirtyNotes.get(id)) dirtyNotes.delete(id);
       });
       // Cờ Delay / Loại trừ lấy từ server (lưu ở mi) — giữ được sau khi reload.
       excluded.clear();
@@ -759,7 +769,8 @@
   // ---------------- Events ----------------
   $('syncBtn').addEventListener('click', () => load());
 
-  $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; currentPage = 1; render(); });
+  // Gom nhóm chỉ là cách hiển thị TRONG trang hiện tại -> không đổi trang, không tải lại.
+  $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
 
   let qTimer;
   $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
@@ -772,7 +783,7 @@
     const key = tab.dataset.filter;
     currentGroup = (key === currentGroup) ? '' : key;
     currentPage = 1;
-    render();
+    load(); // đổi trạng thái -> lọc lại phía server
   });
 
   $('staffTabs').addEventListener('click', (e) => {
@@ -788,7 +799,7 @@
     const p = parseInt(b.dataset.page, 10);
     if (!p || p === currentPage) return;
     currentPage = p;
-    render();
+    load({ keepPage: true }); // tải đúng trang từ server
     const tw = document.querySelector('.table-wrap');
     if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
@@ -815,9 +826,8 @@
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
     updateFilterBadge();
     filterPop.hidden = true;
-    currentPage = 1;
-    // Khoảng ngày lọc ở server -> cần load lại; loại trừ/ghi chú lọc client -> chỉ render.
-    if (F.from !== prevFrom || F.to !== prevTo) load(); else render();
+    // Khoảng ngày lọc ở server -> tải lại (về trang 1); loại trừ/ghi chú lọc client -> chỉ render (giữ trang).
+    if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; load(); } else render();
   });
   $('fClear').addEventListener('click', () => {
     const hadDate = F.from || F.to;
@@ -827,8 +837,7 @@
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
     updateFilterBadge();
-    currentPage = 1;
-    if (hadDate) load(); else render();
+    if (hadDate) { currentPage = 1; load(); } else render();
   });
 
   // Delegation cho bảng

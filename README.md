@@ -211,9 +211,11 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 
 | Method | Path | Mô tả |
 |---|---|---|
-| GET | `/api/orders?status=&staff=&q=&from=&to=` | Danh sách hàng về |
+| GET | `/api/orders?status=&staff=&q=&from=&to=&page=&pageSize=` | Danh sách hàng về (phân trang server-side; trả `total`,`page`) |
+| GET | `/api/order-counts?staff=&q=&from=&to=` | Số đếm thật theo 4 thẻ trạng thái + danh sách NV |
 | GET | `/api/arrived-items?id=&customerId=&dateInventory=` | Chi tiết SP đã về 1 dòng (load lazy) |
-| POST | `/api/notify` `{orderIds[], profile?, account?, messageOverride?}` | Báo hàng |
+| POST | `/api/notify` `{orders[]\|orderIds[], profile?, account?, messageOverride?}` | Báo hàng (danh sách đơn) |
+| POST | `/api/notify-all` `{from?,to?,staff?,q?,kind?}` | Báo hàng loạt: kéo HẾT đơn "Chưa báo" qua mọi trang rồi gửi (bỏ qua đơn Delay/đã báo) |
 | GET | `/api/auto-notify` | Trạng thái tự động báo hàng |
 | POST | `/api/auto-notify/toggle` `{enabled}` | Bật/tắt tự động (runtime) |
 | POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt |
