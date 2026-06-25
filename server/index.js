@@ -5,7 +5,8 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getStatusCounts, fetchAllOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
-const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed } = require('./db');
+const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed,
+  listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
@@ -118,6 +119,59 @@ app.get('/api/accounts/:key/history', (req, res) =>
   proxyAccounts(req, res, 'GET', `/api/accounts/${encodeURIComponent(req.params.key)}/history`, false));
 app.delete('/api/accounts/:type/:key', (req, res) =>
   proxyAccounts(req, res, 'DELETE', `/api/accounts/${encodeURIComponent(req.params.type)}/${encodeURIComponent(req.params.key)}`, false));
+
+// ---- Nhân viên (tài khoản dashboard Mi) ----
+// Lưu Ở SERVER (SQLite, volume bền) — KHÔNG lưu mật khẩu: login do gateway ai.basso.vn lo,
+// bảng này chỉ map email đăng nhập -> vai trò + trạng thái. Khác với tài khoản Zalo (ở runner).
+
+// Ai đang đăng nhập (email do gateway forward) + bản ghi NV tương ứng (nếu có).
+app.get('/api/me', (req, res) => {
+  const email = getActor(req);
+  res.json({ ok: true, email, staff: email ? getStaffByEmail(email) : null });
+});
+
+// Chỉ Admin (đang Hoạt động) được sửa danh sách NV. Miễn trừ an toàn để không tự khoá mình:
+//  - chưa có NV nào -> cho tạo (bootstrap admin đầu tiên);
+//  - không có danh tính gateway (actor null, vd chạy local/dev) -> cho qua.
+// Trả null nếu được phép; ngược lại trả object lỗi để route dừng.
+function denyStaffEdit(req) {
+  if (staffCount() === 0) return null;            // bootstrap
+  const actor = getActor(req);
+  if (!actor) return null;                        // không có gateway (dev/standalone)
+  const me = getStaffByEmail(actor);
+  if (me && me.role === 'Admin' && me.status === 'Hoạt động') return null;
+  return { status: 403, error: 'Chỉ Admin (đang hoạt động) mới được sửa danh sách nhân viên' };
+}
+
+app.get('/api/staff', (req, res) => res.json({ ok: true, staff: listStaff() }));
+
+function saveStaff(req, res) {
+  const deny = denyStaffEdit(req);
+  if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
+  try {
+    const body = req.body || {};
+    const email = req.params.email != null ? req.params.email : body.email;
+    const staff = upsertStaff({ email, name: body.name, role: body.role, status: body.status });
+    res.json({ ok: true, staff });
+  } catch (e) {
+    if (e.code === 'BAD_INPUT') return res.status(400).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: e.message });
+  }
+}
+app.post('/api/staff', saveStaff);
+app.put('/api/staff/:email', saveStaff);
+
+app.delete('/api/staff/:email', (req, res) => {
+  const deny = denyStaffEdit(req);
+  if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
+  const target = getStaffByEmail(req.params.email);
+  // Chặn xoá Admin hoạt động cuối cùng -> tránh mất quyền quản trị (lockout).
+  if (target && target.role === 'Admin' && target.status === 'Hoạt động' && activeAdminCount() <= 1) {
+    return res.status(409).json({ ok: false, error: 'Không thể xoá Admin hoạt động cuối cùng' });
+  }
+  const removed = deleteStaff(req.params.email);
+  res.json({ ok: removed, removed });
+});
 
 // ---- Test kết nối Basso (chỉ đọc): dùng cho nút "Test Basso" trên dashboard ----
 // Luôn trả HTTP 200 + cờ `connected` để frontend hiển thị được cả khi lỗi.

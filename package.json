@@ -31,5 +31,8 @@
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "cross-env": "^7.0.3"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^12.9.0"
   }
 }

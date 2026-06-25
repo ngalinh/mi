@@ -91,5 +91,6 @@ module.exports = {
     // Bí mật bảo vệ webhook /api/webhook/arrived (so khớp header x-webhook-secret). Trống = không kiểm tra.
     webhookSecret: process.env.AUTO_NOTIFY_WEBHOOK_SECRET || '',
   },
-  dbPath: path.join(__dirname, '..', 'data', 'doraemi.sqlite'),
+  dbPath: process.env.DB_PATH
+    || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),
 };

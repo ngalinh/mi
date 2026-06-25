@@ -1,11 +1,35 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { DatabaseSync } = require('node:sqlite'); // built-in, không cần compile (Node >= 22.5)
 const config = require('./config');
 
+// Mở SQLite linh hoạt theo Node:
+//   - Node >= 22.5: dùng node:sqlite (built-in, KHÔNG cần compile).
+//   - Node cũ hơn / không có node:sqlite: fallback better-sqlite3 (optionalDependency).
+// API hai driver gần như giống hệt (prepare/run/all/get, named param @name) nên phần
+// còn lại của file dùng chung không cần đổi.
+function openDb(dbPath) {
+  try {
+    // eslint-disable-next-line global-require
+    const { DatabaseSync } = require('node:sqlite');
+    if (DatabaseSync) return new DatabaseSync(dbPath);
+  } catch (_) {
+    /* Node < 22.5 hoặc node:sqlite cần cờ --experimental-sqlite -> thử better-sqlite3 */
+  }
+  try {
+    // eslint-disable-next-line global-require
+    const Database = require('better-sqlite3');
+    return new Database(dbPath);
+  } catch (e) {
+    throw new Error(
+      'Không mở được SQLite. Cần Node >= 22.5 (node:sqlite) HOẶC cài better-sqlite3 '
+      + `(npm i better-sqlite3). Chi tiết: ${e.message}`,
+    );
+  }
+}
+
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
-const db = new DatabaseSync(config.dbPath);
+const db = openDb(config.dbPath);
 db.exec('PRAGMA journal_mode = WAL;');
 
 db.exec(`
@@ -53,6 +77,19 @@ db.exec(`  -- Cờ "Delay / Loại trừ": đánh dấu đơn tạm hoãn để 
 
 // Migration: thêm lý do delay (vd "Đợi bank", "Đợi hàng về thêm"). Chạy lại không sao.
 try { db.exec('ALTER TABLE delayed_orders ADD COLUMN reason TEXT'); } catch (_) { /* đã có cột */ }
+
+db.exec(`  -- Danh sách NHÂN VIÊN được phép vào dashboard Mi. KHÔNG lưu mật khẩu: việc đăng
+  -- nhập do gateway ai.basso.vn lo (xem config.auth.userHeaders) — bảng này chỉ map
+  -- EMAIL đăng nhập -> vai trò + trạng thái để Mi quản lý phân quyền/hiển thị.
+  CREATE TABLE IF NOT EXISTS staff (
+    email       TEXT PRIMARY KEY,        -- khớp x-user-email gateway forward (đã hạ chữ thường)
+    name        TEXT NOT NULL,
+    role        TEXT NOT NULL,           -- 'Admin' | 'Quản lý' | 'Nhân viên'
+    status      TEXT NOT NULL,           -- 'Hoạt động' | 'Tạm khoá'
+    created_at  TEXT NOT NULL,           -- ISO string
+    updated_at  TEXT NOT NULL            -- ISO string
+  );
+`);
 
 const insertStmt = db.prepare(`
   INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, created_at)
@@ -158,6 +195,64 @@ function setDelayed(orderKey, delayed, reason) {
   return !!delayed;
 }
 
+// ---- Nhân viên (tài khoản dashboard Mi) ----
+const ROLES = ['Admin', 'Quản lý', 'Nhân viên'];
+const STATUSES = ['Hoạt động', 'Tạm khoá'];
+
+/** Chuẩn hoá email về khoá ổn định (trim + chữ thường) để khớp header gateway. */
+function normEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+const listStaffStmt = db.prepare('SELECT email, name, role, status FROM staff ORDER BY created_at ASC');
+const getStaffStmt = db.prepare('SELECT email, name, role, status FROM staff WHERE email = @email');
+const upsertStaffStmt = db.prepare(`
+  INSERT INTO staff (email, name, role, status, created_at, updated_at)
+  VALUES (@email, @name, @role, @status, @now, @now)
+  ON CONFLICT(email) DO UPDATE SET name = @name, role = @role, status = @status, updated_at = @now
+`);
+const delStaffStmt = db.prepare('DELETE FROM staff WHERE email = @email');
+const countStaffStmt = db.prepare('SELECT COUNT(*) AS n FROM staff');
+const countActiveAdminStmt = db.prepare(
+  "SELECT COUNT(*) AS n FROM staff WHERE role = 'Admin' AND status = 'Hoạt động'"
+);
+
+function listStaff() { return listStaffStmt.all(); }
+
+/** Lấy bản ghi NV theo email (null nếu chưa có). Dùng để kiểm tra vai trò/khoá. */
+function getStaffByEmail(email) {
+  const e = normEmail(email);
+  if (!e) return null;
+  return getStaffStmt.get({ email: e }) || null;
+}
+
+function staffCount() { return countStaffStmt.get().n || 0; }
+function activeAdminCount() { return countActiveAdminStmt.get().n || 0; }
+
+/**
+ * Thêm/sửa 1 nhân viên (khoá theo email). Ném lỗi có .code='BAD_INPUT' nếu dữ liệu sai
+ * để route trả 400. Vai trò/trạng thái phải nằm trong danh sách cho phép.
+ */
+function upsertStaff({ email, name, role, status }) {
+  const e = normEmail(email);
+  const nm = String(name || '').trim();
+  const rl = String(role || '').trim();
+  const st = String(status || '').trim();
+  if (!e || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { const err = new Error('Email không hợp lệ'); err.code = 'BAD_INPUT'; throw err; }
+  if (!nm) { const err = new Error('Thiếu họ tên'); err.code = 'BAD_INPUT'; throw err; }
+  if (!ROLES.includes(rl)) { const err = new Error('Vai trò không hợp lệ'); err.code = 'BAD_INPUT'; throw err; }
+  if (!STATUSES.includes(st)) { const err = new Error('Trạng thái không hợp lệ'); err.code = 'BAD_INPUT'; throw err; }
+  upsertStaffStmt.run({ email: e, name: nm, role: rl, status: st, now: new Date().toISOString() });
+  return getStaffStmt.get({ email: e });
+}
+
+/** Xoá 1 NV theo email. Trả true nếu có xoá. */
+function deleteStaff(email) {
+  const e = normEmail(email);
+  if (!e) return false;
+  return delStaffStmt.run({ email: e }).changes > 0;
+}
+
 function stats() {
   const row = db.prepare(`
     SELECT
@@ -169,4 +264,7 @@ function stats() {
   return { total: row.total || 0, success: row.success || 0, failed: row.failed || 0 };
 }
 
-module.exports = { db, addReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey, getDelayedMap, setDelayed };
+module.exports = {
+  db, addReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
+  listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
+};
