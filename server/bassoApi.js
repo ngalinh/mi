@@ -256,12 +256,16 @@ async function getOrders(filters = {}) {
   const pageSize = Math.min(filters.pageSize || 100, 100);
 
   if (config.basso.useMock) {
-    let rows = loadMock();
+    const rows = loadMock();
     let orders = rows.map(normalizeOrder);
     orders = applyClientFilters(orders, { status, staff, q });
-    orders.forEach((o, i) => { o.stt = i + 1; });
+    const total = orders.length;
+    // Phân trang phía "server" cho cả mock để khớp hành vi API thật (Hướng B).
+    const startIdx = (page - 1) * pageSize;
+    orders = orders.slice(startIdx, startIdx + pageSize);
+    orders.forEach((o, i) => { o.stt = startIdx + i + 1; });
     const tabUsers = uniqueStaff(rows);
-    return { source: 'mock', orders, tabUsers, total: orders.length, page: 1 };
+    return { source: 'mock', orders, tabUsers, total, page };
   }
 
   const query = {
@@ -347,4 +351,83 @@ async function updateOrderStatus({ customerId, dateInventory, status, note }) {
   return { ok: true, record: data && data.record };
 }
 
-module.exports = { getOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, normalizeOrder, normalizeItem, STATUS_LABELS };
+// Nhóm trạng thái trên dashboard -> mã trạng thái Basso (để đếm & lọc server-side).
+const GROUP_STATUS = [
+  ['todo', 'not_sent'],
+  ['arrival', 'notified_arrival'],
+  ['ship', 'notified_ship'],
+  ['failed', 'send_failed'],
+];
+
+/**
+ * Đếm số đơn theo từng nhóm trạng thái (tổng THẬT trên toàn bộ dữ liệu, không phải
+ * chỉ trang hiện tại) + danh sách nhân viên đầy đủ. Dùng cho 4 thẻ trạng thái khi
+ * phân trang server-side (Hướng B).
+ * @param {object} [filters] { from, to, staff, q }
+ * @returns {Promise<{counts:{todo,arrival,ship,failed,total}, tabUsers}>}
+ */
+async function getStatusCounts(filters = {}) {
+  const { from, to, q } = filters;
+  const staff = /^\d+$/.test(String(filters.staff || '')) ? filters.staff : undefined;
+
+  if (config.basso.useMock) {
+    const rows = loadMock();
+    const orders = applyClientFilters(rows.map(normalizeOrder), { staff, q });
+    const counts = { todo: 0, arrival: 0, ship: 0, failed: 0, total: orders.length };
+    for (const o of orders) {
+      if (o.statusCode === 'not_sent') counts.todo += 1;
+      else if (o.statusCode === 'notified_arrival') counts.arrival += 1;
+      else if (o.statusCode === 'notified_ship') counts.ship += 1;
+      else if (o.statusCode === 'send_failed' || o.statusCode === 'error') counts.failed += 1;
+    }
+    return { counts, tabUsers: uniqueStaff(rows) };
+  }
+
+  const base = {
+    from: toApiDate(from), to: toApiDate(to), key: q || undefined, tab: staff || undefined,
+    page: 1, page_size: 1,
+  };
+  const cacheKey = 'counts:' + JSON.stringify(base);
+  const cached = listCacheGet(cacheKey);
+  if (cached) return cached;
+
+  // 1 lần gọi "tất cả" (lấy total + tab_users đầy đủ) + 4 lần theo từng status.
+  // page_size=1 nên rất nhẹ; chạy song song để giảm độ trễ.
+  const [allData, ...statusData] = await Promise.all([
+    apiFetch('/partner/getArrivedVnList', { query: base }),
+    ...GROUP_STATUS.map(([, code]) => apiFetch('/partner/getArrivedVnList', { query: { ...base, status: code } })),
+  ]);
+  const counts = { total: allData.total ?? 0, todo: 0, arrival: 0, ship: 0, failed: 0 };
+  GROUP_STATUS.forEach(([group], i) => { counts[group] = statusData[i].total ?? 0; });
+  const tabUsers = (allData.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
+  const result = { counts, tabUsers };
+  listCacheSet(cacheKey, result);
+  return result;
+}
+
+/**
+ * Kéo TẤT CẢ đơn khớp bộ lọc qua mọi trang (gộp lại). Dùng cho "Báo hàng loạt" để
+ * không bị giới hạn ở trang đang xem. Lặp tối đa 100 trang × 100 đơn (an toàn).
+ * @param {object} [filters] { status, from, to, staff, q }
+ */
+async function fetchAllOrders(filters = {}) {
+  if (config.basso.useMock) {
+    // Mock nhỏ: lấy 1 "trang" rất lớn là đủ toàn bộ.
+    const { orders } = await getOrders({ ...filters, page: 1, pageSize: 100 });
+    return orders;
+  }
+  const all = [];
+  const seen = new Set();
+  for (let page = 1; page <= 100; page += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { orders, total } = await getOrders({ ...filters, page, pageSize: 100 });
+    for (const o of orders) {
+      if (!seen.has(o.id)) { seen.add(o.id); all.push(o); }
+    }
+    if (orders.length < 100) break;                 // hết trang
+    if (total != null && all.length >= total) break; // đã đủ
+  }
+  return all;
+}
+
+module.exports = { getOrders, getStatusCounts, fetchAllOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, normalizeOrder, normalizeItem, STATUS_LABELS };

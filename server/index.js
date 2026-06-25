@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
-const { getOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
+const { getOrders, getStatusCounts, fetchAllOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
@@ -201,8 +201,12 @@ app.get('/api/basso/ping', async (req, res) => {
 // ---- Dashboard: danh sách hàng về ----
 app.get('/api/orders', async (req, res) => {
   try {
-    const { from, to, status, staff, q } = req.query;
-    const data = await getOrders({ from, to, status, staff, q });
+    const { from, to, status, staff, q, page, pageSize } = req.query;
+    const data = await getOrders({
+      from, to, status, staff, q,
+      page: page ? parseInt(page, 10) || 1 : 1,
+      pageSize: pageSize ? parseInt(pageSize, 10) || undefined : undefined,
+    });
     // Gắn dấu "bot đã tự gửi" (lưu local trong mi) để dashboard phân biệt, kể cả khi
     // không cập nhật trạng thái về web Basso.
     if (Array.isArray(data.orders)) {
@@ -217,6 +221,43 @@ app.get('/api/orders', async (req, res) => {
       });
     }
     res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Đếm số đơn theo 4 nhóm trạng thái (tổng thật, phục vụ thẻ trạng thái) ----
+app.get('/api/order-counts', async (req, res) => {
+  try {
+    const { from, to, staff, q } = req.query;
+    const data = await getStatusCounts({ from, to, staff, q });
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Báo hàng loạt: kéo HẾT đơn "Chưa báo" qua mọi trang rồi gửi ----
+// (không bị giới hạn ở trang đang xem). Tự bỏ qua đơn đã Delay và đơn bot/đã báo tay.
+// body: { from?, to?, staff?, q?, kind? }
+app.post('/api/notify-all', async (req, res) => {
+  try {
+    const { from, to, staff, q, kind } = req.body || {};
+    const actor = getActor(req);
+    const all = await fetchAllOrders({ status: 'not_sent', from, to, staff, q });
+    const delayed = getDelayedMap();
+    const targets = all.filter((o) => {
+      const key = autoNotify.autoKey(o);
+      if (delayed.has(key)) return false;             // đã Delay -> loại
+      const a = getAutoRecord(key);
+      if (a && (a.status === 'success' || a.status === 'manual')) return false; // đã báo -> loại
+      return true;
+    });
+    if (!targets.length) {
+      return res.json({ ok: true, total: 0, sent: 0, failed: 0, results: [] });
+    }
+    const result = await notifyOrders(targets, { kind, actor });
+    res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
