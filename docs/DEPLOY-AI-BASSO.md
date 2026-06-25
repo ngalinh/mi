@@ -138,7 +138,7 @@ Kiểm tra: vào `GET https://ai.basso.vn/b/<id>/api/health` → `localRunner.on
 ## 3. Thêm tài khoản Zalo (Mô hình B — mỗi NV 1 profile)
 
 Trên dashboard → **Cài đặt → Tài khoản Zalo → Thêm tài khoản**:
-- **Mã profile (key)**: vd `linh_duong` (dùng làm tên thư mục session, không đổi sau này).
+- **Mã profile (key)**: vd `nhan_vien_1` (dùng làm tên thư mục session, không đổi sau này).
 - **Tên nhân viên**, **Tên Zalo trong dropdown** (đúng tên hiện ở zalo.basso.vn), **staffId** (= userId NV trong đơn — để khớp đơn → account), **Tự động báo**: Bật/Tắt.
 
 Bấm Lưu → trên **máy runner** sẽ bật cửa sổ Chromium → **đăng nhập Zalo Basso + chọn đúng tài khoản** → đóng cửa sổ (session tự lưu). Cột **Kết nối** bấm **Kiểm tra** để xác nhận.
