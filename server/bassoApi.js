@@ -32,6 +32,7 @@ const STATUS_LABELS = {
 // ----------------------------------------------------------------------------
 let _token = null;        // access_token
 let _tokenExp = 0;        // unix seconds
+let _loginPromise = null; // lần login đang chạy (single-flight) — gộp các request đồng thời
 
 function baseHeaders() {
   const h = { 'Accept': 'application/json' };
@@ -85,7 +86,11 @@ async function login() {
 async function getToken() {
   const now = Math.floor(Date.now() / 1000);
   if (_token && _tokenExp - now > 60) return _token; // còn > 60s thì dùng lại
-  return login();
+  // SINGLE-FLIGHT: nhiều request đồng thời (vd /api/orders + 5 lần đếm của /api/order-counts)
+  // khi token chưa có sẽ CHIA SẺ một lần login, tránh đăng nhập 6 lần cùng lúc -> Basso quá tải/timeout.
+  if (_loginPromise) return _loginPromise;
+  _loginPromise = login().finally(() => { _loginPromise = null; });
+  return _loginPromise;
 }
 
 /**
@@ -391,6 +396,8 @@ async function getStatusCounts(filters = {}) {
   const cached = listCacheGet(cacheKey);
   if (cached) return cached;
 
+  // Login MỘT LẦN trước khi bắn loạt -> 5 request bên dưới chỉ tái dùng token, không tự login.
+  await getToken();
   // 1 lần gọi "tất cả" (lấy total + tab_users đầy đủ) + 4 lần theo từng status.
   // page_size=1 nên rất nhẹ; chạy song song để giảm độ trễ.
   const [allData, ...statusData] = await Promise.all([
