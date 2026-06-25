@@ -513,7 +513,7 @@
       await updateRow(o, { status: code, note: o.note || '' });
       o.statusCode = code;
       App.toast('✅ Đã cập nhật trạng thái');
-      load({ keepPage: true }); // dòng có thể rời nhóm + số đếm thẻ đổi -> tải lại
+      load({ keepPage: true, countsStale: true }); // dòng rời nhóm + số đếm thẻ đổi -> tải lại + đếm lại
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
       const sel = rowsEl.querySelector(`.status-sel[data-id="${cssEsc(String(id))}"]`);
@@ -647,7 +647,7 @@
       const r = res.results[0];
       if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
       else App.toast(`❌ ${r.error}`, 6000);
-      await load({ keepPage: true });
+      await load({ keepPage: true, countsStale: true });
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
@@ -681,7 +681,7 @@
         }),
       });
       App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
-      await load();
+      await load({ countsStale: true });
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
@@ -690,9 +690,11 @@
   }
 
   // ---------------- Load ----------------
-  // Lấy số đếm 4 thẻ trạng thái, chạy độc lập với bảng để bảng hiện ngay sau 1 call.
-  // _countsSeq: nếu có lần load mới hơn chen vào, bỏ kết quả đếm cũ (chống race khi bấm nhanh).
+  // Số đếm 4 thẻ chỉ phụ thuộc bộ lọc base (ngày/NV/tìm kiếm), KHÔNG đổi theo trang hay
+  // theo thẻ trạng thái -> chỉ gọi lại khi base đổi (hoặc autosync). _lastCountsBase nhớ
+  // base đã đếm gần nhất; _countsSeq chống race khi bấm nhanh.
   let _countsSeq = 0;
+  let _lastCountsBase = null;
   async function refreshCounts(query) {
     const seq = ++_countsSeq;
     try {
@@ -700,6 +702,7 @@
       if (seq !== _countsSeq) return;
       if (cnt && cnt.counts) counts = cnt.counts;
       if (cnt && cnt.tabUsers && cnt.tabUsers.length) { tabUsers = cnt.tabUsers; renderTabs(); }
+      _lastCountsBase = query;
       renderStatusTabs();
       updateCount(visibleOrders());
     } catch { /* lỗi đếm -> giữ số cũ, không phá bảng */ }
@@ -717,15 +720,16 @@
     if (F.to) base.set('to', F.to);
     if (currentStaff) base.set('staff', currentStaff);
     if (q) base.set('q', q);
+    const baseStr = base.toString();
     const params = new URLSearchParams(base);
     const status = currentGroup ? STATUS_FOR_GROUP[currentGroup] : undefined;
     if (status) params.set('status', status);
     params.set('page', currentPage);
     params.set('pageSize', PAGE_SIZE);
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
-    // Số đếm 4 thẻ chạy ĐỘC LẬP (5 call) — không chặn bảng; bảng chỉ cần 1 call /api/orders.
-    refreshCounts(base.toString());
     try {
+      // ƯU TIÊN bảng: gọi /api/orders TRƯỚC (1 call) và chờ nó, KHÔNG bắn 5 call đếm
+      // cùng lúc làm Basso bận -> bảng hiện nhanh nhất.
       const res = await App.api('/api/orders?' + params.toString());
       orders = res.orders || [];
       serverTotal = res.total != null ? res.total : orders.length;
@@ -753,6 +757,10 @@
       $('syncInfo').textContent = `Cập nhật ${App.fmtDateTime(new Date().toISOString())}`;
       renderTabs();
       render();
+      // Bảng đã hiện -> giờ mới cập nhật số đếm 4 thẻ (5 call), và CHỈ khi cần:
+      // base đổi (ngày/NV/tìm kiếm) hoặc autosync. Chuyển trang / đổi thẻ trạng thái
+      // KHÔNG gọi lại (số đếm không đổi) -> bớt 5 call mỗi lần lật trang.
+      if (auto || opts.countsStale || baseStr !== _lastCountsBase) refreshCounts(baseStr);
     } catch (e) {
       if (!auto) rowsEl.innerHTML = `<tr><td colspan="12" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
     }
