@@ -690,6 +690,21 @@
   }
 
   // ---------------- Load ----------------
+  // Lấy số đếm 4 thẻ trạng thái, chạy độc lập với bảng để bảng hiện ngay sau 1 call.
+  // _countsSeq: nếu có lần load mới hơn chen vào, bỏ kết quả đếm cũ (chống race khi bấm nhanh).
+  let _countsSeq = 0;
+  async function refreshCounts(query) {
+    const seq = ++_countsSeq;
+    try {
+      const cnt = await App.api('/api/order-counts?' + query);
+      if (seq !== _countsSeq) return;
+      if (cnt && cnt.counts) counts = cnt.counts;
+      if (cnt && cnt.tabUsers && cnt.tabUsers.length) { tabUsers = cnt.tabUsers; renderTabs(); }
+      renderStatusTabs();
+      updateCount(visibleOrders());
+    } catch { /* lỗi đếm -> giữ số cũ, không phá bảng */ }
+  }
+
   async function load(opts = {}) {
     const auto = opts.auto === true;
     const keepPage = auto || opts.keepPage === true; // autosync/pager/refresh: giữ nguyên trang
@@ -708,16 +723,13 @@
     params.set('page', currentPage);
     params.set('pageSize', PAGE_SIZE);
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
+    // Số đếm 4 thẻ chạy ĐỘC LẬP (5 call) — không chặn bảng; bảng chỉ cần 1 call /api/orders.
+    refreshCounts(base.toString());
     try {
-      const [res, cnt] = await Promise.all([
-        App.api('/api/orders?' + params.toString()),
-        App.api('/api/order-counts?' + base.toString()).catch(() => null),
-      ]);
+      const res = await App.api('/api/orders?' + params.toString());
       orders = res.orders || [];
       serverTotal = res.total != null ? res.total : orders.length;
-      if (cnt && cnt.counts) counts = cnt.counts;
-      if (cnt && cnt.tabUsers && cnt.tabUsers.length) tabUsers = cnt.tabUsers;
-      else if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
+      if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
       // Trang hiện tại vượt quá tổng (vd sau khi báo loạt làm đơn rời nhóm) -> nhảy về trang cuối.
       if (!orders.length && currentPage > 1 && serverTotal > 0) {
         currentPage = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));

@@ -1,8 +1,16 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
 const fetch = require('node-fetch');
 const config = require('./config');
+
+// Giữ kết nối (keep-alive) tới Basso: tái dùng TCP/TLS cho các call liên tiếp/đồng thời
+// (mỗi lần load dashboard có ~6 call) thay vì bắt tay lại từ đầu -> giảm độ trễ rõ rệt.
+const _httpAgent = new http.Agent({ keepAlive: true, maxSockets: 16 });
+const _httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 16 });
+const keepAliveAgent = (parsedURL) => (parsedURL.protocol === 'https:' ? _httpsAgent : _httpAgent);
 
 /**
  * Adapter tới Basso Partner API ("Hàng về VN").
@@ -46,11 +54,11 @@ function baseHeaders() {
  */
 async function fetchWithTimeout(url, opts = {}) {
   const ms = config.basso.requestTimeoutMs;
-  if (!ms) return fetch(url, opts);
+  if (!ms) return fetch(url, { agent: keepAliveAgent, ...opts });
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
-    return await fetch(url, { ...opts, signal: ctrl.signal });
+    return await fetch(url, { agent: keepAliveAgent, ...opts, signal: ctrl.signal });
   } catch (e) {
     if (e.name === 'AbortError') {
       throw new Error(`Basso không phản hồi sau ${ms}ms (timeout) — thử lại sau`);
@@ -231,8 +239,10 @@ function loadMock() {
 // auto-sync / đổi tab / gõ tìm kiếm lặp lại. Key = bộ lọc đã chuẩn hóa.
 const _listCache = new Map(); // key -> { at:number, data:object }
 
-function listCacheGet(key) {
-  const ttl = config.basso.listCacheTtlMs;
+function listCacheGet(key, ttlOverride) {
+  // ttlOverride cho phép cache lâu hơn cho dữ liệu đổi chậm (vd số đếm trạng thái).
+  // Vẫn tôn trọng việc TẮT cache hoàn toàn (listCacheTtlMs=0) -> không cache.
+  const ttl = config.basso.listCacheTtlMs ? (ttlOverride || config.basso.listCacheTtlMs) : 0;
   if (!ttl) return null;
   const hit = _listCache.get(key);
   if (hit && Date.now() - hit.at < ttl) return hit.data;
@@ -392,8 +402,10 @@ async function getStatusCounts(filters = {}) {
     from: toApiDate(from), to: toApiDate(to), key: q || undefined, tab: staff || undefined,
     page: 1, page_size: 1,
   };
+  // Số đếm đổi chậm -> cache lâu hơn danh sách (tối thiểu 90s) để autosync đỡ gọi lại 5 call.
+  const countsTtl = Math.max(config.basso.listCacheTtlMs, 90000);
   const cacheKey = 'counts:' + JSON.stringify(base);
-  const cached = listCacheGet(cacheKey);
+  const cached = listCacheGet(cacheKey, countsTtl);
   if (cached) return cached;
 
   // Login MỘT LẦN trước khi bắn loạt -> 5 request bên dưới chỉ tái dùng token, không tự login.
