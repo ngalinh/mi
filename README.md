@@ -272,8 +272,13 @@ npm run runner      # = node start.js  (spawn runner + heartbeat đăng ký)
 Server ưu tiên URL đã đăng ký (còn "tươi" trong ~90s); hết hạn thì fallback
 `PLAYWRIGHT_LOCAL_URL`. Xem trạng thái ở `GET /api/health` → `localRunner.registered`.
 
-> Giữ launcher sống bền: bọc thêm `pm2 start start.js --name mi-runner` (hoặc NSSM/Task
-> Scheduler trên Windows) để auto-restart khi crash + auto-start cùng máy.
+> Giữ launcher sống bền: dùng PM2 (có sẵn [`ecosystem.config.js`](ecosystem.config.js)):
+> ```bash
+> pm2 start ecosystem.config.js --only mi-runner   # runner trên máy có Chrome
+> pm2 save && pm2 startup                            # auto-start khi reboot VPS
+> ```
+> File cấu hình đã đặt `max_memory_restart` (Chrome rò rỉ RAM) + `HEADLESS=true` cho production.
+> Trên Windows có thể thay bằng NSSM/Task Scheduler.
 
 ## Deploy lên ai.basso.vn 🚀
 
