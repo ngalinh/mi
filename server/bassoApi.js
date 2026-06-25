@@ -69,6 +69,17 @@ async function fetchWithTimeout(url, opts = {}) {
   }
 }
 
+// Đo thời gian 1 call Basso (chỉ log khi BASSO_LOG_TIMING=true) — để biết chậm do mạng hay do Basso.
+async function timed(label, fn) {
+  if (!config.basso.logTiming) return fn();
+  const t0 = Date.now();
+  try {
+    return await fn();
+  } finally {
+    console.log(`[basso] ${label} ${Date.now() - t0}ms`);
+  }
+}
+
 async function login() {
   // Theo tài liệu Partner API: /partner/login dùng application/x-www-form-urlencoded
   // (KHÔNG phải JSON). Backend PHP đọc $this->input->post(); gửi JSON sẽ làm email/pass
@@ -76,11 +87,11 @@ async function login() {
   const form = new URLSearchParams();
   form.set('email', config.basso.email);
   form.set('pass', config.basso.pass);
-  const res = await fetchWithTimeout(`${config.basso.baseUrl}/partner/login`, {
+  const res = await timed('login', () => fetchWithTimeout(`${config.basso.baseUrl}/partner/login`, {
     method: 'POST',
     headers: { ...baseHeaders(), 'Content-Type': 'application/x-www-form-urlencoded' },
     body: form.toString(),
-  });
+  }));
   const json = await res.json().catch(() => ({}));
   if (!res.ok || json.success === false || !json.data || !json.data.access_token) {
     throw new Error(`Login Basso thất bại: ${json.message || res.status} ${JSON.stringify(json.errors || '')}`);
@@ -112,7 +123,7 @@ async function apiFetch(pathName, { method = 'GET', query, body, _retried = fals
       if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
     }
   }
-  const res = await fetchWithTimeout(url.toString(), {
+  const res = await timed(pathName, () => fetchWithTimeout(url.toString(), {
     method,
     headers: {
       ...baseHeaders(),
@@ -120,7 +131,7 @@ async function apiFetch(pathName, { method = 'GET', query, body, _retried = fals
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-  });
+  }));
 
   if (res.status === 401 && !_retried) {
     _token = null; // ép login lại
