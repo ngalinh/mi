@@ -249,21 +249,35 @@ function loadMock() {
 // Cache danh sách hàng về trong RAM (TTL ngắn). Tránh gọi lại Basso cho mỗi lần
 // auto-sync / đổi tab / gõ tìm kiếm lặp lại. Key = bộ lọc đã chuẩn hóa.
 const _listCache = new Map(); // key -> { at:number, data:object }
+const _inflight = new Map();  // key -> Promise đang gọi Basso (single-flight theo key)
 
-function listCacheGet(key, ttlOverride) {
-  // ttlOverride cho phép cache lâu hơn cho dữ liệu đổi chậm (vd số đếm trạng thái).
-  // Vẫn tôn trọng việc TẮT cache hoàn toàn (listCacheTtlMs=0) -> không cache.
-  const ttl = config.basso.listCacheTtlMs ? (ttlOverride || config.basso.listCacheTtlMs) : 0;
-  if (!ttl) return null;
-  const hit = _listCache.get(key);
-  if (hit && Date.now() - hit.at < ttl) return hit.data;
-  if (hit) _listCache.delete(key);
-  return null;
+/**
+ * Stale-while-revalidate: vì mỗi call Basso ~vài giây, ta trả cache NGAY cả khi đã hết
+ * hạn rồi làm mới ở NỀN. Nhờ vậy quay lại 1 view đã xem (đổi tab/lật lại trang/auto-sync)
+ * gần như tức thì; chỉ lần ĐẦU TIÊN (chưa có cache) mới phải đợi Basso.
+ * @returns {Promise<{data:object, source:'api'|'api-cache'|'api-stale'}>}
+ */
+async function swrFetch(cacheKey, ttl, fetchFn) {
+  if (!config.basso.listCacheTtlMs) return { data: await fetchFn(), source: 'api' }; // cache tắt
+  const refresh = () => {
+    if (_inflight.has(cacheKey)) return _inflight.get(cacheKey);
+    const p = (async () => {
+      const data = await fetchFn();
+      _listCache.set(cacheKey, { at: Date.now(), data });
+      return data;
+    })().finally(() => _inflight.delete(cacheKey));
+    _inflight.set(cacheKey, p);
+    return p;
+  };
+  const hit = _listCache.get(cacheKey);
+  if (hit) {
+    const fresh = Date.now() - hit.at < ttl;
+    if (!fresh) refresh().catch(() => {}); // hết hạn -> làm mới nền; lỗi thì vẫn giữ bản cũ
+    return { data: hit.data, source: fresh ? 'api-cache' : 'api-stale' };
+  }
+  return { data: await refresh(), source: 'api' }; // chưa có cache -> phải đợi (đường chậm)
 }
-function listCacheSet(key, data) {
-  if (!config.basso.listCacheTtlMs) return;
-  _listCache.set(key, { at: Date.now(), data });
-}
+
 /** Xóa cache danh sách — gọi sau khi dữ liệu đổi (cập nhật trạng thái/ghi chú). */
 function invalidateOrdersCache() {
   _listCache.clear();
@@ -305,18 +319,15 @@ async function getOrders(filters = {}) {
   };
 
   const cacheKey = JSON.stringify(query);
-  const cached = listCacheGet(cacheKey);
-  if (cached) return { ...cached, source: 'api-cache' };
-
-  const data = await apiFetch('/partner/getArrivedVnList', { query });
-
-  const rows = data.rows || [];
-  const orders = rows.map(normalizeOrder);
-  orders.forEach((o, i) => { o.stt = (page - 1) * pageSize + i + 1; });
-  const tabUsers = (data.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
-  const result = { source: 'api', orders, tabUsers, total: data.total ?? orders.length, page: data.page ?? page };
-  listCacheSet(cacheKey, result);
-  return result;
+  const { data, source } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, async () => {
+    const raw = await apiFetch('/partner/getArrivedVnList', { query });
+    const rows = raw.rows || [];
+    const orders = rows.map(normalizeOrder);
+    orders.forEach((o, i) => { o.stt = (page - 1) * pageSize + i + 1; });
+    const tabUsers = (raw.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
+    return { orders, tabUsers, total: raw.total ?? orders.length, page: raw.page ?? page };
+  });
+  return { ...data, source };
 }
 
 function uniqueStaff(rows) {
@@ -413,26 +424,24 @@ async function getStatusCounts(filters = {}) {
     from: toApiDate(from), to: toApiDate(to), key: q || undefined, tab: staff || undefined,
     page: 1, page_size: 1,
   };
-  // Số đếm đổi chậm -> cache lâu hơn danh sách (tối thiểu 90s) để autosync đỡ gọi lại 5 call.
+  // Số đếm đổi chậm -> cache lâu hơn danh sách (tối thiểu 90s). SWR: quay lại tức thì, làm mới nền.
   const countsTtl = Math.max(config.basso.listCacheTtlMs, 90000);
   const cacheKey = 'counts:' + JSON.stringify(base);
-  const cached = listCacheGet(cacheKey, countsTtl);
-  if (cached) return cached;
-
-  // Login MỘT LẦN trước khi bắn loạt -> 5 request bên dưới chỉ tái dùng token, không tự login.
-  await getToken();
-  // 1 lần gọi "tất cả" (lấy total + tab_users đầy đủ) + 4 lần theo từng status.
-  // page_size=1 nên rất nhẹ; chạy song song để giảm độ trễ.
-  const [allData, ...statusData] = await Promise.all([
-    apiFetch('/partner/getArrivedVnList', { query: base }),
-    ...GROUP_STATUS.map(([, code]) => apiFetch('/partner/getArrivedVnList', { query: { ...base, status: code } })),
-  ]);
-  const counts = { total: allData.total ?? 0, todo: 0, arrival: 0, ship: 0, failed: 0 };
-  GROUP_STATUS.forEach(([group], i) => { counts[group] = statusData[i].total ?? 0; });
-  const tabUsers = (allData.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
-  const result = { counts, tabUsers };
-  listCacheSet(cacheKey, result);
-  return result;
+  const { data } = await swrFetch(cacheKey, countsTtl, async () => {
+    // Login MỘT LẦN trước khi bắn loạt -> 5 request bên dưới chỉ tái dùng token, không tự login.
+    await getToken();
+    // 1 lần gọi "tất cả" (lấy total + tab_users đầy đủ) + 4 lần theo từng status.
+    // page_size=1 nên rất nhẹ; chạy song song để giảm độ trễ.
+    const [allData, ...statusData] = await Promise.all([
+      apiFetch('/partner/getArrivedVnList', { query: base }),
+      ...GROUP_STATUS.map(([, code]) => apiFetch('/partner/getArrivedVnList', { query: { ...base, status: code } })),
+    ]);
+    const counts = { total: allData.total ?? 0, todo: 0, arrival: 0, ship: 0, failed: 0 };
+    GROUP_STATUS.forEach(([group], i) => { counts[group] = statusData[i].total ?? 0; });
+    const tabUsers = (allData.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
+    return { counts, tabUsers };
+  });
+  return data;
 }
 
 /**
