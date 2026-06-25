@@ -272,13 +272,24 @@ npm run runner      # = node start.js  (spawn runner + heartbeat đăng ký)
 Server ưu tiên URL đã đăng ký (còn "tươi" trong ~90s); hết hạn thì fallback
 `PLAYWRIGHT_LOCAL_URL`. Xem trạng thái ở `GET /api/health` → `localRunner.registered`.
 
-> Giữ launcher sống bền: dùng PM2 (có sẵn [`ecosystem.config.js`](ecosystem.config.js)):
-> ```bash
-> pm2 start ecosystem.config.js --only mi-runner   # runner trên máy có Chrome
-> pm2 save && pm2 startup                            # auto-start khi reboot VPS
+> Giữ launcher sống bền: dùng PM2 (có sẵn [`ecosystem.config.js`](ecosystem.config.js)).
+> File cấu hình đã đặt `max_memory_restart` (Chrome rò rỉ RAM) + chính sách restart chống
+> crash-loop. **Không** ép `HEADLESS` — để `.env` tự quyết (Zalo nên chạy hiện cửa sổ).
+>
+> ```powershell
+> pm2 start ecosystem.config.js --only mi-runner   # runner trên máy Windows có Chrome
+> pm2 save                                          # lưu danh sách tiến trình
 > ```
-> File cấu hình đã đặt `max_memory_restart` (Chrome rò rỉ RAM) + `HEADLESS=true` cho production.
-> Trên Windows có thể thay bằng NSSM/Task Scheduler.
+>
+> **Auto-start khi reboot (Windows):** `pm2 startup` KHÔNG hỗ trợ Windows. Dùng một trong:
+> - **[pm2-installer](https://github.com/jessety/pm2-installer)** (khuyến nghị) — cài PM2 thành
+>   Windows Service, tự chạy `pm2 resurrect` lúc khởi động.
+> - Hoặc **NSSM** bọc lệnh `pm2 resurrect`, hoặc Task Scheduler chạy lúc logon.
+>
+> Lưu ý nếu chạy PM2 dưới dạng **Windows Service** (chạy nền, không có session desktop) thì
+> Chrome hiện-cửa-sổ (`HEADLESS=false`) sẽ không có màn hình để vẽ. Nếu cần Zalo chạy hiện
+> cửa sổ, hãy để PM2 chạy trong phiên đăng nhập của nhân viên (Task Scheduler "run at logon")
+> thay vì service nền.
 
 ## Deploy lên ai.basso.vn 🚀
 

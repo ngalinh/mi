@@ -12,8 +12,12 @@
  * Dùng:
  *   pm2 start ecosystem.config.js               # chạy cả 2
  *   pm2 start ecosystem.config.js --only mi-runner   # chỉ runner (trường hợp phổ biến)
- *   pm2 save && pm2 startup                      # auto-start cùng máy khi reboot
+ *   pm2 save                                     # lưu danh sách tiến trình
  *   pm2 logs mi-runner    /    pm2 restart mi-runner    /    pm2 status
+ *
+ * Auto-start khi reboot: trên Linux dùng `pm2 startup`. Trên WINDOWS `pm2 startup` KHÔNG
+ * chạy — dùng pm2-installer (chạy PM2 thành Windows Service) hoặc NSSM/Task Scheduler.
+ * Xem README mục launcher để biết chi tiết + lưu ý HEADLESS khi chạy dạng service nền.
  *
  * Biến môi trường vẫn đọc từ .env như bình thường (start.js/server đều gọi
  * dotenv.config). Các env dưới đây chỉ ÉP vài giá trị quan trọng khi chạy production.
@@ -39,8 +43,9 @@ module.exports = {
       merge_logs: true,
       env: {
         NODE_ENV: 'production',
-        // Trên VPS không có màn hình -> chạy ẩn. (.env mẫu để HEADLESS=false cho debug.)
-        HEADLESS: 'true',
+        // KHÔNG ép HEADLESS ở đây: máy Windows là máy thật có Chrome, automation Zalo
+        // thường chạy HIỆN cửa sổ (HEADLESS=false) để đỡ bị chặn. Để .env tự quyết —
+        // (lưu ý: nếu đặt biến ở đây, dotenv sẽ KHÔNG override, giá trị này sẽ thắng .env).
       },
     },
     {
