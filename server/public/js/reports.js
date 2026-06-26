@@ -96,4 +96,5 @@
   let t;
   $('fQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 400); });
   load();
+  App.initUserAvatar();
 })();
