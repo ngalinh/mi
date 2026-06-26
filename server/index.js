@@ -17,9 +17,23 @@ const app = express();
 app.use(config.corsOrigins.length ? cors({ origin: config.corsOrigins }) : cors());
 app.use(express.json({ limit: '5mb' }));
 
-// Audit: lấy danh tính nhân viên do gateway forward (xem config.auth.userHeaders).
+// Đọc email từ cookie platform_token do ai.basso.vn set (base64 JSON: {u, exp, sig, r}).
+function getEmailFromPlatformCookie(req) {
+  const cookieHeader = req.get('cookie') || '';
+  const match = cookieHeader.match(/(?:^|;\s*)platform_token=([^;]+)/);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(Buffer.from(match[1], 'base64').toString('utf8'));
+    if (obj.exp && obj.exp < Date.now()) return null; // hết hạn
+    return (obj.u && String(obj.u).trim()) || null;
+  } catch (_) { return null; }
+}
+
+// Audit: lấy danh tính nhân viên — thử cookie platform_token trước, rồi mới header gateway.
 // null = không rõ (vd gọi thẳng app, bỏ qua gateway).
 function getActor(req) {
+  const fromCookie = getEmailFromPlatformCookie(req);
+  if (fromCookie) return fromCookie;
   for (const h of config.auth.userHeaders) {
     const v = req.get(h);
     if (v && String(v).trim()) return String(v).trim();
@@ -130,10 +144,7 @@ app.get('/api/me', (req, res) => {
   res.json({ ok: true, email, staff: email ? getStaffByEmail(email) : null });
 });
 
-// Debug: xem toàn bộ headers platform inject (xoá sau khi debug xong).
-app.get('/api/debug-headers', (req, res) => {
-  res.json({ ok: true, headers: req.headers });
-});
+
 
 // Chỉ Admin (đang Hoạt động) được sửa danh sách NV. Miễn trừ an toàn để không tự khoá mình:
 //  - chưa có NV nào -> cho tạo (bootstrap admin đầu tiên);
