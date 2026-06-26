@@ -75,4 +75,23 @@ const App = {
     if (n == null || n === '' || isNaN(Number(n))) return '';
     return Number(n).toLocaleString('vi-VN') + '₫';
   },
+
+  // Lấy thông tin người đang đăng nhập từ gateway (header x-user-email) và hiển thị ở avatar.
+  async initUserAvatar() {
+    const el = document.getElementById('userAvatar');
+    if (!el) return;
+    try {
+      const r = await this.api('/api/me');
+      const email = r.email || '';
+      const name = (r.staff && r.staff.name) || email;
+      if (!email) return;
+      // Lấy 1-2 chữ đầu tên/email làm initials
+      const parts = name.trim().split(/\s+/);
+      const initials = parts.length >= 2
+        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+        : name.slice(0, 2).toUpperCase();
+      el.title = name !== email ? `${name} (${email})` : email;
+      el.innerHTML = `<span style="font-size:14px;font-weight:700;line-height:1;">${App.esc(initials)}</span>`;
+    } catch (_) { /* giữ icon mặc định nếu không lấy được */ }
+  },
 };

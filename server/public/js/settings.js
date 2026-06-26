@@ -391,4 +391,5 @@
 
   loadHealth();
   setInterval(loadHealth, 15000);
+  App.initUserAvatar();
 })();
