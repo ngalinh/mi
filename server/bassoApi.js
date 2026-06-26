@@ -52,7 +52,7 @@ function baseHeaders() {
  * fetch có timeout (AbortController). Nếu upstream Basso chậm/treo, hủy sau
  * requestTimeoutMs và ném lỗi rõ ràng thay vì để request treo vô thời hạn.
  */
-async function fetchWithTimeout(url, opts = {}) {
+async function fetchWithTimeout(url, opts = {}, _attempt = 1) {
   const ms = config.basso.requestTimeoutMs;
   if (!ms) return fetch(url, { agent: keepAliveAgent, ...opts });
   const ctrl = new AbortController();
@@ -61,6 +61,11 @@ async function fetchWithTimeout(url, opts = {}) {
     return await fetch(url, { agent: keepAliveAgent, ...opts, signal: ctrl.signal });
   } catch (e) {
     if (e.name === 'AbortError') {
+      if (_attempt < 2) {
+        // Retry 1 lần sau 1s trước khi báo lỗi
+        await new Promise((r) => setTimeout(r, 1000));
+        return fetchWithTimeout(url, opts, _attempt + 1);
+      }
       throw new Error(`Basso không phản hồi sau ${ms}ms (timeout) — thử lại sau`);
     }
     throw e;
