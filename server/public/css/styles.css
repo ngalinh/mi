@@ -124,7 +124,7 @@ a { color: var(--primary); text-decoration: none; }
   margin-bottom: 6px;
 }
 .sidebar .brand .icon { width: 27px; height: 27px; }
-.brand-logo { width: 32px; height: auto; display: block; }
+.brand-logo { width: 44px; height: auto; display: block; }
 .brand-word { display: inline-flex; align-items: flex-end; gap: 1px; font-family: var(--font-head); font-weight: 900; font-size: 31px; letter-spacing: -1.5px; line-height: 1; color: #fff; }
 .brand-word .m { line-height: .72; }
 .brand-word .i { position: relative; display: inline-flex; align-items: flex-end; margin-left: 1px; }
