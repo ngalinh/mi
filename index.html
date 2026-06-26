@@ -1,43 +1,190 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Doraemi Bot — Server</title>
-  <style>
-    :root { color-scheme: light dark; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-      background: #0f172a; color: #e2e8f0; padding: 24px;
-    }
-    .card {
-      max-width: 560px; width: 100%; background: #1e293b; border: 1px solid #334155;
-      border-radius: 16px; padding: 32px; text-align: center;
-    }
-    h1 { margin: 0 0 8px; font-size: 22px; }
-    p { margin: 8px 0; color: #94a3b8; line-height: 1.55; }
-    .badge {
-      display: inline-block; margin-bottom: 16px; padding: 4px 12px; border-radius: 999px;
-      background: #16a34a22; color: #4ade80; font-size: 13px; font-weight: 600;
-    }
-    a.btn {
-      display: inline-block; margin-top: 18px; padding: 10px 20px; border-radius: 10px;
-      background: #3b82f6; color: #fff; text-decoration: none; font-weight: 600;
-    }
-    code { background: #0f172a; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mi · Báo hàng về</title>
+  <link rel="icon" href="mi-logo.png" />
+  <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
-  <main class="card">
-    <div class="badge">● Doraemi Bot</div>
-    <h1>Server đang chạy</h1>
-    <p>Đây là phần <strong>SERVER</strong> (dashboard + API) của bot báo hàng Doraemi,
-       triển khai trên ai.basso.vn.</p>
-    <p>Giao diện quản lý nằm dưới đường dẫn bot do nền tảng cấp
-       (<code>/b/&lt;id&gt;/</code>).</p>
-    <a class="btn" href="./b/">Mở dashboard</a>
-  </main>
+  <div class="app">
+    <!-- Sidebar: icon rail -->
+    <aside class="sidebar">
+      <div class="brand" title="Mi">
+        <img class="brand-logo" src="mi-logo.png" alt="Mi" />
+      </div>
+      <nav class="rail-nav">
+        <a class="nav active" href="index.html" title="Hàng về VN"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span></a>
+        <a class="nav" href="reports.html" title="Lịch sử báo"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span></a>
+      </nav>
+      <div class="side-foot">
+        <a class="nav" href="settings.html" title="Cài đặt"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span></a>
+        <span class="rail-sep"></span>
+        <div class="avatar" title="Mi Bot">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1>Danh sách <span class="accent">Hàng về VN</span></h1>
+        </div>
+        <span class="spacer"></span>
+        <span id="testBadge" class="badge-status badge-test" style="display:none"></span>
+        <span id="mockBadge" class="badge-status badge-mock" style="display:none">MOCK DATA</span>
+        <span id="syncInfo" class="sync-info"></span>
+        <button id="syncBtn" class="btn accent">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+          Đồng bộ ngay
+        </button>
+      </header>
+
+      <div class="container">
+        <div class="card">
+          <!-- Tab nhân viên (pill) -->
+          <div class="tabs" id="staffTabs"></div>
+
+          <!-- Lọc theo trạng thái (thẻ màu) — bấm để lọc danh sách -->
+          <div class="status-tabs" id="statusTabs">
+            <button class="status-tab st-todo active" data-filter="todo">
+              <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+              <span class="st-label">Chưa báo</span>
+              <span class="st-num">0</span>
+            </button>
+            <button class="status-tab st-arrival" data-filter="arrival">
+              <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
+              <span class="st-label">Đã báo hàng</span>
+              <span class="st-num">0</span>
+            </button>
+            <button class="status-tab st-ship" data-filter="ship">
+              <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M14 9h4l4 4v4a1 1 0 0 1-1 1h-1"/><circle cx="8" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg></span>
+              <span class="st-label">Đã báo ship</span>
+              <span class="st-num">0</span>
+            </button>
+            <button class="status-tab st-error" data-filter="failed">
+              <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span>
+              <span class="st-label">Lỗi - Báo lại</span>
+              <span class="st-num">0</span>
+            </button>
+          </div>
+
+          <!-- Thanh công cụ gộp: tìm kiếm · nhóm · lọc · thao tác -->
+          <div class="toolbar-bar">
+            <div class="input-icon tb-search">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="fQ" placeholder="Tìm tên / SĐT khách..." />
+            </div>
+            <select id="fGroupBy" class="tb-select">
+              <option value="">- Group -</option>
+              <option value="date">Group theo ngày</option>
+              <option value="customer">Group theo KH</option>
+              <option value="channel">Group theo kênh</option>
+            </select>
+            <div class="tb-filter-wrap">
+              <button class="btn secondary small tb-filter" id="filterBtn" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                Bộ lọc <span class="cnt zero">0</span>
+              </button>
+              <div class="filter-pop" id="filterPop" hidden>
+                <div class="fp-head">Bộ lọc nâng cao</div>
+                <div class="fp-group">
+                  <label>Khoảng ngày nhập kho</label>
+                  <div class="fp-row2">
+                    <input type="date" id="fFrom" />
+                    <span class="muted">—</span>
+                    <input type="date" id="fTo" />
+                  </div>
+                </div>
+                <div class="fp-group">
+                  <label>Loại trừ (Delay)</label>
+                  <div class="fp-seg" data-key="exclude">
+                    <button type="button" data-v="all" class="active">Tất cả</button>
+                    <button type="button" data-v="excluded">Đã loại trừ</button>
+                    <button type="button" data-v="not">Chưa</button>
+                  </div>
+                </div>
+                <div class="fp-group">
+                  <label>Ghi chú</label>
+                  <div class="fp-seg" data-key="note">
+                    <button type="button" data-v="all" class="active">Tất cả</button>
+                    <button type="button" data-v="has">Có ghi chú</button>
+                    <button type="button" data-v="none">Chưa có</button>
+                  </div>
+                </div>
+                <div class="fp-foot">
+                  <button type="button" class="btn secondary small" id="fClear">Xoá lọc</button>
+                  <button type="button" class="btn accent small" id="fApply">Áp dụng</button>
+                </div>
+              </div>
+            </div>
+            <button class="btn accent small tb-action" id="bulkBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+              Báo hàng loạt (chưa báo)
+            </button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:34px"></th>
+                  <th class="center" style="width:50px">STT</th>
+                  <th>Ngày nhập kho</th>
+                  <th>Khách hàng</th>
+                  <th>SĐT</th>
+                  <th class="center">ND báo hàng</th>
+                  <th class="center">ND báo ship</th>
+                  <th>Trạng thái</th>
+                  <th>Ghi chú</th>
+                  <th class="center" style="width:120px">Gửi tin</th>
+                  <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Loại trừ</th>
+                  <th>Nhân viên</th>
+                </tr>
+              </thead>
+              <tbody id="rows"><tr><td colspan="12" class="empty">Đang tải...</td></tr></tbody>
+            </table>
+            <datalist id="notePresets"></datalist>
+          </div>
+          <div class="pager hidden" id="pager"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal xem/sửa nội dung + gửi Zalo -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <h3 id="modalTitle">Nội dung báo hàng</h3>
+      <p class="muted" id="modalSub"></p>
+      <textarea id="modalMsg"></textarea>
+      <div class="row">
+        <button class="btn secondary" id="modalCancel">Đóng</button>
+        <button class="btn btn-zalo" id="modalSend">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          Gửi báo hàng qua Zalo
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal xác nhận báo hàng loạt -->
+  <div class="modal-bg" id="bulkModalBg">
+    <div class="modal" style="width:440px;">
+      <h3>Xác nhận báo hàng loạt</h3>
+      <p class="muted" id="bulkSummary"></p>
+      <div class="row">
+        <button class="btn secondary" id="bulkCancel">Huỷ</button>
+        <button class="btn accent" id="bulkConfirm">Báo hàng</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="js/app.js"></script>
+  <script src="js/dashboard.js"></script>
 </body>
 </html>
