@@ -701,7 +701,6 @@
       const cnt = await App.api('/api/order-counts?' + query);
       if (seq !== _countsSeq) return;
       if (cnt && cnt.counts) counts = cnt.counts;
-      if (cnt && cnt.tabUsers && cnt.tabUsers.length) { tabUsers = cnt.tabUsers; renderTabs(); }
       _lastCountsBase = query;
       renderStatusTabs();
       updateCount(visibleOrders());
@@ -727,10 +726,14 @@
     params.set('page', currentPage);
     params.set('pageSize', PAGE_SIZE);
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
+    const needCounts = auto || opts.countsStale || baseStr !== _lastCountsBase;
     try {
-      // ƯU TIÊN bảng: gọi /api/orders TRƯỚC (1 call) và chờ nó, KHÔNG bắn 5 call đếm
-      // cùng lúc làm Basso bận -> bảng hiện nhanh nhất.
-      const res = await App.api('/api/orders?' + params.toString());
+      // Gọi orders + counts SONG SONG: counts chỉ cần 4 call nhẹ (page_size=1) nên
+      // không còn lo làm Basso bận; bảng vẫn hiện ngay khi orders về.
+      const [res] = await Promise.all([
+        App.api('/api/orders?' + params.toString()),
+        needCounts ? refreshCounts(baseStr) : Promise.resolve(),
+      ]);
       orders = res.orders || [];
       serverTotal = res.total != null ? res.total : orders.length;
       if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
@@ -757,10 +760,6 @@
       $('syncInfo').textContent = `Cập nhật ${App.fmtDateTime(new Date().toISOString())}`;
       renderTabs();
       render();
-      // Bảng đã hiện -> giờ mới cập nhật số đếm 4 thẻ (5 call), và CHỈ khi cần:
-      // base đổi (ngày/NV/tìm kiếm) hoặc autosync. Chuyển trang / đổi thẻ trạng thái
-      // KHÔNG gọi lại (số đếm không đổi) -> bớt 5 call mỗi lần lật trang.
-      if (auto || opts.countsStale || baseStr !== _lastCountsBase) refreshCounts(baseStr);
     } catch (e) {
       if (!auto) {
         rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();load()">Thử lại</button></td></tr>`;

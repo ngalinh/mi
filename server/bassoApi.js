@@ -433,18 +433,17 @@ async function getStatusCounts(filters = {}) {
   const countsTtl = Math.max(config.basso.listCacheTtlMs, 90000);
   const cacheKey = 'counts:' + JSON.stringify(base);
   const { data } = await swrFetch(cacheKey, countsTtl, async () => {
-    // Login MỘT LẦN trước khi bắn loạt -> 5 request bên dưới chỉ tái dùng token, không tự login.
+    // Login MỘT LẦN trước khi bắn loạt -> 4 request bên dưới chỉ tái dùng token, không tự login.
     await getToken();
-    // 1 lần gọi "tất cả" (lấy total + tab_users đầy đủ) + 4 lần theo từng status.
-    // page_size=1 nên rất nhẹ; chạy song song để giảm độ trễ.
-    const [allData, ...statusData] = await Promise.all([
-      apiFetch('/partner/getArrivedVnList', { query: base }),
-      ...GROUP_STATUS.map(([, code]) => apiFetch('/partner/getArrivedVnList', { query: { ...base, status: code } })),
-    ]);
-    const counts = { total: allData.total ?? 0, todo: 0, arrival: 0, ship: 0, failed: 0 };
+    // 4 call song song, mỗi call lọc theo 1 status (page_size=1 -> rất nhẹ).
+    // Bỏ call "tất cả" vì tab_users đã có từ /api/orders và total = tổng 4 nhóm.
+    const statusData = await Promise.all(
+      GROUP_STATUS.map(([, code]) => apiFetch('/partner/getArrivedVnList', { query: { ...base, status: code } })),
+    );
+    const counts = { todo: 0, arrival: 0, ship: 0, failed: 0 };
     GROUP_STATUS.forEach(([group], i) => { counts[group] = statusData[i].total ?? 0; });
-    const tabUsers = (allData.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
-    return { counts, tabUsers };
+    counts.total = counts.todo + counts.arrival + counts.ship + counts.failed;
+    return { counts };
   });
   return data;
 }
