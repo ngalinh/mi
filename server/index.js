@@ -385,6 +385,7 @@ if (config.requireApiKey && !config.apiKey) {
 app.listen(config.port, () => {
   console.log(`[server] http://localhost:${config.port}`);
   console.log(`[server] mock=${config.basso.useMock} | local-runner=${config.playwrightLocalUrl}`);
+  console.log(`[server] DB: ${config.dbPath}`);
   if (config.gatewaySecret) console.log('[server] Gateway secret: BẬT (yêu cầu X-Gateway-Secret cho /api/*)');
   if (config.registerAllowedHosts.length) console.log(`[server] register-local allowlist: ${config.registerAllowedHosts.join(', ')}`);
   autoNotify.startAutoNotify();
