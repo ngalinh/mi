@@ -951,5 +951,4 @@
   setInterval(loadHealth, 15000);
   setInterval(autoSync, AUTO_SYNC_MS);
   load();
-  App.initUserAvatar();
 })();
