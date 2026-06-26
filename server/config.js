@@ -1,5 +1,10 @@
 'use strict';
 const path = require('path');
+// Nạp .env theo thứ tự ưu tiên (dotenv KHÔNG ghi đè biến đã có sẵn trong process.env):
+//   1) process.env do nền tảng (ai.basso.vn) tiêm thẳng — ưu tiên cao nhất.
+//   2) server/.env  — nơi panel/wizard ghi (cùng thư mục với file này).
+//   3) .env ở gốc repo — tương thích chạy local / local-runner.
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const bassoBase = process.env.BASSO_API_BASE_URL || '';
