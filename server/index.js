@@ -130,6 +130,11 @@ app.get('/api/me', (req, res) => {
   res.json({ ok: true, email, staff: email ? getStaffByEmail(email) : null });
 });
 
+// Debug: xem toàn bộ headers platform inject (xoá sau khi debug xong).
+app.get('/api/debug-headers', (req, res) => {
+  res.json({ ok: true, headers: req.headers });
+});
+
 // Chỉ Admin (đang Hoạt động) được sửa danh sách NV. Miễn trừ an toàn để không tự khoá mình:
 //  - chưa có NV nào -> cho tạo (bootstrap admin đầu tiên);
 //  - không có danh tính gateway (actor null, vd chạy local/dev) -> cho qua.
