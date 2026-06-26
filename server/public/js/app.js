@@ -77,45 +77,93 @@ const App = {
   },
 
   // Lấy thông tin người đang đăng nhập từ gateway (header x-user-email) và hiển thị ở avatar.
+  // Fallback: nếu gateway không forward email, đọc từ localStorage (user tự nhập).
   async initUserAvatar() {
     const el = document.getElementById('userAvatar');
     if (!el) return;
     el.style.cursor = 'pointer';
 
+    const LS_KEY = 'mi_user_identity';
+
+    function applyIdentity(email, name) {
+      if (!email) return;
+      const parts = name.trim().split(/\s+/);
+      const initials = parts.length >= 2
+        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+        : name.slice(0, 2).toUpperCase();
+      el.innerHTML = `<span style="font-size:14px;font-weight:700;line-height:1;">${App.esc(initials)}</span>`;
+      el.title = name !== email ? `${name} — ${email}` : email;
+    }
+
     let email = '', name = '';
+
+    // 1. Thử lấy từ gateway
     try {
       const r = await this.api('/api/me');
       email = r.email || '';
       name = (r.staff && r.staff.name) || email;
-      if (email) {
-        const parts = name.trim().split(/\s+/);
-        const initials = parts.length >= 2
-          ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-          : name.slice(0, 2).toUpperCase();
-        el.innerHTML = `<span style="font-size:14px;font-weight:700;line-height:1;">${App.esc(initials)}</span>`;
-        el.title = name !== email ? `${name} — ${email}` : email;
-      }
-    } catch (_) { /* giữ icon mặc định */ }
+    } catch (_) {}
 
-    // Popup hiện email khi click
+    // 2. Fallback: lấy từ localStorage nếu gateway không có
+    if (!email) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+        email = saved.email || '';
+        name = saved.name || email;
+      } catch (_) {}
+    }
+
+    applyIdentity(email, name);
+
+    // Popup khi click: hiện info + form tự nhập nếu chưa có email từ gateway
     el.addEventListener('click', () => {
       const existing = document.getElementById('_userPopup');
       if (existing) { existing.remove(); return; }
+
       const pop = document.createElement('div');
       pop.id = '_userPopup';
       pop.style.cssText = [
         'position:fixed', 'z-index:9999',
         'background:#fff', 'border:1px solid #e2e8f0', 'border-radius:10px',
-        'box-shadow:0 4px 20px rgba(0,0,0,.13)', 'padding:14px 18px',
-        'min-width:200px', 'font-size:13px', 'color:#1a202c',
+        'box-shadow:0 4px 20px rgba(0,0,0,.13)', 'padding:16px 18px',
+        'min-width:220px', 'font-size:13px', 'color:#1a202c',
       ].join(';');
       const rect = el.getBoundingClientRect();
       pop.style.left = (rect.right + 8) + 'px';
       pop.style.top = rect.top + 'px';
-      const label = email
-        ? `<div style="font-weight:600;margin-bottom:4px;">${App.esc(name !== email ? name : email)}</div>${name !== email ? `<div style="color:#718096;">${App.esc(email)}</div>` : ''}`
-        : '<div style="color:#718096;">Chưa đăng nhập</div>';
-      pop.innerHTML = label;
+
+      if (email) {
+        const displayName = name !== email ? name : '';
+        pop.innerHTML = `
+          ${displayName ? `<div style="font-weight:600;margin-bottom:2px;">${App.esc(displayName)}</div>` : ''}
+          <div style="color:#718096;">${App.esc(email)}</div>`;
+      } else {
+        // Form tự nhập
+        pop.innerHTML = `
+          <div style="font-weight:600;margin-bottom:10px;">Bạn là ai?</div>
+          <input id="_uName" placeholder="Tên hiển thị" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #cbd5e0;border-radius:6px;margin-bottom:6px;font-size:13px;" />
+          <input id="_uEmail" placeholder="Email (bắt buộc)" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #cbd5e0;border-radius:6px;margin-bottom:10px;font-size:13px;" />
+          <button id="_uSave" style="width:100%;padding:7px;background:var(--primary,#e05c8a);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px;">Lưu</button>`;
+        setTimeout(() => {
+          const nameEl = document.getElementById('_uName');
+          const emailEl = document.getElementById('_uEmail');
+          const saveEl = document.getElementById('_uSave');
+          if (!nameEl || !emailEl || !saveEl) return;
+          // Điền sẵn giá trị cũ nếu có
+          try { const s = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); nameEl.value = s.name || ''; emailEl.value = s.email || ''; } catch (_) {}
+          nameEl.focus();
+          saveEl.addEventListener('click', () => {
+            const newEmail = emailEl.value.trim();
+            const newName = nameEl.value.trim() || newEmail;
+            if (!newEmail) { emailEl.style.borderColor = 'red'; return; }
+            localStorage.setItem(LS_KEY, JSON.stringify({ email: newEmail, name: newName }));
+            email = newEmail; name = newName;
+            applyIdentity(email, name);
+            pop.remove();
+          });
+        }, 0);
+      }
+
       document.body.appendChild(pop);
       const close = (e) => { if (!pop.contains(e.target) && e.target !== el) { pop.remove(); document.removeEventListener('click', close); } };
       setTimeout(() => document.addEventListener('click', close), 0);
