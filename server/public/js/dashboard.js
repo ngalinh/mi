@@ -762,7 +762,9 @@
       // KHÔNG gọi lại (số đếm không đổi) -> bớt 5 call mỗi lần lật trang.
       if (auto || opts.countsStale || baseStr !== _lastCountsBase) refreshCounts(baseStr);
     } catch (e) {
-      if (!auto) rowsEl.innerHTML = `<tr><td colspan="12" class="empty">Lỗi tải: ${App.esc(e.message)}</td></tr>`;
+      if (!auto) {
+        rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();load()">Thử lại</button></td></tr>`;
+      }
     }
   }
 
