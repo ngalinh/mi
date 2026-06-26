@@ -727,13 +727,9 @@
     params.set('pageSize', PAGE_SIZE);
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
     const needCounts = auto || opts.countsStale || baseStr !== _lastCountsBase;
+    if (needCounts) params.set('includeCounts', '1');
     try {
-      // Gọi orders + counts SONG SONG: counts chỉ cần 4 call nhẹ (page_size=1) nên
-      // không còn lo làm Basso bận; bảng vẫn hiện ngay khi orders về.
-      const [res] = await Promise.all([
-        App.api('/api/orders?' + params.toString()),
-        needCounts ? refreshCounts(baseStr) : Promise.resolve(),
-      ]);
+      const res = await App.api('/api/orders?' + params.toString());
       orders = res.orders || [];
       serverTotal = res.total != null ? res.total : orders.length;
       if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
@@ -758,8 +754,16 @@
         if (fresh.length) App.toast(`🆕 ${fresh.length} khách mới cần báo`, 5000);
       }
       $('syncInfo').textContent = `Cập nhật ${App.fmtDateTime(new Date().toISOString())}`;
+      // Counts đi kèm trong cùng response (server chạy song song) -> áp dụng ngay, không cần call thêm.
+      if (needCounts && res.counts) {
+        counts = res.counts;
+        _lastCountsBase = baseStr;
+      }
       renderTabs();
       render();
+      renderStatusTabs();
+      updateCount(visibleOrders());
+      if (needCounts && !res.counts) refreshCounts(baseStr);
     } catch (e) {
       if (!auto) {
         rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();load()">Thử lại</button></td></tr>`;

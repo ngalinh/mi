@@ -217,12 +217,15 @@ app.get('/api/basso/ping', async (req, res) => {
 // ---- Dashboard: danh sách hàng về ----
 app.get('/api/orders', async (req, res) => {
   try {
-    const { from, to, status, staff, q, page, pageSize } = req.query;
-    const data = await getOrders({
+    const { from, to, status, staff, q, page, pageSize, includeCounts } = req.query;
+    const ordersPromise = getOrders({
       from, to, status, staff, q,
       page: page ? parseInt(page, 10) || 1 : 1,
       pageSize: pageSize ? parseInt(pageSize, 10) || undefined : undefined,
     });
+    // Khi includeCounts=1: chạy song song orders + counts -> 1 round trip thay vì 2.
+    const countsPromise = includeCounts === '1' ? getStatusCounts({ from, to, staff, q }) : null;
+    const [data, countsData] = await Promise.all([ordersPromise, countsPromise]);
     // Gắn dấu "bot đã tự gửi" (lưu local trong mi) để dashboard phân biệt, kể cả khi
     // không cập nhật trạng thái về web Basso.
     if (Array.isArray(data.orders)) {
@@ -236,7 +239,12 @@ app.get('/api/orders', async (req, res) => {
           : withAuto;
       });
     }
-    res.json({ ok: true, ...data });
+    const out = { ok: true, ...data };
+    if (countsData) {
+      out.counts = countsData.counts;
+      if (countsData.tabUsers && countsData.tabUsers.length) out.tabUsers = countsData.tabUsers;
+    }
+    res.json(out);
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
