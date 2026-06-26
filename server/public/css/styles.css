@@ -763,6 +763,28 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   .stats { grid-template-columns: 1fr; }
   .detail-box { grid-template-columns: 1fr; }
 }
+@media (max-width: 600px) {
+  /* Tabs nhân viên: scroll ngang thay vì wrap nhiều hàng */
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs .tab { flex-shrink: 0; }
+
+  /* Toolbar: search full width, controls trên 1 hàng */
+  .toolbar-bar { gap: 8px; }
+  .toolbar-bar .tb-search { flex: 1 1 100%; }
+  .toolbar-bar .tb-action { margin-left: 0; width: 100%; }
+  .toolbar-bar .tb-action .btn { width: 100%; justify-content: center; }
+}
 @media (max-width: 520px) {
   .filters { grid-template-columns: 1fr; }
 }
