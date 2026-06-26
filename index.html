@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Doraemi Bot — Server</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #0f172a; color: #e2e8f0; padding: 24px;
+    }
+    .card {
+      max-width: 560px; width: 100%; background: #1e293b; border: 1px solid #334155;
+      border-radius: 16px; padding: 32px; text-align: center;
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    p { margin: 8px 0; color: #94a3b8; line-height: 1.55; }
+    .badge {
+      display: inline-block; margin-bottom: 16px; padding: 4px 12px; border-radius: 999px;
+      background: #16a34a22; color: #4ade80; font-size: 13px; font-weight: 600;
+    }
+    a.btn {
+      display: inline-block; margin-top: 18px; padding: 10px 20px; border-radius: 10px;
+      background: #3b82f6; color: #fff; text-decoration: none; font-weight: 600;
+    }
+    code { background: #0f172a; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="badge">● Doraemi Bot</div>
+    <h1>Server đang chạy</h1>
+    <p>Đây là phần <strong>SERVER</strong> (dashboard + API) của bot báo hàng Doraemi,
+       triển khai trên ai.basso.vn.</p>
+    <p>Giao diện quản lý nằm dưới đường dẫn bot do nền tảng cấp
+       (<code>/b/&lt;id&gt;/</code>).</p>
+    <a class="btn" href="./b/">Mở dashboard</a>
+  </main>
+</body>
+</html>

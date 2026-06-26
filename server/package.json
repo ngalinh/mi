@@ -1,0 +1,23 @@
+{
+  "name": "doraemi-bot-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Doraemi bot — SERVER (dashboard + API + SQLite) chạy trên ai.basso.vn",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "node-fetch": "^2.7.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^12.9.0"
+  }
+}
