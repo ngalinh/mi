@@ -79,7 +79,7 @@ const App = {
   // Lấy thông tin người đang đăng nhập từ gateway (header x-user-email) và hiển thị ở avatar.
   // Fallback: nếu gateway không forward email, đọc từ localStorage (user tự nhập).
   async initUserAvatar() {
-    const el = document.getElementById('userAvatar');
+    const el = document.getElementById('userAvatar') || document.querySelector('.sidebar .avatar');
     if (!el) return;
     el.style.cursor = 'pointer';
 
