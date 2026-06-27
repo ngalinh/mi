@@ -372,11 +372,15 @@ async function getArrivedItems({ id, customerId, dateInventory } = {}) {
     const items = row && Array.isArray(row.items) ? row.items.map(normalizeItem) : [];
     return { source: 'mock', items };
   }
-  const data = await apiFetch('/partner/getArrivedVnItems', {
-    query: { id, customer_id: customerId, date_inventory: dateInventory },
+  const cacheKey = 'items:' + JSON.stringify({ id, customerId, dateInventory });
+  const { data, source } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, async () => {
+    const raw = await apiFetch('/partner/getArrivedVnItems', {
+      query: { id, customer_id: customerId, date_inventory: dateInventory },
+    });
+    const items = (raw && Array.isArray(raw.items) ? raw.items : []).map(normalizeItem);
+    return { items };
   });
-  const items = (data && Array.isArray(data.items) ? data.items : []).map(normalizeItem);
-  return { source: 'api', items };
+  return { source, ...data };
 }
 
 /**
