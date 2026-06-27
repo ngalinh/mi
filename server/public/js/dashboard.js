@@ -764,10 +764,31 @@
       renderStatusTabs();
       updateCount(visibleOrders());
       if (needCounts && !res.counts) refreshCounts(baseStr);
+      // Sau khi load "Tất cả" thành công, prefetch ngầm từng tab nhân viên để
+      // cache server ấm trước — bấm tab sau sẽ trả về gần như tức thì.
+      if (!currentStaff && !auto && tabUsers.length) prefetchStaffTabs();
     } catch (e) {
       if (!auto) {
         rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();load()">Thử lại</button></td></tr>`;
       }
+    }
+  }
+
+  // Warm server-side SWR cache cho từng tab nhân viên (chạy nền, không block UI).
+  // Gọi tuần tự (không song song) để không làm Basso bận khi user đang dùng trang.
+  async function prefetchStaffTabs() {
+    const base = new URLSearchParams();
+    if (F.from) base.set('from', F.from);
+    if (F.to) base.set('to', F.to);
+    for (const u of tabUsers) {
+      try {
+        const p = new URLSearchParams(base);
+        p.set('staff', u.user_id);
+        p.set('page', '1');
+        p.set('pageSize', PAGE_SIZE);
+        p.set('includeCounts', '1');
+        await App.api('/api/orders?' + p.toString());
+      } catch { /* bỏ qua lỗi prefetch — không ảnh hưởng UI */ }
     }
   }
 
