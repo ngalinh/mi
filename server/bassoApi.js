@@ -372,11 +372,15 @@ async function getArrivedItems({ id, customerId, dateInventory } = {}) {
     const items = row && Array.isArray(row.items) ? row.items.map(normalizeItem) : [];
     return { source: 'mock', items };
   }
-  const data = await apiFetch('/partner/getArrivedVnItems', {
-    query: { id, customer_id: customerId, date_inventory: dateInventory },
+  const cacheKey = 'items:' + JSON.stringify({ id, customerId, dateInventory });
+  const { data, source } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, async () => {
+    const raw = await apiFetch('/partner/getArrivedVnItems', {
+      query: { id, customer_id: customerId, date_inventory: dateInventory },
+    });
+    const items = (raw && Array.isArray(raw.items) ? raw.items : []).map(normalizeItem);
+    return { items };
   });
-  const items = (data && Array.isArray(data.items) ? data.items : []).map(normalizeItem);
-  return { source: 'api', items };
+  return { source, ...data };
 }
 
 /**
@@ -449,6 +453,25 @@ async function getStatusCounts(filters = {}) {
 }
 
 /**
+ * Lấy danh sách nhân viên (tab_users) không lọc theo status — để tab staff luôn đầy đủ.
+ * Cache lâu (5 phút) vì danh sách NV ít thay đổi.
+ */
+async function getTabUsers() {
+  if (config.basso.useMock) {
+    const rows = loadMock();
+    return { tabUsers: uniqueStaff(rows) };
+  }
+  const cacheKey = 'tabUsers';
+  const ttl = Math.max(config.basso.listCacheTtlMs, 300000); // tối thiểu 5 phút
+  const { data } = await swrFetch(cacheKey, ttl, async () => {
+    const raw = await apiFetch('/partner/getArrivedVnList', { query: { page: 1, page_size: 1 } });
+    const tabUsers = (raw.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
+    return { tabUsers };
+  });
+  return data;
+}
+
+/**
  * Kéo TẤT CẢ đơn khớp bộ lọc qua mọi trang (gộp lại). Dùng cho "Báo hàng loạt" để
  * không bị giới hạn ở trang đang xem. Lặp tối đa 100 trang × 100 đơn (an toàn).
  * @param {object} [filters] { status, from, to, staff, q }
@@ -473,4 +496,4 @@ async function fetchAllOrders(filters = {}) {
   return all;
 }
 
-module.exports = { getOrders, getStatusCounts, fetchAllOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = { getOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, normalizeOrder, normalizeItem, STATUS_LABELS };

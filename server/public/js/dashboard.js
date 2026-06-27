@@ -1003,6 +1003,16 @@
   // currentGroup = 'todo' -> không giới hạn ngày. Sync input để popover hiện đúng.
   if (currentGroup !== 'todo') syncDateInputs();
 
+  // Tải danh sách nhân viên không lọc status ngay khi khởi tạo -> tab staff luôn đầy đủ.
+  App.api('/api/tab-users').then((r) => {
+    if (r && r.tabUsers && r.tabUsers.length) {
+      const map = new Map(tabUsers.map((u) => [String(u.user_id), u]));
+      r.tabUsers.forEach((u) => map.set(String(u.user_id), u));
+      tabUsers = [...map.values()];
+      renderTabs();
+    }
+  }).catch(() => {});
+
   loadHealth();
   setInterval(loadHealth, 15000);
   setInterval(autoSync, AUTO_SYNC_MS);

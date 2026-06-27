@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
-const { getOrders, getStatusCounts, fetchAllOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
+const { getOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
@@ -236,6 +236,16 @@ app.get('/api/orders', async (req, res) => {
           : withAuto;
       });
     }
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Danh sách nhân viên (không lọc status) — để tab staff luôn đầy đủ ----
+app.get('/api/tab-users', async (req, res) => {
+  try {
+    const data = await getTabUsers();
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
