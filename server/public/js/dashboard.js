@@ -710,18 +710,10 @@
   // Số đếm 4 thẻ chỉ phụ thuộc bộ lọc base (ngày/NV/tìm kiếm), KHÔNG đổi theo trang hay
   // theo thẻ trạng thái -> chỉ gọi lại khi base đổi (hoặc autosync). _lastCountsBase nhớ
   // base đã đếm gần nhất; _countsSeq chống race khi bấm nhanh.
-  let _countsSeq = 0;
-  let _lastCountsBase = null;
-  async function refreshCounts(query) {
-    const seq = ++_countsSeq;
-    try {
-      const cnt = await App.api('/api/order-counts?' + query);
-      if (seq !== _countsSeq) return;
-      if (cnt && cnt.counts) counts = cnt.counts;
-      _lastCountsBase = query;
-      renderStatusTabs();
-      updateCount(visibleOrders());
-    } catch { /* lỗi đếm -> giữ số cũ, không phá bảng */ }
+  // Cập nhật count cho tab đang active từ serverTotal (đã có sẵn trong response,
+  // không cần call thêm). 3 tab còn lại giữ số cũ đến khi user bấm vào.
+  function updateActiveCount() {
+    if (currentGroup) counts[currentGroup] = serverTotal;
   }
 
   async function load(opts = {}) {
@@ -743,13 +735,17 @@
     params.set('page', currentPage);
     params.set('pageSize', PAGE_SIZE);
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
-    const needCounts = auto || opts.countsStale || baseStr !== _lastCountsBase;
-    if (needCounts) params.set('includeCounts', '1');
     try {
       const res = await App.api('/api/orders?' + params.toString());
       orders = res.orders || [];
       serverTotal = res.total != null ? res.total : orders.length;
-      if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
+      // Merge tabUsers thay vì replace: tránh staff biến khỏi tab khi filter ngày
+      // làm Basso trả tab_users thiếu (vd tháng này không có đơn của nhân viên đó).
+      if (res.tabUsers && res.tabUsers.length) {
+        const map = new Map(tabUsers.map((u) => [String(u.user_id), u]));
+        res.tabUsers.forEach((u) => map.set(String(u.user_id), u));
+        tabUsers = [...map.values()];
+      }
       // Trang hiện tại vượt quá tổng (vd sau khi báo loạt làm đơn rời nhóm) -> nhảy về trang cuối.
       if (!orders.length && currentPage > 1 && serverTotal > 0) {
         currentPage = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
@@ -771,16 +767,11 @@
         if (fresh.length) App.toast(`🆕 ${fresh.length} khách mới cần báo`, 5000);
       }
       $('syncInfo').textContent = `Cập nhật ${App.fmtDateTime(new Date().toISOString())}`;
-      // Counts đi kèm trong cùng response (server chạy song song) -> áp dụng ngay, không cần call thêm.
-      if (needCounts && res.counts) {
-        counts = res.counts;
-        _lastCountsBase = baseStr;
-      }
+      updateActiveCount();
       renderTabs();
       render();
       renderStatusTabs();
       updateCount(visibleOrders());
-      if (needCounts && !res.counts) refreshCounts(baseStr);
       // Sau khi load "Tất cả" thành công, prefetch ngầm từng tab nhân viên để
       // cache server ấm trước — bấm tab sau sẽ trả về gần như tức thì.
       if (!currentStaff && !auto && tabUsers.length) prefetchStaffTabs();
@@ -797,15 +788,21 @@
     const base = new URLSearchParams();
     if (F.from) base.set('from', F.from);
     if (F.to) base.set('to', F.to);
+    // Chờ 3s trước khi bắt đầu prefetch để Basso xử lý xong request chính trước.
+    await new Promise((r) => setTimeout(r, 3000));
     for (const u of tabUsers) {
       try {
         const p = new URLSearchParams(base);
         p.set('staff', u.user_id);
         p.set('page', '1');
         p.set('pageSize', PAGE_SIZE);
-        p.set('includeCounts', '1');
         await App.api('/api/orders?' + p.toString());
-      } catch { /* bỏ qua lỗi prefetch — không ảnh hưởng UI */ }
+        // Delay giữa các request để không làm Basso bận.
+        await new Promise((r) => setTimeout(r, 1500));
+      } catch {
+        // Basso đang bận/lỗi -> dừng prefetch, không thử tiếp.
+        break;
+      }
     }
   }
 
