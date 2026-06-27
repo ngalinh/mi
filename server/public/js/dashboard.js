@@ -803,6 +803,8 @@
     const base = new URLSearchParams();
     if (F.from) base.set('from', F.from);
     if (F.to) base.set('to', F.to);
+    // Chờ 3s trước khi bắt đầu prefetch để Basso xử lý xong request chính trước.
+    await new Promise((r) => setTimeout(r, 3000));
     for (const u of tabUsers) {
       try {
         const p = new URLSearchParams(base);
@@ -811,7 +813,12 @@
         p.set('pageSize', PAGE_SIZE);
         p.set('includeCounts', '1');
         await App.api('/api/orders?' + p.toString());
-      } catch { /* bỏ qua lỗi prefetch — không ảnh hưởng UI */ }
+        // Delay giữa các request để không làm Basso bận.
+        await new Promise((r) => setTimeout(r, 1500));
+      } catch {
+        // Basso đang bận/lỗi -> dừng prefetch, không thử tiếp.
+        break;
+      }
     }
   }
 
