@@ -393,12 +393,24 @@
   }
 
   // ---------------- Thẻ lọc trạng thái ----------------
+  function periodLabel() {
+    if (!F.from && !F.to) return '';
+    if (F.from) {
+      const [y, m] = F.from.split('-');
+      return `T${parseInt(m, 10)}/${y}`;
+    }
+    return '';
+  }
+
   function renderStatusTabs() {
+    const label = periodLabel();
     document.querySelectorAll('#statusTabs .status-tab').forEach((tab) => {
       const key = tab.dataset.filter;
       const num = tab.querySelector('.st-num');
       if (num) num.textContent = counts[key] ?? 0;
       tab.classList.toggle('active', key === currentGroup);
+      const period = tab.querySelector('.st-period');
+      if (period) period.textContent = label;
     });
   }
 
