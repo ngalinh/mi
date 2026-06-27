@@ -356,14 +356,16 @@ a { color: var(--primary); text-decoration: none; }
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-color) 18%, transparent);
 }
 
-/* Biến thể 3 thẻ thống kê (trang Lịch sử báo) — bấm để lọc theo loại */
+/* Biến thể thẻ thống kê (trang Lịch sử báo) — bấm để lọc theo loại */
 .status-tabs.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.status-tabs.cols-4 { grid-template-columns: repeat(4, 1fr); }
 .status-tab.st-total   { --st-color: var(--amber); --st-tint: var(--amber-soft); }
+.status-tab.st-pending { --st-color: var(--blue);  --st-tint: var(--blue-soft); }
 .status-tab.st-success { --st-color: var(--green); --st-tint: var(--green-soft); }
 .status-tab.st-fail    { --st-color: var(--red);   --st-tint: var(--red-soft); }
 
 @media (max-width: 720px) {
-  .status-tabs, .status-tabs.cols-3 { grid-template-columns: repeat(2, 1fr); }
+  .status-tabs, .status-tabs.cols-3, .status-tabs.cols-4 { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* ============================================================
@@ -649,6 +651,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .pill.da { background: var(--green-soft); color: var(--green); }
 .pill.success { background: var(--green-soft); color: var(--green); }
 .pill.failed { background: var(--red-soft); color: var(--red); }
+.pill.pending { background: var(--blue-soft); color: var(--blue); }
 
 .msg-cell { min-width: 240px; max-width: 360px; white-space: pre-wrap; color: var(--text-soft); font-size: 13px; line-height: 1.5; }
 

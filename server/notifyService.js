@@ -3,7 +3,7 @@ const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
 const { sendBaoHang } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
-const { addReport, getAutoRecord, recordAutoNotified, autoKey } = require('./db');
+const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey } = require('./db');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
@@ -59,6 +59,24 @@ async function notifyOne(order, opts = {}) {
   // theo NV phụ trách đơn (accountsStore trên runner), fallback ZALO_ACCOUNT_MAP / mặc định.
   const resolved = await resolveForOrder(order, opts);
 
+  // Tra mã ĐH + ảnh SP TRƯỚC khi gửi để dòng "đang báo" đã đủ thông tin hiển thị (chỉ tra 1 lần,
+  // dùng lại cho cả lúc cập nhật kết quả cuối).
+  const meta = await resolveOrderMeta(order);
+
+  // Ghi 1 dòng "đang báo" (pending) NGAY trước khi gửi. Nhờ vậy cả báo tự động lẫn báo tay đều
+  // thấy ngay đã nhận lệnh gửi cho khách nào, kể cả khi job kéo dài (sendBaoHang poll tới 10 phút)
+  // hay đang xếp hàng trong báo loạt. Sau khi gửi xong sẽ UPDATE chính dòng này thành success/failed.
+  const pending = addReport({
+    orderId: meta.orderCode,
+    customerName: order.customerName,
+    phone: order.phone,
+    staff: order.staff,
+    message,
+    status: 'pending',
+    images: meta.images,
+    sentBy: opts.actor || null,
+  });
+
   let result;
   try {
     result = await sendBaoHang({
@@ -89,19 +107,11 @@ async function notifyOne(order, opts = {}) {
     }
   }
 
-  const meta = await resolveOrderMeta(order);
-  const report = addReport({
-    orderId: meta.orderCode,
-    customerName: order.customerName,
-    phone: order.phone,
-    staff: order.staff,
-    message,
+  // Chốt kết quả vào CHÍNH dòng "đang báo" đã ghi ở trên (không tạo dòng mới).
+  const report = updateReport(pending.id, {
     status: result.ok ? 'success' : 'failed',
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
-    images: meta.images,
-    // Audit: ai gửi tin này. 'bot' (tự động) hoặc danh tính nhân viên do gateway forward.
-    sentBy: opts.actor || null,
   });
 
   return { order, ...result, updateError, report };

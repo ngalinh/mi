@@ -42,11 +42,16 @@
       </header>
 
       <div class="container">
-        <div class="status-tabs cols-3" id="statCards">
+        <div class="status-tabs cols-4" id="statCards">
           <button type="button" class="status-tab st-total active" data-filter="">
             <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></span>
             <span class="st-label">Tổng lượt báo</span>
             <span class="st-num" id="sTotal">0</span>
+          </button>
+          <button type="button" class="status-tab st-pending" data-filter="pending">
+            <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <span class="st-label">Đang báo</span>
+            <span class="st-num" id="sPending">0</span>
           </button>
           <button type="button" class="status-tab st-success" data-filter="success">
             <span class="st-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/></svg></span>
@@ -63,7 +68,7 @@
         <div class="card">
           <div class="toolbar">
             <div class="field" style="width:200px"><label>Trạng thái</label>
-              <select id="fStatus"><option value="">Tất cả</option><option value="success">Thành công</option><option value="failed">Thất bại</option></select>
+              <select id="fStatus"><option value="">Tất cả</option><option value="pending">Đang báo</option><option value="success">Thành công</option><option value="failed">Thất bại</option></select>
             </div>
             <div class="field grow"><label>Tìm kiếm</label>
               <div class="input-icon">
