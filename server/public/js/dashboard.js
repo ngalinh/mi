@@ -20,13 +20,10 @@
   // từ Basso không xoá mất phần đang soạn dở. Xoá khỏi map ngay khi lưu thành công.
   const dirtyNotes = new Map();
 
-  // Bộ lọc nâng cao (popover): khoảng ngày (server-side) + loại trừ/ghi chú (client-side)
-  // Mặc định: từ ngày 1 tháng hiện tại (trừ tab "Chưa báo" = all-time để không bỏ sót).
-  function defaultMonthFrom() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-  }
-  const F = { from: defaultMonthFrom(), to: '', exclude: 'all', note: 'all' };
+  // Bộ lọc nâng cao (popover): khoảng ngày + loại trừ/ghi chú (client-side).
+  // Mặc định: ALL-TIME (không giới hạn ngày) cho MỌI tab -> 4 thẻ đếm luôn nhất quán, đổi
+  // tab không làm số nhảy. Người dùng vẫn có thể tự đặt khoảng ngày trong "Bộ lọc" khi cần.
+  const F = { from: '', to: '', exclude: 'all', note: 'all' };
 
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
@@ -955,24 +952,16 @@
   });
   $('bulkBtn').addEventListener('click', openBulkModal);
 
-  // Thẻ trạng thái: bấm để lọc; bấm lại thẻ đang chọn để bỏ lọc (xem tất cả).
+  // Thẻ trạng thái: bấm để lọc; bấm lại thẻ đang chọn để bỏ lọc (xem tất cả). Mọi tab cùng
+  // khoảng ngày (mặc định all-time) -> đổi tab KHÔNG đổi phạm vi, chỉ là lọc trạng thái tức
+  // thì trên tập đã có (client-mode); server-mode thì gọi lại theo trạng thái mới.
   $('statusTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.status-tab');
     if (!tab) return;
     const key = tab.dataset.filter;
-    const prevFrom = F.from, prevTo = F.to;
     currentGroup = (key === currentGroup) ? '' : key;
     currentPage = 1;
-    // "Chưa báo" = all-time để không bỏ sót đơn cũ; tab khác = tháng hiện tại.
-    if (currentGroup === 'todo') {
-      F.from = ''; F.to = '';
-    } else if (!F.from && !F.to) {
-      F.from = defaultMonthFrom();
-    }
-    syncDateInputs();
-    // Đổi khoảng ngày -> phải kéo lại tập; chỉ đổi trạng thái -> lọc tức thì (client) / gọi server.
-    if (F.from !== prevFrom || F.to !== prevTo) reloadScope();
-    else applyFilters({ keepPage: true });
+    applyFilters({ keepPage: true });
   });
 
   $('staffTabs').addEventListener('click', (e) => {
@@ -1026,14 +1015,13 @@
     if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; reloadScope(); } else rerender();
   });
   $('fClear').addEventListener('click', () => {
-    const hadDate = F.from || F.to;
-    const resetFrom = currentGroup !== 'todo' ? defaultMonthFrom() : '';
-    F.from = resetFrom; F.to = ''; F.exclude = 'all'; F.note = 'all';
+    const hadDate = !!(F.from || F.to);
+    F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all'; // về all-time như mặc định
     syncDateInputs();
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
-    if (hadDate !== F.from) { currentPage = 1; reloadScope(); } else rerender();
+    if (hadDate) { currentPage = 1; reloadScope(); } else rerender();
   });
 
   // Delegation cho bảng
