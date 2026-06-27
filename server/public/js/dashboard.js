@@ -18,7 +18,12 @@
   const dirtyNotes = new Map();
 
   // Bộ lọc nâng cao (popover): khoảng ngày (server-side) + loại trừ/ghi chú (client-side)
-  const F = { from: '', to: '', exclude: 'all', note: 'all' };
+  // Mặc định: từ ngày 1 tháng hiện tại (trừ tab "Chưa báo" = all-time để không bỏ sót).
+  function defaultMonthFrom() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  }
+  const F = { from: defaultMonthFrom(), to: '', exclude: 'all', note: 'all' };
 
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
@@ -388,12 +393,24 @@
   }
 
   // ---------------- Thẻ lọc trạng thái ----------------
+  function periodLabel() {
+    if (!F.from && !F.to) return '';
+    if (F.from) {
+      const [y, m] = F.from.split('-');
+      return `T${parseInt(m, 10)}/${y}`;
+    }
+    return '';
+  }
+
   function renderStatusTabs() {
+    const label = periodLabel();
     document.querySelectorAll('#statusTabs .status-tab').forEach((tab) => {
       const key = tab.dataset.filter;
       const num = tab.querySelector('.st-num');
       if (num) num.textContent = counts[key] ?? 0;
       tab.classList.toggle('active', key === currentGroup);
+      const period = tab.querySelector('.st-period');
+      if (period) period.textContent = label;
     });
   }
 
@@ -849,7 +866,14 @@
     const key = tab.dataset.filter;
     currentGroup = (key === currentGroup) ? '' : key;
     currentPage = 1;
-    load(); // đổi trạng thái -> lọc lại phía server
+    // "Chưa báo" = all-time để không bỏ sót đơn cũ; tab khác = tháng hiện tại.
+    if (currentGroup === 'todo') {
+      F.from = ''; F.to = '';
+    } else if (!F.from && !F.to) {
+      F.from = defaultMonthFrom();
+    }
+    syncDateInputs();
+    load();
   });
 
   $('staffTabs').addEventListener('click', (e) => {
@@ -903,13 +927,13 @@
   });
   $('fClear').addEventListener('click', () => {
     const hadDate = F.from || F.to;
-    F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all';
-    $('fFrom').value = ''; $('fTo').value = '';
+    const resetFrom = currentGroup !== 'todo' ? defaultMonthFrom() : '';
+    F.from = resetFrom; F.to = ''; F.exclude = 'all'; F.note = 'all';
+    syncDateInputs();
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
-    updateFilterBadge();
-    if (hadDate) { currentPage = 1; load(); } else render();
+    if (hadDate !== F.from) { currentPage = 1; load(); } else render();
   });
 
   // Delegation cho bảng
@@ -970,6 +994,17 @@
   // Gợi ý mẫu ghi chú dùng chung cho mọi ô (datalist) — vừa gõ tự do vừa chọn nhanh.
   const notePresetsEl = $('notePresets');
   if (notePresetsEl) notePresetsEl.innerHTML = DELAY_REASONS.map((r) => `<option value="${App.esc(r)}"></option>`).join('');
+
+  // Đồng bộ F.from / F.to vào input date trong popover bộ lọc.
+  function syncDateInputs() {
+    $('fFrom').value = F.from || '';
+    $('fTo').value = F.to || '';
+    updateFilterBadge();
+  }
+
+  // Khởi tạo: mặc định tab "Chưa báo" (all-time) nên không set from; lần đầu load
+  // currentGroup = 'todo' -> không giới hạn ngày. Sync input để popover hiện đúng.
+  if (currentGroup !== 'todo') syncDateInputs();
 
   loadHealth();
   setInterval(loadHealth, 15000);
