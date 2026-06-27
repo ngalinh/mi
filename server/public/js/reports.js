@@ -2,7 +2,16 @@
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
 
+  // Khi danh sách còn dòng "đang báo", tự tải lại sau vài giây để badge tự cập nhật khi job
+  // gửi xong. Hết pending thì dừng (không poll vô ích). Mỗi lần load() gọi lại để gia hạn/huỷ.
+  let refreshTimer = null;
+  function scheduleAutoRefresh(hasPending) {
+    if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
+    if (hasPending) refreshTimer = setTimeout(load, 3000);
+  }
+
   function resultPill(s) {
+    if (s === 'pending') return '<span class="pill pending">⏳ Đang báo</span>';
     const ok = s === 'success';
     const cls = ok ? 'success' : 'failed';
     const txt = ok ? 'Thành công' : 'Thất bại';
@@ -55,7 +64,10 @@
       $('sTotal').textContent = res.stats.total;
       $('sSuccess').textContent = res.stats.success;
       $('sFailed').textContent = res.stats.failed;
+      $('sPending').textContent = res.stats.pending || 0;
       const items = res.items || [];
+      // Còn dòng "đang báo" -> tự tải lại để badge tự lật sang Thành công/Thất bại khi job xong.
+      scheduleAutoRefresh(items.some((r) => r.status === 'pending'));
       if (!items.length) {
         rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Chưa có lượt báo nào</td></tr>';
         return;

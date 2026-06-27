@@ -40,7 +40,7 @@ db.exec(`
     phone         TEXT,
     staff         TEXT,
     message       TEXT,
-    status        TEXT NOT NULL,           -- 'success' | 'failed'
+    status        TEXT NOT NULL,           -- 'pending' | 'success' | 'failed'
     error         TEXT,
     job_id        TEXT,
     created_at    TEXT NOT NULL            -- ISO string
@@ -56,6 +56,20 @@ try { db.exec('ALTER TABLE reports ADD COLUMN images TEXT'); } catch (_) { /* đ
 // Migration: ghi NGƯỜI GỬI (audit). 'bot' = luồng tự động; còn lại là danh tính nhân
 // viên do gateway ai.basso.vn forward (xem config.auth.userHeaders). null = không rõ.
 try { db.exec('ALTER TABLE reports ADD COLUMN sent_by TEXT'); } catch (_) { /* đã có cột */ }
+
+// Dọn dòng "đang báo" MỒ CÔI lúc khởi động. notifyOne ghi 1 dòng status='pending' TRƯỚC khi
+// gửi rồi poll local-runner tới khi xong; nếu server restart/crash giữa chừng thì KHÔNG còn
+// ai poll tiếp -> dòng pending kẹt mãi. mi-server chạy 1 instance (ecosystem.config.js:
+// exec_mode 'fork', instances 1) nên mọi dòng pending còn sót lúc boot CHẮC CHẮN mồ côi ->
+// đánh dấu 'failed' luôn, không cần phán đoán theo tuổi.
+// ⚠️ NẾU sau này scale mi-server lên NHIỀU instance, câu này sẽ xoá nhầm job instance khác
+// đang gửi dở -> lúc đó đổi sang lọc theo tuổi (vd created_at < now - 15 phút, lớn hơn timeout
+// 10 phút của sendBaoHang).
+db.prepare(
+  `UPDATE reports SET status = 'failed',
+     error = COALESCE(error, 'Mất theo dõi (server khởi động lại khi đang gửi)')
+   WHERE status = 'pending'`,
+).run();
 
 db.exec(`  -- Chống gửi trùng cho luồng TỰ ĐỘNG báo hàng: mỗi đơn (order_id) chỉ tự gửi 1 lần thành công.
   -- Khi lỗi, tăng attempts; quá maxRetries thì thôi (tránh spam khi local-runner offline).
@@ -112,6 +126,35 @@ function addReport(row) {
   };
   const info = insertStmt.run(data);
   return { id: info.lastInsertRowid, ...data };
+}
+
+const updateStmt = db.prepare(`
+  UPDATE reports
+     SET status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id
+   WHERE id = @id
+`);
+const getReportStmt = db.prepare('SELECT * FROM reports WHERE id = @id');
+
+/**
+ * Cập nhật 1 report đã có (dùng để chuyển dòng 'pending' -> 'success'/'failed' sau khi job
+ * gửi xong). Chỉ đổi các field truyền vào; field bỏ trống giữ nguyên giá trị cũ.
+ * Trả về dòng mới nhất (đã parse images) hoặc null nếu không tìm thấy id.
+ */
+function updateReport(id, fields = {}) {
+  const cur = getReportStmt.get({ id });
+  if (!cur) return null;
+  const next = {
+    id,
+    status: fields.status ?? cur.status,
+    error: fields.error !== undefined ? fields.error : cur.error,
+    job_id: fields.jobId !== undefined ? fields.jobId : cur.job_id,
+    images: fields.images !== undefined
+      ? (Array.isArray(fields.images) && fields.images.length ? JSON.stringify(fields.images) : null)
+      : cur.images,
+    order_id: fields.orderId !== undefined ? fields.orderId : cur.order_id,
+  };
+  updateStmt.run(next);
+  return parseImages(getReportStmt.get({ id }));
 }
 
 // Đổi cột images (JSON string) -> mảng URL cho client. Lỗi parse -> [].
@@ -258,13 +301,16 @@ function stats() {
     SELECT
       COUNT(*) AS total,
       SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success,
-      SUM(CASE WHEN status='failed'  THEN 1 ELSE 0 END) AS failed
+      SUM(CASE WHEN status='failed'  THEN 1 ELSE 0 END) AS failed,
+      SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
     FROM reports
   `).get();
-  return { total: row.total || 0, success: row.success || 0, failed: row.failed || 0 };
+  return {
+    total: row.total || 0, success: row.success || 0, failed: row.failed || 0, pending: row.pending || 0,
+  };
 }
 
 module.exports = {
-  db, addReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
+  db, addReport, updateReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
 };
