@@ -749,7 +749,13 @@
       const res = await App.api('/api/orders?' + params.toString());
       orders = res.orders || [];
       serverTotal = res.total != null ? res.total : orders.length;
-      if (res.tabUsers && res.tabUsers.length) tabUsers = res.tabUsers;
+      // Merge tabUsers thay vì replace: tránh staff biến khỏi tab khi filter ngày
+      // làm Basso trả tab_users thiếu (vd tháng này không có đơn của nhân viên đó).
+      if (res.tabUsers && res.tabUsers.length) {
+        const map = new Map(tabUsers.map((u) => [String(u.user_id), u]));
+        res.tabUsers.forEach((u) => map.set(String(u.user_id), u));
+        tabUsers = [...map.values()];
+      }
       // Trang hiện tại vượt quá tổng (vd sau khi báo loạt làm đơn rời nhóm) -> nhảy về trang cuối.
       if (!orders.length && currentPage > 1 && serverTotal > 0) {
         currentPage = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
