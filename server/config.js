@@ -80,6 +80,10 @@ module.exports = {
     // TTL (ms) cache danh sách hàng về trong RAM — auto-sync/đổi tab/gõ tìm kiếm lặp lại
     // không phải gọi lại Basso mỗi lần. 0 = tắt cache.
     listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '30000', 10) || 0, 0),
+    // Ngưỡng số đơn để dashboard lọc client-side (kéo hết 1 lần rồi lọc NV/trạng thái/trang
+    // ngay trên trình duyệt). Tập vượt ngưỡng -> /api/orders/all trả truncated=true để client
+    // tự fallback về phân trang server (tránh kéo quá nặng). 0 = luôn cho phép client-side.
+    clientMaxOrders: Math.max(parseInt(process.env.BASSO_CLIENT_MAX_ORDERS || '3000', 10) || 0, 0),
     // Bật để in thời gian từng call tới Basso (chẩn đoán chậm: do mạng hay do Basso).
     // BASSO_LOG_TIMING=true -> log "[basso] getArrivedVnList 2380ms". Mặc định tắt.
     logTiming: String(process.env.BASSO_LOG_TIMING || 'false').toLowerCase() === 'true',
