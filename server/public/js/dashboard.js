@@ -1,5 +1,8 @@
 (() => {
-  let orders = [];
+  let orders = [];        // đơn của TRANG đang hiển thị (đã lọc + phân trang)
+  let allOrders = [];     // (client-mode) TOÀN BỘ đơn của khoảng ngày — để lọc NV/trạng thái/trang tại client
+  let clientMode = false; // true = đã kéo đủ tập, lọc/phân trang tại client (click tức thì);
+                          // false = fallback phân trang server (tập quá lớn / chưa kéo xong)
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
@@ -414,15 +417,20 @@
     });
   }
 
-  // Đơn hiển thị = trang hiện tại (server đã lọc theo trạng thái) + bộ lọc nâng cao
-  // (loại trừ/ghi chú lọc client-side, chỉ trong phạm vi trang đang xem).
-  function visibleOrders() {
-    let list = orders.slice();
+  // Bộ lọc nâng cao "Loại trừ/Ghi chú" (client-side) — tách riêng để dùng được cả khi
+  // lọc cả tập (client-mode, trước khi phân trang) lẫn trong phạm vi 1 trang (server-mode).
+  function applyExcludeNote(list) {
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
-    if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
+    else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
-    if (F.note === 'none') list = list.filter((o) => !(o.note || '').trim());
+    else if (F.note === 'none') list = list.filter((o) => !(o.note || '').trim());
     return list;
+  }
+
+  // Đơn hiển thị trên trang hiện tại + bộ lọc nâng cao. Trong client-mode `orders` đã được
+  // applyView lọc/phân trang sẵn nên applyExcludeNote ở đây là vô hại (idempotent).
+  function visibleOrders() {
+    return applyExcludeNote(orders.slice());
   }
 
   function render() {
@@ -487,7 +495,7 @@
     p = Math.min(Math.max(1, parseInt(p, 10) || 1), totalPages);
     if (p === currentPage) return;
     currentPage = p;
-    load({ keepPage: true });
+    if (clientMode) applyView({ keepPage: true }); else load({ keepPage: true });
     const tw = document.querySelector('.table-wrap');
     if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -530,7 +538,7 @@
       await updateRow(o, { status: code, note: o.note || '' });
       o.statusCode = code;
       App.toast('✅ Đã cập nhật trạng thái');
-      load({ keepPage: true, countsStale: true }); // dòng rời nhóm + số đếm thẻ đổi -> tải lại + đếm lại
+      afterMutation(); // dòng rời nhóm + số đếm thẻ đổi -> cập nhật ngay (client) / tải lại (server)
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
       const sel = rowsEl.querySelector(`.status-sel[data-id="${cssEsc(String(id))}"]`);
@@ -546,7 +554,7 @@
     const prevReason = o.delayReason || '';
     if (want) { excluded.add(id); } else { excluded.delete(id); o.delayReason = ''; o._delayOther = false; }
     o.delayed = want;
-    render(); // vẽ lại để hiện/ẩn dropdown lý do delay theo trạng thái mới
+    rerender(); // vẽ lại để hiện/ẩn dropdown lý do delay (client-mode lọc lại nếu đang lọc theo Loại trừ)
     updateCount();
     try {
       await App.api('/api/delay', {
@@ -559,7 +567,7 @@
       if (want) excluded.delete(id); else excluded.add(id);
       o.delayed = !want;
       o.delayReason = prevReason;
-      render();
+      rerender();
       updateCount();
       App.toast(`❌ Không lưu được Loại trừ: ${e.message}`, 5000);
     }
@@ -664,7 +672,7 @@
       const r = res.results[0];
       if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
       else App.toast(`❌ ${r.error}`, 6000);
-      await load({ keepPage: true, countsStale: true });
+      afterMutation();
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
@@ -698,7 +706,7 @@
         }),
       });
       App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
-      await load({ countsStale: true });
+      afterMutation();
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
@@ -707,28 +715,114 @@
   }
 
   // ---------------- Load ----------------
-  // Số đếm 4 thẻ chỉ phụ thuộc bộ lọc base (ngày/NV/tìm kiếm), KHÔNG đổi theo trang hay
-  // theo thẻ trạng thái -> chỉ gọi lại khi base đổi (hoặc autosync). _lastCountsBase nhớ
-  // base đã đếm gần nhất; _countsSeq chống race khi bấm nhanh.
-  // Cập nhật count cho tab đang active từ serverTotal (đã có sẵn trong response,
-  // không cần call thêm). 3 tab còn lại giữ số cũ đến khi user bấm vào.
+  // Merge tabUsers thay vì replace: tránh nhân viên biến khỏi tab khi 1 response trả
+  // tab_users thiếu (vd lọc ngày làm tháng này không có đơn của NV đó).
+  function mergeTabUsers(list) {
+    const map = new Map(tabUsers.map((u) => [String(u.user_id), u]));
+    list.forEach((u) => map.set(String(u.user_id), u));
+    tabUsers = [...map.values()];
+  }
+
+  // Dọn ghi chú "chưa lưu" đã trùng nội dung Basso (đã lưu nơi khác) + dựng lại tập `excluded`
+  // (cờ Delay) từ dữ liệu server (lưu ở mi) cho danh sách vừa nhận.
+  function syncLocalFlags(list) {
+    list.forEach((o) => {
+      const id = String(o.id);
+      if (dirtyNotes.has(id) && (o.note || '') === dirtyNotes.get(id)) dirtyNotes.delete(id);
+    });
+    excluded.clear();
+    list.forEach((o) => { if (o.delayed) excluded.add(String(o.id)); });
+  }
+
+  function setSyncInfo() {
+    $('syncInfo').textContent = `Cập nhật ${App.fmtDateTime(new Date().toISOString())}`;
+  }
+
+  // ----- CLIENT-MODE: lọc/đếm/phân trang ngay trên tập đầy đủ (không gọi server) -----
+  // Đếm 4 nhóm theo groupOf (nhất quán với badge từng dòng: đơn bot đã gửi tính là "arrival").
+  function countGroups(list) {
+    const c = { todo: 0, arrival: 0, ship: 0, failed: 0, total: list.length };
+    for (const o of list) c[groupOf(o)] += 1;
+    return c;
+  }
+
+  // Lọc allOrders theo NV + tìm kiếm + trạng thái + loại trừ/ghi chú, cập nhật 4 thẻ đếm,
+  // rồi phân trang client. Tức thì, KHÔNG round-trip. (Ngày đã lọc lúc kéo tập nên bỏ qua.)
+  function applyView(opts = {}) {
+    if (!opts.keepPage && opts.resetPage) currentPage = 1;
+    let base = allOrders;
+    if (currentStaff) base = base.filter((o) => String(o.userId) === String(currentStaff));
+    const q = $('fQ').value.trim().toLowerCase();
+    if (q) base = base.filter((o) => `${o.customerName} ${o.phone}`.toLowerCase().includes(q));
+    counts = countGroups(base); // cả 4 thẻ luôn đúng theo NV + tìm kiếm hiện tại
+    let list = currentGroup ? base.filter((o) => groupOf(o) === currentGroup) : base;
+    list = applyExcludeNote(list);
+    serverTotal = list.length;
+    const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const start = (currentPage - 1) * PAGE_SIZE;
+    orders = list.slice(start, start + PAGE_SIZE);
+    renderTabs();
+    render();
+    renderStatusTabs();
+    updateCount(visibleOrders());
+  }
+
+  // Kéo TOÀN BỘ đơn của khoảng ngày 1 lần rồi chuyển sang lọc client. Cold-start: vẽ nhanh
+  // trang 1 (server) trước cho đỡ trống, kéo tập đầy đủ ở nền rồi applyView thay vào. Tập quá
+  // lớn (truncated) -> fallback về phân trang server (load()). auto = autosync (không hiện spinner).
+  async function loadAll(opts = {}) {
+    const auto = opts.auto === true;
+    if (!auto && !allOrders.length && !clientMode) load({ fastPaint: true }); // vẽ nhanh, không block
+    const prevTodo = new Set(allOrders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
+    const p = new URLSearchParams();
+    if (F.from) p.set('from', F.from);
+    if (F.to) p.set('to', F.to);
+    try {
+      const res = await App.api('/api/orders/all?' + p.toString());
+      if (res.truncated) {
+        // Tập quá lớn để giữ ở client -> dùng phân trang server như cũ.
+        clientMode = false;
+        if (res.tabUsers && res.tabUsers.length) mergeTabUsers(res.tabUsers);
+        return load({ keepPage: auto || opts.keepPage });
+      }
+      clientMode = true;
+      allOrders = res.orders || [];
+      if (res.tabUsers && res.tabUsers.length) mergeTabUsers(res.tabUsers);
+      syncLocalFlags(allOrders);
+      if (auto) {
+        const fresh = allOrders.filter((o) => groupOf(o) === 'todo' && !prevTodo.has(String(o.id)));
+        if (fresh.length) App.toast(`🆕 ${fresh.length} khách mới cần báo`, 5000);
+      }
+      setSyncInfo();
+      applyView({ keepPage: true });
+    } catch (e) {
+      // Lỗi & chưa có gì để hiện -> báo lỗi; nếu đang có dữ liệu cũ thì giữ nguyên (auto/refresh).
+      if (!auto && !allOrders.length && !orders.length) {
+        rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();window.__miReload&&window.__miReload()">Thử lại</button></td></tr>`;
+      }
+    }
+  }
+
+  // Cập nhật count cho tab đang active từ serverTotal (server-mode/fallback). 3 tab còn lại
+  // giữ số cũ đến khi user bấm vào (client-mode thì applyView đã đếm đủ cả 4).
   function updateActiveCount() {
     if (currentGroup) counts[currentGroup] = serverTotal;
   }
 
+  // ----- SERVER-MODE: phân trang phía server (fallback khi tập quá lớn; + vẽ nhanh cold-start) -----
   async function load(opts = {}) {
     const auto = opts.auto === true;
+    const fast = opts.fastPaint === true; // vẽ nhanh trang 1 trong lúc loadAll kéo tập đầy đủ
     const keepPage = auto || opts.keepPage === true; // autosync/pager/refresh: giữ nguyên trang
     if (!keepPage) currentPage = 1;
     if (!auto) rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>';
     const q = $('fQ').value;
-    // Bộ lọc dùng chung cho cả danh sách lẫn số đếm (ngày/NV/tìm kiếm — lọc server-side).
     const base = new URLSearchParams();
     if (F.from) base.set('from', F.from);
     if (F.to) base.set('to', F.to);
     if (currentStaff) base.set('staff', currentStaff);
     if (q) base.set('q', q);
-    const baseStr = base.toString();
     const params = new URLSearchParams(base);
     const status = currentGroup ? STATUS_FOR_GROUP[currentGroup] : undefined;
     if (status) params.set('status', status);
@@ -737,74 +831,75 @@
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
     try {
       const res = await App.api('/api/orders?' + params.toString());
+      // Trong lúc chờ, loadAll đã chuyển sang client-mode -> bỏ kết quả vẽ-nhanh để không đè.
+      if (fast && clientMode) return;
       orders = res.orders || [];
       serverTotal = res.total != null ? res.total : orders.length;
-      // Merge tabUsers thay vì replace: tránh staff biến khỏi tab khi filter ngày
-      // làm Basso trả tab_users thiếu (vd tháng này không có đơn của nhân viên đó).
-      if (res.tabUsers && res.tabUsers.length) {
-        const map = new Map(tabUsers.map((u) => [String(u.user_id), u]));
-        res.tabUsers.forEach((u) => map.set(String(u.user_id), u));
-        tabUsers = [...map.values()];
-      }
+      if (res.tabUsers && res.tabUsers.length) mergeTabUsers(res.tabUsers);
       // Trang hiện tại vượt quá tổng (vd sau khi báo loạt làm đơn rời nhóm) -> nhảy về trang cuối.
       if (!orders.length && currentPage > 1 && serverTotal > 0) {
         currentPage = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
         return load({ keepPage: true });
       }
-      // LƯU Ý phân trang: `orders` giờ chỉ là 1 trang, nên KHÔNG xoá openRows/dirtyNotes
-      // chỉ vì đơn không có mặt ở trang hiện tại (đơn đó có thể ở trang khác) — nếu không
-      // sẽ mất trạng thái mở rộng & ghi chú đang soạn dở khi chuyển trang.
-      // Chỉ dọn ghi chú "chưa lưu" khi nội dung trên Basso đã trùng phần đang gõ (đã lưu nơi khác).
-      orders.forEach((o) => {
-        const id = String(o.id);
-        if (dirtyNotes.has(id) && (o.note || '') === dirtyNotes.get(id)) dirtyNotes.delete(id);
-      });
-      // Cờ Delay / Loại trừ lấy từ server (lưu ở mi) — giữ được sau khi reload.
-      excluded.clear();
-      orders.forEach((o) => { if (o.delayed) excluded.add(String(o.id)); });
+      // LƯU Ý: `orders` chỉ là 1 trang -> KHÔNG xoá openRows/dirtyNotes vì đơn vắng mặt
+      // có thể ở trang khác (tránh mất trạng thái mở rộng & ghi chú đang soạn dở).
+      syncLocalFlags(orders);
       if (auto) {
         const fresh = orders.filter((o) => groupOf(o) === 'todo' && !prevTodo.has(String(o.id)));
         if (fresh.length) App.toast(`🆕 ${fresh.length} khách mới cần báo`, 5000);
       }
-      $('syncInfo').textContent = `Cập nhật ${App.fmtDateTime(new Date().toISOString())}`;
+      if (!fast) setSyncInfo();
       updateActiveCount();
       renderTabs();
       render();
       renderStatusTabs();
       updateCount(visibleOrders());
-      // Sau khi load "Tất cả" thành công, prefetch ngầm từng tab nhân viên để
-      // cache server ấm trước — bấm tab sau sẽ trả về gần như tức thì.
-      if (!currentStaff && !auto && tabUsers.length) prefetchStaffTabs();
+      // Fallback (tập quá lớn, không client-mode): prefetch ngầm từng tab NV cho cache ấm.
+      if (!fast && !clientMode && !currentStaff && !auto && tabUsers.length) prefetchStaffTabs();
     } catch (e) {
-      if (!auto) {
-        rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();load()">Thử lại</button></td></tr>`;
+      if (!auto && !fast) {
+        rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();window.__miReload&&window.__miReload()">Thử lại</button></td></tr>`;
       }
     }
   }
 
-  // Warm server-side SWR cache cho từng tab nhân viên (chạy nền, không block UI).
-  // Gọi tuần tự (không song song) để không làm Basso bận khi user đang dùng trang.
+  // Warm server-side SWR cache cho từng tab nhân viên (chỉ dùng ở fallback server-mode).
   async function prefetchStaffTabs() {
     const base = new URLSearchParams();
     if (F.from) base.set('from', F.from);
     if (F.to) base.set('to', F.to);
-    // Chờ 3s trước khi bắt đầu prefetch để Basso xử lý xong request chính trước.
     await new Promise((r) => setTimeout(r, 3000));
     for (const u of tabUsers) {
+      if (clientMode) break; // đã chuyển sang client-mode -> không cần warm nữa
       try {
         const p = new URLSearchParams(base);
         p.set('staff', u.user_id);
         p.set('page', '1');
         p.set('pageSize', PAGE_SIZE);
         await App.api('/api/orders?' + p.toString());
-        // Delay giữa các request để không làm Basso bận.
         await new Promise((r) => setTimeout(r, 1500));
       } catch {
-        // Basso đang bận/lỗi -> dừng prefetch, không thử tiếp.
         break;
       }
     }
   }
+
+  // ----- Bộ điều phối: ngày đổi -> kéo lại tập (loadAll tự quyết client/fallback); các bộ
+  // lọc khác (NV/trạng thái/trang/tìm kiếm) -> client-mode lọc tức thì, fallback gọi server. -----
+  function reloadScope(opts = {}) { return loadAll(opts); }       // ngày đổi / Tải lại
+  function applyFilters(opts = {}) {                               // NV/trạng thái/trang/tìm kiếm đổi
+    return clientMode ? applyView(opts) : load(opts);
+  }
+  // Sau thao tác làm đổi dữ liệu (đổi trạng thái/gửi Zalo/Delay): client-mode phản hồi tức thì
+  // (object đã mutate tại chỗ) rồi resync nền; server-mode tải lại trang.
+  function afterMutation() {
+    if (clientMode) { applyView({ keepPage: true }); loadAll({ auto: true }); }
+    else load({ keepPage: true });
+  }
+  // Vẽ lại không gọi server (đổi cách hiển thị/loại trừ/ghi chú): client-mode lọc lại cả tập,
+  // server-mode chỉ render lại trang hiện tại như cũ.
+  function rerender() { if (clientMode) applyView({ keepPage: true }); else render(); }
+  window.__miReload = () => reloadScope();
 
   function autoSync() {
     if (document.hidden) return;
@@ -813,7 +908,7 @@
     if (!$('filterPop').hidden) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
-    load({ auto: true });
+    if (clientMode) loadAll({ auto: true }); else load({ auto: true });
   }
 
   // ---------------- Health (chỉ cờ MOCK / TEST trên topbar) ----------------
@@ -847,13 +942,17 @@
   }
 
   // ---------------- Events ----------------
-  $('syncBtn').addEventListener('click', () => load());
+  $('syncBtn').addEventListener('click', () => reloadScope());
 
   // Gom nhóm chỉ là cách hiển thị TRONG trang hiện tại -> không đổi trang, không tải lại.
   $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
 
+  // Tìm kiếm: client-mode lọc tức thì (debounce ngắn); server-mode debounce dài hơn rồi gọi API.
   let qTimer;
-  $('fQ').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(load, 400); });
+  $('fQ').addEventListener('input', () => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => { currentPage = 1; applyFilters({ keepPage: true }); }, clientMode ? 120 : 400);
+  });
   $('bulkBtn').addEventListener('click', openBulkModal);
 
   // Thẻ trạng thái: bấm để lọc; bấm lại thẻ đang chọn để bỏ lọc (xem tất cả).
@@ -861,6 +960,7 @@
     const tab = e.target.closest('.status-tab');
     if (!tab) return;
     const key = tab.dataset.filter;
+    const prevFrom = F.from, prevTo = F.to;
     currentGroup = (key === currentGroup) ? '' : key;
     currentPage = 1;
     // "Chưa báo" = all-time để không bỏ sót đơn cũ; tab khác = tháng hiện tại.
@@ -870,14 +970,17 @@
       F.from = defaultMonthFrom();
     }
     syncDateInputs();
-    load();
+    // Đổi khoảng ngày -> phải kéo lại tập; chỉ đổi trạng thái -> lọc tức thì (client) / gọi server.
+    if (F.from !== prevFrom || F.to !== prevTo) reloadScope();
+    else applyFilters({ keepPage: true });
   });
 
   $('staffTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.tab');
     if (!tab) return;
     currentStaff = tab.dataset.staff || '';
-    load();
+    currentPage = 1;
+    applyFilters({ keepPage: true });
   });
 
   $('pager').addEventListener('click', (e) => {
@@ -919,8 +1022,8 @@
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
     updateFilterBadge();
     filterPop.hidden = true;
-    // Khoảng ngày lọc ở server -> tải lại (về trang 1); loại trừ/ghi chú lọc client -> chỉ render (giữ trang).
-    if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; load(); } else render();
+    // Đổi khoảng ngày -> kéo lại tập (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc lại tại client (giữ trang).
+    if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; reloadScope(); } else rerender();
   });
   $('fClear').addEventListener('click', () => {
     const hadDate = F.from || F.to;
@@ -930,7 +1033,7 @@
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
-    if (hadDate !== F.from) { currentPage = 1; load(); } else render();
+    if (hadDate !== F.from) { currentPage = 1; reloadScope(); } else rerender();
   });
 
   // Delegation cho bảng
@@ -1016,5 +1119,7 @@
   loadHealth();
   setInterval(loadHealth, 15000);
   setInterval(autoSync, AUTO_SYNC_MS);
-  load();
+  // Khởi động: loadAll() tự vẽ nhanh trang 1 (server) rồi kéo tập đầy đủ để lọc client; tập quá
+  // lớn thì tự fallback về phân trang server.
+  reloadScope();
 })();

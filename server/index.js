@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
-const { getOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
+const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
 const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
@@ -214,7 +214,22 @@ app.get('/api/basso/ping', async (req, res) => {
   }
 });
 
-// ---- Dashboard: danh sách hàng về ----
+// Gắn dấu local (mi) lên danh sách đơn: "bot đã tự gửi"/"đã báo tay" (autoNotified) + cờ
+// Delay/Loại trừ — để dashboard phân biệt kể cả khi không cập nhật trạng thái về web Basso.
+function enrichOrders(orders) {
+  if (!Array.isArray(orders)) return orders;
+  const delayedMap = getDelayedMap();
+  return orders.map((o) => {
+    const key = autoNotify.autoKey(o);
+    const a = getAutoRecord(key);
+    const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
+    return delayedMap.has(key)
+      ? { ...withAuto, delayed: true, delayReason: delayedMap.get(key) }
+      : withAuto;
+  });
+}
+
+// ---- Dashboard: danh sách hàng về (phân trang server-side) ----
 app.get('/api/orders', async (req, res) => {
   try {
     const { from, to, status, staff, q, page, pageSize } = req.query;
@@ -223,19 +238,20 @@ app.get('/api/orders', async (req, res) => {
       page: page ? parseInt(page, 10) || 1 : 1,
       pageSize: pageSize ? parseInt(pageSize, 10) || undefined : undefined,
     });
-    // Gắn dấu "bot đã tự gửi" (lưu local trong mi) để dashboard phân biệt, kể cả khi
-    // không cập nhật trạng thái về web Basso.
-    if (Array.isArray(data.orders)) {
-      const delayedMap = getDelayedMap();
-      data.orders = data.orders.map((o) => {
-        const key = autoNotify.autoKey(o);
-        const a = getAutoRecord(key);
-        const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
-        return delayedMap.has(key)
-          ? { ...withAuto, delayed: true, delayReason: delayedMap.get(key) }
-          : withAuto;
-      });
-    }
+    data.orders = enrichOrders(data.orders);
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Dashboard: TOÀN BỘ đơn 1 khoảng ngày (để client lọc NV/trạng thái/trang tức thì) ----
+// Trả truncated=true khi tập quá lớn -> client tự fallback về /api/orders phân trang server.
+app.get('/api/orders/all', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const data = await getAllOrders({ from, to });
+    data.orders = enrichOrders(data.orders);
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

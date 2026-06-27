@@ -335,6 +335,80 @@ async function getOrders(filters = {}) {
   return { ...data, source };
 }
 
+/** Chạy fn cho từng item với GIỚI HẠN concurrency (giữ thứ tự kết quả). */
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length) {
+      const i = idx; idx += 1;
+      out[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+/**
+ * Kéo TOÀN BỘ đơn (mọi trạng thái, mọi nhân viên) trong 1 khoảng ngày để dashboard lọc
+ * client-side (đổi tab NV/trạng thái/trang/tìm kiếm -> tức thì, không round-trip). Kết quả
+ * cache SWR theo {from,to} nên auto-sync/reload/người dùng khác vào sau ăn cache ấm.
+ *
+ * Nếu tổng > config.basso.clientMaxOrders -> trả { truncated:true } kèm DUY NHẤT trang đầu,
+ * để client tự fallback về phân trang server (không kéo nặng làm chậm/treo).
+ * @param {object} [filters] { from, to }
+ * @returns {Promise<{source, orders, tabUsers, total, truncated}>}
+ */
+async function getAllOrders(filters = {}) {
+  const { from, to } = filters;
+
+  if (config.basso.useMock) {
+    const rows = loadMock();
+    const orders = rows.map(normalizeOrder);
+    orders.forEach((o, i) => { o.stt = i + 1; });
+    return { source: 'mock', orders, tabUsers: uniqueStaff(rows), total: orders.length, truncated: false };
+  }
+
+  const apiFrom = toApiDate(from);
+  const apiTo = toApiDate(to);
+  const PAGE = 100;
+  const cacheKey = 'all:' + JSON.stringify({ from: apiFrom, to: apiTo });
+
+  const fetchFn = async () => {
+    // Login MỘT LẦN trước khi bắn loạt -> các trang sau tái dùng token, không tự login.
+    await getToken();
+    const base = { page_size: PAGE, from: apiFrom, to: apiTo };
+    const first = await apiFetch('/partner/getArrivedVnList', { query: { ...base, page: 1 } });
+    const rows = (first.rows || []).slice();
+    const total = first.total ?? rows.length;
+    const max = config.basso.clientMaxOrders;
+    if (max && total > max) {
+      // Quá lớn -> không kéo hết; client sẽ fallback về phân trang server.
+      const orders = rows.map(normalizeOrder);
+      orders.forEach((o, i) => { o.stt = i + 1; });
+      return { orders, tabUsers: uniqueStaff(rows), total, truncated: true };
+    }
+    const lastPage = Math.min(Math.ceil(total / PAGE), 100);
+    if (lastPage > 1) {
+      const restPages = [];
+      for (let p = 2; p <= lastPage; p += 1) restPages.push(p);
+      // Concurrency vừa phải (4) — nhanh hơn tuần tự nhưng không làm Basso quá tải.
+      const restRows = await mapLimit(restPages, 4, async (p) => {
+        const d = await apiFetch('/partner/getArrivedVnList', { query: { ...base, page: p } });
+        return d.rows || [];
+      });
+      for (const r of restRows) rows.push(...r);
+    }
+    const orders = rows.map(normalizeOrder);
+    orders.forEach((o, i) => { o.stt = i + 1; });
+    return { orders, tabUsers: uniqueStaff(rows), total, truncated: false };
+  };
+
+  if (!config.basso.listCacheTtlMs) return { ...(await fetchFn()), source: 'api' };
+  const { data, source } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, fetchFn);
+  return { ...data, source };
+}
+
 function uniqueStaff(rows) {
   const map = new Map();
   for (const r of rows) {
@@ -496,4 +570,4 @@ async function fetchAllOrders(filters = {}) {
   return all;
 }
 
-module.exports = { getOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, normalizeOrder, normalizeItem, STATUS_LABELS };
