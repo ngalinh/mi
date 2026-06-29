@@ -75,6 +75,9 @@ async function notifyOne(order, opts = {}) {
     status: 'pending',
     images: meta.images,
     sentBy: opts.actor || null,
+    // Tài khoản Zalo dùng để gửi (để đối chiếu trên Lịch sử báo): ưu tiên tên dropdown,
+    // không có thì tới profile/key, cuối cùng 'default'.
+    zaloAccount: resolved.account || resolved.profile || null,
   });
 
   let result;
