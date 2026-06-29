@@ -80,6 +80,12 @@ module.exports = {
     // TTL (ms) cache danh sách hàng về trong RAM — auto-sync/đổi tab/gõ tìm kiếm lặp lại
     // không phải gọi lại Basso mỗi lần. 0 = tắt cache.
     listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '30000', 10) || 0, 0),
+    // Chu kỳ (ms) NẠP SẴN khung nhìn mặc định của dashboard vào cache RAM (xem cacheWarmer.js)
+    // -> người mở dashboard không phải đợi Basso. 0 = tắt; nếu >0 thì tối thiểu 15000ms.
+    preloadIntervalMs: (() => {
+      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '60000', 10);
+      return Number.isFinite(v) && v > 0 ? Math.max(v, 15000) : 0;
+    })(),
     // Ngưỡng số đơn để dashboard lọc client-side (kéo hết 1 lần rồi lọc NV/trạng thái/trang
     // ngay trên trình duyệt). Tập vượt ngưỡng -> /api/orders/all trả truncated=true để client
     // tự fallback về phân trang server (tránh kéo quá nặng). 0 = luôn cho phép client-side.
