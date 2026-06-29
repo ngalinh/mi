@@ -54,7 +54,7 @@
   }
 
   async function load() {
-    rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Đang tải...</td></tr>';
+    rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     const st = $('fStatus').value, q = $('fQ').value;
     if (st) params.set('status', st);
@@ -69,7 +69,7 @@
       // Còn dòng "đang báo" -> tự tải lại để badge tự lật sang Thành công/Thất bại khi job xong.
       scheduleAutoRefresh(items.some((r) => r.status === 'pending'));
       if (!items.length) {
-        rowsEl.innerHTML = '<tr><td colspan="10" class="empty">Chưa có lượt báo nào</td></tr>';
+        rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Chưa có lượt báo nào</td></tr>';
         return;
       }
       rowsEl.innerHTML = items.map((r) => `<tr>
@@ -80,12 +80,13 @@
         <td>${App.esc(r.phone)}</td>
         <td>${App.esc(r.staff)}</td>
         <td>${senderCell(r.sent_by)}</td>
+        <td>${r.zalo_account ? App.esc(r.zalo_account) : '<span class="muted">—</span>'}</td>
         <td class="msg-cell" title="${App.esc(r.message)}">${msgPreview(r.message)}</td>
         <td>${resultPill(r.status)}</td>
         <td class="err-cell" style="color:var(--red)" title="${App.esc(r.error)}">${errPreview(r.error)}</td>
       </tr>`).join('');
     } catch (e) {
-      rowsEl.innerHTML = `<tr><td colspan="10" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td colspan="11" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 

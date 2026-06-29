@@ -625,6 +625,31 @@
   // ---------------- Modal ----------------
   let modalId = null;
   let modalKind = 'hang';
+
+  // Danh sách tài khoản Zalo (để CHỌN account khi gửi thử). Nạp 1 lần; runner offline ->
+  // chỉ còn "Tự động (theo nhân viên)" như mặc định.
+  let zaloAccounts = [];
+  async function loadZaloAccounts() {
+    try {
+      const r = await App.api('/api/accounts');
+      zaloAccounts = (r && Array.isArray(r.zalo)) ? r.zalo : [];
+    } catch { zaloAccounts = []; }
+    populateAccountSelect();
+  }
+  function populateAccountSelect() {
+    const sel = $('modalAccount');
+    if (!sel) return;
+    const cur = sel.value;
+    const opts = ['<option value="">Tự động (theo nhân viên)</option>'];
+    for (const a of zaloAccounts) {
+      const label = a.saleworkName ? `${a.name} — ${a.saleworkName}` : (a.name || a.key);
+      const off = a.loggedIn === false ? ' (chưa đăng nhập)' : '';
+      opts.push(`<option value="${App.esc(a.key)}">${App.esc(label)}${off}</option>`);
+    }
+    sel.innerHTML = opts.join('');
+    sel.value = cur; // giữ lựa chọn cũ nếu populate lại
+  }
+
   function openModal(id, kind = 'hang') {
     const o = byId(id); if (!o) return;
     modalId = id;
@@ -636,6 +661,8 @@
     $('modalSend').innerHTML = (isShip ? App.icon('truck') : App.icon('box')) +
       (isShip ? ' Gửi báo ship qua Zalo' : ' Gửi báo hàng qua Zalo');
     $('modalSend').style.display = '';
+    populateAccountSelect();
+    $('modalAccount').value = ''; // mặc định Tự động mỗi lần mở
     $('modalBg').classList.add('show');
     autoGrowMsg();
   }
@@ -648,12 +675,18 @@
 
   async function sendFromModal() {
     if (!modalId) return;
-    await sendZalo(modalId, $('modalMsg').value.trim(), $('modalSend'), modalKind);
+    // Chọn account cụ thể -> ép gửi qua account đó (profile=key, account=saleworkName);
+    // để trống = Tự động (resolver tự khớp theo nhân viên như thường).
+    const acctKey = $('modalAccount').value;
+    const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
+    const override = acct ? { profile: acct.key, account: acct.saleworkName } : null;
+    await sendZalo(modalId, $('modalMsg').value.trim(), $('modalSend'), modalKind, override);
     closeModal();
   }
 
   // ---------------- Gửi Zalo ----------------
-  async function sendZalo(id, messageOverride, btnEl, kind = 'hang') {
+  // override (tuỳ chọn) = { profile, account } để ép gửi qua 1 tài khoản Zalo cụ thể (gửi thử).
+  async function sendZalo(id, messageOverride, btnEl, kind = 'hang', override = null) {
     const o = byId(id); if (!o) return;
     const reason = notifiedReason(o, kind);
     if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
@@ -664,7 +697,13 @@
       const res = await App.api('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: [orderPayload(o)], messageOverride: messageOverride || undefined, kind }),
+        body: JSON.stringify({
+          orders: [orderPayload(o)],
+          messageOverride: messageOverride || undefined,
+          kind,
+          profile: override && override.profile ? override.profile : undefined,
+          account: override && override.account ? override.account : undefined,
+        }),
       });
       const r = res.results[0];
       if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
@@ -1105,6 +1144,7 @@
   }).catch(() => {});
 
   loadHealth();
+  loadZaloAccounts();
   setInterval(loadHealth, 15000);
   setInterval(autoSync, AUTO_SYNC_MS);
   // Khởi động: loadAll() tự vẽ nhanh trang 1 (server) rồi kéo tập đầy đủ để lọc client; tập quá
