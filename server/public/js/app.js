@@ -19,8 +19,10 @@ const App = {
   },
 
   // Timeout (ms) cho mỗi request — tránh kẹt "Đang tải..." vô thời hạn khi server/Basso
-  // chậm. Đặt dài hơn timeout phía server (12s) để lỗi server nổi lên trước.
-  API_TIMEOUT_MS: 20000,
+  // chậm. Đặt DÀI HƠN timeout phía server (Basso 20s/call + có thể vài call) để lần tải đầu
+  // "cold" (cache RAM chưa ấm) kịp xong thay vì client tự bỏ cuộc giữa chừng. Khi cache đã ấm
+  // thì server trả gần như tức thì nên người dùng không phải đợi tới mức này.
+  API_TIMEOUT_MS: 40000,
 
   // Tiền tố base path: trên ai.basso.vn bot chạy dưới /b/<id>/ nên API phải gọi
   // /b/<id>/api/... (giống Xeko). Suy từ đường dẫn trang hiện tại (bỏ tên file cuối).

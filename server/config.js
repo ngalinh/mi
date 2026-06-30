@@ -76,7 +76,10 @@ module.exports = {
     autoUpdateStatus: String(process.env.AUTO_UPDATE_STATUS || 'true').toLowerCase() === 'true',
     // Timeout (ms) cho mỗi request tới API Basso — tránh treo "Đang tải..." vô thời hạn
     // khi upstream chậm/không phản hồi. 0 = tắt timeout.
-    requestTimeoutMs: Math.max(parseInt(process.env.BASSO_TIMEOUT_MS || '12000', 10) || 0, 0),
+    // Để 20s (thay vì 12s): Basso đôi lúc trả chậm 12–18s; nếu cắt ở 12s thì cả cacheWarmer
+    // lẫn request của client đều fail -> cache RAM không bao giờ ấm -> client luôn rơi vào
+    // đường "cold" rồi timeout. Cho thêm thời gian để call kịp xong & nạp được cache.
+    requestTimeoutMs: Math.max(parseInt(process.env.BASSO_TIMEOUT_MS || '20000', 10) || 0, 0),
     // TTL (ms) cache danh sách hàng về trong RAM — auto-sync/đổi tab/gõ tìm kiếm lặp lại
     // không phải gọi lại Basso mỗi lần. 0 = tắt cache.
     listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '30000', 10) || 0, 0),

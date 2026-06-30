@@ -835,10 +835,15 @@
       setSyncInfo();
       applyView({ keepPage: true });
     } catch (e) {
-      // Lỗi & chưa có gì để hiện -> báo lỗi; nếu đang có dữ liệu cũ thì giữ nguyên (auto/refresh).
+      // Lỗi & chưa có gì để hiện -> KHÔNG xóa trắng kèm lỗi ngay. Tải "tất cả" là truy vấn
+      // nặng nhất (login + nhiều trang Basso); nếu nó chậm/timeout thì thử FALLBACK sang
+      // phân trang server (chỉ 1 trang nhỏ) — nhẹ hơn nhiều nên thường kịp, và lúc này cache
+      // RAM có thể đã ấm. load() tự hiện "Đang tải..." rồi render hoặc báo lỗi của riêng nó.
       if (!auto && !allOrders.length && !orders.length) {
-        rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();window.__miReload&&window.__miReload()">Thử lại</button></td></tr>`;
+        clientMode = false;
+        return load({ keepPage: opts.keepPage });
       }
+      // Đang có dữ liệu cũ (auto-sync/refresh) -> giữ nguyên, không phá màn hình.
     }
   }
 
