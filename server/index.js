@@ -11,6 +11,7 @@ const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
+const cacheWarmer = require('./cacheWarmer');
 
 const app = express();
 // CORS: mặc định mở (gateway ai.basso.vn là lối vào duy nhất). Đặt CORS_ORIGIN để siết.
@@ -85,6 +86,7 @@ app.get('/api/health', async (req, res) => {
       registered: localRegistry.getInfo(),
     },
     autoNotify: autoNotify.getStatus(),
+    preload: cacheWarmer.getStatus(),
     // Số nhân viên đã ánh xạ sang tài khoản Zalo (ZALO_ACCOUNT_MAP) — để kiểm tra cấu hình.
     zaloAccountMapped: Object.keys(config.zaloAccountMap).length,
   });
@@ -431,4 +433,5 @@ app.listen(config.port, () => {
   if (config.gatewaySecret) console.log('[server] Gateway secret: BẬT (yêu cầu X-Gateway-Secret cho /api/*)');
   if (config.registerAllowedHosts.length) console.log(`[server] register-local allowlist: ${config.registerAllowedHosts.join(', ')}`);
   autoNotify.startAutoNotify();
+  cacheWarmer.start();
 });
