@@ -226,7 +226,9 @@
     refreshItemsSection(o);
     try {
       const params = new URLSearchParams();
-      if (o.id != null && String(o.id) !== '' && String(o.id) !== '0') params.set('id', o.id);
+      // Chỉ gửi `id` khi là id số thật của Basso. id tổng hợp dạng "c<cid>-<date>" (do
+      // normalizeOrder dựng khi Basso không trả id) thì bỏ qua, dùng customerId+dateInventory.
+      if (o.id != null && /^[0-9]+$/.test(String(o.id)) && String(o.id) !== '0') params.set('id', o.id);
       if (o.customerId != null) params.set('customerId', o.customerId);
       if (o.dateInventory != null) params.set('dateInventory', o.dateInventory);
       const r = await App.api('/api/arrived-items?' + params.toString());
