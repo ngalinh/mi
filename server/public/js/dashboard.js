@@ -653,27 +653,43 @@
   }
 
   function openModal(id, kind = 'hang') {
-    const o = byId(id); if (!o) return;
+    const o = byId(id);
+    if (!o) { App.toast('Không tìm thấy đơn để xem nội dung', 4000); return; }
     modalId = id;
     modalKind = kind === 'ship' ? 'ship' : 'hang';
     const isShip = modalKind === 'ship';
-    $('modalTitle').textContent = `${isShip ? 'Báo ship' : 'Báo hàng'} — ${o.customerName}`;
-    $('modalSub').textContent = `SĐT: ${o.phone || '—'} · NV: ${o.staff || '—'}`;
-    $('modalMsg').value = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
-    $('modalSend').innerHTML = (isShip ? App.icon('truck') : App.icon('box')) +
-      (isShip ? ' Gửi báo ship qua Zalo' : ' Gửi báo hàng qua Zalo');
-    $('modalSend').style.display = '';
-    populateAccountSelect();
-    $('modalAccount').value = ''; // mặc định Tự động mỗi lần mở
-    $('modalBg').classList.add('show');
+    // "Chống đạn": mở popup + đổ nội dung TRƯỚC (phần thiết yếu) rồi mới làm phần phụ (chọn
+    // tài khoản, icon). Mỗi truy cập element đều được kiểm tra null, và phần phụ bọc trong
+    // try/catch — để 1 element thiếu/lỗi KHÔNG chặn việc hiện nội dung (trước đây lỗi giữa
+    // chừng khiến popup không bao giờ mở).
+    const set = (elId, prop, val) => { const el = $(elId); if (el) el[prop] = val; };
+    set('modalTitle', 'textContent', `${isShip ? 'Báo ship' : 'Báo hàng'} — ${o.customerName || ''}`);
+    set('modalSub', 'textContent', `SĐT: ${o.phone || '—'} · NV: ${o.staff || '—'}`);
+    set('modalMsg', 'value', (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '');
+    const bg = $('modalBg');
+    if (bg) bg.classList.add('show'); // hiện popup NGAY khi đã có nội dung
     autoGrowMsg();
+    try {
+      const sendBtn = $('modalSend');
+      if (sendBtn) {
+        sendBtn.innerHTML = (isShip ? App.icon('truck') : App.icon('box')) +
+          (isShip ? ' Gửi báo ship qua Zalo' : ' Gửi báo hàng qua Zalo');
+        sendBtn.style.display = '';
+      }
+      populateAccountSelect();
+      const acc = $('modalAccount');
+      if (acc) acc.value = ''; // mặc định Tự động mỗi lần mở
+    } catch (err) {
+      console.error('[openModal] lỗi phần phụ (đã bỏ qua, popup vẫn mở):', err);
+    }
   }
   function autoGrowMsg() {
     const ta = $('modalMsg');
+    if (!ta) return;
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
   }
-  function closeModal() { $('modalBg').classList.remove('show'); modalId = null; }
+  function closeModal() { const bg = $('modalBg'); if (bg) bg.classList.remove('show'); modalId = null; }
 
   async function sendFromModal() {
     if (!modalId) return;
