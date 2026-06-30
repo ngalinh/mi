@@ -219,8 +219,15 @@ function normalizeItem(it) {
 /** raw row (API hoặc mock) -> shape nội bộ (KHÔNG kèm items — items load lazy qua getArrivedItems) */
 function normalizeOrder(raw) {
   const code = raw.status || 'not_sent';
+  // `id` từ Basso không phải lúc nào cũng có/duy nhất (có thể thiếu, rỗng hoặc = 0 cho mọi
+  // dòng). Khoá ổn định thật sự của 1 dòng là (customer_id + date_inventory) — dùng nó làm
+  // fallback để MỖI dòng luôn có id duy nhất. Nếu không, nhiều dòng trùng id khiến client
+  // chọn nhầm dòng (vd nút "Xem nội dung" mở modal của dòng khác / rỗng).
+  const rawId = raw.id != null && String(raw.id).trim() !== '' && String(raw.id) !== '0'
+    ? String(raw.id)
+    : '';
   return {
-    id: String(raw.id),                       // khóa duy nhất để chọn dòng
+    id: rawId || `c${raw.customer_id}-${raw.date_inventory}`, // khóa duy nhất để chọn dòng
     customerId: raw.customer_id,
     dateInventory: raw.date_inventory,        // unix — cần cho updateArrivedVnRow
     stt: null,                                // gán theo thứ tự sau khi map
