@@ -7,6 +7,7 @@ const { createJob, getJob } = require('./jobQueue');
 const { sendBaoHang } = require('./salework');
 const { profileExists, profilePath, openForLogin } = require('./browser');
 const accountsStore = require('./accountsStore');
+const testModeStore = require('./testModeStore');
 const loginHistory = require('./loginHistory');
 const { checkLoggedIn } = require('./salework');
 
@@ -31,13 +32,33 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (req, res) => {
+  const tm = testModeStore.get();
   res.json({
     ok: true,
     service: 'doraemi-local-runner',
-    testMode: config.testMode,
-    testPhones: config.testPhones,
+    testMode: tm.testMode,
+    testPhones: tm.testPhones,
     time: new Date().toISOString(),
   });
+});
+
+/** GET /api/test-mode — trạng thái chặn an toàn hiện tại (testMode + testPhones). */
+app.get('/api/test-mode', (req, res) => {
+  res.json({ ok: true, ...testModeStore.get() });
+});
+
+/**
+ * PUT /api/test-mode — bật/tắt chặn an toàn và/hoặc đổi danh sách SĐT được gửi.
+ * body: { testMode?: boolean, testPhones?: string|string[] }. Ghi ra file -> hiệu lực NGAY.
+ */
+app.put('/api/test-mode', (req, res) => {
+  const { testMode, testPhones } = req.body || {};
+  try {
+    const next = testModeStore.set({ testMode, testPhones });
+    res.json({ ok: true, ...next });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.get('/api/profile/:name', (req, res) => {
@@ -204,8 +225,9 @@ app.listen(config.port, () => {
   console.log(`[local-runner] listening on http://localhost:${config.port}`);
   console.log(`[local-runner] Salework URL: ${config.saleworkUrl} | headless=${config.headless}`);
   if (!config.apiKey) console.warn('[local-runner] CẢNH BÁO: chưa đặt API_KEY — endpoint không được bảo vệ.');
-  if (config.testMode) {
-    console.warn(`[local-runner] 🧪 TEST_MODE BẬT — chỉ gửi tới: ${config.testPhones.join(', ') || '(trống!)'}`);
+  const tm = testModeStore.get();
+  if (tm.testMode) {
+    console.warn(`[local-runner] 🧪 TEST_MODE BẬT — chỉ gửi tới: ${tm.testPhones.join(', ') || '(trống!)'}`);
   } else {
     console.warn('[local-runner] ⚠️  TEST_MODE TẮT — sẽ gửi tới TẤT CẢ số được yêu cầu (khách thật).');
   }
