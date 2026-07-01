@@ -68,7 +68,50 @@
     return App.esc(s);
   }
 
+  // Tooltip tuỳ biến cho ô Nội dung / Lỗi: đẹp hơn tooltip mặc định của trình duyệt,
+  // giữ nguyên xuống dòng và bám theo viewport (không tràn mép, tự lật lên nếu chạm đáy).
+  const tip = document.createElement('div');
+  tip.className = 'rp-tip';
+  tip.setAttribute('role', 'tooltip');
+  document.body.appendChild(tip);
+  let tipTarget = null;
+
+  function positionTip(target) {
+    const r = target.getBoundingClientRect();
+    const box = tip.getBoundingClientRect();
+    const m = 8;
+    let left = r.left;
+    if (left + box.width > window.innerWidth - m) left = window.innerWidth - box.width - m;
+    if (left < m) left = m;
+    let top = r.bottom + m;                                   // mặc định: ngay dưới ô
+    if (top + box.height > window.innerHeight - m) top = r.top - box.height - m; // chạm đáy -> lật lên
+    if (top < m) top = m;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  function showTip(target) {
+    const text = target.getAttribute('data-tip');
+    if (!text) return;
+    tip.textContent = text;                                   // textContent: giữ \n, chống XSS
+    tip.classList.toggle('is-err', target.classList.contains('err-cell'));
+    tip.classList.add('show');
+    positionTip(target);
+  }
+  function hideTip() { tip.classList.remove('show'); tipTarget = null; }
+
+  rowsEl.addEventListener('mouseover', (e) => {
+    const t = e.target.closest('[data-tip]');
+    if (!t || t === tipTarget) return;
+    tipTarget = t;
+    showTip(t);
+  });
+  rowsEl.addEventListener('mouseout', (e) => {
+    const t = e.target.closest('[data-tip]');
+    if (t && t === tipTarget) hideTip();
+  });
+
   async function load() {
+    hideTip();                                                // tránh tooltip "kẹt" khi bảng render lại
     rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     const st = $('fStatus').value, q = $('fQ').value;
@@ -101,9 +144,9 @@
         <td>${App.esc(r.staff)}</td>
         <td>${senderCell(r.sent_by)}</td>
         <td>${r.zalo_account ? App.esc(r.zalo_account) : '<span class="muted">—</span>'}</td>
-        <td class="msg-cell" title="${App.esc(r.message)}">${msgPreview(r.message)}</td>
+        <td class="msg-cell" data-tip="${App.esc(r.message)}">${msgPreview(r.message)}</td>
         <td>${resultPill(r.status)}</td>
-        <td class="err-cell" style="color:var(--red)" title="${App.esc(r.error)}">${errPreview(r.error)}</td>
+        <td class="err-cell" style="color:var(--red)" data-tip="${App.esc(r.error)}">${errPreview(r.error)}</td>
       </tr>`).join('');
     } catch (e) {
       rowsEl.innerHTML = `<tr><td colspan="11" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
