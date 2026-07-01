@@ -130,8 +130,11 @@
     if (text && String(text).trim()) {
       return `<button class="link-btn view-content" data-id="${App.esc(id)}" data-kind="${kind}">Xem nội dung</button>`;
     }
-    // Chưa có ND sẵn trong danh sách -> vẫn cho bấm để LẤY RIÊNG nội dung của đơn từ Basso.
-    return `<button class="link-btn muted view-content" data-id="${App.esc(id)}" data-kind="${kind}" title="Chưa có sẵn — bấm để lấy nội dung của đơn từ Basso">Tải nội dung</button>`;
+    // ND báo ship chỉ có SAU khi nhân viên tạo đơn giao ship -> đơn chưa tạo ship thì trống là
+    // bình thường, KHÔNG mời "Tải nội dung" (tránh hiểu nhầm là thiếu dữ liệu). Chỉ ND báo hàng
+    // mới cho tải riêng: Basso có thể đã soạn sẵn nhưng danh sách (đã cache) chưa kèm.
+    if (kind === 'ship') return '<span class="muted">—</span>';
+    return `<button class="link-btn muted view-content" data-id="${App.esc(id)}" data-kind="${kind}" title="Chưa có sẵn — bấm để lấy nội dung báo hàng của đơn từ Basso">Tải nội dung</button>`;
   }
 
   // ---- Bảng sản phẩm đã về (load lazy qua /api/arrived-items) ----
@@ -676,7 +679,8 @@
     if (bg) bg.classList.add('show'); // hiện popup NGAY khi đã có nội dung
     autoGrowMsg();
     // Chưa có sẵn ND trong danh sách -> lấy RIÊNG nội dung của đơn từ Basso (fresh, trực tiếp).
-    if (!current.trim()) fetchContentIntoModal(o, isShip, id);
+    // CHỈ với báo hàng: ND báo ship trống là do chưa tạo đơn ship, không có gì để tải.
+    if (!current.trim() && !isShip) fetchContentIntoModal(o, isShip, id);
     try {
       const sendBtn = $('modalSend');
       if (sendBtn) {
