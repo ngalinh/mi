@@ -45,11 +45,26 @@
     return App.esc(firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine);
   }
 
+  // Map email nhân viên (chữ thường) -> tên, để cột "Người gửi" hiện tên gọn thay vì email.
+  // Tải 1 lần từ /api/staff; nếu lỗi thì map rỗng và fallback hiện nguyên email.
+  let staffByEmail = new Map();
+  async function loadStaffMap() {
+    try {
+      const res = await App.api('/api/staff');
+      staffByEmail = new Map(
+        (res.staff || []).map((s) => [String(s.email || '').trim().toLowerCase(), s.name])
+      );
+    } catch (_) { /* giữ map hiện tại */ }
+  }
+
   // Người gửi: 'bot' = tự động; chuỗi khác = nhân viên (gateway forward); rỗng = không rõ.
+  // Nếu là email khớp danh sách NV -> hiện tên cho gọn (email đầy đủ ở tooltip).
   function senderCell(v) {
     const s = String(v || '').trim();
     if (!s) return '<span class="muted">—</span>';
     if (s === 'bot') return '<span class="pill">🤖 Bot</span>';
+    const name = staffByEmail.get(s.toLowerCase());
+    if (name) return `<span title="${App.esc(s)}">${App.esc(name)}</span>`;
     return App.esc(s);
   }
 
@@ -108,5 +123,6 @@
   });
   let t;
   $('fQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 400); });
-  load();
+  // Tải map nhân viên trước, xong mới render để cột "Người gửi" hiện tên ngay lượt đầu.
+  loadStaffMap().finally(load);
 })();
