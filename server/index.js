@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
-const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus } = require('./bassoApi');
+const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
@@ -228,6 +228,24 @@ app.get('/api/basso/ping', async (req, res) => {
     });
   } catch (err) {
     res.json({ ok: true, connected: false, mock: false, baseUrl: config.basso.baseUrl, ms: Date.now() - t0, error: err.message });
+  }
+});
+
+// ---- DEBUG (read-only): soi raw response THẬT của getArrivedVnList, bỏ qua cache ----
+// Dùng chẩn đoán "ND báo hàng có ở web Basso nhưng mi không hiện": mở
+//   /api/basso/debug-list?q=<tên hoặc SĐT khách>
+// rồi xem `content` trong từng dòng có nội dung không (hoặc nội dung nằm ở field tên khác
+// trong `_allKeys`). Không đổi dữ liệu, chỉ đọc.
+app.get('/api/basso/debug-list', async (req, res) => {
+  try {
+    const { q, from, to, status, limit } = req.query;
+    const data = await debugRawRows({
+      q, from, to, status,
+      limit: limit ? Math.min(parseInt(limit, 10) || 5, 50) : 5,
+    });
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
