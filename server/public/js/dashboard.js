@@ -751,6 +751,18 @@
   }
   function closeBulkModal() { $('bulkModalBg').classList.remove('show'); }
 
+  // Danh sách đơn "Chưa báo" hiện tại (theo NV + tìm kiếm) để gửi loạt. Client-mode đã có sẵn
+  // cả tập nên gửi THẲNG danh sách này lên -> server khỏi phải kéo lại từ Basso (tránh timeout
+  // khi Basso chậm). Đơn đã Delay / đã báo sẽ do server tự lọc bỏ như cũ.
+  function bulkTodoPayloads() {
+    const q = $('fQ').value.trim().toLowerCase();
+    return allOrders
+      .filter((o) => !currentStaff || String(o.userId) === String(currentStaff))
+      .filter((o) => !q || `${o.customerName} ${o.phone}`.toLowerCase().includes(q))
+      .filter((o) => groupOf(o) === 'todo')
+      .map(orderPayload);
+  }
+
   async function bulkSend() {
     if (!counts.todo) return;
     closeBulkModal();
@@ -758,13 +770,17 @@
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
     try {
       const q = $('fQ').value;
+      const body = {
+        from: F.from || undefined, to: F.to || undefined,
+        staff: currentStaff || undefined, q: q || undefined,
+      };
+      // Chỉ gửi kèm `orders` khi client-mode (có đủ tập). Tập quá lớn (server-mode phân trang)
+      // -> để server tự kéo toàn bộ như cũ, tránh gửi thiếu đơn ở trang khác.
+      if (clientMode) body.orders = bulkTodoPayloads();
       const res = await App.api('/api/notify-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: F.from || undefined, to: F.to || undefined,
-          staff: currentStaff || undefined, q: q || undefined,
-        }),
+        body: JSON.stringify(body),
       });
       App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
       afterMutation();

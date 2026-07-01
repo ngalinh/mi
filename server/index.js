@@ -301,9 +301,13 @@ app.get('/api/order-counts', async (req, res) => {
 // body: { from?, to?, staff?, q?, kind? }
 app.post('/api/notify-all', async (req, res) => {
   try {
-    const { from, to, staff, q, kind } = req.body || {};
+    const { orders, from, to, staff, q, kind } = req.body || {};
     const actor = getActor(req);
-    const all = await fetchAllOrders({ status: 'not_sent', from, to, staff, q });
+    // Ưu tiên danh sách client gửi lên (dashboard client-mode đã có sẵn cả tập) -> KHÔNG kéo
+    // lại từ Basso, tránh timeout khi Basso chậm. Không có thì fallback kéo toàn bộ như cũ.
+    const all = (Array.isArray(orders) && orders.length)
+      ? orders
+      : await fetchAllOrders({ status: 'not_sent', from, to, staff, q });
     const delayed = getDelayedMap();
     const targets = all.filter((o) => {
       const key = autoNotify.autoKey(o);
