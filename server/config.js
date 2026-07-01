@@ -114,4 +114,17 @@ module.exports = {
   },
   dbPath: process.env.DB_PATH
     || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),
+  // Trợ lý chat "MyJoy" (Claude). Cần ANTHROPIC_API_KEY để trả lời thật; thiếu key thì
+  // vẫn chạy nhưng MyJoy trả lời bằng câu nhắc cấu hình (không gọi API). Model mặc định
+  // là Opus 4.8; đổi qua MYJOY_MODEL nếu cần.
+  myjoy: {
+    apiKey: process.env.ANTHROPIC_API_KEY || '',
+    baseUrl: (process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/$/, ''),
+    model: process.env.MYJOY_MODEL || 'claude-opus-4-8',
+    maxTokens: Math.max(parseInt(process.env.MYJOY_MAX_TOKENS || '1024', 10) || 1024, 256),
+    system: process.env.MYJOY_SYSTEM
+      || 'Bạn là MyJoy — trợ lý ảo thân thiện của shop, nói tiếng Việt tự nhiên, ngắn gọn và '
+      + 'hữu ích. Hỗ trợ nhân viên về nghiệp vụ báo hàng về VN, chăm sóc khách và các câu hỏi '
+      + 'chung. Nếu không chắc chắn, hãy nói rõ thay vì bịa.',
+  },
 };

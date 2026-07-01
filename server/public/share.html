@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hội thoại MyJoy</title>
+  <link rel="icon" href="favicon.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <style>
+    body { background: #f7fafc; }
+    .share-wrap { max-width: 760px; margin: 0 auto; padding: 28px 16px 60px; }
+    .share-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+    .share-head img { width: 34px; height: 34px; border-radius: 8px; }
+    .share-head h1 { font-size: 20px; margin: 0; }
+    .share-sub { color: #718096; font-size: 13px; margin: 0 0 20px 46px; }
+    .share-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; }
+    .share-title { font-weight: 700; font-size: 17px; margin: 0 0 4px; }
+    .share-meta { color: #a0aec0; font-size: 12px; margin: 0 0 18px; }
+    .msgs { display: flex; flex-direction: column; gap: 14px; }
+    .row { display: flex; }
+    .row.user { justify-content: flex-end; }
+    .bubble { max-width: 78%; padding: 10px 14px; border-radius: 14px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+    .row.user .bubble { background: var(--primary, #e05c8a); color: #fff; border-bottom-right-radius: 4px; }
+    .row.assistant .bubble { background: #f1f5f9; color: #1a202c; border-bottom-left-radius: 4px; }
+    .who { font-size: 11px; color: #a0aec0; margin-bottom: 3px; }
+    .row.user .who { text-align: right; }
+    .state { text-align: center; color: #a0aec0; padding: 40px 0; }
+  </style>
+</head>
+<body>
+  <div class="share-wrap">
+    <div class="share-head">
+      <img src="mi-logo.png" alt="Mi" />
+      <h1>MyJoy</h1>
+    </div>
+    <p class="share-sub">Hội thoại được chia sẻ ở chế độ chỉ đọc.</p>
+    <div class="share-card">
+      <div id="content"><div class="state">Đang tải...</div></div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script>
+    (function () {
+      const contentEl = document.getElementById('content');
+      const token = new URLSearchParams(window.location.search).get('t');
+
+      function render(data) {
+        const conv = data.conversation || {};
+        const msgs = data.messages || [];
+        const meta = App.fmtDateTime(conv.created_at);
+        const body = msgs.length
+          ? msgs.map((m) => `
+            <div class="row ${m.role === 'user' ? 'user' : 'assistant'}">
+              <div>
+                <div class="who">${m.role === 'user' ? 'Người dùng' : 'MyJoy'}</div>
+                <div class="bubble">${App.esc(m.content)}</div>
+              </div>
+            </div>`).join('')
+          : '<div class="state">Hội thoại chưa có tin nhắn.</div>';
+        contentEl.innerHTML = `
+          <h2 class="share-title">${App.esc(conv.title || 'Cuộc trò chuyện')}</h2>
+          <p class="share-meta">${App.esc(meta)}</p>
+          <div class="msgs">${body}</div>`;
+      }
+
+      if (!token) {
+        contentEl.innerHTML = '<div class="state">Link không hợp lệ.</div>';
+        return;
+      }
+      App.api('/api/myjoy/share/' + encodeURIComponent(token))
+        .then(render)
+        .catch((e) => { contentEl.innerHTML = `<div class="state">${App.esc(e.message)}</div>`; });
+    })();
+  </script>
+</body>
+</html>

@@ -153,6 +153,33 @@ npm run accounts -- ten_acc   # profile khác
 In ra trạng thái đăng nhập + danh sách tên tài khoản Zalo đang thấy (kèm ảnh
 `screenshots/02a-account-search.png`). Copy đúng tên ở đây để điền vào `ZALO_ACCOUNT_MAP`.
 
+## MyJoy — chat với trợ lý AI + chia sẻ hội thoại 🆕
+
+Trang **MyJoy** (biểu tượng bong bóng chat ở thanh bên) cho nhân viên trò chuyện với một
+trợ lý AI (Claude). Mỗi cuộc trò chuyện được lưu vào SQLite và có **nút Share**: bật lên là
+sinh 1 link công khai — **ai có link đều đọc được** hội thoại ở chế độ chỉ đọc (`share.html?t=<token>`),
+không cần đăng nhập. Tắt Share thì link hết hiệu lực ngay.
+
+- Cần `ANTHROPIC_API_KEY` trong `.env` để MyJoy trả lời thật. Thiếu key thì trang vẫn chạy
+  (vẫn lưu + chia sẻ được hội thoại) nhưng MyJoy chỉ trả câu nhắc cấu hình.
+- Model mặc định `claude-opus-4-8` (đổi qua `MYJOY_MODEL`); giới hạn token qua `MYJOY_MAX_TOKENS`.
+- Hội thoại gắn với **email nhân viên** do gateway forward (chạy dev không gateway thì dùng
+  chung 1 nhóm). Chỉ chủ hội thoại mới xem/sửa/xoá; link Share thì công khai.
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/myjoy/conversations` | Danh sách hội thoại của người đang đăng nhập |
+| POST | `/api/myjoy/conversations` `{title?}` | Tạo hội thoại mới |
+| GET | `/api/myjoy/conversations/:id` | Xem hội thoại + tin nhắn |
+| POST | `/api/myjoy/conversations/:id/message` `{content}` | Gửi tin → MyJoy trả lời (lưu cả 2) |
+| PUT | `/api/myjoy/conversations/:id` `{title}` | Đổi tên hội thoại |
+| POST | `/api/myjoy/conversations/:id/share` `{enabled}` | Bật/tắt chia sẻ → trả `token` + `path` |
+| DELETE | `/api/myjoy/conversations/:id` | Xoá hội thoại |
+| GET | `/api/myjoy/share/:token` | **Công khai**: đọc hội thoại đã chia sẻ (không cần đăng nhập) |
+
+> Bảng `myjoy_conversations` + `myjoy_messages` nằm cùng SQLite với Lịch sử báo — nhớ trỏ
+> `DATA_DIR`/`DB_PATH` vào ổ bền để không mất hội thoại khi restart container.
+
 ## Ráp API website thật (ĐÃ tích hợp Basso Partner API)
 
 Chỉ cần điền `.env` là chạy thật:

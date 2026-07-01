@@ -12,6 +12,8 @@ const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCac
 const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
 const cacheWarmer = require('./cacheWarmer');
+const myjoyStore = require('./myjoyStore');
+const { askMyJoy } = require('./myjoyService');
 
 const app = express();
 // CORS: mặc định mở (gateway ai.basso.vn là lối vào duy nhất). Đặt CORS_ORIGIN để siết.
@@ -63,6 +65,9 @@ app.use(express.static(path.join(__dirname, 'public'), {
 const GATEWAY_EXEMPT = new Set(['/api/health', '/api/register-local', '/api/webhook/arrived']);
 app.use((req, res, next) => {
   if (!config.gatewaySecret) return next();
+  // Đọc hội thoại chia sẻ công khai (chỉ GET, có token trong URL) được miễn secret gateway
+  // để "ai có link đều đọc được" — vẫn chỉ trả về đúng hội thoại đã bật chia sẻ.
+  if (req.method === 'GET' && req.path.startsWith('/api/myjoy/share/')) return next();
   if (!req.path.startsWith('/api/') || GATEWAY_EXEMPT.has(req.path)) return next();
   if (!safeEqual(req.get('x-gateway-secret'), config.gatewaySecret)) {
     return res.status(401).json({ ok: false, error: 'Thiếu/sai X-Gateway-Secret' });
@@ -443,6 +448,110 @@ app.post('/api/webhook/arrived', async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+// ---- MyJoy: chat với trợ lý AI + chia sẻ hội thoại qua link ----
+// Hội thoại gắn với NHÂN VIÊN (email do gateway forward). Không có gateway (dev) -> owner rỗng.
+
+// Chỉ chủ hội thoại mới xem/sửa/xoá được (khi có danh tính gateway). Trả null nếu được phép,
+// ngược lại trả object lỗi để route dừng. Không có actor (dev) -> cho qua.
+function denyConvAccess(req, conv) {
+  if (!conv) return { status: 404, error: 'Không tìm thấy hội thoại' };
+  const actor = getActor(req);
+  if (!actor) return null;                          // dev/standalone: bỏ qua kiểm tra chủ sở hữu
+  const owner = String(conv.owner || '').toLowerCase();
+  if (owner && owner !== String(actor).toLowerCase()) {
+    return { status: 403, error: 'Bạn không có quyền với hội thoại này' };
+  }
+  return null;
+}
+
+// Danh sách hội thoại của người đang đăng nhập.
+app.get('/api/myjoy/conversations', (req, res) => {
+  try {
+    res.json({ ok: true, conversations: myjoyStore.listConversations(getActor(req)) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Tạo hội thoại mới. body: { title? }
+app.post('/api/myjoy/conversations', (req, res) => {
+  try {
+    const conv = myjoyStore.createConversation(getActor(req), (req.body || {}).title);
+    res.json({ ok: true, conversation: conv });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Xem 1 hội thoại + tin nhắn.
+app.get('/api/myjoy/conversations/:id', (req, res) => {
+  const conv = myjoyStore.getConversation(req.params.id);
+  const deny = denyConvAccess(req, conv);
+  if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
+  res.json({ ok: true, conversation: conv, messages: myjoyStore.getMessages(conv.id) });
+});
+
+// Gửi 1 tin nhắn -> lưu + gọi MyJoy trả lời -> lưu câu trả lời. body: { content }
+app.post('/api/myjoy/conversations/:id/message', async (req, res) => {
+  const conv = myjoyStore.getConversation(req.params.id);
+  const deny = denyConvAccess(req, conv);
+  if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
+  const content = String((req.body || {}).content || '').trim();
+  if (!content) return res.status(400).json({ ok: false, error: 'Thiếu nội dung tin nhắn' });
+  try {
+    const userMsg = myjoyStore.addMessage(conv.id, 'user', content);
+    // Đặt tiêu đề theo tin nhắn đầu nếu hội thoại còn tên mặc định.
+    if (/^Cuộc trò chuyện mới$/i.test(conv.title || '')) {
+      myjoyStore.renameConversation(conv.id, content.slice(0, 60));
+    }
+    const history = myjoyStore.getMessages(conv.id);
+    const reply = await askMyJoy(history);
+    const botMsg = myjoyStore.addMessage(conv.id, 'assistant', reply);
+    res.json({ ok: true, userMessage: userMsg, reply: botMsg, conversation: myjoyStore.getConversation(conv.id) });
+  } catch (err) {
+    res.status(502).json({ ok: false, error: err.message });
+  }
+});
+
+// Đổi tên hội thoại. body: { title }
+app.put('/api/myjoy/conversations/:id', (req, res) => {
+  const conv = myjoyStore.getConversation(req.params.id);
+  const deny = denyConvAccess(req, conv);
+  if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
+  const title = String((req.body || {}).title || '').trim();
+  if (!title) return res.status(400).json({ ok: false, error: 'Thiếu tiêu đề' });
+  res.json({ ok: true, conversation: myjoyStore.renameConversation(conv.id, title) });
+});
+
+// Bật/tắt chia sẻ công khai. body: { enabled } -> trả về token + đường dẫn share.
+app.post('/api/myjoy/conversations/:id/share', (req, res) => {
+  const conv = myjoyStore.getConversation(req.params.id);
+  const deny = denyConvAccess(req, conv);
+  if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
+  const token = myjoyStore.setShared(conv.id, !!(req.body || {}).enabled);
+  res.json({ ok: true, shared: !!token, token: token || '', path: token ? `share.html?t=${token}` : '' });
+});
+
+// Xoá hội thoại.
+app.delete('/api/myjoy/conversations/:id', (req, res) => {
+  const conv = myjoyStore.getConversation(req.params.id);
+  const deny = denyConvAccess(req, conv);
+  if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
+  res.json({ ok: myjoyStore.deleteConversation(conv.id) });
+});
+
+// CÔNG KHAI: đọc hội thoại theo token chia sẻ. Không cần đăng nhập — ai có link đều đọc được.
+// Chỉ trả về khi hội thoại đã bật chia sẻ (share_token khớp).
+app.get('/api/myjoy/share/:token', (req, res) => {
+  const conv = myjoyStore.getByShareToken(req.params.token);
+  if (!conv) return res.status(404).json({ ok: false, error: 'Link không tồn tại hoặc đã tắt chia sẻ' });
+  res.json({
+    ok: true,
+    conversation: { title: conv.title, created_at: conv.created_at, updated_at: conv.updated_at },
+    messages: myjoyStore.getMessages(conv.id).map((m) => ({ role: m.role, content: m.content, created_at: m.created_at })),
+  });
 });
 
 // ---- Lịch sử report ----
