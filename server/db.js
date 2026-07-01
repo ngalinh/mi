@@ -169,8 +169,9 @@ function parseImages(row) {
   return { ...row, images };
 }
 
-function listReports({ limit = 200, status, q, from, to } = {}) {
-  let sql = 'SELECT * FROM reports';
+// Gom điều kiện WHERE dùng chung cho listReports + stats để 2 nơi lọc y hệt nhau.
+// staff/sender/account là bộ lọc mở rộng: khớp CHÍNH XÁC giá trị đã chọn từ dropdown.
+function reportsWhere({ status, q, from, to, staff, sender, account } = {}) {
   const where = [];
   const params = {};
   if (status) { where.push('status = @status'); params.status = status; }
@@ -181,10 +182,26 @@ function listReports({ limit = 200, status, q, from, to } = {}) {
   // from/to là mốc ISO (UTC) do client tính từ ngày local; so sánh chuỗi ISO đúng thứ tự.
   if (from) { where.push('created_at >= @from'); params.from = from; }
   if (to) { where.push('created_at < @to'); params.to = to; }
-  if (where.length) sql += ' WHERE ' + where.join(' AND ');
-  sql += ' ORDER BY id DESC LIMIT @limit';
+  if (staff) { where.push('staff = @staff'); params.staff = staff; }
+  if (sender) { where.push('sent_by = @sender'); params.sender = sender; }
+  if (account) { where.push('zalo_account = @account'); params.account = account; }
+  return { whereSql: where.length ? ' WHERE ' + where.join(' AND ') : '', params };
+}
+
+function listReports({ limit = 200, ...filters } = {}) {
+  const { whereSql, params } = reportsWhere(filters);
   params.limit = Math.min(limit, 1000);
+  const sql = `SELECT * FROM reports${whereSql} ORDER BY id DESC LIMIT @limit`;
   return db.prepare(sql).all(params).map(parseImages);
+}
+
+// Giá trị phân biệt cho các dropdown lọc mở rộng (Nhân viên / Người gửi / Tài khoản).
+// Lấy từ toàn bộ bảng (không theo bộ lọc hiện tại) để danh sách chọn luôn ổn định.
+function reportFacets() {
+  const distinct = (col) => db
+    .prepare(`SELECT DISTINCT ${col} AS v FROM reports WHERE ${col} IS NOT NULL AND ${col} <> '' ORDER BY ${col} COLLATE NOCASE`)
+    .all().map((r) => r.v);
+  return { staff: distinct('staff'), senders: distinct('sent_by'), accounts: distinct('zalo_account') };
 }
 
 // ---- Dedup cho báo hàng (tự động + tay) ----
@@ -316,16 +333,9 @@ function deleteStaff(email) {
 }
 
 // Thẻ thống kê tôn trọng bộ lọc ngày + tìm kiếm (không lọc theo status vì đếm riêng từng loại).
-function stats({ q, from, to } = {}) {
-  const where = [];
-  const params = {};
-  if (q) {
-    where.push('(customer_name LIKE @q OR phone LIKE @q OR order_id LIKE @q)');
-    params.q = `%${q}%`;
-  }
-  if (from) { where.push('created_at >= @from'); params.from = from; }
-  if (to) { where.push('created_at < @to'); params.to = to; }
-  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+function stats({ q, from, to, staff, sender, account } = {}) {
+  // Không tính 'status' vào WHERE: thẻ thống kê phải hiện đủ 4 trạng thái để bấm lọc.
+  const { whereSql, params } = reportsWhere({ q, from, to, staff, sender, account });
   const row = db.prepare(`
     SELECT
       COUNT(*) AS total,
@@ -340,6 +350,6 @@ function stats({ q, from, to } = {}) {
 }
 
 module.exports = {
-  db, addReport, updateReport, listReports, stats, getAutoRecord, getAutoMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
+  db, addReport, updateReport, listReports, reportFacets, stats, getAutoRecord, getAutoMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
 };

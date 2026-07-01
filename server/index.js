@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
-const { listReports, stats, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
+const { listReports, reportFacets, stats, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
@@ -476,9 +476,10 @@ app.post('/api/webhook/arrived', async (req, res) => {
 // ---- Lịch sử report ----
 app.get('/api/reports', (req, res) => {
   try {
-    const { limit, status, q, from, to } = req.query;
-    const items = listReports({ limit: limit ? parseInt(limit, 10) : 200, status, q, from, to });
-    res.json({ ok: true, stats: stats({ q, from, to }), items });
+    const { limit, status, q, from, to, staff, sender, account } = req.query;
+    const filters = { status, q, from, to, staff, sender, account };
+    const items = listReports({ limit: limit ? parseInt(limit, 10) : 200, ...filters });
+    res.json({ ok: true, stats: stats(filters), items, facets: reportFacets() });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
