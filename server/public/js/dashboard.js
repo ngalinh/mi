@@ -712,8 +712,10 @@
     const label = btn ? btn.innerHTML : '';
     if (btn) {
       btn.disabled = true;
-      // Nút icon tròn (gửi từng dòng) chỉ hiện spinner để giữ nguyên kích thước, không phình
-      // ra chữ; nút dạng chữ (modal "Gửi") mới kèm nhãn "Đang gửi..." cho rõ.
+      // is-loading giữ nút nền tối + spinner trắng (ghi đè kiểu :disabled xám). Nút icon tròn
+      // (gửi từng dòng) chỉ hiện spinner để giữ nguyên kích thước, không phình ra chữ; nút dạng
+      // chữ (modal "Gửi") mới kèm nhãn "Đang gửi..." cho rõ.
+      btn.classList.add('is-loading');
       btn.innerHTML = btn.classList.contains('icon-only')
         ? '<span class="spinner"></span>'
         : '<span class="spinner"></span> Đang gửi...';
@@ -737,7 +739,7 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = label; }
+      if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); btn.innerHTML = label; }
     }
   }
 
