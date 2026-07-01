@@ -554,7 +554,7 @@
     p = Math.min(Math.max(1, parseInt(p, 10) || 1), totalPages);
     if (p === currentPage) return;
     currentPage = p;
-    if (clientMode) applyView({ keepPage: true }); else load({ keepPage: true });
+    load({ keepPage: true }); // server-mode: kéo đúng trang (đếm không đổi khi chỉ lật trang)
     const tw = document.querySelector('.table-wrap');
     if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1064,23 +1064,38 @@
 
   // ----- Bộ điều phối: ngày đổi -> kéo lại tập (loadAll tự quyết client/fallback); các bộ
   // lọc khác (NV/trạng thái/trang/tìm kiếm) -> client-mode lọc tức thì, fallback gọi server. -----
+  // Đếm 4 thẻ trạng thái (tổng THẬT theo NV + tìm kiếm + ngày, không chỉ trang hiện tại).
+  // Server-mode: /api/order-counts nhẹ (4 call page_size=1, cache 90s) — không kéo cả tập.
+  async function loadCounts() {
+    const p = new URLSearchParams();
+    if (F.from) p.set('from', F.from);
+    if (F.to) p.set('to', F.to);
+    if (currentStaff) p.set('staff', currentStaff);
+    const q = $('fQ').value.trim();
+    if (q) p.set('q', q);
+    try {
+      const res = await App.api('/api/order-counts?' + p.toString());
+      if (res.counts) { counts = res.counts; renderStatusTabs(); }
+      if (res.tabUsers && res.tabUsers.length) { mergeTabUsers(res.tabUsers); renderTabs(); }
+    } catch (_) { /* lỗi -> giữ số cũ, không phá màn hình */ }
+  }
+
+  // Điều phối SERVER-MODE (mặc định): mỗi thao tác chỉ kéo 1 trang nhẹ + đếm nhẹ, không kéo
+  // toàn bộ all-time -> tải nhanh. Đổi tab/trạng thái/trang = 1 nhịp Basso nhẹ.
   function reloadScope(opts = {}) {                               // ngày đổi / Tải lại
     // User chủ động đồng bộ -> cho các dòng đã hết lượt thử lại (Basso có thể đã sinh ND).
     if (opts.auto !== true) contentAttempts.clear();
-    return loadAll(opts);
+    loadCounts();
+    return load(opts);
   }
-  function applyFilters(opts = {}) {                               // NV/trạng thái/trang/tìm kiếm đổi
-    return clientMode ? applyView(opts) : load(opts);
+  function applyFilters(opts = {}) {                              // NV/trạng thái/trang/tìm kiếm đổi
+    loadCounts();
+    return load(opts);
   }
-  // Sau thao tác làm đổi dữ liệu (đổi trạng thái/gửi Zalo/Delay): client-mode phản hồi tức thì
-  // (object đã mutate tại chỗ) rồi resync nền; server-mode tải lại trang.
-  function afterMutation() {
-    if (clientMode) { applyView({ keepPage: true }); loadAll({ auto: true }); }
-    else load({ keepPage: true });
-  }
-  // Vẽ lại không gọi server (đổi cách hiển thị/loại trừ/ghi chú): client-mode lọc lại cả tập,
-  // server-mode chỉ render lại trang hiện tại như cũ.
-  function rerender() { if (clientMode) applyView({ keepPage: true }); else render(); }
+  // Sau thao tác làm đổi dữ liệu (đổi trạng thái/gửi Zalo/Delay): tải lại trang + đếm lại.
+  function afterMutation() { load({ keepPage: true }); loadCounts(); }
+  // Vẽ lại không gọi server (đổi cách hiển thị/loại trừ/ghi chú): render lại trang hiện tại.
+  function rerender() { render(); }
   window.__miReload = () => reloadScope();
 
   function autoSync() {
@@ -1090,7 +1105,7 @@
     if (!$('filterPop').hidden) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
-    if (clientMode) loadAll({ auto: true }); else load({ auto: true });
+    load({ auto: true }); loadCounts();
   }
 
   // ---------------- Health (chỉ cờ MOCK / TEST trên topbar) ----------------
@@ -1124,7 +1139,7 @@
   }
 
   // ---------------- Events ----------------
-  $('syncBtn').addEventListener('click', () => reloadScope());
+  $('syncBtn').addEventListener('click', () => reloadScope({ keepPage: true }));
 
   // Gom nhóm chỉ là cách hiển thị TRONG trang hiện tại -> không đổi trang, không tải lại.
   $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
@@ -1293,7 +1308,7 @@
   loadZaloAccounts();
   setInterval(loadHealth, 15000);
   setInterval(autoSync, AUTO_SYNC_MS);
-  // Khởi động: loadAll() tự vẽ nhanh trang 1 (server) rồi kéo tập đầy đủ để lọc client; tập quá
-  // lớn thì tự fallback về phân trang server.
+  // Khởi động: SERVER-MODE — chỉ kéo 1 trang nhẹ + đếm nhẹ (không kéo toàn bộ all-time) để
+  // tải nhanh, dựa cache ấm (preload) khi Basso chậm.
   reloadScope();
 })();
