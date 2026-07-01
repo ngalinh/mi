@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
-const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, debugRawRows } = require('./bassoApi');
+const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const { listReports, stats, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
@@ -365,6 +365,21 @@ app.get('/api/arrived-items', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Cần id hoặc (customerId + dateInventory)' });
     }
     const data = await getArrivedItems({ id, customerId, dateInventory });
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Lấy RIÊNG nội dung báo hàng/ship của 1 đơn (fresh) — cho nút "Xem/Tải nội dung" ----
+// Khi danh sách (đã cache) chưa có ND của đơn, gọi trực tiếp Basso lấy đúng đơn. Read-only.
+app.get('/api/order-content', async (req, res) => {
+  try {
+    const { customerId, dateInventory, phone } = req.query;
+    if (customerId == null || dateInventory == null) {
+      return res.status(400).json({ ok: false, error: 'Cần customerId + dateInventory' });
+    }
+    const data = await getOrderContent({ customerId, dateInventory, phone });
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

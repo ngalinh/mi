@@ -466,6 +466,40 @@ async function getArrivedItems({ id, customerId, dateInventory } = {}) {
 }
 
 /**
+ * Lấy RIÊNG nội dung báo hàng/ship của 1 đơn — FRESH, KHÔNG qua cache SWR.
+ *
+ * Dùng cho nút "Xem/Tải nội dung": khi danh sách (đã cache) chưa có `content` — vd Basso vừa
+ * soạn ND sau khi mi đã cache list, hoặc list trả thiếu content — thì lấy trực tiếp của đúng đơn.
+ * Thu hẹp getArrivedVnList theo SĐT khách (key) để chỉ kéo vài dòng, rồi khớp đúng dòng bằng
+ * (customer_id + date_inventory). Chỉ đọc, không đổi dữ liệu.
+ * @param {{customerId:number|string, dateInventory:number|string, phone?:string}} p
+ * @returns {Promise<{source, found:boolean, noiDungBaoHang:string, noiDungBaoShip:string}>}
+ */
+async function getOrderContent({ customerId, dateInventory, phone } = {}) {
+  const pick = (row) => ({
+    found: !!row,
+    noiDungBaoHang: (row && row.content) || '',
+    noiDungBaoShip: (row && row.content_ship) || '',
+  });
+  const matches = (r) =>
+    String(r.customer_id) === String(customerId) &&
+    String(r.date_inventory) === String(dateInventory);
+
+  if (config.basso.useMock) {
+    return { source: 'mock', ...pick(loadMock().find(matches)) };
+  }
+  // key = SĐT -> Basso trả về ít dòng; KHÔNG qua swrFetch nên luôn lấy bản mới nhất.
+  const raw = await apiFetch('/partner/getArrivedVnList', {
+    query: { page: 1, page_size: 100, key: phone || undefined },
+  });
+  const rows = raw.rows || [];
+  // Khớp chính xác theo (customer_id + date_inventory); nếu lệch kiểu date mà chỉ có đúng 1
+  // dòng trả về (đã lọc theo SĐT) thì lấy dòng đó làm fallback.
+  const row = rows.find(matches) || (rows.length === 1 ? rows[0] : null);
+  return { source: 'api', ...pick(row) };
+}
+
+/**
  * DEBUG (read-only): lấy raw rows THẬT từ /partner/getArrivedVnList, BỎ QUA cache SWR,
  * để soi đúng field thô Basso trả về (có `content`/`content_ship` không, rỗng hay tên khác).
  * Dùng chẩn đoán "ND báo hàng có ở web nhưng mi không hiện": xem API list có kèm nội dung không.
@@ -612,4 +646,4 @@ async function fetchAllOrders(filters = {}) {
   return all;
 }
 
-module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS };
