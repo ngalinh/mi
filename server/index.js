@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, debugRawRows } = require('./bassoApi');
-const { listReports, stats, getAutoRecord, getDelayedMap, setDelayed,
+const { listReports, stats, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
@@ -14,6 +14,16 @@ const autoNotify = require('./autoNotify');
 const cacheWarmer = require('./cacheWarmer');
 
 const app = express();
+// GZIP mọi response JSON. Payload nặng nhất là /api/orders/all (toàn bộ đơn all-time, có thể
+// vài MB) — nén giảm mạnh thời gian truyền qua gateway, lợi cả cold load lẫn mỗi lần auto-sync.
+// Guard require: nếu môi trường chưa cài `compression` thì bỏ qua (không chặn server chạy).
+try {
+  // eslint-disable-next-line global-require
+  const compression = require('compression');
+  app.use(compression());
+} catch (_) {
+  console.warn('[perf] gzip TẮT (chưa cài `compression` — chạy `npm install` để bật)');
+}
 // CORS: mặc định mở (gateway ai.basso.vn là lối vào duy nhất). Đặt CORS_ORIGIN để siết.
 app.use(config.corsOrigins.length ? cors({ origin: config.corsOrigins }) : cors());
 app.use(express.json({ limit: '5mb' }));
@@ -253,10 +263,13 @@ app.get('/api/basso/debug-list', async (req, res) => {
 // Delay/Loại trừ — để dashboard phân biệt kể cả khi không cập nhật trạng thái về web Basso.
 function enrichOrders(orders) {
   if (!Array.isArray(orders)) return orders;
+  // Nạp cả 2 bảng dấu-cục-bộ trong 2 truy vấn (thay vì 1 query/đơn) — với tập all-time hàng
+  // nghìn đơn thì đây là khác biệt rõ giữa vài nghìn query và 2 query.
   const delayedMap = getDelayedMap();
+  const autoMap = getAutoMap();
   return orders.map((o) => {
     const key = autoNotify.autoKey(o);
-    const a = getAutoRecord(key);
+    const a = autoMap.get(String(key));
     const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
     return delayedMap.has(key)
       ? { ...withAuto, delayed: true, delayReason: delayedMap.get(key) }

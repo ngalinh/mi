@@ -213,6 +213,17 @@ function getAutoRecord(orderId) {
   return getAutoStmt.get({ order_id: String(orderId) }) || null;
 }
 
+const getAllAutoStmt = db.prepare('SELECT order_id, status, attempts, updated_at FROM auto_notified');
+/**
+ * Nạp TẤT CẢ bản ghi tự-động-đã-gửi vào 1 Map (order_id -> record) trong MỘT truy vấn.
+ * Dùng cho enrichOrders khi gắn dấu cho cả tập all-time: 1 query thay vì N query/đơn.
+ */
+function getAutoMap() {
+  const m = new Map();
+  for (const r of getAllAutoStmt.all()) m.set(String(r.order_id), r);
+  return m;
+}
+
 /** Ghi/cập nhật trạng thái tự động báo của 1 đơn. */
 function recordAutoNotified(orderId, status, attempts) {
   upsertAutoStmt.run({
@@ -329,6 +340,6 @@ function stats({ q, from, to } = {}) {
 }
 
 module.exports = {
-  db, addReport, updateReport, listReports, stats, getAutoRecord, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
+  db, addReport, updateReport, listReports, stats, getAutoRecord, getAutoMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
 };

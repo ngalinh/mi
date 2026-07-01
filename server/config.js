@@ -92,7 +92,13 @@ module.exports = {
     // Ngưỡng số đơn để dashboard lọc client-side (kéo hết 1 lần rồi lọc NV/trạng thái/trang
     // ngay trên trình duyệt). Tập vượt ngưỡng -> /api/orders/all trả truncated=true để client
     // tự fallback về phân trang server (tránh kéo quá nặng). 0 = luôn cho phép client-side.
-    clientMaxOrders: Math.max(parseInt(process.env.BASSO_CLIENT_MAX_ORDERS || '3000', 10) || 0, 0),
+    // Để 6000 (thay vì 3000): giữ client-mode cho tập all-time lớn hơn -> đổi tab/trạng thái
+    // lọc TỨC THÌ tại trình duyệt thay vì mỗi lần đổi tab là 1 round-trip Basso (chậm). Cold
+    // load nặng hơn được bù bằng concurrency cao hơn (pageConcurrency) + gzip + cache ấm.
+    clientMaxOrders: Math.max(parseInt(process.env.BASSO_CLIENT_MAX_ORDERS || '6000', 10) || 0, 0),
+    // Số trang Basso kéo SONG SONG khi gom toàn bộ đơn 1 khoảng ngày (getAllOrders). Cao hơn =
+    // cold load / auto-sync nhanh hơn, nhưng tải lên Basso nặng hơn. Dial về 4 nếu Basso than phiền.
+    pageConcurrency: Math.min(Math.max(parseInt(process.env.BASSO_PAGE_CONCURRENCY || '8', 10) || 8, 1), 16),
     // Bật để in thời gian từng call tới Basso (chẩn đoán chậm: do mạng hay do Basso).
     // BASSO_LOG_TIMING=true -> log "[basso] getArrivedVnList 2380ms". Mặc định tắt.
     logTiming: String(process.env.BASSO_LOG_TIMING || 'false').toLowerCase() === 'true',
