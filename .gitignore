@@ -14,6 +14,8 @@ screenshots/
 # Danh sách tài khoản Zalo + lịch sử đăng nhập (tạo lúc chạy) — runtime data, KHÔNG commit
 config/zalo-accounts.json
 config/login-history.json
+# Override chế độ TEST an toàn (chỉnh qua UI) — runtime data, KHÔNG commit
+config/test-mode.json
 
 # Cấu hình Claude Code cá nhân (máy-specific)
 .claude/settings.local.json

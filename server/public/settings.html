@@ -139,6 +139,23 @@
           </div>
           <div class="mode-row">
             <div class="mode-info">
+              <div class="mode-title">Chặn an toàn khi test (TEST_MODE)</div>
+              <div class="mode-desc">Khi <strong>Bật</strong>: bot chỉ gửi thật tới các số trong danh sách bên dưới, mọi số khách khác bị chặn. Khi <strong>Tắt</strong>: gửi tới SĐT thật của mọi khách. Áp dụng ngay, không cần khởi động lại.</div>
+            </div>
+            <button class="badge-status badge-clickable badge-offline" id="testModeBadge" title="Bật/tắt chặn an toàn">TEST: ...</button>
+          </div>
+          <div class="mode-row" id="testPhonesRow">
+            <div class="mode-info" style="flex:1; min-width:0;">
+              <div class="mode-title">Số điện thoại được gửi khi test</div>
+              <div class="mode-desc">Chỉ các số này được nhận tin khi TEST_MODE bật. Cách nhau bằng dấu phẩy.</div>
+              <div class="note-cell" style="margin-top:8px; max-width:560px;">
+                <input class="note-input" id="testPhonesInput" placeholder="Vd: 0764523837, 0912345678" />
+              </div>
+            </div>
+            <button class="btn accent" id="testPhonesSave">Lưu số test</button>
+          </div>
+          <div class="mode-row">
+            <div class="mode-info">
               <div class="mode-title">Local-runner</div>
               <div class="mode-desc">Tiến trình chạy bot trên máy local.</div>
             </div>

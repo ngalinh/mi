@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const testModeStore = require('./testModeStore');
 const { getPage, closeContext, withProfileLock } = require('./browser');
 
 /**
@@ -27,9 +28,10 @@ const ACC_NORM = (s) => (s || '').normalize('NFC').replace(/\s+/g, ' ').trim().t
 // Chuẩn hóa SĐT để so khớp whitelist (bỏ ký tự không phải số, bỏ 84/0 đầu)
 const normPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
 function phoneAllowed(phone) {
-  if (!config.testMode) return true;
+  const { testMode, testPhones } = testModeStore.get();
+  if (!testMode) return true;
   const t = normPhone(phone);
-  return config.testPhones.some((tp) => normPhone(tp) === t && t !== '');
+  return testPhones.some((tp) => normPhone(tp) === t && t !== '');
 }
 
 const sleep = (page, ms) => page.waitForTimeout(ms);
@@ -218,7 +220,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // TEST_MODE: whitelist chỉ chặn theo SĐT (phoneAllowed). Nếu cho khớp theo TÊN, có thể mở
   // nhầm hội thoại của 1 khách KHÁC trùng tên (không nằm trong whitelist). -> Khi TEST_MODE,
   // CHỈ khớp theo SĐT đã whitelist, bỏ qua tìm theo tên cho an toàn.
-  if (config.testMode && phone) name = undefined;
+  if (testModeStore.get().testMode && phone) name = undefined;
   const searchBox = page
     .locator(
       'input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], '

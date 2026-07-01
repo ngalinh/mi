@@ -136,6 +136,21 @@ app.get('/api/accounts/:key/history', (req, res) =>
 app.delete('/api/accounts/:type/:key', (req, res) =>
   proxyAccounts(req, res, 'DELETE', `/api/accounts/${encodeURIComponent(req.params.type)}/${encodeURIComponent(req.params.key)}`, false));
 
+// ---- Chế độ TEST an toàn (whitelist SĐT) — forward xuống runner (nơi thực thi chặn) ----
+// Server cloud không giữ cấu hình này; runner là nơi enforce nên cũng là nơi lưu.
+async function proxyTestMode(req, res, method, useBody) {
+  try {
+    const { status, data } = await forwardAccounts(method, '/api/test-mode', {
+      body: useBody ? req.body : undefined,
+    });
+    res.status(status).json(data);
+  } catch (e) {
+    res.status(504).json({ ok: false, error: `Không kết nối được local-runner: ${e.message}` });
+  }
+}
+app.get('/api/test-mode', (req, res) => proxyTestMode(req, res, 'GET', false));
+app.put('/api/test-mode', (req, res) => proxyTestMode(req, res, 'PUT', true));
+
 // ---- Nhân viên (tài khoản dashboard Mi) ----
 // Lưu Ở SERVER (SQLite, volume bền) — KHÔNG lưu mật khẩu: login do gateway ai.basso.vn lo,
 // bảng này chỉ map email đăng nhập -> vai trò + trạng thái. Khác với tài khoản Zalo (ở runner).

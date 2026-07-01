@@ -35,4 +35,7 @@ module.exports = {
   screenshotDir: path.join(__dirname, '..', 'screenshots'),
   // File lưu danh sách tài khoản Zalo (key, name, saleworkName, proxy) — quản lý qua /api/accounts.
   zaloAccountsFile: path.join(__dirname, '..', 'config', 'zalo-accounts.json'),
+  // File override chế độ TEST an toàn (testMode + testPhones) — chỉnh qua UI /api/test-mode,
+  // có hiệu lực NGAY không cần restart. Chưa có file -> dùng TEST_MODE/TEST_PHONES trong .env.
+  testModeFile: path.join(__dirname, '..', 'config', 'test-mode.json'),
 };

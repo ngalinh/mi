@@ -353,6 +353,56 @@
     }
   }
 
+  // ---- Chặn an toàn khi test (TEST_MODE + whitelist SĐT) ----
+  let testMode = false;
+  let testKnown = false; // đã biết trạng thái thật từ runner chưa (tránh render khi offline)
+
+  function renderTestMode(t, online = true) {
+    const badge = $('testModeBadge');
+    const saveBtn = $('testPhonesSave');
+    const input = $('testPhonesInput');
+    if (!online || !t) {
+      testKnown = false;
+      badge.textContent = 'TEST: (local-runner offline)';
+      badge.className = 'badge-status badge-offline';
+      saveBtn.disabled = true;
+      return;
+    }
+    testKnown = true;
+    testMode = !!t.testMode;
+    badge.textContent = 'TEST: ' + (testMode ? 'Bật (chỉ gửi số whitelist)' : 'Tắt (gửi khách thật)');
+    badge.className = 'badge-status badge-clickable ' + (testMode ? 'badge-online' : 'badge-offline');
+    saveBtn.disabled = false;
+    // Không đè khi người dùng đang gõ (loadHealth chạy nền mỗi 15s).
+    if (document.activeElement !== input) input.value = (t.testPhones || []).join(', ');
+  }
+
+  async function saveTestMode(patch, okMsg) {
+    const t = await App.api('/api/test-mode', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch),
+    });
+    renderTestMode(t, true);
+    if (okMsg) App.toast(okMsg);
+    return t;
+  }
+
+  async function toggleTestMode() {
+    if (!testKnown) { App.toast('⚠️ Local-runner offline — chưa đổi được', 4000); return; }
+    const next = !testMode;
+    if (!next && !confirm('TẮT chặn an toàn? Bot sẽ gửi tới SĐT THẬT của MỌI khách. Chắc chắn?')) return;
+    try {
+      await saveTestMode({ testMode: next },
+        next ? '✅ Đã bật chặn an toàn (chỉ gửi số trong danh sách)' : '⚠️ Đã tắt chặn an toàn — sẽ gửi khách thật');
+    } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+  }
+
+  async function saveTestPhones() {
+    if (!testKnown) { App.toast('⚠️ Local-runner offline — chưa lưu được', 4000); return; }
+    try {
+      await saveTestMode({ testPhones: $('testPhonesInput').value }, '✅ Đã lưu danh sách số test');
+    } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+  }
+
   async function loadHealth() {
     try {
       const h = await App.api('/api/health');
@@ -362,6 +412,10 @@
       $('modeMockBadge').style.display = h.mock ? '' : 'none';
       $('modeLiveBadge').style.display = h.mock ? 'none' : '';
       if (h.autoNotify) renderAutoBadge(h.autoNotify);
+      renderTestMode(
+        { testMode: h.localRunner.testMode, testPhones: h.localRunner.testPhones },
+        !!h.localRunner.online,
+      );
     } catch { /* ignore */ }
   }
 
@@ -388,6 +442,9 @@
 
   $('autoBadge').addEventListener('click', toggleAuto);
   $('bassoBtn').addEventListener('click', pingBasso);
+  $('testModeBadge').addEventListener('click', toggleTestMode);
+  $('testPhonesSave').addEventListener('click', saveTestPhones);
+  $('testPhonesInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveTestPhones(); });
 
   loadHealth();
   setInterval(loadHealth, 15000);
