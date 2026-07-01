@@ -194,6 +194,7 @@ kèm thống kê ✅/❌.
 |---|---|---|
 | GET | `/api/orders` | Danh sách hàng về (kèm cờ `autoNotified`) |
 | GET | `/api/arrived-items` | Chi tiết SP đã về 1 dòng (load lazy) |
+| GET | `/api/order-content` | Lấy RIÊNG ND báo hàng/ship của 1 đơn (fresh, khi list chưa có) |
 | POST | `/api/notify` | Báo tay 1 hoặc nhiều đơn |
 | POST | `/api/update-row` | Sửa trạng thái/ghi chú 1 dòng (sync web) |
 | GET | `/api/auto-notify` | Trạng thái bot |

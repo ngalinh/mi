@@ -127,8 +127,11 @@
   }
 
   function contentCell(text, id, kind) {
-    if (!text || !String(text).trim()) return '<span class="muted">—</span>';
-    return `<button class="link-btn view-content" data-id="${App.esc(id)}" data-kind="${kind}">Xem nội dung</button>`;
+    if (text && String(text).trim()) {
+      return `<button class="link-btn view-content" data-id="${App.esc(id)}" data-kind="${kind}">Xem nội dung</button>`;
+    }
+    // Chưa có ND sẵn trong danh sách -> vẫn cho bấm để LẤY RIÊNG nội dung của đơn từ Basso.
+    return `<button class="link-btn muted view-content" data-id="${App.esc(id)}" data-kind="${kind}" title="Chưa có sẵn — bấm để lấy nội dung của đơn từ Basso">Tải nội dung</button>`;
   }
 
   // ---- Bảng sản phẩm đã về (load lazy qua /api/arrived-items) ----
@@ -665,10 +668,15 @@
     const set = (elId, prop, val) => { const el = $(elId); if (el) el[prop] = val; };
     set('modalTitle', 'textContent', `${isShip ? 'Báo ship' : 'Báo hàng'} — ${o.customerName || ''}`);
     set('modalSub', 'textContent', `SĐT: ${o.phone || '—'} · NV: ${o.staff || '—'}`);
-    set('modalMsg', 'value', (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '');
+    const current = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
+    set('modalMsg', 'value', current);
+    set('modalMsg', 'disabled', false); // reset nếu lần trước đóng modal giữa lúc đang tải
+    set('modalMsg', 'placeholder', '');
     const bg = $('modalBg');
     if (bg) bg.classList.add('show'); // hiện popup NGAY khi đã có nội dung
     autoGrowMsg();
+    // Chưa có sẵn ND trong danh sách -> lấy RIÊNG nội dung của đơn từ Basso (fresh, trực tiếp).
+    if (!current.trim()) fetchContentIntoModal(o, isShip, id);
     try {
       const sendBtn = $('modalSend');
       if (sendBtn) {
@@ -688,6 +696,34 @@
     if (!ta) return;
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
+  }
+  // Lấy riêng ND của đơn từ Basso rồi đổ vào modal đang mở (nếu người dùng chưa đóng/đổi đơn).
+  // Cập nhật luôn đơn trong bộ nhớ + render lại bảng để bật nút gửi và đổi cell "Tải" -> "Xem".
+  async function fetchContentIntoModal(o, isShip, id) {
+    const ta = $('modalMsg');
+    const stillOpen = () => modalId === id && modalKind === (isShip ? 'ship' : 'hang');
+    if (ta) { ta.placeholder = 'Đang lấy nội dung từ Basso…'; ta.disabled = true; }
+    try {
+      const qs = new URLSearchParams({
+        customerId: o.customerId ?? '', dateInventory: o.dateInventory ?? '', phone: o.phone || '',
+      });
+      const res = await App.api(`/api/order-content?${qs.toString()}`);
+      // Cập nhật đơn trong bộ nhớ dù modal đã đóng — lần mở sau đỡ phải gọi lại.
+      if (res.noiDungBaoHang) o.noiDungBaoHang = res.noiDungBaoHang;
+      if (res.noiDungBaoShip) o.noiDungBaoShip = res.noiDungBaoShip;
+      const val = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
+      if (stillOpen() && ta) {
+        ta.value = val;
+        ta.placeholder = val ? '' : 'Basso chưa có nội dung cho đơn này.';
+        autoGrowMsg();
+      }
+      if (res.noiDungBaoHang || res.noiDungBaoShip) render(); // đồng bộ cell + nút gửi trong bảng
+    } catch (err) {
+      if (stillOpen() && ta) ta.placeholder = 'Lỗi lấy nội dung: ' + (err && err.message || 'thử lại');
+      App.toast('Không lấy được nội dung đơn: ' + (err && err.message || ''), 4000);
+    } finally {
+      if (ta) ta.disabled = false; // luôn bật lại (textarea dùng chung, an toàn)
+    }
   }
   function closeModal() { const bg = $('modalBg'); if (bg) bg.classList.remove('show'); modalId = null; }
 
