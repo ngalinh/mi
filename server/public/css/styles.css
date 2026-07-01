@@ -675,6 +675,25 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   min-width: 180px; max-width: 280px; white-space: normal; font-size: 13px; cursor: help;
   line-height: 1.45; word-break: break-word;
 }
+.msg-cell { cursor: help; }
+
+/* Tooltip tuỳ biến (ô Nội dung / Lỗi): thẻ nổi bo góc, đổ bóng, giữ xuống dòng.
+   Định vị bằng JS theo viewport (position: fixed). */
+.rp-tip {
+  position: fixed; z-index: 1000; left: 0; top: 0; max-width: 440px;
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow);
+  padding: 12px 14px; font-size: 13px; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word;
+  opacity: 0; visibility: hidden; transform: translateY(4px);
+  transition: opacity .12s ease, transform .12s ease; pointer-events: none;
+}
+.rp-tip.show { opacity: 1; visibility: visible; transform: none; }
+.rp-tip.is-err {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 30%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+}
 
 /* Lịch sử báo: chống các cột ngắn (Thời gian / Mã đơn / SĐT / NV / Người gửi)
    xuống dòng vụn; bảng tự giãn & cuộn ngang trong .table-wrap nếu cần. */
