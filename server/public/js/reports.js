@@ -68,6 +68,25 @@
     return App.esc(s);
   }
 
+  // Nhãn cho dropdown "Người gửi": 🤖 Bot, hoặc "Tên (email)" nếu email khớp NV, hoặc nguyên chuỗi.
+  function senderLabel(v) {
+    const s = String(v || '').trim();
+    if (s === 'bot') return '🤖 Bot';
+    const name = staffByEmail.get(s.toLowerCase());
+    return name ? `${name} (${s})` : s;
+  }
+
+  // Đổ danh sách chọn cho dropdown lọc, giữ nguyên giá trị đang chọn (kể cả khi facets đổi).
+  function fillSelect(el, values, labelFn) {
+    const cur = el.value;
+    const opts = ['<option value="">Tất cả</option>'].concat(
+      (values || []).map((v) => `<option value="${App.esc(v)}">${App.esc(labelFn ? labelFn(v) : v)}</option>`)
+    );
+    el.innerHTML = opts.join('');
+    el.value = cur;                                           // khôi phục lựa chọn
+    if (el.value !== cur) el.value = '';                      // giá trị cũ đã biến mất -> về "Tất cả"
+  }
+
   // Tooltip tuỳ biến cho ô Nội dung / Lỗi: đẹp hơn tooltip mặc định của trình duyệt,
   // giữ nguyên xuống dòng và bám theo viewport (không tràn mép, tự lật lên nếu chạm đáy).
   const tip = document.createElement('div');
@@ -117,6 +136,10 @@
     const st = $('fStatus').value, q = $('fQ').value;
     if (st) params.set('status', st);
     if (q) params.set('q', q);
+    const staff = $('fStaff').value, sender = $('fSender').value, account = $('fAccount').value;
+    if (staff) params.set('staff', staff);
+    if (sender) params.set('sender', sender);
+    if (account) params.set('account', account);
     // Ngày chọn ở input là ngày local; quy đổi ra mốc ISO (UTC) để khớp created_at.
     // from = 00:00 ngày bắt đầu; to = 00:00 ngày sau ngày kết thúc (chặn trên, loại trừ).
     const from = $('fFrom').value, to = $('fTo').value;
@@ -124,6 +147,10 @@
     if (to) { const d = new Date(to + 'T00:00:00'); d.setDate(d.getDate() + 1); params.set('to', d.toISOString()); }
     try {
       const res = await App.api('/api/reports?' + params.toString());
+      const f = res.facets || {};
+      fillSelect($('fStaff'), f.staff);
+      fillSelect($('fSender'), f.senders, senderLabel);
+      fillSelect($('fAccount'), f.accounts);
       $('sTotal').textContent = res.stats.total;
       $('sSuccess').textContent = res.stats.success;
       $('sFailed').textContent = res.stats.failed;
@@ -163,6 +190,9 @@
   $('fStatus').addEventListener('change', () => { syncStatCards($('fStatus').value); load(); });
   $('fFrom').addEventListener('change', load);
   $('fTo').addEventListener('change', load);
+  $('fStaff').addEventListener('change', load);
+  $('fSender').addEventListener('change', load);
+  $('fAccount').addEventListener('change', load);
   // Bấm thẻ thống kê = lọc theo loại (Tổng = tất cả, Thành công, Thất bại)
   $('statCards').addEventListener('click', (e) => {
     const card = e.target.closest('.status-tab');
