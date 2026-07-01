@@ -587,6 +587,8 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .action-cell .btn.small { padding: 6px 13px; font-size: 12px; justify-content: center; white-space: nowrap; flex: 0 0 auto; }
 .action-cell .btn.icon-only { padding: 8px; min-width: 0; }
 .action-cell .btn.icon-only .icon { width: 19px; height: 19px; }
+/* Khi đang gửi: spinner bằng đúng kích thước icon để nút giữ nguyên cỡ, không nhảy layout. */
+.action-cell .btn.icon-only .spinner { width: 19px; height: 19px; vertical-align: 0; }
 /* Disable = xám rõ ràng (không phải tông nhấn) để phân biệt với nút bật được. */
 .action-cell .btn.icon-only:disabled {
   opacity: 1; background: var(--bg-soft); background-image: none;

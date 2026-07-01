@@ -710,7 +710,14 @@
     if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
     const btn = btnEl || rowsEl.querySelector(`.send-zalo[data-id="${cssEsc(String(id))}"][data-kind="${kind}"]`);
     const label = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...'; }
+    if (btn) {
+      btn.disabled = true;
+      // Nút icon tròn (gửi từng dòng) chỉ hiện spinner để giữ nguyên kích thước, không phình
+      // ra chữ; nút dạng chữ (modal "Gửi") mới kèm nhãn "Đang gửi..." cho rõ.
+      btn.innerHTML = btn.classList.contains('icon-only')
+        ? '<span class="spinner"></span>'
+        : '<span class="spinner"></span> Đang gửi...';
+    }
     try {
       const res = await App.api('/api/notify', {
         method: 'POST',
