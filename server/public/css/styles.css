@@ -202,12 +202,13 @@ a { color: var(--primary); text-decoration: none; }
 .badge-clickable:hover { filter: brightness(0.97); border-color: currentColor; }
 /* Cột trạng thái: dropdown + badge xếp dọc cho thoáng */
 .status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
-/* Dấu "bot tự động đã gửi" trong cột trạng thái */
-.bot-tag { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: var(--radius-pill);
-  font-size: 11px; font-weight: 600; color: var(--green); background: var(--green-soft);
-  border: 1px solid rgba(30,158,90,.25); white-space: nowrap; }
-.bot-tag.bot-fail { color: var(--red); background: var(--red-soft); border-color: rgba(229,72,77,.25); }
-.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: rgba(232,76,142,.28); }
+/* Dấu "bot tự động đã gửi" / "báo thủ công" trong cột trạng thái */
+.bot-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 700; line-height: 1.3; color: var(--green); background: var(--green-soft);
+  border: 1px solid color-mix(in srgb, var(--green) 24%, transparent); white-space: nowrap; }
+.bot-tag .icon { width: 13px; height: 13px; }
+.bot-tag.bot-fail { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 24%, transparent); }
+.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 26%, transparent); }
 
 /* ============================================================
    Cards
@@ -585,8 +586,16 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .action-cell { display: flex; }
 .action-btns { display: flex; gap: 7px; flex-wrap: nowrap; }
 .action-cell .btn.small { padding: 6px 13px; font-size: 12px; justify-content: center; white-space: nowrap; flex: 0 0 auto; }
-.action-cell .btn.icon-only { padding: 8px; min-width: 0; }
+.action-cell .btn.icon-only { padding: 8px; min-width: 0; width: 37px; height: 37px; }
 .action-cell .btn.icon-only .icon { width: 19px; height: 19px; }
+/* Lúc đang gửi: giữ nguyên khối vuông của nút, chỉ xoay spinner (không phình thành pill).
+   Ghi đè kiểu :disabled xám để nút vẫn nền tối + spinner trắng, trông "đang chạy" rõ ràng. */
+.action-cell .btn.icon-only.is-loading,
+.action-cell .btn.icon-only.is-loading:disabled {
+  width: 37px; opacity: 1; cursor: progress;
+  background: var(--ink); background-image: none; color: #fff; border-color: transparent;
+}
+.action-cell .btn.is-loading .spinner { width: 18px; height: 18px; border-width: 2px; }
 /* Disable = xám rõ ràng (không phải tông nhấn) để phân biệt với nút bật được. */
 .action-cell .btn.icon-only:disabled {
   opacity: 1; background: var(--bg-soft); background-image: none;

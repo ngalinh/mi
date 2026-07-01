@@ -710,7 +710,15 @@
     if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
     const btn = btnEl || rowsEl.querySelector(`.send-zalo[data-id="${cssEsc(String(id))}"][data-kind="${kind}"]`);
     const label = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...'; }
+    // Nút icon-only (trong bảng) chỉ hiện spinner để không phình ra thành pill dài;
+    // nút có chữ (modal gửi thử) mới kèm "Đang gửi...".
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.add('is-loading');
+      btn.innerHTML = btn.classList.contains('icon-only')
+        ? '<span class="spinner"></span>'
+        : '<span class="spinner"></span> Đang gửi...';
+    }
     try {
       const res = await App.api('/api/notify', {
         method: 'POST',
@@ -730,7 +738,7 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = label; }
+      if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); btn.innerHTML = label; }
     }
   }
 
