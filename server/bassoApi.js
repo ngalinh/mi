@@ -399,8 +399,9 @@ async function getAllOrders(filters = {}) {
     if (lastPage > 1) {
       const restPages = [];
       for (let p = 2; p <= lastPage; p += 1) restPages.push(p);
-      // Concurrency vừa phải (4) — nhanh hơn tuần tự nhưng không làm Basso quá tải.
-      const restRows = await mapLimit(restPages, 4, async (p) => {
+      // Kéo song song (config.basso.pageConcurrency, mặc định 8) — nhanh hơn tuần tự nhiều;
+      // dial về 4 qua BASSO_PAGE_CONCURRENCY nếu Basso quá tải.
+      const restRows = await mapLimit(restPages, config.basso.pageConcurrency || 8, async (p) => {
         const d = await apiFetch('/partner/getArrivedVnList', { query: { ...base, page: p } });
         return d.rows || [];
       });
