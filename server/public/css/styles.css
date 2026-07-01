@@ -588,6 +588,8 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .action-cell .btn.small { padding: 6px 13px; font-size: 12px; justify-content: center; white-space: nowrap; flex: 0 0 auto; }
 .action-cell .btn.icon-only { padding: 8px; min-width: 0; width: 37px; height: 37px; }
 .action-cell .btn.icon-only .icon { width: 19px; height: 19px; }
+/* Khi đang gửi: spinner bằng đúng kích thước icon để nút giữ nguyên cỡ, không nhảy layout. */
+.action-cell .btn.icon-only .spinner { width: 19px; height: 19px; vertical-align: 0; }
 /* Lúc đang gửi: giữ nguyên khối vuông của nút, chỉ xoay spinner (không phình thành pill).
    Ghi đè kiểu :disabled xám để nút vẫn nền tối + spinner trắng, trông "đang chạy" rõ ràng. */
 .action-cell .btn.icon-only.is-loading,
@@ -595,7 +597,6 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   width: 37px; opacity: 1; cursor: progress;
   background: var(--ink); background-image: none; color: #fff; border-color: transparent;
 }
-.action-cell .btn.is-loading .spinner { width: 18px; height: 18px; border-width: 2px; }
 /* Disable = xám rõ ràng (không phải tông nhấn) để phân biệt với nút bật được. */
 .action-cell .btn.icon-only:disabled {
   opacity: 1; background: var(--bg-soft); background-image: none;

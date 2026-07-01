@@ -254,7 +254,10 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         '[class*="conversation"], [class*="contact"], [class*="chat"], '
         + '[class*="list-item"], [class*="message-item"], li, a[href]'
       );
-      let topmost = null;
+      // Xoá cờ target cũ trước mỗi lần quét để chỉ còn 1 phần tử được đánh dấu.
+      document.querySelectorAll('[data-mi-target]').forEach((e) => e.removeAttribute('data-mi-target'));
+      let best = null;    // hàng KHỚP nhỏ nhất (hàng hội thoại thật)
+      let topmost = null; // hàng trên cùng khi không có từ khoá khớp
       for (const el of els) {
         const r = el.getBoundingClientRect();
         if (!(r.width > 150 && r.height > 30 && r.height < 220 && r.top >= 0)) continue;
@@ -264,12 +267,21 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         if (terms.length) {
           const hit = terms.some((m) =>
             (m.text && t.includes(m.text)) || (m.phone && tPhone.includes(m.phone)));
-          if (hit) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+          // Chọn phần tử khớp NHỎ NHẤT: tránh trúng WRAPPER của mục "Trò chuyện"
+          // (tâm rơi vào tiêu đề mục -> click không mở hội thoại). Hàng thật nhỏ hơn.
+          if (hit && (!best || r.width * r.height < best.area)) {
+            best = { el, area: r.width * r.height, rect: r };
+          }
         } else if (!topmost || r.top < topmost.top) {
-          topmost = { x: r.left + r.width / 2, y: r.top + r.height / 2, top: r.top };
+          topmost = { el, top: r.top, rect: r };
         }
       }
-      return terms.length ? null : topmost;
+      const pick = terms.length ? best : topmost;
+      if (!pick) return null;
+      // Đánh dấu để click bằng element thật (auto-scroll + actionable) thay vì chỉ toạ độ.
+      pick.el.setAttribute('data-mi-target', '1');
+      const rr = pick.rect;
+      return { x: rr.left + rr.width / 2, y: rr.top + rr.height / 2 };
     }, { matchTerms });
 
     // Kết quả tìm kiếm có debounce -> poll, TRẢ VỀ NGAY khi có kết quả.
@@ -303,7 +315,16 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${phone || name}". Kiểm tra khách đã từng nhắn Zalo trên tài khoản này chưa.`);
     }
   }
-  await page.mouse.click(rect.x, rect.y);
+  // Ưu tiên click bằng element đã đánh dấu (Playwright tự cuộn tới + chờ actionable),
+  // dự phòng click theo toạ độ chuột nếu Vue đã render lại làm mất cờ.
+  let opened = false;
+  try {
+    const target = page.locator('[data-mi-target]').first();
+    await target.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+    await target.click({ timeout: 5000 });
+    opened = true;
+  } catch { /* dự phòng toạ độ chuột */ }
+  if (!opened) await page.mouse.click(rect.x, rect.y);
   await page.waitForTimeout(1500);
   await shot(page, '04-conversation-opened');
 }

@@ -710,10 +710,11 @@
     if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
     const btn = btnEl || rowsEl.querySelector(`.send-zalo[data-id="${cssEsc(String(id))}"][data-kind="${kind}"]`);
     const label = btn ? btn.innerHTML : '';
-    // Nút icon-only (trong bảng) chỉ hiện spinner để không phình ra thành pill dài;
-    // nút có chữ (modal gửi thử) mới kèm "Đang gửi...".
     if (btn) {
       btn.disabled = true;
+      // is-loading giữ nút nền tối + spinner trắng (ghi đè kiểu :disabled xám). Nút icon tròn
+      // (gửi từng dòng) chỉ hiện spinner để giữ nguyên kích thước, không phình ra chữ; nút dạng
+      // chữ (modal "Gửi") mới kèm nhãn "Đang gửi..." cho rõ.
       btn.classList.add('is-loading');
       btn.innerHTML = btn.classList.contains('icon-only')
         ? '<span class="spinner"></span>'
@@ -752,6 +753,18 @@
   }
   function closeBulkModal() { $('bulkModalBg').classList.remove('show'); }
 
+  // Danh sách đơn "Chưa báo" hiện tại (theo NV + tìm kiếm) để gửi loạt. Client-mode đã có sẵn
+  // cả tập nên gửi THẲNG danh sách này lên -> server khỏi phải kéo lại từ Basso (tránh timeout
+  // khi Basso chậm). Đơn đã Delay / đã báo sẽ do server tự lọc bỏ như cũ.
+  function bulkTodoPayloads() {
+    const q = $('fQ').value.trim().toLowerCase();
+    return allOrders
+      .filter((o) => !currentStaff || String(o.userId) === String(currentStaff))
+      .filter((o) => !q || `${o.customerName} ${o.phone}`.toLowerCase().includes(q))
+      .filter((o) => groupOf(o) === 'todo')
+      .map(orderPayload);
+  }
+
   async function bulkSend() {
     if (!counts.todo) return;
     closeBulkModal();
@@ -759,13 +772,17 @@
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
     try {
       const q = $('fQ').value;
+      const body = {
+        from: F.from || undefined, to: F.to || undefined,
+        staff: currentStaff || undefined, q: q || undefined,
+      };
+      // Chỉ gửi kèm `orders` khi client-mode (có đủ tập). Tập quá lớn (server-mode phân trang)
+      // -> để server tự kéo toàn bộ như cũ, tránh gửi thiếu đơn ở trang khác.
+      if (clientMode) body.orders = bulkTodoPayloads();
       const res = await App.api('/api/notify-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: F.from || undefined, to: F.to || undefined,
-          staff: currentStaff || undefined, q: q || undefined,
-        }),
+        body: JSON.stringify(body),
       });
       App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
       afterMutation();
