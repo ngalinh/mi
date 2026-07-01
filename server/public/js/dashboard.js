@@ -137,6 +137,59 @@
     return `<button class="link-btn muted view-content" data-id="${App.esc(id)}" data-kind="${kind}" title="Chưa có sẵn — bấm để lấy nội dung báo hàng của đơn từ Basso">Tải nội dung</button>`;
   }
 
+  // ---- Tự lấp "ND báo hàng" cho dòng đang trống (ngầm, sau khi render) ----
+  // Nội dung do Basso sinh (không tức thì), danh sách có thể cache bản chưa có ND. Sau mỗi lần
+  // render, kéo NGẦM nội dung riêng cho các dòng trống trên TRANG đang xem để tự điền — không
+  // phải bấm "Tải nội dung". Giới hạn 3 request đồng thời + tối đa 3 lần thử/đơn (dòng Basso
+  // chưa sinh sẽ vẫn trống; lần sync sau thử lại tới khi hết lượt) để không dội Basso đang chậm.
+  const CONTENT_CONCURRENCY = 3;
+  const CONTENT_MAX_ATTEMPTS = 3;
+  const contentInflight = new Set();   // id đang fetch (chặn trùng giữa các lần render)
+  const contentAttempts = new Map();   // id -> số lần đã thử
+
+  function updateHangCellDom(o) {
+    const key = cssEsc(String(o.id));
+    const btn = rowsEl.querySelector(`.view-content[data-id="${key}"][data-kind="hang"]`);
+    if (btn) btn.outerHTML = contentCell(o.noiDungBaoHang, o.id, 'hang');
+    const send = rowsEl.querySelector(`.send-zalo[data-id="${key}"][data-kind="hang"]`);
+    if (send && o.noiDungBaoHang && o.noiDungBaoHang.trim()) {
+      send.disabled = false;
+      send.title = 'Gửi báo hàng qua Zalo';
+    }
+  }
+
+  async function autoFillContent(list) {
+    const targets = (list || []).filter((o) =>
+      o && o.customerId != null && o.dateInventory != null &&
+      (!o.noiDungBaoHang || !String(o.noiDungBaoHang).trim()) &&
+      !contentInflight.has(String(o.id)) &&
+      (contentAttempts.get(String(o.id)) || 0) < CONTENT_MAX_ATTEMPTS);
+    if (!targets.length) return;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < targets.length) {
+        const o = targets[idx]; idx += 1;
+        const id = String(o.id);
+        contentInflight.add(id);
+        contentAttempts.set(id, (contentAttempts.get(id) || 0) + 1);
+        try {
+          const qs = new URLSearchParams({
+            customerId: o.customerId ?? '', dateInventory: o.dateInventory ?? '', phone: o.phone || '',
+          });
+          const res = await App.api(`/api/order-content?${qs.toString()}`);
+          if (res.noiDungBaoHang) o.noiDungBaoHang = res.noiDungBaoHang;
+          if (res.noiDungBaoShip) o.noiDungBaoShip = res.noiDungBaoShip;
+          if (res.noiDungBaoHang && String(res.noiDungBaoHang).trim()) updateHangCellDom(o);
+        } catch (_) {
+          // Im lặng: Basso chậm/lỗi hoặc chưa sinh ND -> để lần sync sau thử lại (tới hết lượt).
+        } finally {
+          contentInflight.delete(id);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONTENT_CONCURRENCY, targets.length) }, worker));
+  }
+
   // ---- Bảng sản phẩm đã về (load lazy qua /api/arrived-items) ----
   function variationsCell(vs) {
     if (!vs || !vs.length) return '<span class="muted">—</span>';
@@ -457,6 +510,7 @@
     pageList.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
     if (currentGroupBy === 'customer') fillGroupProductCounts(pageList);
     renderPager(totalPages);
+    autoFillContent(pageList); // ngầm: tự điền ND báo hàng cho dòng trống (không chặn render)
   }
 
   // ---------------- Phân trang ----------------
@@ -1010,7 +1064,11 @@
 
   // ----- Bộ điều phối: ngày đổi -> kéo lại tập (loadAll tự quyết client/fallback); các bộ
   // lọc khác (NV/trạng thái/trang/tìm kiếm) -> client-mode lọc tức thì, fallback gọi server. -----
-  function reloadScope(opts = {}) { return loadAll(opts); }       // ngày đổi / Tải lại
+  function reloadScope(opts = {}) {                               // ngày đổi / Tải lại
+    // User chủ động đồng bộ -> cho các dòng đã hết lượt thử lại (Basso có thể đã sinh ND).
+    if (opts.auto !== true) contentAttempts.clear();
+    return loadAll(opts);
+  }
   function applyFilters(opts = {}) {                               // NV/trạng thái/trang/tìm kiếm đổi
     return clientMode ? applyView(opts) : load(opts);
   }
