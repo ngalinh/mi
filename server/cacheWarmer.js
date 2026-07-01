@@ -1,6 +1,6 @@
 'use strict';
 const config = require('./config');
-const { getAllOrders, getStatusCounts, getTabUsers } = require('./bassoApi');
+const { getOrders, getStatusCounts, getTabUsers } = require('./bassoApi');
 
 /**
  * NẠP SẴN (preload / cache-warm) DANH SÁCH HÀNG VỀ.
@@ -12,8 +12,8 @@ const { getAllOrders, getStatusCounts, getTabUsers } = require('./bassoApi');
  *   2) ngay sau khi sửa 1 dòng (updateArrivedVnRow -> invalidateOrdersCache xoá sạch cache).
  *
  * Module này tự "mở dashboard hộ" theo chu kỳ ở NỀN: gọi đúng "khung nhìn mặc định" mà
- * dashboard tải lúc boot (toàn bộ đơn all-time + đếm trạng thái + danh sách nhân viên) để
- * cache luôn ấm. Nhờ vậy người dùng mở lên là có ngay, rồi SWR tự làm mới nền.
+ * dashboard tải lúc boot (trang 1 tab "Chưa báo" + đếm 4 trạng thái + danh sách nhân viên)
+ * để cache luôn ấm. Nhờ vậy người dùng mở lên là có ngay, rồi SWR tự làm mới nền.
  *
  * Bật/tắt qua BASSO_PRELOAD_INTERVAL_MS (0 = tắt). Tự tắt khi MOCK hoặc cache danh sách tắt.
  */
@@ -40,9 +40,11 @@ async function warmOnce(trigger = 'interval') {
   state.running = true;
   const t0 = Date.now();
   try {
-    // getAllOrders trước (đây là tập nặng dashboard cần đầu tiên); sau đó đếm + nhân viên
-    // song song. Cùng bộ lọc rỗng (all-time) như lúc dashboard boot -> trúng đúng cache key.
-    await getAllOrders({});
+    // Warm ĐÚNG khung server-mode mà dashboard tải lúc boot: trang 1 tab "Chưa báo"
+    // (not_sent, pageSize 20) + đếm 4 thẻ + nhân viên. Phải TRÙNG cache key với call thật
+    // của client (cùng page/pageSize/status/bộ lọc rỗng) thì mở dashboard mới ăn cache ấm.
+    // (KHÔNG warm getAllOrders all-time nữa — server-mode không dùng, lại nặng/dễ timeout.)
+    await getOrders({ status: 'not_sent', page: 1, pageSize: 20 });
     await Promise.all([getTabUsers(), getStatusCounts({})]);
     state.lastOk = true;
     state.lastError = null;

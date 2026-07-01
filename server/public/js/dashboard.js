@@ -1032,8 +1032,8 @@
       render();
       renderStatusTabs();
       updateCount(visibleOrders());
-      // Fallback (tập quá lớn, không client-mode): prefetch ngầm từng tab NV cho cache ấm.
-      if (!fast && !clientMode && !currentStaff && !auto && tabUsers.length) prefetchStaffTabs();
+      // (Bỏ prefetch từng tab NV: server-mode mỗi tab là 1 call sống — prefetch = N call dội
+      //  Basso mỗi lần mở, hại nhiều hơn lợi. Tab NV nào bấm mới tải, cache SWR giữ cho lần sau.)
     } catch (e) {
       if (!auto && !fast) {
         rowsEl.innerHTML = `<tr><td colspan="12" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();window.__miReload&&window.__miReload()">Thử lại</button></td></tr>`;
