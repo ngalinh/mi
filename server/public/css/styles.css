@@ -643,25 +643,44 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
    Pills
    ============================================================ */
 .pill {
-  display: inline-flex; align-items: center;
-  font-size: 12px; padding: 6px 14px; border-radius: var(--radius-pill);
-  font-weight: 700; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; padding: 5px 13px; border-radius: var(--radius-pill);
+  font-weight: 700; white-space: nowrap; line-height: 1;
+  border: 1px solid transparent;
 }
-.pill.chua { background: var(--amber-soft); color: var(--amber); }
-.pill.da { background: var(--green-soft); color: var(--green); }
-.pill.success { background: var(--green-soft); color: var(--green); }
-.pill.failed { background: var(--red-soft); color: var(--red); }
-.pill.pending { background: var(--blue-soft); color: var(--blue); }
+/* Pill kết quả: viền + bóng nhẹ cùng tông để nổi khối, gọn gàng hơn nền phẳng. */
+.pill.chua { background: var(--amber-soft); color: var(--amber); border-color: color-mix(in srgb, var(--amber) 22%, transparent); }
+.pill.da { background: var(--green-soft); color: var(--green); border-color: color-mix(in srgb, var(--green) 22%, transparent); }
+.pill.success {
+  background: var(--green-soft); color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 22%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--green) 16%, transparent);
+}
+.pill.failed {
+  background: var(--red-soft); color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 22%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--red) 16%, transparent);
+}
+.pill.pending {
+  background: var(--blue-soft); color: var(--blue);
+  border-color: color-mix(in srgb, var(--blue) 22%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--blue) 16%, transparent);
+}
 
 .msg-cell { min-width: 240px; max-width: 360px; white-space: pre-wrap; color: var(--text-soft); font-size: 13px; line-height: 1.5; }
 
-/* Cột lỗi: cắt gọn 1 dòng, xem đầy đủ qua tooltip để không phình bảng */
-.err-cell { min-width: 160px; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; cursor: help; }
+/* Cột lỗi: cho xuống dòng để hiện đủ phần preview (đã cắt sẵn ~60 ký tự trong JS)
+   thay vì cắt cụt giữa chừng; tối đa 2 dòng, xem đầy đủ qua tooltip. */
+.err-cell {
+  min-width: 180px; max-width: 280px; white-space: normal; font-size: 13px; cursor: help;
+  line-height: 1.45; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 
 /* Lịch sử báo: chống các cột ngắn (Thời gian / Mã đơn / SĐT / NV / Người gửi)
    xuống dòng vụn; bảng tự giãn & cuộn ngang trong .table-wrap nếu cần. */
 .reports-table th, .reports-table td { white-space: nowrap; vertical-align: top; }
-.reports-table .msg-cell, .reports-table .cust { white-space: normal; }
+.reports-table .msg-cell, .reports-table .cust, .reports-table .err-cell { white-space: normal; }
 .reports-table .cust { min-width: 130px; }
 
 /* ============================================================

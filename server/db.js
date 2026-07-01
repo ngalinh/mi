@@ -169,7 +169,7 @@ function parseImages(row) {
   return { ...row, images };
 }
 
-function listReports({ limit = 200, status, q } = {}) {
+function listReports({ limit = 200, status, q, from, to } = {}) {
   let sql = 'SELECT * FROM reports';
   const where = [];
   const params = {};
@@ -178,6 +178,9 @@ function listReports({ limit = 200, status, q } = {}) {
     where.push('(customer_name LIKE @q OR phone LIKE @q OR order_id LIKE @q)');
     params.q = `%${q}%`;
   }
+  // from/to là mốc ISO (UTC) do client tính từ ngày local; so sánh chuỗi ISO đúng thứ tự.
+  if (from) { where.push('created_at >= @from'); params.from = from; }
+  if (to) { where.push('created_at < @to'); params.to = to; }
   if (where.length) sql += ' WHERE ' + where.join(' AND ');
   sql += ' ORDER BY id DESC LIMIT @limit';
   params.limit = Math.min(limit, 1000);
@@ -301,15 +304,25 @@ function deleteStaff(email) {
   return delStaffStmt.run({ email: e }).changes > 0;
 }
 
-function stats() {
+// Thẻ thống kê tôn trọng bộ lọc ngày + tìm kiếm (không lọc theo status vì đếm riêng từng loại).
+function stats({ q, from, to } = {}) {
+  const where = [];
+  const params = {};
+  if (q) {
+    where.push('(customer_name LIKE @q OR phone LIKE @q OR order_id LIKE @q)');
+    params.q = `%${q}%`;
+  }
+  if (from) { where.push('created_at >= @from'); params.from = from; }
+  if (to) { where.push('created_at < @to'); params.to = to; }
+  const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const row = db.prepare(`
     SELECT
       COUNT(*) AS total,
       SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success,
       SUM(CASE WHEN status='failed'  THEN 1 ELSE 0 END) AS failed,
       SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
-    FROM reports
-  `).get();
+    FROM reports${whereSql}
+  `).get(params);
   return {
     total: row.total || 0, success: row.success || 0, failed: row.failed || 0, pending: row.pending || 0,
   };

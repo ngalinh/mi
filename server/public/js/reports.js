@@ -74,6 +74,11 @@
     const st = $('fStatus').value, q = $('fQ').value;
     if (st) params.set('status', st);
     if (q) params.set('q', q);
+    // Ngày chọn ở input là ngày local; quy đổi ra mốc ISO (UTC) để khớp created_at.
+    // from = 00:00 ngày bắt đầu; to = 00:00 ngày sau ngày kết thúc (chặn trên, loại trừ).
+    const from = $('fFrom').value, to = $('fTo').value;
+    if (from) params.set('from', new Date(from + 'T00:00:00').toISOString());
+    if (to) { const d = new Date(to + 'T00:00:00'); d.setDate(d.getDate() + 1); params.set('to', d.toISOString()); }
     try {
       const res = await App.api('/api/reports?' + params.toString());
       $('sTotal').textContent = res.stats.total;
@@ -113,6 +118,8 @@
 
   $('reloadBtn').addEventListener('click', load);
   $('fStatus').addEventListener('change', () => { syncStatCards($('fStatus').value); load(); });
+  $('fFrom').addEventListener('change', load);
+  $('fTo').addEventListener('change', load);
   // Bấm thẻ thống kê = lọc theo loại (Tổng = tất cả, Thành công, Thất bại)
   $('statCards').addEventListener('click', (e) => {
     const card = e.target.closest('.status-tab');
