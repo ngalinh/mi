@@ -465,6 +465,40 @@ async function getArrivedItems({ id, customerId, dateInventory } = {}) {
 }
 
 /**
+ * DEBUG (read-only): lấy raw rows THẬT từ /partner/getArrivedVnList, BỎ QUA cache SWR,
+ * để soi đúng field thô Basso trả về (có `content`/`content_ship` không, rỗng hay tên khác).
+ * Dùng chẩn đoán "ND báo hàng có ở web nhưng mi không hiện": xem API list có kèm nội dung không.
+ * @param {{q?:string, from?:string, to?:string, status?:string, limit?:number}} p
+ */
+async function debugRawRows({ q, from, to, status, limit = 5 } = {}) {
+  if (config.basso.useMock) {
+    const rows = loadMock();
+    return { source: 'mock', total: rows.length, sampleKeys: Object.keys(rows[0] || {}), rows: rows.slice(0, limit) };
+  }
+  const query = {
+    page: 1,
+    page_size: Math.min(limit || 5, 100),
+    status: status && status !== 'all' ? status : undefined,
+    from: toApiDate(from),
+    to: toApiDate(to),
+    key: q || undefined,
+  };
+  const raw = await apiFetch('/partner/getArrivedVnList', { query }); // KHÔNG qua swrFetch
+  const rows = raw.rows || [];
+  // Chỉ trả các field liên quan nội dung + toàn bộ key của dòng đầu để đối chiếu tên field thật.
+  const slim = rows.slice(0, limit).map((r) => ({
+    customer_name: r.customer_name,
+    customer_phone: r.customer_phone,
+    status: r.status,
+    content: r.content,             // ← field mi đang đọc cho "ND báo hàng"
+    content_ship: r.content_ship,
+    _hasContent: !!(r.content && String(r.content).trim()),
+    _allKeys: Object.keys(r),       // ← nếu content ở tên field khác sẽ lộ ra đây
+  }));
+  return { source: 'api', total: raw.total ?? rows.length, sampleKeys: Object.keys(rows[0] || {}), rows: slim };
+}
+
+/**
  * Cập nhật trạng thái + note 1 dòng hàng về (key = customer_id + date_inventory).
  * @param {{customerId:number, dateInventory:number, status:string, note?:string}} p
  */
@@ -577,4 +611,4 @@ async function fetchAllOrders(filters = {}) {
   return all;
 }
 
-module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, updateOrderStatus, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS };
