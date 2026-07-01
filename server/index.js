@@ -426,9 +426,9 @@ app.post('/api/webhook/arrived', async (req, res) => {
 // ---- Lịch sử report ----
 app.get('/api/reports', (req, res) => {
   try {
-    const { limit, status, q } = req.query;
-    const items = listReports({ limit: limit ? parseInt(limit, 10) : 200, status, q });
-    res.json({ ok: true, stats: stats(), items });
+    const { limit, status, q, from, to } = req.query;
+    const items = listReports({ limit: limit ? parseInt(limit, 10) : 200, status, q, from, to });
+    res.json({ ok: true, stats: stats({ q, from, to }), items });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
