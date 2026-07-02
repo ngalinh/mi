@@ -30,10 +30,12 @@
     return `<div class="rp-thumbs">${imgs}${more}</div>`;
   }
 
+  // Preview nội dung gọn 1 dòng: gộp xuống dòng/khoảng trắng thừa thành 1 space rồi cắt ngắn.
+  // Tin báo hàng thường 3 dòng nên nếu để nguyên sẽ đội chiều cao mỗi hàng; full text ở tooltip.
   function msgPreview(t) {
-    const s = String(t || '').trim();
+    const s = String(t || '').replace(/\s+/g, ' ').trim();
     if (!s) return '<span class="muted">—</span>';
-    return App.esc(s.length > 70 ? s.slice(0, 70) + '…' : s);
+    return App.esc(s.length > 60 ? s.slice(0, 60) + '…' : s);
   }
 
   // Lỗi Playwright thường rất dài (call log). Chỉ hiện dòng đầu + cắt ngắn,
@@ -170,8 +172,8 @@
         return;
       }
       rowsEl.innerHTML = items.map((r) => `<tr>
-        <td>${App.fmtDateTime(r.created_at)}</td>
-        <td>${App.esc(r.order_id) || '—'}</td>
+        <td class="time-cell">${App.fmtDateTime(r.created_at)}</td>
+        <td class="order-cell" ${r.order_id ? `data-tip="${App.esc(r.order_id)}"` : ''}>${App.esc(r.order_id) || '—'}</td>
         <td>${thumbsCell(r.images)}</td>
         <td class="cust">${App.esc(r.customer_name)}</td>
         <td>${App.esc(r.phone)}</td>
