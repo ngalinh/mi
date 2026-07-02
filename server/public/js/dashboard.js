@@ -510,7 +510,9 @@
     pageList.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
     if (currentGroupBy === 'customer') fillGroupProductCounts(pageList);
     renderPager(totalPages);
-    autoFillContent(pageList); // ngầm: tự điền ND báo hàng cho dòng trống (không chặn render)
+    // (KHÔNG auto-fill ngầm nữa: đơn mới Basso chưa sinh ND thì fetch lại vẫn rỗng — vô ích
+    //  mà 20 call lẻ nặng lại dội Basso đang yếu. Nội dung sẽ tự hiện ở lần sync sau khi Basso
+    //  đã sinh — vì danh sách vốn kèm sẵn `content` mỗi dòng. Cần lấy ngay thì bấm "Tải nội dung".)
   }
 
   // ---------------- Phân trang ----------------
@@ -1082,18 +1084,18 @@
 
   // Điều phối SERVER-MODE (mặc định): mỗi thao tác chỉ kéo 1 trang nhẹ + đếm nhẹ, không kéo
   // toàn bộ all-time -> tải nhanh. Đổi tab/trạng thái/trang = 1 nhịp Basso nhẹ.
+  // Đếm SAU khi list xong (không bắn đồng thời) -> giảm số call dội Basso 1 lúc: ưu tiên list
+  // hiển thị trước, 4 call đếm chạy sau nên không tranh băng thông/kết nối với list.
   function reloadScope(opts = {}) {                               // ngày đổi / Tải lại
     // User chủ động đồng bộ -> cho các dòng đã hết lượt thử lại (Basso có thể đã sinh ND).
     if (opts.auto !== true) contentAttempts.clear();
-    loadCounts();
-    return load(opts);
+    return load(opts).then(loadCounts);
   }
   function applyFilters(opts = {}) {                              // NV/trạng thái/trang/tìm kiếm đổi
-    loadCounts();
-    return load(opts);
+    return load(opts).then(loadCounts);
   }
-  // Sau thao tác làm đổi dữ liệu (đổi trạng thái/gửi Zalo/Delay): tải lại trang + đếm lại.
-  function afterMutation() { load({ keepPage: true }); loadCounts(); }
+  // Sau thao tác làm đổi dữ liệu (đổi trạng thái/gửi Zalo/Delay): tải lại trang rồi đếm lại.
+  function afterMutation() { load({ keepPage: true }).then(loadCounts); }
   // Vẽ lại không gọi server (đổi cách hiển thị/loại trừ/ghi chú): render lại trang hiện tại.
   function rerender() { render(); }
   window.__miReload = () => reloadScope();
@@ -1105,7 +1107,7 @@
     if (!$('filterPop').hidden) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
-    load({ auto: true }); loadCounts();
+    load({ auto: true }).then(loadCounts);
   }
 
   // ---------------- Health (chỉ cờ MOCK / TEST trên topbar) ----------------
