@@ -121,6 +121,12 @@ module.exports = {
     maxRetries: Math.max(parseInt(process.env.AUTO_NOTIFY_MAX_RETRIES || '3', 10) || 3, 1),
     // Bí mật bảo vệ webhook /api/webhook/arrived (so khớp header x-webhook-secret). Trống = không kiểm tra.
     webhookSecret: process.env.AUTO_NOTIFY_WEBHOOK_SECRET || '',
+    // CHỈ tự báo đơn về TỪ ngày account được bật "Tự động báo" trở đi (bỏ qua đơn tồn đọng
+    // về TRƯỚC đó) -> tránh nhắn trùng loạt khách cũ khi bật lại auto cho 1 nhân viên. Mốc
+    // lưu ở account.autoEnabledAt (runner). Đặt AUTO_NOTIFY_ONLY_NEW=false để bot gửi cả
+    // tồn đọng như trước. Chỉ áp dụng cho account Hướng B (khớp NV); account cũ chưa có mốc
+    // (autoEnabledAt trống) giữ nguyên hành vi cũ tới lần bật/tắt kế tiếp.
+    onlyNewOrders: String(process.env.AUTO_NOTIFY_ONLY_NEW ?? 'true').toLowerCase() !== 'false',
   },
   dbPath: process.env.DB_PATH
     || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),

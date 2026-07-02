@@ -110,6 +110,10 @@ runAutoNotify()
         - CÓ "ND báo hàng" từ Basso (noiDungBaoHang) — trống thì BỎ QUA, không dùng template
         - dedup: chưa 'success'/'manual', và attempts < maxRetries
         (khách có Zalo hay không xác định lúc gửi: tìm SĐT không ra hội thoại → lỗi)
+   ②b lọc theo NV + mốc bật auto (trong vòng lặp, theo account phụ trách):
+        - account NV tắt "Tự động báo" (autoEnabled=false) → BỎ QUA (để NV báo tay)
+        - AUTO_NOTIFY_ONLY_NEW=true (mặc định): đơn về TRƯỚC ngày account bật auto
+          (date_inventory < autoEnabledAt) → BỎ QUA tồn đọng, không gửi & không trừ lượt
    ③ mỗi ứng viên ▶ notifyOne({ skipWebUpdate:!updateWeb, strictMatch:true }):
         → gửi qua local-runner (FLOW D)
         → cập nhật trạng thái về web Basso (mặc định)  [tắt bằng AUTO_NOTIFY_UPDATE_WEB=false]
@@ -163,6 +167,7 @@ runner xử lý job (tuần tự qua jobQueue) ▶ salework.sendBaoHang():
 | **strictMatch** | bot chỉ gửi khi khớp chắc | gửi nhầm người |
 | **skip khi runner offline** | không trừ attempt | "bỏ cuộc" oan, mất báo |
 | **quét hết trang** | fetchAllNotSent | bỏ sót đơn thứ 101 trở đi |
+| **mốc bật auto** | autoEnabledAt + AUTO_NOTIFY_ONLY_NEW | nhắn trùng loạt khách tồn đọng khi bật lại auto |
 
 ---
 
@@ -176,6 +181,7 @@ AUTO_NOTIFY_INTERVAL_MS=120000 # chu kỳ quét bot (ms)
 AUTO_NOTIFY_UPDATE_WEB=true    # bot có cập nhật web không (mặc định CÓ)
 AUTO_NOTIFY_MAX_RETRIES=3      # số lần thử lại / đơn khi lỗi cấp-đơn
 AUTO_NOTIFY_WEBHOOK_SECRET=    # bảo vệ webhook /api/webhook/arrived
+AUTO_NOTIFY_ONLY_NEW=true      # chỉ báo đơn về TỪ khi bật auto (bỏ tồn đọng cũ) — chống nhắn trùng
 TEST_MODE=true / TEST_PHONES=  # chế độ an toàn ở runner
 ```
 
