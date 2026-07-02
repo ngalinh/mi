@@ -42,10 +42,11 @@ async function warmOnce(trigger = 'interval') {
   try {
     // Warm ĐÚNG khung server-mode mà dashboard tải lúc boot: trang 1 tab "Chưa báo"
     // (not_sent, pageSize 20) + đếm 4 thẻ + nhân viên. Phải TRÙNG cache key với call thật
-    // của client (cùng page/pageSize/status/bộ lọc rỗng) thì mở dashboard mới ăn cache ấm.
-    // (KHÔNG warm getAllOrders all-time nữa — server-mode không dùng, lại nặng/dễ timeout.)
-    await getOrders({ status: 'not_sent', page: 1, pageSize: 20 });
-    await Promise.all([getTabUsers(), getStatusCounts({})]);
+    // của client (cùng page/pageSize/status/days/bộ lọc rỗng) thì mở dashboard mới ăn cache ấm.
+    // days = cửa sổ ngày mặc định (khớp DEFAULT_DAYS ở dashboard.js) -> warm đúng key client dùng.
+    const days = config.basso.defaultDays || undefined;
+    await getOrders({ status: 'not_sent', page: 1, pageSize: 20, days });
+    await Promise.all([getTabUsers(), getStatusCounts({ days })]);
     state.lastOk = true;
     state.lastError = null;
   } catch (e) {

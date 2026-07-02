@@ -251,6 +251,27 @@ function toApiDate(isoDate) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : isoDate;
 }
 
+/**
+ * Cửa sổ ngày mặc định (server-side) — GIẢM TẢI cold-load: chỉ kéo đơn trong N ngày gần đây
+ * thay vì all-time (ít trang hơn -> Basso quét ít hơn -> nhanh hơn). Danh sách + số đếm +
+ * preload cùng gọi hàm này nên DÙNG CHUNG cache key (ổn định trong ngày).
+ *
+ * QUAN TRỌNG: chỉ áp dụng khi caller YÊU CẦU rõ (truyền `days` > 0) và KHÔNG kèm from/to.
+ * Các luồng nền (auto-notify/báo hàng loạt) KHÔNG truyền `days` -> vẫn quét all-time để
+ * không bỏ sót đơn "Chưa báo" cũ hơn N ngày.
+ * @param {{from?:string, to?:string, days?:number|string}} f
+ * @returns {{from?:string, to?:string}} YYYY-MM-DD
+ */
+function resolveDateWindow({ from, to, days } = {}) {
+  if (from || to) return { from, to };                 // ngày tường minh -> ưu tiên, bỏ qua days
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return { from, to }; // 0/không hợp lệ -> all-time
+  const now = new Date();
+  const start = new Date(now.getTime() - d * 86400000);
+  const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  return { from: iso(start), to: iso(now) };
+}
+
 // ----------------------------------------------------------------------------
 // Public
 // ----------------------------------------------------------------------------
@@ -290,9 +311,31 @@ async function swrFetch(cacheKey, ttl, fetchFn) {
   return { data: await refresh(), source: 'api' }; // chưa có cache -> phải đợi (đường chậm)
 }
 
-/** Xóa cache danh sách — gọi sau khi dữ liệu đổi (cập nhật trạng thái/ghi chú). */
-function invalidateOrdersCache() {
-  _listCache.clear();
+/**
+ * Sau khi dữ liệu đổi (cập nhật trạng thái/ghi chú): KHÔNG xoá sạch cache — vì xoá sạch làm
+ * lần mở dashboard KẾ TIẾP luôn "cold" (phải đợi Basso vài giây), mà shop cập nhật liên tục
+ * (báo tay + auto-notify) nên gần như lúc nào cũng cold. Thay vào đó ĐÁNH DẤU STALE (at=0):
+ * SWR trả bản cũ TỨC THÌ rồi tự làm mới ở nền.
+ *
+ * Nếu biết đúng dòng vừa đổi (patch), sửa luôn statusCode/note của nó trong MỌI list đã cache
+ * để bản "stale" hiển thị đã đúng ngay (chờ nền làm mới phần còn lại: số đếm, list lọc theo
+ * status). Không truyền patch -> chỉ đánh dấu stale toàn bộ.
+ * @param {{customerId?:number|string, dateInventory?:number|string, status?:string, note?:string}} [patch]
+ */
+function invalidateOrdersCache(patch) {
+  const hasKey = patch && patch.customerId != null && patch.dateInventory != null;
+  for (const entry of _listCache.values()) {
+    if (hasKey && entry.data && Array.isArray(entry.data.orders)) {
+      for (const o of entry.data.orders) {
+        if (String(o.customerId) === String(patch.customerId) &&
+            String(o.dateInventory) === String(patch.dateInventory)) {
+          if (patch.status) { o.statusCode = patch.status; o.status = STATUS_LABELS[patch.status] || patch.status; }
+          if (patch.note !== undefined) o.note = patch.note;
+        }
+      }
+    }
+    entry.at = 0; // stale -> lần đọc kế tiếp trả ngay + làm mới nền (không bắt người dùng đợi)
+  }
 }
 
 /**
@@ -301,7 +344,8 @@ function invalidateOrdersCache() {
  * @returns {Promise<{source, orders, tabUsers, total, page}>}
  */
 async function getOrders(filters = {}) {
-  const { from, to, status, q } = filters;
+  const { status, q } = filters;
+  const { from, to } = resolveDateWindow(filters); // cửa sổ ngày mặc định khi có `days`
   // staff chỉ hợp lệ khi là user_id dạng số; bỏ qua giá trị rác như "Tất cả"
   const staff = /^\d+$/.test(String(filters.staff || '')) ? filters.staff : undefined;
   const page = filters.page || 1;
@@ -554,7 +598,8 @@ async function updateOrderStatus({ customerId, dateInventory, status, note }) {
     method: 'POST',
     body: { customer_id: customerId, date_inventory: dateInventory, status, note },
   });
-  invalidateOrdersCache(); // dữ liệu đã đổi -> bỏ cache để lần load sau lấy mới
+  // Đánh dấu stale + patch đúng dòng vừa đổi -> lần load sau hiện NGAY (không cold), đã đúng trạng thái.
+  invalidateOrdersCache({ customerId, dateInventory, status, note });
   return { ok: true, record: data && data.record };
 }
 
@@ -574,7 +619,8 @@ const GROUP_STATUS = [
  * @returns {Promise<{counts:{todo,arrival,ship,failed,total}, tabUsers}>}
  */
 async function getStatusCounts(filters = {}) {
-  const { from, to, q } = filters;
+  const { q } = filters;
+  const { from, to } = resolveDateWindow(filters); // cùng cửa sổ ngày với getOrders -> số đếm khớp danh sách
   const staff = /^\d+$/.test(String(filters.staff || '')) ? filters.staff : undefined;
 
   if (config.basso.useMock) {
