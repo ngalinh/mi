@@ -26,14 +26,13 @@
   // Bộ lọc nâng cao (popover): khoảng ngày + loại trừ/ghi chú (client-side).
   const F = { from: '', to: '', exclude: 'all', note: 'all' };
 
-  // MẶC ĐỊNH chỉ tải đơn trong DEFAULT_DAYS ngày gần đây (giảm lag cold-load: Basso quét ít
-  // trang hơn). Phải KHỚP config.basso.defaultDays ở server để preload warm đúng cache key.
-  // scopeDays=0 hoặc đặt khoảng ngày tường minh -> bỏ giới hạn ("Tất cả").
-  const DEFAULT_DAYS = 30;
-  let scopeDays = DEFAULT_DAYS;
+  // Phạm vi thời gian chọn qua selector #fScope trên toolbar (đầu ô tìm kiếm).
+  // scopeDays = số ngày gần đây; 0 = "Tất cả" (mặc định). Khoảng ngày tường minh (F.from/F.to)
+  // trong Bộ lọc nâng cao sẽ ghi đè scope.
+  let scopeDays = 0; // mặc định: Tất cả (mọi ngày)
 
   // Gắn phạm vi ngày vào query gửi server: ưu tiên khoảng ngày tường minh (F.from/F.to);
-  // nếu không có thì gửi ?days=scopeDays để server tự tính cửa sổ (dùng chung cache key + preload).
+  // nếu không có thì gửi ?days=scopeDays (bỏ qua khi =0 -> all-time).
   function applyScope(p) {
     if (F.from) p.set('from', F.from);
     if (F.to) p.set('to', F.to);
@@ -1138,8 +1137,7 @@
   function activeFilterCount() {
     let n = 0;
     if (currentGroup !== 'todo') n++; // khác mặc định "Chưa báo" -> tính là đang lọc trạng thái
-    if (F.from || F.to) n++;
-    else if (scopeDays === 0) n++; // "Tất cả" (bỏ giới hạn 30 ngày mặc định) tính là 1 bộ lọc
+    if (F.from || F.to) n++;          // khoảng ngày tường minh (scope thời gian ở toolbar không tính)
     if (F.exclude !== 'all') n++;
     if (F.note !== 'all') n++;
     return n;
@@ -1156,6 +1154,14 @@
 
   // Gom nhóm chỉ là cách hiển thị TRONG trang hiện tại -> không đổi trang, không tải lại.
   $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
+
+  // Phạm vi thời gian (toolbar): 0 = Tất cả, hoặc N ngày gần đây -> kéo lại từ server.
+  const fScopeEl = $('fScope');
+  if (fScopeEl) fScopeEl.addEventListener('change', (e) => {
+    scopeDays = parseInt(e.target.value, 10) || 0;
+    currentPage = 1;
+    reloadScope();
+  });
 
   // Tìm kiếm: client-mode lọc tức thì (debounce ngắn); server-mode debounce dài hơn rồi gọi API.
   let qTimer;
@@ -1211,26 +1217,23 @@
   });
 
   $('fApply').addEventListener('click', () => {
-    const prevFrom = F.from, prevTo = F.to, prevScope = scopeDays, prevGroup = currentGroup;
+    const prevFrom = F.from, prevTo = F.to, prevGroup = currentGroup;
     F.from = $('fFrom').value;
     F.to = $('fTo').value;
     F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
     currentGroup = $('fStatus').value; // lọc trạng thái ('' = tất cả)
-    // Phạm vi ngày mặc định: "days" = 30 ngày gần đây, "all" = mọi ngày (bỏ giới hạn).
-    scopeDays = filterPop.querySelector('.fp-seg[data-key=scope] .active').dataset.v === 'all' ? 0 : DEFAULT_DAYS;
     updateFilterBadge();
     filterPop.hidden = true;
-    // Đổi trạng thái/khoảng ngày/phạm vi -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc client (giữ trang).
-    if (currentGroup !== prevGroup || F.from !== prevFrom || F.to !== prevTo || scopeDays !== prevScope) {
+    // Đổi trạng thái/khoảng ngày -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc client (giữ trang).
+    if (currentGroup !== prevGroup || F.from !== prevFrom || F.to !== prevTo) {
       currentPage = 1; reloadScope();
     } else rerender();
   });
   $('fClear').addEventListener('click', () => {
-    const changed = !!(F.from || F.to) || scopeDays !== DEFAULT_DAYS || currentGroup !== '';
+    const changed = !!(F.from || F.to) || currentGroup !== '';
     F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all';
-    currentGroup = '';                // "Xoá lọc" -> xem tất cả trạng thái
-    scopeDays = DEFAULT_DAYS;         // về cửa sổ 30 ngày mặc định
+    currentGroup = '';                // "Xoá lọc" -> xem tất cả trạng thái (scope thời gian ở toolbar giữ nguyên)
     syncDateInputs();
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
@@ -1297,16 +1300,12 @@
   const notePresetsEl = $('notePresets');
   if (notePresetsEl) notePresetsEl.innerHTML = DELAY_REASONS.map((r) => `<option value="${App.esc(r)}"></option>`).join('');
 
-  // Đồng bộ F.from / F.to + phạm vi ngày (scope) + trạng thái vào popover bộ lọc.
+  // Đồng bộ F.from / F.to + trạng thái vào popover; phạm vi thời gian -> selector #fScope (toolbar).
   function syncDateInputs() {
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
     const st = $('fStatus'); if (st) st.value = currentGroup || '';
-    const scopeSeg = filterPop.querySelector('.fp-seg[data-key=scope]');
-    if (scopeSeg) {
-      const want = scopeDays === 0 ? 'all' : 'days';
-      scopeSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === want));
-    }
+    const sc = $('fScope'); if (sc) sc.value = String(scopeDays);
     updateFilterBadge();
   }
 
