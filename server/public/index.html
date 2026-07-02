@@ -45,11 +45,11 @@
 
       <div class="container">
         <div class="card">
-          <!-- Tab nhân viên (pill) -->
-          <div class="tabs" id="staffTabs"></div>
-
-          <!-- Thanh công cụ gộp: tìm kiếm · nhóm · lọc · thao tác -->
+          <!-- Thanh công cụ gộp: lọc (NV/thời gian/trạng thái) · tìm kiếm · thao tác -->
           <div class="toolbar-bar">
+            <select id="fStaff" class="tb-select" title="Lọc theo nhân viên">
+              <option value="">Tất cả nhân viên</option>
+            </select>
             <select id="fScope" class="tb-select" title="Phạm vi thời gian">
               <option value="0" selected>Tất cả thời gian</option>
               <option value="7">7 ngày gần đây</option>
