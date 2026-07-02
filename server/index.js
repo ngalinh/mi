@@ -194,7 +194,7 @@ function saveStaff(req, res) {
   try {
     const body = req.body || {};
     const email = req.params.email != null ? req.params.email : body.email;
-    const staff = upsertStaff({ email, name: body.name, role: body.role, status: body.status });
+    const staff = upsertStaff({ email, name: body.name, role: body.role, status: body.status, user_id: body.user_id });
     res.json({ ok: true, staff });
   } catch (e) {
     if (e.code === 'BAD_INPUT') return res.status(400).json({ ok: false, error: e.message });

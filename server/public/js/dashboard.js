@@ -94,14 +94,17 @@
   });
 
   // ---------------- Tabs nhân viên ----------------
+  // Đổ danh sách nhân viên vào dropdown #fStaff (thay hàng pill cũ cho gọn).
   function renderTabs() {
-    const el = $('staffTabs');
+    const el = $('fStaff');
+    if (!el) return;
     const list = tabUsers.slice().sort((a, b) =>
       String(a.name).localeCompare(String(b.name), 'vi', { sensitivity: 'base' }));
-    const allTab = `<button class="tab ${currentStaff === '' ? 'active' : ''}" data-staff="">Tất cả</button>`;
-    el.innerHTML = allTab + list.map((t) =>
-      `<button class="tab ${String(t.user_id) === String(currentStaff) ? 'active' : ''}" data-staff="${App.esc(t.user_id)}">${App.esc(t.name)}</button>`
+    const cur = String(currentStaff || '');
+    el.innerHTML = `<option value="">Tất cả nhân viên</option>` + list.map((t) =>
+      `<option value="${App.esc(t.user_id)}"${String(t.user_id) === cur ? ' selected' : ''}>${App.esc(t.name)}</option>`
     ).join('');
+    el.value = cur; // giữ đúng lựa chọn kể cả khi option của NV đang chọn chưa có trong list
   }
 
   // ---------------- Render bảng ----------------
@@ -566,12 +569,16 @@
     if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function updateCount(list = orders) {
+  function updateCount() {
     const ci = $('countInfo');
-    // Nhãn trạng thái đang lọc (thay cho thanh thẻ đã bỏ) + trang + tổng "chưa báo" (all-time).
+    // "<Trạng thái> · <tổng> đơn · trang X/Y"; chỉ thêm "· N chưa báo" khi đang xem trạng thái
+    // KHÁC "Chưa báo" (lúc đó số backlog mới là thông tin phụ cho nút Báo hàng loạt).
     if (ci) {
       const scope = currentGroup ? GROUP_LABELS[currentGroup] : 'Tất cả trạng thái';
-      ci.textContent = `${scope} · ${list.length} đơn (trang ${currentPage}) · ${counts.todo} chưa báo`;
+      const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
+      let txt = `${scope} · ${serverTotal} đơn · trang ${currentPage}/${totalPages}`;
+      if (currentGroup !== 'todo') txt += ` · ${counts.todo} chưa báo`;
+      ci.textContent = txt;
     }
     $('bulkBtn').disabled = counts.todo === 0;
   }
@@ -1157,7 +1164,14 @@
   // Phạm vi thời gian (toolbar): 0 = Tất cả, hoặc N ngày gần đây -> kéo lại từ server.
   const fScopeEl = $('fScope');
   if (fScopeEl) fScopeEl.addEventListener('change', (e) => {
+    if (e.target.value === 'custom') {
+      // "Tuỳ chỉnh" -> mở Bộ lọc để đặt khoảng ngày cụ thể (from/to).
+      filterPop.hidden = false; syncDateInputs(); $('fFrom').focus();
+      return;
+    }
+    F.from = ''; F.to = '';               // bỏ khoảng ngày tuỳ chỉnh để preset có hiệu lực
     scopeDays = parseInt(e.target.value, 10) || 0;
+    syncDateInputs();
     currentPage = 1;
     reloadScope();
   });
@@ -1180,10 +1194,9 @@
 
   // (Thanh thẻ trạng thái đã bỏ — lọc trạng thái nằm trong popover "Bộ lọc", xem xử lý ở fApply.)
 
-  $('staffTabs').addEventListener('click', (e) => {
-    const tab = e.target.closest('.tab');
-    if (!tab) return;
-    currentStaff = tab.dataset.staff || '';
+  const fStaffEl = $('fStaff');
+  if (fStaffEl) fStaffEl.addEventListener('change', (e) => {
+    currentStaff = e.target.value || '';
     currentPage = 1;
     applyFilters({ keepPage: true });
   });
@@ -1229,7 +1242,7 @@
     F.to = $('fTo').value;
     F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
-    updateFilterBadge();
+    syncDateInputs(); // đồng bộ #fScope -> "Tuỳ chỉnh" khi có from/to + cập nhật badge
     filterPop.hidden = true;
     // Đổi khoảng ngày -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc client (giữ trang).
     if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; reloadScope(); } else rerender();
@@ -1309,7 +1322,7 @@
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
     const st = $('fStatus'); if (st) st.value = currentGroup || '';
-    const sc = $('fScope'); if (sc) sc.value = String(scopeDays);
+    const sc = $('fScope'); if (sc) sc.value = (F.from || F.to) ? 'custom' : String(scopeDays);
     updateFilterBadge();
   }
 
@@ -1331,7 +1344,17 @@
   loadZaloAccounts();
   setInterval(loadHealth, 15000);
   setInterval(autoSync, AUTO_SYNC_MS);
-  // Khởi động: SERVER-MODE — chỉ kéo 1 trang nhẹ + đếm nhẹ (không kéo toàn bộ all-time) để
-  // tải nhanh, dựa cache ấm (preload) khi Basso chậm.
-  reloadScope();
+  // Khởi động: mặc định lọc theo NV ĐANG ĐĂNG NHẬP (nếu Admin đã gán user_id trong Cài đặt)
+  // -> mỗi người mở lên chỉ thấy đơn của mình (nhẹ hơn); vẫn đổi sang NV khác/Tất cả qua dropdown.
+  // Lấy /api/me trước rồi mới load lần đầu (SERVER-MODE: chỉ 1 trang nhẹ + đếm nhẹ, cache ấm).
+  App.api('/api/me').then((r) => {
+    const s = r && r.staff;
+    if (s && s.user_id != null && String(s.user_id) !== '') {
+      currentStaff = String(s.user_id);
+      if (!tabUsers.some((u) => String(u.user_id) === currentStaff)) {
+        tabUsers.push({ user_id: s.user_id, name: s.name || ('NV ' + s.user_id) });
+      }
+      renderTabs();
+    }
+  }).catch(() => {}).finally(() => { reloadScope(); });
 })();

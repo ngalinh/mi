@@ -18,8 +18,24 @@
   const empRows = $('empRows');
   const em = $('empModal');
   const emTitle = $('emTitle');
-  const emName = $('emName'), emEmail = $('emEmail'), emRole = $('emRole'), emStatus = $('emStatus');
+  const emName = $('emName'), emEmail = $('emEmail'), emRole = $('emRole'), emStatus = $('emStatus'), emUserId = $('emUserId');
   let editing = null; // email đang sửa, null = thêm mới
+  let staffList = [];  // danh sách NV Mi hiện tại (giữ để lấy user_id khi sửa)
+  let bassoStaff = []; // danh sách NV trên Basso (user_id + name) để gán ánh xạ
+
+  // Nạp danh sách NV Basso (từ tab_users) -> đổ vào dropdown "NV trên Basso".
+  async function loadBassoStaff() {
+    try {
+      const r = await App.api('/api/tab-users');
+      bassoStaff = (r && r.tabUsers) || [];
+    } catch { bassoStaff = []; }
+    emUserId.innerHTML = '<option value="">— Chưa gán (thấy tất cả) —</option>'
+      + bassoStaff.map((u) => `<option value="${App.esc(u.user_id)}">${App.esc(u.name)} (#${App.esc(u.user_id)})</option>`).join('');
+  }
+  const bassoNameOf = (uid) => {
+    const f = bassoStaff.find((u) => String(u.user_id) === String(uid));
+    return f ? f.name : ('#' + uid);
+  };
 
   function rolePillHtml(role) {
     if (role === 'Nhân viên') return '<span class="pill chua">Nhân viên</span>';
@@ -31,13 +47,14 @@
     return `<span class="badge-status ${cls}" style="box-shadow:none; padding:5px 12px;">${App.esc(status)}</span>`;
   }
   function renderStaff(list) {
+    staffList = list || [];
     if (!list || !list.length) {
       empRows.innerHTML = '<tr><td colspan="5" class="muted" style="padding:16px;">Chưa có nhân viên nào. Bấm “Thêm nhân viên”.</td></tr>';
       return;
     }
     empRows.innerHTML = list.map((s) => `
       <tr class="main-row" data-email="${App.esc(s.email)}">
-        <td class="cust">${App.esc(s.name)}</td>
+        <td class="cust">${App.esc(s.name)}${s.user_id ? `<br><span class="muted" style="font-size:12px">NV Basso: ${App.esc(bassoNameOf(s.user_id))}</span>` : ''}</td>
         <td>${App.esc(s.email)}</td>
         <td>${rolePillHtml(s.role)}</td>
         <td class="center">${statusBadgeHtml(s.status)}</td>
@@ -63,6 +80,7 @@
     emEmail.disabled = !!s; // email là khoá đăng nhập — không đổi khi sửa
     emRole.value = s ? s.role : 'Nhân viên';
     emStatus.value = s ? s.status : 'Hoạt động';
+    emUserId.value = s && s.user_id != null ? String(s.user_id) : '';
     em.classList.add('show');
   }
   function closeEmp() { em.classList.remove('show'); }
@@ -81,18 +99,13 @@
       } catch (err) { App.toast(`❌ ${err.message}`, 6000); }
       return;
     }
-    openEmp({
-      email,
-      name: tr.children[0].textContent.trim(),
-      role: tr.children[2].textContent.trim(),
-      status: tr.children[3].textContent.trim(),
-    });
+    openEmp(staffList.find((x) => String(x.email) === String(email)) || { email });
   });
   $('emCancel').addEventListener('click', closeEmp);
   em.addEventListener('click', (e) => { if (e.target === em) closeEmp(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeEmp(); });
   $('emSave').addEventListener('click', async () => {
-    const body = { name: emName.value.trim(), email: emEmail.value.trim(), role: emRole.value, status: emStatus.value };
+    const body = { name: emName.value.trim(), email: emEmail.value.trim(), role: emRole.value, status: emStatus.value, user_id: emUserId.value || '' };
     if (!body.name || !body.email) { App.toast('❌ Cần điền Họ tên và Email đăng nhập', 5000); return; }
     try {
       if (editing) {
@@ -111,7 +124,7 @@
       App.toast(`❌ ${e.message}`, 6000);
     }
   });
-  loadStaff();
+  loadBassoStaff().then(loadStaff); // nạp NV Basso trước để hiển thị đúng tên đã gán
 
   // ---------------- Tài khoản Zalo (nối backend thật) ----------------
   const zaloRows = $('zaloRows');

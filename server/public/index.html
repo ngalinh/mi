@@ -45,16 +45,17 @@
 
       <div class="container">
         <div class="card">
-          <!-- Tab nhân viên (pill) -->
-          <div class="tabs" id="staffTabs"></div>
-
-          <!-- Thanh công cụ gộp: tìm kiếm · nhóm · lọc · thao tác -->
+          <!-- Thanh công cụ gộp: lọc (NV/thời gian/trạng thái) · tìm kiếm · thao tác -->
           <div class="toolbar-bar">
+            <select id="fStaff" class="tb-select" title="Lọc theo nhân viên">
+              <option value="">Tất cả nhân viên</option>
+            </select>
             <select id="fScope" class="tb-select" title="Phạm vi thời gian">
               <option value="0" selected>Tất cả thời gian</option>
               <option value="7">7 ngày gần đây</option>
               <option value="30">30 ngày gần đây</option>
               <option value="90">90 ngày gần đây</option>
+              <option value="custom">Tuỳ chỉnh…</option>
             </select>
             <select id="fStatus" class="tb-select" title="Lọc theo trạng thái">
               <option value="">Tất cả trạng thái</option>
@@ -63,10 +64,6 @@
               <option value="ship">Đã báo ship</option>
               <option value="failed">Lỗi - Báo lại</option>
             </select>
-            <div class="input-icon tb-search">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              <input type="text" id="fQ" placeholder="Tìm tên / SĐT khách..." />
-            </div>
             <select id="fGroupBy" class="tb-select">
               <option value="">- Group -</option>
               <option value="date">Group theo ngày</option>
@@ -109,6 +106,10 @@
                   <button type="button" class="btn accent small" id="fApply">Áp dụng</button>
                 </div>
               </div>
+            </div>
+            <div class="input-icon tb-search">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="fQ" placeholder="Tìm tên / SĐT khách..." />
             </div>
             <button class="btn accent small tb-action" id="bulkBtn">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
