@@ -146,6 +146,14 @@ async function runAutoNotify(opts = {}) {
         // thì bỏ qua đơn này (không gửi, không trừ lượt) — để NV tự báo tay.
         // eslint-disable-next-line no-await-in-loop
         const acct = await resolveForOrder(order, { defaultAccount: cfg.account, profile: cfg.profile });
+
+        // CÔ LẬP THEO NV: chỉ gửi đơn khớp đúng 1 account (source='store'). Đơn không khớp
+        // account nào (rơi về 'default'/legacy) -> BỎ QUA. Bật auto cho 1 account là chỉ NV đó
+        // được gửi, còn lại tự động bỏ (không cần đi tắt từng account chưa map).
+        if (cfg.requireAccount && acct.source !== 'store') {
+          summary.skippedNoAccount = (summary.skippedNoAccount || 0) + 1;
+          continue;
+        }
         if (acct.source === 'store' && acct.autoEnabled === false) {
           summary.skippedAutoOff = (summary.skippedAutoOff || 0) + 1;
           continue;
@@ -199,8 +207,9 @@ async function runAutoNotify(opts = {}) {
       if (candidates.length || summary.skippedNoContent) {
         const skipNo = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
         const skipOff = summary.skippedAutoOff ? `, bỏ qua ${summary.skippedAutoOff} đơn (account tắt auto)` : '';
+        const skipNoAcc = summary.skippedNoAccount ? `, bỏ qua ${summary.skippedNoAccount} đơn (không khớp account)` : '';
         const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
-        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipOff}${skipBack})`);
+        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipOff}${skipNoAcc}${skipBack})`);
       }
     });
   } catch (err) {
