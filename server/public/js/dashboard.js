@@ -1136,8 +1136,7 @@
   // ---------------- Bộ lọc nâng cao (popover) ----------------
   function activeFilterCount() {
     let n = 0;
-    if (currentGroup !== 'todo') n++; // khác mặc định "Chưa báo" -> tính là đang lọc trạng thái
-    if (F.from || F.to) n++;          // khoảng ngày tường minh (scope thời gian ở toolbar không tính)
+    if (F.from || F.to) n++;          // khoảng ngày tường minh (trạng thái + scope ở toolbar không tính)
     if (F.exclude !== 'all') n++;
     if (F.note !== 'all') n++;
     return n;
@@ -1159,6 +1158,14 @@
   const fScopeEl = $('fScope');
   if (fScopeEl) fScopeEl.addEventListener('change', (e) => {
     scopeDays = parseInt(e.target.value, 10) || 0;
+    currentPage = 1;
+    reloadScope();
+  });
+
+  // Lọc trạng thái (toolbar, kế bên thời gian): '' = tất cả, hoặc todo/arrival/ship/failed.
+  const fStatusEl = $('fStatus');
+  if (fStatusEl) fStatusEl.addEventListener('change', (e) => {
+    currentGroup = e.target.value;
     currentPage = 1;
     reloadScope();
   });
@@ -1217,23 +1224,20 @@
   });
 
   $('fApply').addEventListener('click', () => {
-    const prevFrom = F.from, prevTo = F.to, prevGroup = currentGroup;
+    const prevFrom = F.from, prevTo = F.to;
     F.from = $('fFrom').value;
     F.to = $('fTo').value;
     F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
-    currentGroup = $('fStatus').value; // lọc trạng thái ('' = tất cả)
     updateFilterBadge();
     filterPop.hidden = true;
-    // Đổi trạng thái/khoảng ngày -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc client (giữ trang).
-    if (currentGroup !== prevGroup || F.from !== prevFrom || F.to !== prevTo) {
-      currentPage = 1; reloadScope();
-    } else rerender();
+    // Đổi khoảng ngày -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc client (giữ trang).
+    if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; reloadScope(); } else rerender();
   });
   $('fClear').addEventListener('click', () => {
-    const changed = !!(F.from || F.to) || currentGroup !== '';
+    const changed = !!(F.from || F.to);
     F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all';
-    currentGroup = '';                // "Xoá lọc" -> xem tất cả trạng thái (scope thời gian ở toolbar giữ nguyên)
+    // (Trạng thái + phạm vi thời gian nằm ở toolbar, không thuộc "Xoá lọc" của popover.)
     syncDateInputs();
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
