@@ -280,9 +280,9 @@ function enrichOrders(orders) {
 // ---- Dashboard: danh sách hàng về (phân trang server-side) ----
 app.get('/api/orders', async (req, res) => {
   try {
-    const { from, to, status, staff, q, page, pageSize } = req.query;
+    const { from, to, status, staff, q, page, pageSize, days } = req.query;
     const data = await getOrders({
-      from, to, status, staff, q,
+      from, to, status, staff, q, days,
       page: page ? parseInt(page, 10) || 1 : 1,
       pageSize: pageSize ? parseInt(pageSize, 10) || undefined : undefined,
     });
@@ -319,8 +319,8 @@ app.get('/api/tab-users', async (req, res) => {
 // ---- Đếm số đơn theo 4 nhóm trạng thái (tổng thật, phục vụ thẻ trạng thái) ----
 app.get('/api/order-counts', async (req, res) => {
   try {
-    const { from, to, staff, q } = req.query;
-    const data = await getStatusCounts({ from, to, staff, q });
+    const { from, to, staff, q, days } = req.query;
+    const data = await getStatusCounts({ from, to, staff, q, days });
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

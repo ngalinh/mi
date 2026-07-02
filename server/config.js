@@ -83,6 +83,10 @@ module.exports = {
     // TTL (ms) cache danh sách hàng về trong RAM — auto-sync/đổi tab/gõ tìm kiếm lặp lại
     // không phải gọi lại Basso mỗi lần. 0 = tắt cache.
     listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '30000', 10) || 0, 0),
+    // Cửa sổ ngày MẶC ĐỊNH cho dashboard (giảm cold-load: chỉ kéo N ngày gần đây thay vì
+    // all-time). 0 = mặc định all-time. Phải KHỚP hằng DEFAULT_DAYS ở public/js/dashboard.js
+    // (client gửi kèm ?days=) để preload warm đúng cache key. Dùng cho preload + số đếm.
+    defaultDays: Math.max(parseInt(process.env.BASSO_DEFAULT_DAYS || '30', 10) || 0, 0),
     // Chu kỳ (ms) NẠP SẴN khung nhìn mặc định của dashboard vào cache RAM (xem cacheWarmer.js)
     // -> người mở dashboard không phải đợi Basso. 0 = tắt; nếu >0 thì tối thiểu 15000ms.
     preloadIntervalMs: (() => {

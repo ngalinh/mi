@@ -21,9 +21,22 @@
   const dirtyNotes = new Map();
 
   // Bộ lọc nâng cao (popover): khoảng ngày + loại trừ/ghi chú (client-side).
-  // Mặc định: ALL-TIME (không giới hạn ngày) cho MỌI tab -> 4 thẻ đếm luôn nhất quán, đổi
-  // tab không làm số nhảy. Người dùng vẫn có thể tự đặt khoảng ngày trong "Bộ lọc" khi cần.
   const F = { from: '', to: '', exclude: 'all', note: 'all' };
+
+  // MẶC ĐỊNH chỉ tải đơn trong DEFAULT_DAYS ngày gần đây (giảm lag cold-load: Basso quét ít
+  // trang hơn). Phải KHỚP config.basso.defaultDays ở server để preload warm đúng cache key.
+  // scopeDays=0 hoặc đặt khoảng ngày tường minh -> bỏ giới hạn ("Tất cả").
+  const DEFAULT_DAYS = 30;
+  let scopeDays = DEFAULT_DAYS;
+
+  // Gắn phạm vi ngày vào query gửi server: ưu tiên khoảng ngày tường minh (F.from/F.to);
+  // nếu không có thì gửi ?days=scopeDays để server tự tính cửa sổ (dùng chung cache key + preload).
+  function applyScope(p) {
+    if (F.from) p.set('from', F.from);
+    if (F.to) p.set('to', F.to);
+    if (!F.from && !F.to && scopeDays > 0) p.set('days', scopeDays);
+    return p;
+  }
 
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
@@ -997,8 +1010,7 @@
     if (!auto) rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>';
     const q = $('fQ').value;
     const base = new URLSearchParams();
-    if (F.from) base.set('from', F.from);
-    if (F.to) base.set('to', F.to);
+    applyScope(base); // from/to tường minh, hoặc ?days=scopeDays (cửa sổ mặc định)
     if (currentStaff) base.set('staff', currentStaff);
     if (q) base.set('q', q);
     const params = new URLSearchParams(base);
@@ -1068,8 +1080,7 @@
   // Server-mode: /api/order-counts nhẹ (4 call page_size=1, cache 90s) — không kéo cả tập.
   async function loadCounts() {
     const p = new URLSearchParams();
-    if (F.from) p.set('from', F.from);
-    if (F.to) p.set('to', F.to);
+    applyScope(p); // cùng phạm vi ngày với load() -> số đếm 4 thẻ khớp danh sách
     if (currentStaff) p.set('staff', currentStaff);
     const q = $('fQ').value.trim();
     if (q) p.set('q', q);
@@ -1127,6 +1138,7 @@
   function activeFilterCount() {
     let n = 0;
     if (F.from || F.to) n++;
+    else if (scopeDays === 0) n++; // "Tất cả" (bỏ giới hạn 30 ngày mặc định) tính là 1 bộ lọc
     if (F.exclude !== 'all') n++;
     if (F.note !== 'all') n++;
     return n;
@@ -1192,7 +1204,11 @@
   // Popover bộ lọc
   const filterBtn = $('filterBtn');
   const filterPop = $('filterPop');
-  filterBtn.addEventListener('click', (e) => { e.stopPropagation(); filterPop.hidden = !filterPop.hidden; });
+  filterBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    filterPop.hidden = !filterPop.hidden;
+    if (!filterPop.hidden) syncDateInputs(); // mở -> phản ánh đúng phạm vi/ngày đã áp dụng
+  });
   filterPop.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => { filterPop.hidden = true; });
 
@@ -1204,24 +1220,27 @@
   });
 
   $('fApply').addEventListener('click', () => {
-    const prevFrom = F.from, prevTo = F.to;
+    const prevFrom = F.from, prevTo = F.to, prevScope = scopeDays;
     F.from = $('fFrom').value;
     F.to = $('fTo').value;
     F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
+    // Phạm vi ngày mặc định: "days" = 30 ngày gần đây, "all" = mọi ngày (bỏ giới hạn).
+    scopeDays = filterPop.querySelector('.fp-seg[data-key=scope] .active').dataset.v === 'all' ? 0 : DEFAULT_DAYS;
     updateFilterBadge();
     filterPop.hidden = true;
-    // Đổi khoảng ngày -> kéo lại tập (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc lại tại client (giữ trang).
-    if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; reloadScope(); } else rerender();
+    // Đổi khoảng ngày/phạm vi -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc lại tại client (giữ trang).
+    if (F.from !== prevFrom || F.to !== prevTo || scopeDays !== prevScope) { currentPage = 1; reloadScope(); } else rerender();
   });
   $('fClear').addEventListener('click', () => {
-    const hadDate = !!(F.from || F.to);
-    F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all'; // về all-time như mặc định
+    const changed = !!(F.from || F.to) || scopeDays !== DEFAULT_DAYS;
+    F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all';
+    scopeDays = DEFAULT_DAYS; // về cửa sổ 30 ngày mặc định
     syncDateInputs();
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
-    if (hadDate) { currentPage = 1; reloadScope(); } else rerender();
+    if (changed) { currentPage = 1; reloadScope(); } else rerender();
   });
 
   // Delegation cho bảng
@@ -1283,10 +1302,15 @@
   const notePresetsEl = $('notePresets');
   if (notePresetsEl) notePresetsEl.innerHTML = DELAY_REASONS.map((r) => `<option value="${App.esc(r)}"></option>`).join('');
 
-  // Đồng bộ F.from / F.to vào input date trong popover bộ lọc.
+  // Đồng bộ F.from / F.to + phạm vi ngày (scope) vào popover bộ lọc.
   function syncDateInputs() {
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
+    const scopeSeg = filterPop.querySelector('.fp-seg[data-key=scope]');
+    if (scopeSeg) {
+      const want = scopeDays === 0 ? 'all' : 'days';
+      scopeSeg.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.v === want));
+    }
     updateFilterBadge();
   }
 
