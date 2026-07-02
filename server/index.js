@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
-const { listReports, reportFacets, stats, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
+const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
@@ -494,6 +494,45 @@ app.get('/api/reports', (req, res) => {
     const filters = { status, q, from, to, staff, sender, account };
     const items = listReports({ limit: limit ? parseInt(limit, 10) : 200, ...filters });
     res.json({ ok: true, stats: stats(filters), items, facets: reportFacets() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Thử gửi LẠI 1 lượt báo THẤT BẠI (từ Lịch sử báo) ----
+// Tái tạo đơn từ khóa đã lưu (customerId+dateInventory+userId) rồi đi qua notifyOrders như báo
+// tay: có khóa chung với bot (không đua), resolve đúng account theo NV, dùng lại NGUYÊN VĂN nội
+// dung đã gửi (messageOverride) để khớp lần trước. Chỉ cho thử lại dòng 'failed'.
+app.post('/api/reports/:id/retry', async (req, res) => {
+  try {
+    const rep = getReportById(req.params.id);
+    if (!rep) return res.status(404).json({ ok: false, error: 'Không tìm thấy lượt báo' });
+    if (rep.status !== 'failed') {
+      return res.status(400).json({ ok: false, error: 'Chỉ thử lại được lượt THẤT BẠI' });
+    }
+    // Report cũ (trước khi có 3 cột khóa đơn) không đủ dữ liệu tái tạo -> hướng người dùng báo tay.
+    if (rep.customer_id == null && !rep.phone) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Lượt báo cũ thiếu dữ liệu đơn — hãy báo lại từ Dashboard.',
+      });
+    }
+    const order = {
+      customerId: rep.customer_id,
+      dateInventory: rep.date_inventory,
+      customerName: rep.customer_name,
+      phone: rep.phone,
+      staff: rep.staff,
+      userId: rep.user_id,
+      orderCode: rep.order_id,
+    };
+    // messageOverride = nội dung đã lưu -> gửi lại y hệt (không dựng lại từ template).
+    const result = await notifyOrders([order], {
+      kind: 'hang',
+      messageOverride: rep.message || undefined,
+      actor: getActor(req),
+    });
+    res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

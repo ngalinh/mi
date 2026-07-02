@@ -46,6 +46,9 @@ function normalize(a) {
     phone: String(a.phone || '').trim(),
     staffId: a.staffId != null ? String(a.staffId).trim() : '',
     autoEnabled: a.autoEnabled === undefined ? true : !!a.autoEnabled,
+    // Mốc ISO khi account được BẬT "Tự động báo" (dùng để bot chỉ gửi đơn về từ đây trở đi,
+    // bỏ qua tồn đọng cũ). Trống = chưa từng đóng dấu -> không lọc theo ngày (hành vi cũ).
+    autoEnabledAt: a.autoEnabledAt || undefined,
     proxy: String(a.proxy || '').trim(),
     createdAt: a.createdAt || new Date().toISOString(),
     updatedAt: a.updatedAt || undefined,
@@ -72,6 +75,8 @@ function add(input) {
   const accounts = load();
   if (accounts.find((a) => a.key === account.key)) throw new Error(`Key "${account.key}" đã tồn tại`);
   account.createdAt = new Date().toISOString();
+  // Account mới bật auto -> đóng dấu mốc NGAY để bot chỉ báo đơn về từ nay, không blast tồn đọng.
+  if (account.autoEnabled) account.autoEnabledAt = account.createdAt;
   accounts.push(account);
   save(accounts);
   return account;
@@ -84,9 +89,15 @@ function update(key, patch) {
   const accounts = load();
   const idx = accounts.findIndex((a) => a.key === key);
   if (idx === -1) return null;
+  const prev = normalize(accounts[idx]);
   const merged = normalize({ ...accounts[idx], ...patch, key }); // key bất biến
   merged.createdAt = accounts[idx].createdAt || merged.createdAt;
   merged.updatedAt = new Date().toISOString();
+  // Chuyển TẮT -> BẬT "Tự động báo": đóng dấu mốc mới = giờ hiện tại -> bot chỉ báo đơn về từ
+  // đây trở đi (bỏ qua tồn đọng cũ, tránh nhắn trùng khách đã xử lý tay). Các sửa khác (proxy,
+  // tên...) hoặc bật->bật không đổi mốc. Tắt thì bỏ mốc để lần bật sau luôn tính lại từ đầu.
+  if (merged.autoEnabled && !prev.autoEnabled) merged.autoEnabledAt = merged.updatedAt;
+  else if (!merged.autoEnabled) merged.autoEnabledAt = undefined;
   accounts[idx] = merged;
   save(accounts);
   return merged;

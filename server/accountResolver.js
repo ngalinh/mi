@@ -35,6 +35,7 @@ async function resolveForOrder(order, opts = {}) {
         profile: match.key,
         account: match.saleworkName || undefined,
         autoEnabled: match.autoEnabled !== false,
+        autoEnabledAt: match.autoEnabledAt || null, // mốc bật auto -> lọc đơn tồn đọng ở autoNotify
         source: 'store',
       };
     }

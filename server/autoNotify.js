@@ -47,6 +47,28 @@ function isTransientError(msg) {
   );
 }
 
+/**
+ * Quy 1 mốc thời gian về "số ngày" (bucket theo UTC) để so sánh ngày, không lệ thuộc giờ:
+ *   - unix giây (date_inventory của Basso, vd 1780531200) hoặc unix ms
+ *   - chuỗi ISO (autoEnabledAt)
+ * Trả null nếu không parse được. date_inventory là nửa đêm UTC của ngày hàng về nên so bucket
+ * ngày là chuẩn: đơn về CÙNG ngày bật auto vẫn được gửi, chỉ đơn về TRƯỚC ngày đó bị bỏ.
+ */
+function dayBucket(value) {
+  if (value == null || value === '') return null;
+  let ms;
+  if (typeof value === 'number' || /^\d+$/.test(String(value))) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    ms = n < 1e12 ? n * 1000 : n; // giây -> ms
+  } else {
+    const t = Date.parse(value);
+    if (Number.isNaN(t)) return null;
+    ms = t;
+  }
+  return Math.floor(ms / 86400000);
+}
+
 /** Đơn có đủ điều kiện tự gửi không? */
 function isCandidate(order) {
   if (order.statusCode !== 'not_sent') return false; // chỉ "Chưa báo"
@@ -60,13 +82,17 @@ function isCandidate(order) {
   return rec.attempts < cfg.maxRetries;               // 'failed' -> còn lượt thử lại
 }
 
-/** Lấy TẤT CẢ đơn "Chưa báo" qua mọi trang (vì không cập nhật web nên tập này không tự co lại). */
-async function fetchAllNotSent() {
+/**
+ * Lấy TẤT CẢ đơn "Chưa báo" qua mọi trang (vì không cập nhật web nên tập này không tự co lại).
+ * @param {object} [opts] { fresh } — fresh=true: đọc tươi từ Basso, bỏ qua cache (dùng cho webhook
+ *   để thấy NGAY đơn vừa về, không bị cache 30s che). Poller thường dùng cache cho nhẹ.
+ */
+async function fetchAllNotSent(opts = {}) {
   const all = [];
   const seen = new Set();
   for (let page = 1; page <= 50; page += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const { orders, total } = await getOrders({ status: 'not_sent', page, pageSize: 100 });
+    const { orders, total } = await getOrders({ status: 'not_sent', page, pageSize: 100, fresh: !!opts.fresh });
     for (const o of orders) {
       const k = autoKey(o);
       if (!seen.has(k)) { seen.add(k); all.push(o); }
@@ -102,7 +128,8 @@ async function runAutoNotify(opts = {}) {
     // R6: bọc quét + gửi trong khóa dùng chung -> không chạy chồng với báo-tay (notifyMany).
     // Đặt quét đơn TRONG khóa để thấy trạng thái mới nhất sau khi luồng kia vừa gửi xong.
     await withLock(async () => {
-      const orders = await fetchAllNotSent();
+      // Webhook = "vừa có hàng về" -> đọc TƯƠI (bỏ cache) để thấy ngay đơn mới; poller dùng cache.
+      const orders = await fetchAllNotSent({ fresh: trigger === 'webhook' });
       summary.scanned = orders.length;
       // Đơn "Chưa báo" nhưng Basso chưa soạn "ND báo hàng" -> bỏ qua (không gửi).
       summary.skippedNoContent = orders.filter(
@@ -122,6 +149,19 @@ async function runAutoNotify(opts = {}) {
         if (acct.source === 'store' && acct.autoEnabled === false) {
           summary.skippedAutoOff = (summary.skippedAutoOff || 0) + 1;
           continue;
+        }
+
+        // CHỈ BÁO ĐƠN VỀ TỪ KHI BẬT AUTO: đơn về TRƯỚC ngày account được bật "Tự động báo"
+        // (autoEnabledAt) -> bỏ qua, KHÔNG gửi & KHÔNG trừ lượt -> tránh nhắn trùng loạt khách
+        // cũ đã xử lý tay. Bỏ qua lọc khi tắt qua AUTO_NOTIFY_ONLY_NEW=false hoặc account chưa
+        // có mốc (autoEnabledAt trống -> giữ hành vi cũ). Đơn không đọc được ngày -> vẫn gửi.
+        if (cfg.onlyNewOrders && acct.source === 'store' && acct.autoEnabledAt) {
+          const orderDay = dayBucket(order.dateInventory);
+          const sinceDay = dayBucket(acct.autoEnabledAt);
+          if (orderDay != null && sinceDay != null && orderDay < sinceDay) {
+            summary.skippedBacklog = (summary.skippedBacklog || 0) + 1;
+            continue;
+          }
         }
 
         // eslint-disable-next-line no-await-in-loop
@@ -159,7 +199,8 @@ async function runAutoNotify(opts = {}) {
       if (candidates.length || summary.skippedNoContent) {
         const skipNo = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
         const skipOff = summary.skippedAutoOff ? `, bỏ qua ${summary.skippedAutoOff} đơn (account tắt auto)` : '';
-        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipOff})`);
+        const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
+        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipOff}${skipBack})`);
       }
     });
   } catch (err) {
