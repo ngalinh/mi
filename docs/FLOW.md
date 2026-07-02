@@ -42,7 +42,8 @@ gồm cả **báo tay** và **báo tự động**. Xem thêm tổng quan ở [`R
 
 **Khi nào mi đọc dữ liệu từ Basso?** Realtime, theo 2 nhịp độc lập:
 - **Dashboard**: khi mở trang / bấm "Đồng bộ ngay" / đổi filter / sau khi gửi. *Không* tự refresh theo giờ.
-- **Bot**: mỗi `AUTO_NOTIFY_INTERVAL_MS` (mặc định 2 phút), hoặc ngay khi webhook được gọi.
+- **Bot**: mỗi `AUTO_NOTIFY_INTERVAL_MS` (mặc định 1 phút), hoặc ngay khi webhook được gọi
+  (lượt webhook đọc TƯƠI, bỏ qua cache, để thấy đơn vừa về).
 
 ---
 
@@ -95,7 +96,7 @@ notifyMany()  ──🔒 withLock (R6: không chạy chồng với bot)
 **2 cách kích hoạt, cùng vào `runAutoNotify()`:**
 
 ```
-(1) Poller : setInterval mỗi AUTO_NOTIFY_INTERVAL_MS (mặc định 2 phút)
+(1) Poller : setInterval mỗi AUTO_NOTIFY_INTERVAL_MS (mặc định 1 phút, dùng cache)
 (2) Webhook: POST /api/webhook/arrived  (Basso gọi khi có hàng về → gửi ngay)
         │
         ▼
@@ -177,7 +178,7 @@ runner xử lý job (tuần tự qua jobQueue) ▶ salework.sendBaoHang():
 BASSO_API_BASE_URL=...         # trống = MOCK
 AUTO_UPDATE_STATUS=true        # báo TAY có cập nhật web không
 AUTO_NOTIFY=false              # bật bot chạy nền (cũng bật/tắt được trên dashboard)
-AUTO_NOTIFY_INTERVAL_MS=120000 # chu kỳ quét bot (ms)
+AUTO_NOTIFY_INTERVAL_MS=60000  # chu kỳ quét bot (ms) — mặc định 1 phút
 AUTO_NOTIFY_UPDATE_WEB=true    # bot có cập nhật web không (mặc định CÓ)
 AUTO_NOTIFY_MAX_RETRIES=3      # số lần thử lại / đơn khi lỗi cấp-đơn
 AUTO_NOTIFY_WEBHOOK_SECRET=    # bảo vệ webhook /api/webhook/arrived

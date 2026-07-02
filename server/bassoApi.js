@@ -288,9 +288,11 @@ const _inflight = new Map();  // key -> Promise đang gọi Basso (single-flight
  * Stale-while-revalidate: vì mỗi call Basso ~vài giây, ta trả cache NGAY cả khi đã hết
  * hạn rồi làm mới ở NỀN. Nhờ vậy quay lại 1 view đã xem (đổi tab/lật lại trang/auto-sync)
  * gần như tức thì; chỉ lần ĐẦU TIÊN (chưa có cache) mới phải đợi Basso.
- * @returns {Promise<{data:object, source:'api'|'api-cache'|'api-stale'}>}
+ * @param {object} [opts] { fresh } — fresh=true: BỎ QUA cache, đọc thẳng Basso rồi nạp lại cache
+ *   (dùng cho webhook "có hàng về" -> phải thấy đơn vừa tạo, không để cache 30s che mất).
+ * @returns {Promise<{data:object, source:'api'|'api-cache'|'api-stale'|'api-fresh'}>}
  */
-async function swrFetch(cacheKey, ttl, fetchFn) {
+async function swrFetch(cacheKey, ttl, fetchFn, { fresh = false } = {}) {
   if (!config.basso.listCacheTtlMs) return { data: await fetchFn(), source: 'api' }; // cache tắt
   const refresh = () => {
     if (_inflight.has(cacheKey)) return _inflight.get(cacheKey);
@@ -302,6 +304,7 @@ async function swrFetch(cacheKey, ttl, fetchFn) {
     _inflight.set(cacheKey, p);
     return p;
   };
+  if (fresh) return { data: await refresh(), source: 'api-fresh' }; // đọc tươi, không ăn cache cũ
   const hit = _listCache.get(cacheKey);
   if (hit) {
     const fresh = Date.now() - hit.at < ttl;
@@ -382,7 +385,7 @@ async function getOrders(filters = {}) {
     orders.forEach((o, i) => { o.stt = (page - 1) * pageSize + i + 1; });
     const tabUsers = (raw.tab_users || []).map((u) => ({ user_id: u.user_id, name: u.name }));
     return { orders, tabUsers, total: raw.total ?? orders.length, page: raw.page ?? page };
-  });
+  }, { fresh: !!filters.fresh });
   return { ...data, source };
 }
 

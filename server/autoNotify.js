@@ -82,13 +82,17 @@ function isCandidate(order) {
   return rec.attempts < cfg.maxRetries;               // 'failed' -> còn lượt thử lại
 }
 
-/** Lấy TẤT CẢ đơn "Chưa báo" qua mọi trang (vì không cập nhật web nên tập này không tự co lại). */
-async function fetchAllNotSent() {
+/**
+ * Lấy TẤT CẢ đơn "Chưa báo" qua mọi trang (vì không cập nhật web nên tập này không tự co lại).
+ * @param {object} [opts] { fresh } — fresh=true: đọc tươi từ Basso, bỏ qua cache (dùng cho webhook
+ *   để thấy NGAY đơn vừa về, không bị cache 30s che). Poller thường dùng cache cho nhẹ.
+ */
+async function fetchAllNotSent(opts = {}) {
   const all = [];
   const seen = new Set();
   for (let page = 1; page <= 50; page += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const { orders, total } = await getOrders({ status: 'not_sent', page, pageSize: 100 });
+    const { orders, total } = await getOrders({ status: 'not_sent', page, pageSize: 100, fresh: !!opts.fresh });
     for (const o of orders) {
       const k = autoKey(o);
       if (!seen.has(k)) { seen.add(k); all.push(o); }
@@ -124,7 +128,8 @@ async function runAutoNotify(opts = {}) {
     // R6: bọc quét + gửi trong khóa dùng chung -> không chạy chồng với báo-tay (notifyMany).
     // Đặt quét đơn TRONG khóa để thấy trạng thái mới nhất sau khi luồng kia vừa gửi xong.
     await withLock(async () => {
-      const orders = await fetchAllNotSent();
+      // Webhook = "vừa có hàng về" -> đọc TƯƠI (bỏ cache) để thấy ngay đơn mới; poller dùng cache.
+      const orders = await fetchAllNotSent({ fresh: trigger === 'webhook' });
       summary.scanned = orders.length;
       // Đơn "Chưa báo" nhưng Basso chưa soạn "ND báo hàng" -> bỏ qua (không gửi).
       summary.skippedNoContent = orders.filter(

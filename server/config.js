@@ -110,7 +110,7 @@ module.exports = {
   // Tự động báo hàng: cứ có đơn "Chưa báo" (đã về kho) là tự gửi tin, không cần bấm tay.
   autoNotify: {
     enabled: String(process.env.AUTO_NOTIFY || 'false').toLowerCase() === 'true',
-    intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '120000', 10) || 120000, 10000),
+    intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '60000', 10) || 60000, 10000),
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
     // Bot gửi xong có đẩy trạng thái "Đã báo hàng" về web Basso không?
