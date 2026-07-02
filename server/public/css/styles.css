@@ -450,6 +450,8 @@ a { color: var(--primary); text-decoration: none; }
 
 /* popover bộ lọc nâng cao */
 .tb-filter-wrap { position: relative; }
+/* Nút hành động (Báo hàng loạt) đẩy sang phải cùng, tách khỏi nhóm lọc/tìm kiếm. */
+.toolbar-bar .tb-action { margin-left: auto; }
 .filter-pop {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 40;
   width: 300px; max-width: calc(100vw - 32px); background: #fff; border: 1px solid var(--border);

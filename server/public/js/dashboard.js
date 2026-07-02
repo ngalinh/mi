@@ -566,12 +566,16 @@
     if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function updateCount(list = orders) {
+  function updateCount() {
     const ci = $('countInfo');
-    // Nhãn trạng thái đang lọc (thay cho thanh thẻ đã bỏ) + trang + tổng "chưa báo" (all-time).
+    // "<Trạng thái> · <tổng> đơn · trang X/Y"; chỉ thêm "· N chưa báo" khi đang xem trạng thái
+    // KHÁC "Chưa báo" (lúc đó số backlog mới là thông tin phụ cho nút Báo hàng loạt).
     if (ci) {
       const scope = currentGroup ? GROUP_LABELS[currentGroup] : 'Tất cả trạng thái';
-      ci.textContent = `${scope} · ${list.length} đơn (trang ${currentPage}) · ${counts.todo} chưa báo`;
+      const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
+      let txt = `${scope} · ${serverTotal} đơn · trang ${currentPage}/${totalPages}`;
+      if (currentGroup !== 'todo') txt += ` · ${counts.todo} chưa báo`;
+      ci.textContent = txt;
     }
     $('bulkBtn').disabled = counts.todo === 0;
   }
@@ -1157,7 +1161,14 @@
   // Phạm vi thời gian (toolbar): 0 = Tất cả, hoặc N ngày gần đây -> kéo lại từ server.
   const fScopeEl = $('fScope');
   if (fScopeEl) fScopeEl.addEventListener('change', (e) => {
+    if (e.target.value === 'custom') {
+      // "Tuỳ chỉnh" -> mở Bộ lọc để đặt khoảng ngày cụ thể (from/to).
+      filterPop.hidden = false; syncDateInputs(); $('fFrom').focus();
+      return;
+    }
+    F.from = ''; F.to = '';               // bỏ khoảng ngày tuỳ chỉnh để preset có hiệu lực
     scopeDays = parseInt(e.target.value, 10) || 0;
+    syncDateInputs();
     currentPage = 1;
     reloadScope();
   });
@@ -1229,7 +1240,7 @@
     F.to = $('fTo').value;
     F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
-    updateFilterBadge();
+    syncDateInputs(); // đồng bộ #fScope -> "Tuỳ chỉnh" khi có from/to + cập nhật badge
     filterPop.hidden = true;
     // Đổi khoảng ngày -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc client (giữ trang).
     if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; reloadScope(); } else rerender();
@@ -1309,7 +1320,7 @@
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
     const st = $('fStatus'); if (st) st.value = currentGroup || '';
-    const sc = $('fScope'); if (sc) sc.value = String(scopeDays);
+    const sc = $('fScope'); if (sc) sc.value = (F.from || F.to) ? 'custom' : String(scopeDays);
     updateFilterBadge();
   }
 
