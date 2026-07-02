@@ -520,16 +520,27 @@ async function debugRawRows({ q, from, to, status, limit = 5 } = {}) {
   };
   const raw = await apiFetch('/partner/getArrivedVnList', { query }); // KHÔNG qua swrFetch
   const rows = raw.rows || [];
-  // Chỉ trả các field liên quan nội dung + toàn bộ key của dòng đầu để đối chiếu tên field thật.
-  const slim = rows.slice(0, limit).map((r) => ({
-    customer_name: r.customer_name,
-    customer_phone: r.customer_phone,
-    status: r.status,
-    content: r.content,             // ← field mi đang đọc cho "ND báo hàng"
-    content_ship: r.content_ship,
-    _hasContent: !!(r.content && String(r.content).trim()),
-    _allKeys: Object.keys(r),       // ← nếu content ở tên field khác sẽ lộ ra đây
-  }));
+  // Lộ khóa định danh của TỪNG dòng để chẩn đoán "trùng khóa": nếu nhiều đơn cùng khách trả về
+  // cùng `_key` (do Basso thiếu/trùng `id` -> mi rơi về c<customer_id>-<date_inventory>), mi sẽ
+  // GỘP thành 1 dòng và chỉ giữ dòng ĐẦU (có thể là dòng content rỗng) -> nội dung ở dòng anh em
+  // bị che. `_key` là đúng khóa mi dùng (normalizeOrder.id).
+  const keyCount = new Map();
+  rows.forEach((r) => { const k = normalizeOrder(r).id; keyCount.set(k, (keyCount.get(k) || 0) + 1); });
+  const slim = rows.slice(0, limit).map((r) => {
+    const norm = normalizeOrder(r);
+    return {
+      _key: norm.id,                 // ← khóa mi dùng để phân biệt dòng
+      _keyDup: keyCount.get(norm.id), // ← >1 nghĩa là TRÙNG khóa (bị gộp trên mi)
+      id: r.id,                       // id thô Basso (null/0/'' -> sinh trùng khóa)
+      customer_id: r.customer_id,
+      customer_name: r.customer_name,
+      date_inventory: r.date_inventory,
+      warehouseDate: norm.warehouseDate,
+      status: r.status,
+      _hasContent: !!(r.content && String(r.content).trim()),
+      content_preview: r.content ? String(r.content).slice(0, 45) : null,
+    };
+  });
   return { source: 'api', total: raw.total ?? rows.length, sampleKeys: Object.keys(rows[0] || {}), rows: slim };
 }
 
