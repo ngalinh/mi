@@ -42,12 +42,11 @@ async function warmOnce(trigger = 'interval') {
   try {
     // Warm ĐÚNG khung server-mode mà dashboard tải lúc boot. Phải TRÙNG cache key với call
     // thật của client thì mở dashboard mới ăn cache ấm:
-    //   1) Danh sách trang 1 tab "Chưa báo" trong cửa sổ ngày mặc định (days khớp DEFAULT_DAYS).
-    //   2) Đếm "chưa báo" all-time (không days) — đúng call loadCounts client dùng cho nút Báo loạt.
+    //   1) Danh sách trang 1 tab "Chưa báo" — mặc định all-time (scope toolbar mặc định "Tất cả").
+    //   2) Đếm "chưa báo" all-time (page_size=1) — đúng call loadCounts client dùng cho nút Báo loạt.
     //   3) Danh sách nhân viên.
     // (Bỏ warm getStatusCounts 4-call — dashboard không còn thanh thẻ đếm nữa -> khỏi dội Basso.)
-    const days = config.basso.defaultDays || undefined;
-    await getOrders({ status: 'not_sent', page: 1, pageSize: 20, days });
+    await getOrders({ status: 'not_sent', page: 1, pageSize: 20 });
     await Promise.all([
       getTabUsers(),
       getOrders({ status: 'not_sent', page: 1, pageSize: 1 }),
