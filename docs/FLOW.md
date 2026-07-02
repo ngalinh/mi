@@ -112,6 +112,8 @@ runAutoNotify()
         - dedup: chưa 'success'/'manual', và attempts < maxRetries
         (khách có Zalo hay không xác định lúc gửi: tìm SĐT không ra hội thoại → lỗi)
    ②b lọc theo NV + mốc bật auto (trong vòng lặp, theo account phụ trách):
+        - AUTO_NOTIFY_REQUIRE_ACCOUNT=true: đơn KHÔNG khớp account nào (→ default) → BỎ QUA
+          (cô lập test: chỉ NV có account bật auto mới được gửi)
         - account NV tắt "Tự động báo" (autoEnabled=false) → BỎ QUA (để NV báo tay)
         - AUTO_NOTIFY_ONLY_NEW=true (mặc định): đơn về TRƯỚC ngày account bật auto
           (date_inventory < autoEnabledAt) → BỎ QUA tồn đọng, không gửi & không trừ lượt
@@ -183,6 +185,7 @@ AUTO_NOTIFY_UPDATE_WEB=true    # bot có cập nhật web không (mặc định 
 AUTO_NOTIFY_MAX_RETRIES=3      # số lần thử lại / đơn khi lỗi cấp-đơn
 AUTO_NOTIFY_WEBHOOK_SECRET=    # bảo vệ webhook /api/webhook/arrived
 AUTO_NOTIFY_ONLY_NEW=true      # chỉ báo đơn về TỪ khi bật auto (bỏ tồn đọng cũ) — chống nhắn trùng
+AUTO_NOTIFY_REQUIRE_ACCOUNT=false # true = chỉ gửi đơn khớp account đang bật auto (cô lập test 1 NV)
 TEST_MODE=true / TEST_PHONES=  # chế độ an toàn ở runner
 ```
 

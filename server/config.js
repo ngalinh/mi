@@ -127,6 +127,11 @@ module.exports = {
     // tồn đọng như trước. Chỉ áp dụng cho account Hướng B (khớp NV); account cũ chưa có mốc
     // (autoEnabledAt trống) giữ nguyên hành vi cũ tới lần bật/tắt kế tiếp.
     onlyNewOrders: String(process.env.AUTO_NOTIFY_ONLY_NEW ?? 'true').toLowerCase() !== 'false',
+    // CHỈ tự gửi đơn khớp đúng 1 tài khoản Zalo ĐANG BẬT auto (source='store'). Đơn không khớp
+    // account nào (rơi về 'default'/legacy) hoặc account tắt auto -> BỎ QUA. Dùng để cô lập test
+    // về 1 nhân viên: bật auto cho 1 account là chỉ NV đó được gửi, còn lại tự động bỏ. Mặc định
+    // false (giữ hành vi cũ: đơn không khớp vẫn gửi bằng account mặc định).
+    requireAccount: String(process.env.AUTO_NOTIFY_REQUIRE_ACCOUNT || 'false').toLowerCase() === 'true',
   },
   dbPath: process.env.DB_PATH
     || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),
