@@ -2,6 +2,9 @@
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
 
+  const PAGE_SIZE = 20;                                        // số dòng mỗi trang
+  let page = 1;                                                // trang hiện tại (1-based)
+
   // Khi danh sách còn dòng "đang báo", tự tải lại sau vài giây để badge tự cập nhật khi job
   // gửi xong. Hết pending thì dừng (không poll vô ích). Mỗi lần load() gọi lại để gia hạn/huỷ.
   let refreshTimer = null;
@@ -138,10 +141,48 @@
       ${App.icon('refresh')} Thử lại</button>`;
   }
 
+  // Dãy số trang có "…" khi nhiều trang: luôn hiện trang đầu/cuối, và cửa sổ quanh trang hiện tại.
+  function pageList(cur, total) {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const set = new Set([1, total, cur, cur - 1, cur + 1]);
+    const arr = [...set].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b);
+    const out = [];
+    for (let i = 0; i < arr.length; i++) {
+      if (i && arr[i] - arr[i - 1] > 1) out.push('…');
+      out.push(arr[i]);
+    }
+    return out;
+  }
+
+  // Vẽ thanh phân trang dưới bảng. Ẩn khi chỉ có 1 trang (hoặc rỗng).
+  function renderPager(total) {
+    const pager = $('pager');
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (total <= PAGE_SIZE) { pager.hidden = true; return; }
+    pager.hidden = false;
+    const first = (page - 1) * PAGE_SIZE + 1;
+    const last = Math.min(page * PAGE_SIZE, total);
+    $('pagerInfo').textContent = `Hiển thị ${first}–${last} / ${total} lượt báo`;
+    const btn = (label, target, opts = {}) => {
+      const dis = opts.disabled ? ' disabled' : '';
+      const active = opts.active ? ' active' : '';
+      if (opts.gap) return `<span class="pager-gap">…</span>`;
+      return `<button class="pager-btn${active}" data-page="${target}"${dis}>${label}</button>`;
+    };
+    const parts = [btn('‹', page - 1, { disabled: page <= 1 })];
+    for (const p of pageList(page, totalPages)) {
+      parts.push(p === '…' ? btn('', 0, { gap: true }) : btn(String(p), p, { active: p === page }));
+    }
+    parts.push(btn('›', page + 1, { disabled: page >= totalPages }));
+    $('pagerNav').innerHTML = parts.join('');
+  }
+
   async function load() {
     hideTip();                                                // tránh tooltip "kẹt" khi bảng render lại
     rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
+    params.set('page', page);
+    params.set('pageSize', PAGE_SIZE);
     const st = $('fStatus').value, q = $('fQ').value;
     if (st) params.set('status', st);
     if (q) params.set('q', q);
@@ -165,10 +206,15 @@
       $('sFailed').textContent = res.stats.failed;
       $('sPending').textContent = res.stats.pending || 0;
       const items = res.items || [];
+      const total = res.total != null ? res.total : items.length;
+      // Xoá bớt bộ lọc khiến trang hiện tại vượt quá số trang -> lùi về trang cuối và tải lại.
+      const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+      if (page > totalPages) { page = totalPages; return load(); }
       // Còn dòng "đang báo" -> tự tải lại để badge tự lật sang Thành công/Thất bại khi job xong.
       scheduleAutoRefresh(items.some((r) => r.status === 'pending'));
       if (!items.length) {
         rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Chưa có lượt báo nào</td></tr>';
+        $('pager').hidden = true;
         return;
       }
       rowsEl.innerHTML = items.map((r) => `<tr>
@@ -185,8 +231,10 @@
         <td class="err-cell" style="color:var(--red)" data-tip="${App.esc(r.error)}">${errPreview(r.error)}</td>
         <td class="center">${actionCell(r)}</td>
       </tr>`).join('');
+      renderPager(total);
     } catch (e) {
       rowsEl.innerHTML = `<tr><td colspan="12" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('pager').hidden = true;
     }
   }
 
@@ -221,23 +269,37 @@
       c.classList.toggle('active', c.dataset.filter === val));
   }
 
-  $('reloadBtn').addEventListener('click', load);
-  $('fStatus').addEventListener('change', () => { syncStatCards($('fStatus').value); load(); });
-  $('fFrom').addEventListener('change', load);
-  $('fTo').addEventListener('change', load);
-  $('fStaff').addEventListener('change', load);
-  $('fSender').addEventListener('change', load);
-  $('fAccount').addEventListener('change', load);
+  // Đổi bộ lọc -> luôn về trang 1 rồi tải (tránh "kẹt" ở trang không còn dữ liệu).
+  function reload() { page = 1; load(); }
+
+  // Bấm số trang / mũi tên -> nhảy trang (không đổi bộ lọc).
+  $('pagerNav').addEventListener('click', (e) => {
+    const b = e.target.closest('.pager-btn');
+    if (!b || b.disabled) return;
+    const target = parseInt(b.dataset.page, 10);
+    if (!target || target === page) return;
+    page = target;
+    load();
+    document.querySelector('.table-wrap')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+
+  $('reloadBtn').addEventListener('click', reload);
+  $('fStatus').addEventListener('change', () => { syncStatCards($('fStatus').value); reload(); });
+  $('fFrom').addEventListener('change', reload);
+  $('fTo').addEventListener('change', reload);
+  $('fStaff').addEventListener('change', reload);
+  $('fSender').addEventListener('change', reload);
+  $('fAccount').addEventListener('change', reload);
   // Bấm thẻ thống kê = lọc theo loại (Tổng = tất cả, Thành công, Thất bại)
   $('statCards').addEventListener('click', (e) => {
     const card = e.target.closest('.status-tab');
     if (!card) return;
     $('fStatus').value = card.dataset.filter;
     syncStatCards(card.dataset.filter);
-    load();
+    reload();
   });
   let t;
-  $('fQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 400); });
+  $('fQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(reload, 400); });
   // Tải map nhân viên trước, xong mới render để cột "Người gửi" hiện tên ngay lượt đầu.
   loadStaffMap().finally(load);
 })();

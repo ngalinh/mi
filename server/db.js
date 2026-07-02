@@ -209,11 +209,19 @@ function reportsWhere({ status, q, from, to, staff, sender, account } = {}) {
   return { whereSql: where.length ? ' WHERE ' + where.join(' AND ') : '', params };
 }
 
-function listReports({ limit = 200, ...filters } = {}) {
+function listReports({ limit = 200, offset = 0, ...filters } = {}) {
   const { whereSql, params } = reportsWhere(filters);
   params.limit = Math.min(limit, 1000);
-  const sql = `SELECT * FROM reports${whereSql} ORDER BY id DESC LIMIT @limit`;
+  params.offset = Math.max(0, offset | 0);
+  const sql = `SELECT * FROM reports${whereSql} ORDER BY id DESC LIMIT @limit OFFSET @offset`;
   return db.prepare(sql).all(params).map(parseImages);
+}
+
+// Đếm tổng số dòng khớp bộ lọc (tính CẢ status) để client tính số trang.
+// Khác stats(): stats bỏ qua status để 4 thẻ luôn hiện đủ; ở đây cần đúng số dòng của trang.
+function countReports(filters = {}) {
+  const { whereSql, params } = reportsWhere(filters);
+  return db.prepare(`SELECT COUNT(*) AS n FROM reports${whereSql}`).get(params).n || 0;
 }
 
 // Giá trị phân biệt cho các dropdown lọc mở rộng (Nhân viên / Người gửi / Tài khoản).
@@ -373,6 +381,6 @@ function stats({ q, from, to, staff, sender, account } = {}) {
 }
 
 module.exports = {
-  db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
+  db, addReport, updateReport, getReportById, listReports, countReports, reportFacets, stats, getAutoRecord, getAutoMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
 };

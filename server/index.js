@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
-const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
+const { listReports, countReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
@@ -490,10 +490,21 @@ app.post('/api/webhook/arrived', async (req, res) => {
 // ---- Lịch sử report ----
 app.get('/api/reports', (req, res) => {
   try {
-    const { limit, status, q, from, to, staff, sender, account } = req.query;
+    const { limit, page, pageSize, status, q, from, to, staff, sender, account } = req.query;
     const filters = { status, q, from, to, staff, sender, account };
-    const items = listReports({ limit: limit ? parseInt(limit, 10) : 200, ...filters });
-    res.json({ ok: true, stats: stats(filters), items, facets: reportFacets() });
+    // Phân trang: page (1-based) + pageSize. Vẫn hỗ trợ limit cũ (không page) để không phá client cũ.
+    const size = Math.min(Math.max(parseInt(pageSize, 10) || 20, 1), 200);
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const paged = page != null || pageSize != null;
+    const opts = paged
+      ? { limit: size, offset: (pageNum - 1) * size }
+      : { limit: limit ? parseInt(limit, 10) : 200 };
+    const items = listReports({ ...opts, ...filters });
+    const total = countReports(filters);
+    res.json({
+      ok: true, stats: stats(filters), items, facets: reportFacets(),
+      total, page: pageNum, pageSize: size,
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

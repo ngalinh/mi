@@ -735,6 +735,25 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   white-space: nowrap; cursor: help;
 }
 
+/* Phân trang dưới bảng Lịch sử báo */
+.pager {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; margin-top: 14px; padding-top: 4px;
+}
+.pager-info { font-size: 13px; color: var(--text-soft); }
+.pager-nav { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.pager-btn {
+  min-width: 34px; height: 34px; padding: 0 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); border-radius: 10px; background: #fff;
+  color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background .12s var(--ease), border-color .12s var(--ease), color .12s var(--ease);
+}
+.pager-btn:hover:not(:disabled):not(.active) { background: var(--head-tint); border-color: var(--border-strong); }
+.pager-btn.active { background: var(--primary); border-color: var(--primary); color: #fff; cursor: default; }
+.pager-btn:disabled { opacity: .45; cursor: not-allowed; }
+.pager-gap { padding: 0 4px; color: var(--muted); font-weight: 700; }
+
 /* ============================================================
    Stat cards
    ============================================================ */
