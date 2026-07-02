@@ -1143,7 +1143,7 @@
   // ---------------- Bộ lọc nâng cao (popover) ----------------
   function activeFilterCount() {
     let n = 0;
-    if (F.from || F.to) n++;          // khoảng ngày tường minh (trạng thái + scope ở toolbar không tính)
+    // Nhân viên / thời gian / trạng thái nằm ở toolbar -> không tính vào badge popover.
     if (F.exclude !== 'all') n++;
     if (F.note !== 'all') n++;
     return n;
@@ -1162,18 +1162,32 @@
   $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
 
   // Phạm vi thời gian (toolbar): 0 = Tất cả, hoặc N ngày gần đây -> kéo lại từ server.
+  function showCustomRange(on) { const c = $('customRange'); if (c) c.hidden = !on; }
   const fScopeEl = $('fScope');
   if (fScopeEl) fScopeEl.addEventListener('change', (e) => {
     if (e.target.value === 'custom') {
-      // "Tuỳ chỉnh" -> mở Bộ lọc để đặt khoảng ngày cụ thể (from/to).
-      filterPop.hidden = false; syncDateInputs(); $('fFrom').focus();
+      // "Tuỳ chỉnh" -> hiện 2 ô ngày NGAY tại toolbar; chờ người dùng nhập rồi mới tải.
+      scopeDays = 0;
+      showCustomRange(true);
+      $('fFrom').focus();
       return;
     }
     F.from = ''; F.to = '';               // bỏ khoảng ngày tuỳ chỉnh để preset có hiệu lực
     scopeDays = parseInt(e.target.value, 10) || 0;
+    showCustomRange(false);
     syncDateInputs();
     currentPage = 1;
     reloadScope();
+  });
+  // Ô ngày inline (chỉ hiện khi chọn "Tuỳ chỉnh") -> đổi là tải lại theo khoảng from/to.
+  ['fFrom', 'fTo'].forEach((id) => {
+    const el = $(id);
+    if (el) el.addEventListener('change', () => {
+      F.from = $('fFrom').value; F.to = $('fTo').value;
+      updateFilterBadge();
+      currentPage = 1;
+      reloadScope();
+    });
   });
 
   // Lọc trạng thái (toolbar, kế bên thời gian): '' = tất cả, hoặc todo/arrival/ship/failed.
@@ -1237,25 +1251,21 @@
   });
 
   $('fApply').addEventListener('click', () => {
-    const prevFrom = F.from, prevTo = F.to;
-    F.from = $('fFrom').value;
-    F.to = $('fTo').value;
     F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
-    syncDateInputs(); // đồng bộ #fScope -> "Tuỳ chỉnh" khi có from/to + cập nhật badge
+    updateFilterBadge();
     filterPop.hidden = true;
-    // Đổi khoảng ngày -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc client (giữ trang).
-    if (F.from !== prevFrom || F.to !== prevTo) { currentPage = 1; reloadScope(); } else rerender();
+    rerender(); // loại trừ/ghi chú là lọc client-side -> chỉ vẽ lại (giữ trang, không gọi server)
   });
   $('fClear').addEventListener('click', () => {
-    const changed = !!(F.from || F.to);
-    F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all';
-    // (Trạng thái + phạm vi thời gian nằm ở toolbar, không thuộc "Xoá lọc" của popover.)
-    syncDateInputs();
+    // Popover giờ chỉ còn Loại trừ + Ghi chú (lọc client-side). "Xoá lọc" đưa 2 cái về mặc định.
+    // (Nhân viên / thời gian / trạng thái nằm ở toolbar, không thuộc "Xoá lọc".)
+    F.exclude = 'all'; F.note = 'all';
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
-    if (changed) { currentPage = 1; reloadScope(); } else rerender();
+    updateFilterBadge();
+    rerender();
   });
 
   // Delegation cho bảng
@@ -1322,7 +1332,9 @@
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
     const st = $('fStatus'); if (st) st.value = currentGroup || '';
-    const sc = $('fScope'); if (sc) sc.value = (F.from || F.to) ? 'custom' : String(scopeDays);
+    const custom = !!(F.from || F.to);
+    const sc = $('fScope'); if (sc) sc.value = custom ? 'custom' : String(scopeDays);
+    showCustomRange(custom);
     updateFilterBadge();
   }
 
@@ -1348,12 +1360,12 @@
   // -> mỗi người mở lên chỉ thấy đơn của mình (nhẹ hơn); vẫn đổi sang NV khác/Tất cả qua dropdown.
   // Lấy /api/me trước rồi mới load lần đầu (SERVER-MODE: chỉ 1 trang nhẹ + đếm nhẹ, cache ấm).
   App.api('/api/me').then((r) => {
-    const s = r && r.staff;
-    if (s && s.user_id != null && String(s.user_id) !== '') {
-      currentStaff = String(s.user_id);
-      if (!tabUsers.some((u) => String(u.user_id) === currentStaff)) {
-        tabUsers.push({ user_id: s.user_id, name: s.name || ('NV ' + s.user_id) });
-      }
+    // defaultUserId = user_id đã gán (Cài đặt) HOẶC tự khớp theo tên (server lo). Không có -> Tất cả.
+    const uid = r && r.defaultUserId != null && String(r.defaultUserId) !== '' ? String(r.defaultUserId) : '';
+    if (uid) {
+      currentStaff = uid;
+      const nm = (r.staff && r.staff.name) || ('NV ' + uid);
+      if (!tabUsers.some((u) => String(u.user_id) === uid)) tabUsers.push({ user_id: uid, name: nm });
       renderTabs();
     }
   }).catch(() => {}).finally(() => { reloadScope(); });
