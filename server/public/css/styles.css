@@ -688,7 +688,12 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   box-shadow: 0 1px 3px color-mix(in srgb, var(--blue) 16%, transparent);
 }
 
-.msg-cell { min-width: 240px; max-width: 360px; white-space: pre-wrap; color: var(--text-soft); font-size: 13px; line-height: 1.5; }
+/* Nội dung: gọn 1 dòng, cắt bằng ellipsis (full text ở tooltip) để mỗi hàng không bị cao. */
+.msg-cell {
+  min-width: 200px; max-width: 300px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  color: var(--text-soft); font-size: 13px; line-height: 1.5;
+}
 
 /* Cột lỗi: ô bảng bình thường, cho xuống dòng gọn (preview đã cắt sẵn ~60 ký tự
    trong JS) thay vì cắt cụt 1 dòng; nội dung đầy đủ xem qua tooltip. */
@@ -716,11 +721,19 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
 }
 
-/* Lịch sử báo: chống các cột ngắn (Thời gian / Mã đơn / SĐT / NV / Người gửi)
-   xuống dòng vụn; bảng tự giãn & cuộn ngang trong .table-wrap nếu cần. */
-.reports-table th, .reports-table td { white-space: nowrap; vertical-align: top; }
-.reports-table .msg-cell, .reports-table .cust, .reports-table .err-cell { white-space: normal; }
+/* Lịch sử báo: hiển thị gọn — mỗi hàng thấp, các cột ngắn không xuống dòng vụn;
+   bảng tự giãn & cuộn ngang trong .table-wrap nếu cần. */
+.reports-table th, .reports-table td { white-space: nowrap; vertical-align: middle; }
+.reports-table td { padding-top: 7px; padding-bottom: 7px; }
+.reports-table .cust, .reports-table .err-cell { white-space: normal; }
 .reports-table .cust { min-width: 130px; }
+.reports-table .time-cell { font-size: 13px; color: var(--text-soft); }
+
+/* Mã đơn: gộp nhiều mã SU trên 1 dòng, cắt gọn bằng ellipsis, full list ở tooltip. */
+.reports-table .order-cell {
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; cursor: help;
+}
 
 /* ============================================================
    Stat cards
