@@ -394,6 +394,7 @@ a { color: var(--primary); text-decoration: none; }
 
 /* Thời điểm đồng bộ gần nhất trên topbar */
 .sync-info { font-size: 12px; color: var(--text-soft); white-space: nowrap; }
+.count-info { font-size: 13px; margin: 2px 2px 8px; }
 
 /* ============================================================
    Chế độ (settings) — hàng cấu hình
