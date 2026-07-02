@@ -10,10 +10,13 @@
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
-  // Số đếm thật cho 4 thẻ trạng thái (lấy từ /api/order-counts, không chỉ trang hiện tại).
+  // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
+  // Các nhóm khác giữ lại cho tương thích code cũ (client-mode) nhưng không hiển thị nữa.
   let counts = { todo: 0, arrival: 0, ship: 0, failed: 0, total: 0 };
-  // Nhóm trạng thái trên thẻ -> mã trạng thái Basso để lọc/phân trang server-side.
+  // Nhóm trạng thái -> mã trạng thái Basso để lọc/phân trang server-side.
   const STATUS_FOR_GROUP = { todo: 'not_sent', arrival: 'notified_arrival', ship: 'notified_ship', failed: 'send_failed' };
+  // Nhãn hiển thị của từng nhóm (dùng cho dòng thông tin + popover Bộ lọc).
+  const GROUP_LABELS = { todo: 'Chưa báo', arrival: 'Đã báo hàng', ship: 'Đã báo ship', failed: 'Lỗi - Báo lại' };
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
@@ -476,17 +479,9 @@
     return '';
   }
 
-  function renderStatusTabs() {
-    const label = periodLabel();
-    document.querySelectorAll('#statusTabs .status-tab').forEach((tab) => {
-      const key = tab.dataset.filter;
-      const num = tab.querySelector('.st-num');
-      if (num) num.textContent = counts[key] ?? 0;
-      tab.classList.toggle('active', key === currentGroup);
-      const period = tab.querySelector('.st-period');
-      if (period) period.textContent = label;
-    });
-  }
+  // Thanh thẻ trạng thái (có đếm) đã BỎ — lọc trạng thái nằm trong popover "Bộ lọc" cho nhẹ
+  // (không còn 4 call /api/order-counts mỗi lần tải). Giữ hàm rỗng để các nơi gọi khỏi lỗi.
+  function renderStatusTabs() { /* no-op */ }
 
   // Bộ lọc nâng cao "Loại trừ/Ghi chú" (client-side) — tách riêng để dùng được cả khi
   // lọc cả tập (client-mode, trước khi phân trang) lẫn trong phạm vi 1 trang (server-mode).
@@ -574,8 +569,11 @@
 
   function updateCount(list = orders) {
     const ci = $('countInfo');
-    // Trang hiện tại + tổng "chưa báo" thật (toàn bộ dữ liệu) lấy từ server.
-    if (ci) ci.textContent = `${list.length} đơn (trang ${currentPage}) · ${counts.todo} chưa báo`;
+    // Nhãn trạng thái đang lọc (thay cho thanh thẻ đã bỏ) + trang + tổng "chưa báo" (all-time).
+    if (ci) {
+      const scope = currentGroup ? GROUP_LABELS[currentGroup] : 'Tất cả trạng thái';
+      ci.textContent = `${scope} · ${list.length} đơn (trang ${currentPage}) · ${counts.todo} chưa báo`;
+    }
     $('bulkBtn').disabled = counts.todo === 0;
   }
 
@@ -1074,20 +1072,22 @@
     }
   }
 
-  // ----- Bộ điều phối: ngày đổi -> kéo lại tập (loadAll tự quyết client/fallback); các bộ
-  // lọc khác (NV/trạng thái/trang/tìm kiếm) -> client-mode lọc tức thì, fallback gọi server. -----
-  // Đếm 4 thẻ trạng thái (tổng THẬT theo NV + tìm kiếm + ngày, không chỉ trang hiện tại).
-  // Server-mode: /api/order-counts nhẹ (4 call page_size=1, cache 90s) — không kéo cả tập.
+  // Chỉ còn đếm "Chưa báo" (cho nút Báo hàng loạt + dòng thông tin) bằng ĐÚNG 1 call nhẹ
+  // (page_size=1 -> chỉ lấy total), thay cho 4 call /api/order-counts trước đây. KHÔNG gửi
+  // `days`: đếm all-time để KHỚP "Báo hàng loạt" (notify-all cũng quét all-time), tránh nút
+  // hiện số ít hơn số thực gửi.
   async function loadCounts() {
     const p = new URLSearchParams();
-    applyScope(p); // cùng phạm vi ngày với load() -> số đếm 4 thẻ khớp danh sách
+    p.set('status', 'not_sent');
+    p.set('pageSize', '1');
     if (currentStaff) p.set('staff', currentStaff);
     const q = $('fQ').value.trim();
     if (q) p.set('q', q);
     try {
-      const res = await App.api('/api/order-counts?' + p.toString());
-      if (res.counts) { counts = res.counts; renderStatusTabs(); }
+      const res = await App.api('/api/orders?' + p.toString());
+      counts.todo = res.total != null ? res.total : 0;
       if (res.tabUsers && res.tabUsers.length) { mergeTabUsers(res.tabUsers); renderTabs(); }
+      updateCount();
     } catch (_) { /* lỗi -> giữ số cũ, không phá màn hình */ }
   }
 
@@ -1137,6 +1137,7 @@
   // ---------------- Bộ lọc nâng cao (popover) ----------------
   function activeFilterCount() {
     let n = 0;
+    if (currentGroup !== 'todo') n++; // khác mặc định "Chưa báo" -> tính là đang lọc trạng thái
     if (F.from || F.to) n++;
     else if (scopeDays === 0) n++; // "Tất cả" (bỏ giới hạn 30 ngày mặc định) tính là 1 bộ lọc
     if (F.exclude !== 'all') n++;
@@ -1164,17 +1165,7 @@
   });
   $('bulkBtn').addEventListener('click', openBulkModal);
 
-  // Thẻ trạng thái: bấm để lọc; bấm lại thẻ đang chọn để bỏ lọc (xem tất cả). Mọi tab cùng
-  // khoảng ngày (mặc định all-time) -> đổi tab KHÔNG đổi phạm vi, chỉ là lọc trạng thái tức
-  // thì trên tập đã có (client-mode); server-mode thì gọi lại theo trạng thái mới.
-  $('statusTabs').addEventListener('click', (e) => {
-    const tab = e.target.closest('.status-tab');
-    if (!tab) return;
-    const key = tab.dataset.filter;
-    currentGroup = (key === currentGroup) ? '' : key;
-    currentPage = 1;
-    applyFilters({ keepPage: true });
-  });
+  // (Thanh thẻ trạng thái đã bỏ — lọc trạng thái nằm trong popover "Bộ lọc", xem xử lý ở fApply.)
 
   $('staffTabs').addEventListener('click', (e) => {
     const tab = e.target.closest('.tab');
@@ -1220,22 +1211,26 @@
   });
 
   $('fApply').addEventListener('click', () => {
-    const prevFrom = F.from, prevTo = F.to, prevScope = scopeDays;
+    const prevFrom = F.from, prevTo = F.to, prevScope = scopeDays, prevGroup = currentGroup;
     F.from = $('fFrom').value;
     F.to = $('fTo').value;
     F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
+    currentGroup = $('fStatus').value; // lọc trạng thái ('' = tất cả)
     // Phạm vi ngày mặc định: "days" = 30 ngày gần đây, "all" = mọi ngày (bỏ giới hạn).
     scopeDays = filterPop.querySelector('.fp-seg[data-key=scope] .active').dataset.v === 'all' ? 0 : DEFAULT_DAYS;
     updateFilterBadge();
     filterPop.hidden = true;
-    // Đổi khoảng ngày/phạm vi -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc lại tại client (giữ trang).
-    if (F.from !== prevFrom || F.to !== prevTo || scopeDays !== prevScope) { currentPage = 1; reloadScope(); } else rerender();
+    // Đổi trạng thái/khoảng ngày/phạm vi -> kéo lại (về trang 1); chỉ đổi loại trừ/ghi chú -> lọc client (giữ trang).
+    if (currentGroup !== prevGroup || F.from !== prevFrom || F.to !== prevTo || scopeDays !== prevScope) {
+      currentPage = 1; reloadScope();
+    } else rerender();
   });
   $('fClear').addEventListener('click', () => {
-    const changed = !!(F.from || F.to) || scopeDays !== DEFAULT_DAYS;
+    const changed = !!(F.from || F.to) || scopeDays !== DEFAULT_DAYS || currentGroup !== '';
     F.from = ''; F.to = ''; F.exclude = 'all'; F.note = 'all';
-    scopeDays = DEFAULT_DAYS; // về cửa sổ 30 ngày mặc định
+    currentGroup = '';                // "Xoá lọc" -> xem tất cả trạng thái
+    scopeDays = DEFAULT_DAYS;         // về cửa sổ 30 ngày mặc định
     syncDateInputs();
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
@@ -1302,10 +1297,11 @@
   const notePresetsEl = $('notePresets');
   if (notePresetsEl) notePresetsEl.innerHTML = DELAY_REASONS.map((r) => `<option value="${App.esc(r)}"></option>`).join('');
 
-  // Đồng bộ F.from / F.to + phạm vi ngày (scope) vào popover bộ lọc.
+  // Đồng bộ F.from / F.to + phạm vi ngày (scope) + trạng thái vào popover bộ lọc.
   function syncDateInputs() {
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
+    const st = $('fStatus'); if (st) st.value = currentGroup || '';
     const scopeSeg = filterPop.querySelector('.fp-seg[data-key=scope]');
     if (scopeSeg) {
       const want = scopeDays === 0 ? 'all' : 'days';

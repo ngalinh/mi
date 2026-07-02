@@ -1,6 +1,6 @@
 'use strict';
 const config = require('./config');
-const { getOrders, getStatusCounts, getTabUsers } = require('./bassoApi');
+const { getOrders, getTabUsers } = require('./bassoApi');
 
 /**
  * NẠP SẴN (preload / cache-warm) DANH SÁCH HÀNG VỀ.
@@ -40,13 +40,18 @@ async function warmOnce(trigger = 'interval') {
   state.running = true;
   const t0 = Date.now();
   try {
-    // Warm ĐÚNG khung server-mode mà dashboard tải lúc boot: trang 1 tab "Chưa báo"
-    // (not_sent, pageSize 20) + đếm 4 thẻ + nhân viên. Phải TRÙNG cache key với call thật
-    // của client (cùng page/pageSize/status/days/bộ lọc rỗng) thì mở dashboard mới ăn cache ấm.
-    // days = cửa sổ ngày mặc định (khớp DEFAULT_DAYS ở dashboard.js) -> warm đúng key client dùng.
+    // Warm ĐÚNG khung server-mode mà dashboard tải lúc boot. Phải TRÙNG cache key với call
+    // thật của client thì mở dashboard mới ăn cache ấm:
+    //   1) Danh sách trang 1 tab "Chưa báo" trong cửa sổ ngày mặc định (days khớp DEFAULT_DAYS).
+    //   2) Đếm "chưa báo" all-time (không days) — đúng call loadCounts client dùng cho nút Báo loạt.
+    //   3) Danh sách nhân viên.
+    // (Bỏ warm getStatusCounts 4-call — dashboard không còn thanh thẻ đếm nữa -> khỏi dội Basso.)
     const days = config.basso.defaultDays || undefined;
     await getOrders({ status: 'not_sent', page: 1, pageSize: 20, days });
-    await Promise.all([getTabUsers(), getStatusCounts({ days })]);
+    await Promise.all([
+      getTabUsers(),
+      getOrders({ status: 'not_sent', page: 1, pageSize: 1 }),
+    ]);
     state.lastOk = true;
     state.lastError = null;
   } catch (e) {
