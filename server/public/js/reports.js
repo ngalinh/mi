@@ -129,9 +129,16 @@
     if (t && t === tipTarget) hideTip();
   });
 
+  // Ô "Thao tác": chỉ dòng THẤT BẠI mới có nút Thử lại (gửi lại đúng đơn đó).
+  function actionCell(r) {
+    if (r.status !== 'failed') return '<span class="muted">—</span>';
+    return `<button class="btn small secondary retry-btn" data-id="${App.esc(r.id)}" title="Gửi lại lượt báo này">
+      ${App.icon('refresh')} Thử lại</button>`;
+  }
+
   async function load() {
     hideTip();                                                // tránh tooltip "kẹt" khi bảng render lại
-    rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Đang tải...</td></tr>';
+    rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     const st = $('fStatus').value, q = $('fQ').value;
     if (st) params.set('status', st);
@@ -159,7 +166,7 @@
       // Còn dòng "đang báo" -> tự tải lại để badge tự lật sang Thành công/Thất bại khi job xong.
       scheduleAutoRefresh(items.some((r) => r.status === 'pending'));
       if (!items.length) {
-        rowsEl.innerHTML = '<tr><td colspan="11" class="empty">Chưa có lượt báo nào</td></tr>';
+        rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Chưa có lượt báo nào</td></tr>';
         return;
       }
       rowsEl.innerHTML = items.map((r) => `<tr>
@@ -174,11 +181,37 @@
         <td class="msg-cell" data-tip="${App.esc(r.message)}">${msgPreview(r.message)}</td>
         <td>${resultPill(r.status)}</td>
         <td class="err-cell" style="color:var(--red)" data-tip="${App.esc(r.error)}">${errPreview(r.error)}</td>
+        <td class="center">${actionCell(r)}</td>
       </tr>`).join('');
     } catch (e) {
-      rowsEl.innerHTML = `<tr><td colspan="11" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td colspan="12" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
+
+  // Bấm "Thử lại" trên 1 dòng thất bại -> gọi API gửi lại đúng đơn đó, rồi tải lại bảng.
+  rowsEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.retry-btn');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (!id || btn.disabled) return;
+    btn.disabled = true;
+    const label = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
+    try {
+      const r = await App.api(`/api/reports/${encodeURIComponent(id)}/retry`, { method: 'POST' });
+      if (r.sent > 0) App.toast('✅ Đã gửi lại thành công');
+      else {
+        const err = (r.results && r.results[0] && r.results[0].error) || 'không rõ lý do';
+        App.toast(`❌ Gửi lại vẫn lỗi: ${err}`, 6000);
+      }
+    } catch (err) {
+      App.toast(`❌ ${err.message}`, 6000);
+      btn.disabled = false;
+      btn.innerHTML = label;
+      return;
+    }
+    load(); // làm mới bảng (dòng mới 'pending' -> lật success/failed)
+  });
 
   // Đồng bộ thẻ thống kê đang active với giá trị filter ('' | 'success' | 'failed')
   function syncStatCards(val) {
