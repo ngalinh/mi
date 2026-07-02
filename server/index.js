@@ -166,9 +166,23 @@ app.put('/api/test-mode', (req, res) => proxyTestMode(req, res, 'PUT', true));
 // bảng này chỉ map email đăng nhập -> vai trò + trạng thái. Khác với tài khoản Zalo (ở runner).
 
 // Ai đang đăng nhập (email do gateway forward) + bản ghi NV tương ứng (nếu có).
-app.get('/api/me', (req, res) => {
+// defaultUserId = user_id Basso để dashboard tự lọc theo người này:
+//   1) ưu tiên user_id đã gán trong Cài đặt;
+//   2) nếu chưa gán -> tự KHỚP THEO TÊN với danh sách NV Basso (khớp duy nhất mới lấy).
+// Nhờ (2), thường không cần cấu hình gì mà vẫn mở lên đúng đơn của mình.
+app.get('/api/me', async (req, res) => {
   const email = getActor(req);
-  res.json({ ok: true, email, staff: email ? getStaffByEmail(email) : null });
+  const staff = email ? getStaffByEmail(email) : null;
+  let defaultUserId = staff && staff.user_id != null && String(staff.user_id) !== '' ? String(staff.user_id) : null;
+  if (!defaultUserId && staff && staff.name) {
+    try {
+      const { tabUsers } = await getTabUsers();
+      const norm = (s) => String(s || '').trim().toLowerCase();
+      const hit = (tabUsers || []).filter((u) => norm(u.name) === norm(staff.name));
+      if (hit.length === 1) defaultUserId = String(hit[0].user_id);
+    } catch (_) { /* Basso lỗi -> bỏ qua, để Tất cả */ }
+  }
+  res.json({ ok: true, email, staff, defaultUserId });
 });
 
 

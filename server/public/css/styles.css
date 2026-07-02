@@ -447,6 +447,14 @@ a { color: var(--primary); text-decoration: none; }
 .toolbar-bar .tb-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
 .toolbar-bar .tb-filter .cnt { background: var(--primary-soft); color: var(--primary); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
 .toolbar-bar .tb-filter .cnt.zero { display: none; }
+/* Ô chọn khoảng ngày inline (hiện khi phạm vi = "Tuỳ chỉnh"). */
+.toolbar-bar .tb-daterange { display: inline-flex; align-items: center; gap: 6px; }
+.toolbar-bar .tb-daterange[hidden] { display: none; } /* inline-flex đè [hidden] mặc định -> phải khai báo lại */
+.toolbar-bar .tb-date {
+  padding: 7px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: #fff; box-shadow: var(--shadow-sm);
+}
+.toolbar-bar .tb-date:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
 
 /* popover bộ lọc nâng cao */
 .tb-filter-wrap { position: relative; }

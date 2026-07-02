@@ -57,6 +57,11 @@
               <option value="90">90 ngày gần đây</option>
               <option value="custom">Tuỳ chỉnh…</option>
             </select>
+            <span id="customRange" class="tb-daterange" hidden>
+              <input type="date" id="fFrom" class="tb-date" title="Từ ngày" />
+              <span class="muted">—</span>
+              <input type="date" id="fTo" class="tb-date" title="Đến ngày" />
+            </span>
             <select id="fStatus" class="tb-select" title="Lọc theo trạng thái">
               <option value="">Tất cả trạng thái</option>
               <option value="todo" selected>Chưa báo</option>
@@ -77,14 +82,6 @@
               </button>
               <div class="filter-pop" id="filterPop" hidden>
                 <div class="fp-head">Bộ lọc nâng cao</div>
-                <div class="fp-group">
-                  <label>Khoảng ngày nhập kho (tuỳ chọn)</label>
-                  <div class="fp-row2">
-                    <input type="date" id="fFrom" />
-                    <span class="muted">—</span>
-                    <input type="date" id="fTo" />
-                  </div>
-                </div>
                 <div class="fp-group">
                   <label>Loại trừ (Delay)</label>
                   <div class="fp-seg" data-key="exclude">
