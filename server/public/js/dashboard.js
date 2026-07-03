@@ -144,6 +144,17 @@
     return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">${App.icon('alert')} Bot lỗi (${a.attempts})</span>`;
   }
 
+  // Mốc thời gian ĐÃ GỬI từng loại tin (báo hàng / báo ship), lấy từ Lịch sử báo (server
+  // enrich `sentAt`). Chỉ hiện dòng nào đã có; chưa gửi loại nào thì bỏ trống dòng đó.
+  function sentTimesTag(o) {
+    const s = o.sentAt;
+    if (!s || (!s.hang && !s.ship)) return '';
+    const line = (icon, label, at) => at
+      ? `<span class="sent-time" title="${label} lúc ${App.esc(App.fmtDateTime(at))}">${App.icon(icon)} ${App.esc(App.fmtDateTime(at))}</span>`
+      : '';
+    return `<div class="sent-times">${line('box', 'Đã gửi báo hàng', s.hang)}${line('truck', 'Đã gửi báo ship', s.ship)}</div>`;
+  }
+
   function contentCell(text, id, kind) {
     if (text && String(text).trim()) {
       return `<button class="link-btn view-content" data-id="${App.esc(id)}" data-kind="${kind}">Xem nội dung</button>`;
@@ -348,7 +359,7 @@
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
-      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>
+      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}${sentTimesTag(o)}</div></td>
       <td><div class="note-cell">
         <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
         <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>

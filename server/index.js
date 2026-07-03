@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
-const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getDelayedMap, setDelayed,
+const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
@@ -286,13 +286,17 @@ function enrichOrders(orders) {
   // nghìn đơn thì đây là khác biệt rõ giữa vài nghìn query và 2 query.
   const delayedMap = getDelayedMap();
   const autoMap = getAutoMap();
+  // Thời điểm đã gửi báo hàng/ship (từ Lịch sử báo) để dashboard hiện mốc thời gian từng loại.
+  const sentTimesMap = getSentTimesMap();
   return orders.map((o) => {
     const key = autoNotify.autoKey(o);
     const a = autoMap.get(String(key));
     const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
+    const sent = sentTimesMap.get(String(key));
+    const withSent = sent ? { ...withAuto, sentAt: sent } : withAuto;
     return delayedMap.has(key)
-      ? { ...withAuto, delayed: true, delayReason: delayedMap.get(key) }
-      : withAuto;
+      ? { ...withSent, delayed: true, delayReason: delayedMap.get(key) }
+      : withSent;
   });
 }
 
@@ -533,7 +537,7 @@ app.post('/api/reports/:id/retry', async (req, res) => {
     };
     // messageOverride = nội dung đã lưu -> gửi lại y hệt (không dựng lại từ template).
     const result = await notifyOrders([order], {
-      kind: 'hang',
+      kind: rep.kind === 'ship' ? 'ship' : 'hang', // giữ đúng loại tin của lượt cũ
       messageOverride: rep.message || undefined,
       actor: getActor(req),
     });

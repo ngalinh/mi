@@ -81,6 +81,7 @@ async function notifyOne(order, opts = {}) {
       customerId: order.customerId,
       dateInventory: order.dateInventory,
       userId: order.userId,
+      kind,
       zaloAccount: null,
     });
     return { order, ok: false, error: err, report };
@@ -98,6 +99,7 @@ async function notifyOne(order, opts = {}) {
     status: 'pending',
     images: meta.images,
     sentBy: opts.actor || null,
+    kind,
     // Khóa đơn + NV phụ trách -> để "Thử lại" tái tạo đơn & resolve đúng account.
     customerId: order.customerId,
     dateInventory: order.dateInventory,
