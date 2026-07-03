@@ -241,6 +241,12 @@ function normalizeOrder(raw) {
     note: raw.note || '',
     staff: raw.employee_name || '',
     userId: raw.user_id,
+    // Mã ĐH (vd BS.../SU...) nằm trên từng sản phẩm. Nếu danh sách thô đã kèm `items` thì rút
+    // sẵn để client lọc theo mã đơn KHÔNG cần gọi thêm /api/arrived-items. Không có -> [] (client
+    // tự tải lazy khi bật bộ lọc mã đơn).
+    orderCodes: Array.isArray(raw.items)
+      ? [...new Set(raw.items.map((it) => it && it.orderCode).filter(Boolean).map(String))]
+      : [],
   };
 }
 
