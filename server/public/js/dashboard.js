@@ -141,7 +141,7 @@
     if (a.status === 'manual') {
       return `<span class="bot-tag bot-manual" title="Đã báo thủ công trong mi${when ? ' lúc ' + when : ''}">${App.icon('hand')} Báo thủ công</span>`;
     }
-    return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">${App.icon('bot')} Bot lỗi (${a.attempts})</span>`;
+    return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">${App.icon('alert')} Bot lỗi (${a.attempts})</span>`;
   }
 
   function contentCell(text, id, kind) {
