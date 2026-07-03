@@ -11,10 +11,10 @@
   }
 
   function resultPill(s) {
-    if (s === 'pending') return '<span class="pill pending">⏳ Đang báo</span>';
+    if (s === 'pending') return '<span class="pill pending">⏳ Pending</span>';
     const ok = s === 'success';
     const cls = ok ? 'success' : 'failed';
-    const txt = ok ? 'Thành công' : 'Thất bại';
+    const txt = ok ? 'Done' : 'Failed';
     return `<span class="pill ${cls}">${App.icon(ok ? 'check' : 'alert')} ${txt}</span>`;
   }
 
