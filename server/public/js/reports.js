@@ -70,10 +70,11 @@
     return App.esc(s);
   }
 
-  // Nhãn cho dropdown "Người gửi": 🤖 Bot, hoặc "Tên (email)" nếu email khớp NV, hoặc nguyên chuỗi.
+  // Nhãn cho dropdown "Người gửi": "Bot" (option native không render được SVG nên để chữ
+  // thuần — icon robot SVG chỉ dùng ở pill trong bảng), hoặc "Tên (email)" nếu email khớp NV.
   function senderLabel(v) {
     const s = String(v || '').trim();
-    if (s === 'bot') return '🤖 Bot';
+    if (s === 'bot') return 'Bot';
     const name = staffByEmail.get(s.toLowerCase());
     return name ? `${name} (${s})` : s;
   }
