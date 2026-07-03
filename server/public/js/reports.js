@@ -176,7 +176,7 @@
         <td class="time-cell">${App.fmtDateTime(r.created_at)}</td>
         <td class="order-cell" ${r.order_id ? `data-tip="${App.esc(r.order_id)}"` : ''}>${App.esc(r.order_id) || '—'}</td>
         <td>${thumbsCell(r.images)}</td>
-        <td class="cust">${App.esc(r.customer_name)}</td>
+        <td class="cust" title="${App.esc(r.customer_name)}">${App.esc(r.customer_name)}</td>
         <td>${App.esc(r.phone)}</td>
         <td>${App.esc(r.staff)}</td>
         <td>${senderCell(r.sent_by)}</td>

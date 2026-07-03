@@ -701,11 +701,10 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   color: var(--text-soft); font-size: 13px; line-height: 1.5;
 }
 
-/* Cột lỗi: ô bảng bình thường, cho xuống dòng gọn (preview đã cắt sẵn ~60 ký tự
-   trong JS) thay vì cắt cụt 1 dòng; nội dung đầy đủ xem qua tooltip. */
+/* Cột lỗi: preview 1 dòng cắt gọn (~60 ký tự trong JS) + ellipsis giữ hàng đều;
+   nội dung đầy đủ xem qua tooltip. */
 .err-cell {
-  min-width: 180px; max-width: 280px; white-space: normal; font-size: 13px; cursor: help;
-  line-height: 1.45; word-break: break-word;
+  font-size: 13px; cursor: help;
 }
 .msg-cell { cursor: help; }
 
@@ -727,19 +726,36 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
 }
 
-/* Lịch sử báo: hiển thị gọn — mỗi hàng thấp, các cột ngắn không xuống dòng vụn;
-   bảng tự giãn & cuộn ngang trong .table-wrap nếu cần. */
-.reports-table th, .reports-table td { white-space: nowrap; vertical-align: middle; }
-.reports-table td { padding-top: 7px; padding-bottom: 7px; }
-.reports-table .cust, .reports-table .err-cell { white-space: normal; }
-.reports-table .cust { min-width: 130px; }
+/* Lịch sử báo: bố cục cột cố định (table-layout: fixed) để mỗi cột có bề rộng
+   ổn định, không co giãn lệch theo nội dung; mỗi hàng cao bằng nhau bất kể có
+   thumbnail hay không. Nội dung dài của mọi cột đều cắt 1 dòng bằng ellipsis,
+   xem đầy đủ qua tooltip. Bảng cuộn ngang trong .table-wrap trên màn hẹp. */
+.reports-table { table-layout: fixed; min-width: 1180px; }
+.reports-table th, .reports-table td {
+  white-space: nowrap; vertical-align: middle;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Chiều cao hàng đồng nhất: 56px cho mọi hàng (thumbnail 34px + đệm vừa khít). */
+.reports-table td { height: 56px; padding-top: 8px; padding-bottom: 8px; box-sizing: border-box; }
+.reports-table .cust { min-width: 0; }
 .reports-table .time-cell { font-size: 13px; color: var(--text-soft); }
 
+/* Bề rộng từng cột (khớp <colgroup> trong reports.html). */
+.reports-table .c-time    { width: 120px; }
+.reports-table .c-order   { width: 120px; }
+.reports-table .c-img     { width: 180px; }
+.reports-table .c-cust    { width: 140px; }
+.reports-table .c-phone   { width: 120px; }
+.reports-table .c-staff   { width: 96px; }
+.reports-table .c-sender  { width: 108px; }
+.reports-table .c-account { width: 100px; }
+.reports-table .c-msg     { width: 280px; }
+.reports-table .c-result  { width: 120px; }
+.reports-table .c-err     { width: 160px; }
+.reports-table .c-action  { width: 108px; }
+
 /* Mã đơn: gộp nhiều mã SU trên 1 dòng, cắt gọn bằng ellipsis, full list ở tooltip. */
-.reports-table .order-cell {
-  max-width: 200px; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; cursor: help;
-}
+.reports-table .order-cell { cursor: help; }
 
 /* ============================================================
    Stat cards
