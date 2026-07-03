@@ -173,6 +173,11 @@ app.put('/api/test-mode', (req, res) => proxyTestMode(req, res, 'PUT', true));
 app.get('/api/me', async (req, res) => {
   const email = getActor(req);
   const staff = email ? getStaffByEmail(email) : null;
+  // Admin quản trị toàn bộ -> mở lên mặc định "Tất cả nhân viên" (không tự lọc theo 1 người),
+  // kể cả khi có gán user_id hoặc trùng tên với NV Basso.
+  if (staff && staff.role === 'Admin') {
+    return res.json({ ok: true, email, staff, defaultUserId: null });
+  }
   let defaultUserId = staff && staff.user_id != null && String(staff.user_id) !== '' ? String(staff.user_id) : null;
   if (!defaultUserId && staff && staff.name) {
     try {
