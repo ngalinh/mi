@@ -209,7 +209,8 @@ a { color: var(--primary); text-decoration: none; }
 .bot-tag .icon { width: 13px; height: 13px; }
 .bot-tag.bot-fail { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 24%, transparent); }
 .bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 26%, transparent); }
-/* Mốc thời gian đã gửi báo hàng / báo ship dưới trạng thái */
+/* Cột "Thời gian gửi" — mốc thời gian đã gửi báo hàng / báo ship */
+.sent-cell { display: flex; flex-direction: column; align-items: flex-start; }
 .sent-times { display: flex; flex-direction: column; gap: 2px; }
 .sent-time { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1.3;
   color: var(--muted); white-space: nowrap; }
