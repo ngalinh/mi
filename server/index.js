@@ -481,6 +481,13 @@ app.post('/api/auto-notify/run', async (req, res) => {
 // Bảo vệ tùy chọn bằng header `x-webhook-secret` khớp AUTO_NOTIFY_WEBHOOK_SECRET.
 app.post('/api/webhook/arrived', async (req, res) => {
   const secret = config.autoNotify.webhookSecret;
+  // Fail-closed ở production: webhook được MIỄN TRỪ gateway-secret (Basso gọi thẳng, không qua
+  // gateway) nên nếu KHÔNG có secret riêng thì bất kỳ ai gọi được cũng kích hoạt 1 lượt gửi.
+  // Khi REQUIRE_API_KEY/production mà chưa đặt AUTO_NOTIFY_WEBHOOK_SECRET -> KHÓA endpoint thay
+  // vì để hở (dev vẫn mở như cũ). Poller định kỳ không bị ảnh hưởng — chỉ chặn kích hoạt qua HTTP.
+  if (config.requireApiKey && !secret) {
+    return res.status(503).json({ ok: false, error: 'Webhook chưa cấu hình AUTO_NOTIFY_WEBHOOK_SECRET (bắt buộc ở production)' });
+  }
   if (secret && !safeEqual(req.get('x-webhook-secret'), secret)) {
     return res.status(401).json({ ok: false, error: 'Sai webhook secret' });
   }
@@ -556,6 +563,9 @@ app.listen(config.port, () => {
   console.log(`[server] DB: ${config.dbPath}`);
   if (config.gatewaySecret) console.log('[server] Gateway secret: BẬT (yêu cầu X-Gateway-Secret cho /api/*)');
   if (config.registerAllowedHosts.length) console.log(`[server] register-local allowlist: ${config.registerAllowedHosts.join(', ')}`);
+  if (config.requireApiKey && !config.autoNotify.webhookSecret) {
+    console.warn('[server] ⚠️  Webhook /api/webhook/arrived BỊ KHÓA (production nhưng chưa đặt AUTO_NOTIFY_WEBHOOK_SECRET). Đặt secret để bật, hoặc chỉ dùng poller AUTO_NOTIFY.');
+  }
   autoNotify.startAutoNotify();
   cacheWarmer.start();
 });
