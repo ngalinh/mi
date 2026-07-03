@@ -687,6 +687,12 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border-color: color-mix(in srgb, var(--blue) 22%, transparent);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--blue) 16%, transparent);
 }
+/* Pill "Bot": tông primary + icon robot (SVG line) cho đồng bộ, thay emoji 🤖 */
+.pill.pill-bot {
+  background: var(--primary-soft); color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 26%, transparent);
+}
+.pill.pill-bot .icon { width: 15px; height: 15px; }
 
 /* Nội dung: gọn 1 dòng, cắt bằng ellipsis (full text ở tooltip) để mỗi hàng không bị cao. */
 .msg-cell {

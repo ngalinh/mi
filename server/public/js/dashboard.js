@@ -136,12 +136,12 @@
     if (!a) return '';
     const when = a.at ? App.fmtDateTime(a.at) : '';
     if (a.status === 'success') {
-      return `<span class="bot-tag" title="Bot tự động đã gửi${when ? ' lúc ' + when : ''}">🤖 Bot đã gửi</span>`;
+      return `<span class="bot-tag" title="Bot tự động đã gửi${when ? ' lúc ' + when : ''}">${App.icon('bot')} Bot đã gửi</span>`;
     }
     if (a.status === 'manual') {
       return `<span class="bot-tag bot-manual" title="Đã báo thủ công trong mi${when ? ' lúc ' + when : ''}">${App.icon('hand')} Báo thủ công</span>`;
     }
-    return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">🤖 Bot lỗi (${a.attempts})</span>`;
+    return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">${App.icon('bot')} Bot lỗi (${a.attempts})</span>`;
   }
 
   function contentCell(text, id, kind) {

@@ -64,7 +64,7 @@
   function senderCell(v) {
     const s = String(v || '').trim();
     if (!s) return '<span class="muted">—</span>';
-    if (s === 'bot') return '<span class="pill">🤖 Bot</span>';
+    if (s === 'bot') return `<span class="pill pill-bot">${App.icon('bot')} Bot</span>`;
     const name = staffByEmail.get(s.toLowerCase());
     if (name) return `<span title="${App.esc(s)}">${App.esc(name)}</span>`;
     return App.esc(s);
