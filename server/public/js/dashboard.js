@@ -23,8 +23,13 @@
   // từ Basso không xoá mất phần đang soạn dở. Xoá khỏi map ngay khi lưu thành công.
   const dirtyNotes = new Map();
 
-  // Bộ lọc nâng cao (popover): khoảng ngày + loại trừ/ghi chú (client-side).
-  const F = { from: '', to: '', exclude: 'all', note: 'all' };
+  // Bộ lọc nâng cao (popover): khoảng ngày + loại trừ/ghi chú + mã đơn (client-side).
+  const F = { from: '', to: '', exclude: 'all', note: 'all', code: '' };
+
+  // Lọc theo Mã ĐH (vd BS.../SU...): trạng thái tải mã đơn khi bật bộ lọc (mã đơn nằm trên
+  // từng SP nên nếu server chưa kèm sẵn thì client tự kéo lazy qua /api/arrived-items).
+  let codeLoading = false;
+  let codeLoadToken = 0;
 
   // Phạm vi thời gian chọn qua selector #fScope trên toolbar (đầu ô tìm kiếm).
   // scopeDays = số ngày gần đây; 0 = "Tất cả" (mặc định). Khoảng ngày tường minh (F.from/F.to)
@@ -492,7 +497,53 @@
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
     else if (F.note === 'none') list = list.filter((o) => !(o.note || '').trim());
+    const needles = codeNeedles();
+    if (needles.length) list = list.filter((o) => matchesCode(o, needles));
     return list;
+  }
+
+  // ---------------- Lọc theo Mã ĐH ----------------
+  // Mã đơn của 1 dòng = mã server rút sẵn (o.orderCodes) + mã từ SP đã tải lazy (o._items).
+  function codesOf(o) {
+    const a = Array.isArray(o.orderCodes) ? o.orderCodes : [];
+    const b = (o._items || []).map((it) => it.orderCode).filter(Boolean);
+    return b.length ? [...new Set([...a, ...b])] : a;
+  }
+  // Chuỗi lọc -> danh sách "cần khớp" (cách nhau bởi dấu cách/phẩy); khớp OR, không phân biệt hoa/thường.
+  function codeNeedles() {
+    return String(F.code || '').toLowerCase().split(/[\s,]+/).filter(Boolean);
+  }
+  function matchesCode(o, needles) {
+    if (!needles.length) return true;
+    const codes = codesOf(o).map((c) => String(c).toLowerCase());
+    return needles.some((n) => codes.some((c) => c.includes(n)));
+  }
+  // 1 dòng đã biết mã đơn chưa? (server kèm sẵn HOẶC SP đã tải xong) -> khỏi phải tải lại.
+  function codesKnown(o) {
+    return (Array.isArray(o.orderCodes) && o.orderCodes.length > 0) || o._itemsState === 'loaded';
+  }
+
+  // Bật lọc mã đơn -> kéo mã đơn (lazy) cho các dòng chưa biết mã, rồi lọc lại. Client-mode kéo
+  // cho cả tập (đang lọc theo NV); server-mode chỉ kéo trong trang hiện tại. Giới hạn 6 luồng
+  // song song; SWR cache nên lần sau tức thì. Token chống chồng chéo khi đổi lọc liên tục.
+  async function ensureCodesLoaded() {
+    if (!codeNeedles().length) { codeLoading = false; return; }
+    const pool = clientMode
+      ? allOrders.filter((o) => !currentStaff || String(o.userId) === String(currentStaff))
+      : orders;
+    const need = pool.filter((o) => !codesKnown(o) && o._itemsState !== 'loading');
+    if (!need.length) { codeLoading = false; return; }
+    const token = ++codeLoadToken;
+    codeLoading = true;
+    updateCount();
+    const queue = need.slice();
+    const worker = async () => {
+      while (queue.length && token === codeLoadToken) await loadItems(queue.shift());
+    };
+    await Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker));
+    if (token !== codeLoadToken) return;   // đã bị 1 lần lọc mới thay thế
+    codeLoading = false;
+    if (clientMode) applyView({ keepPage: true }); else render();
   }
 
   // Đơn hiển thị trên trang hiện tại + bộ lọc nâng cao. Trong client-mode `orders` đã được
@@ -578,6 +629,7 @@
       const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
       let txt = `${scope} · ${serverTotal} đơn · trang ${currentPage}/${totalPages}`;
       if (currentGroup !== 'todo') txt += ` · ${counts.todo} chưa báo`;
+      if (codeNeedles().length) txt += codeLoading ? ' · ⏳ đang tải mã đơn…' : ' · lọc theo mã đơn';
       ci.textContent = txt;
     }
     $('bulkBtn').disabled = counts.todo === 0;
@@ -956,6 +1008,7 @@
     render();
     renderStatusTabs();
     updateCount(visibleOrders());
+    if (codeNeedles().length) ensureCodesLoaded(); // bật lọc mã đơn -> kéo mã còn thiếu rồi lọc lại
   }
 
   // Kéo TOÀN BỘ đơn của khoảng ngày 1 lần rồi chuyển sang lọc client. Cold-start: vẽ nhanh
@@ -1146,7 +1199,26 @@
     // Nhân viên / thời gian / trạng thái nằm ở toolbar -> không tính vào badge popover.
     if (F.exclude !== 'all') n++;
     if (F.note !== 'all') n++;
+    if (codeNeedles().length) n++;
     return n;
+  }
+  // Đọc ô Mã đơn -> F.code + tô sáng chip (BS/SU) tương ứng.
+  function readCodeInput() {
+    F.code = $('fCode').value.trim();
+    syncCodeChips();
+  }
+  function syncCodeChips() {
+    const needles = codeNeedles();
+    const box = $('fpCodeChips'); if (!box) return;
+    box.querySelectorAll('button').forEach((b) =>
+      b.classList.toggle('active', needles.includes(String(b.dataset.code).toLowerCase())));
+  }
+  // Áp bộ lọc client-side: client-mode lọc lại CẢ tập (applyView tự kéo mã đơn còn thiếu);
+  // server-mode chỉ lọc trang hiện tại rồi kéo mã cho trang đó.
+  function reapplyClientFilters() {
+    updateFilterBadge();
+    if (clientMode) applyView({ keepPage: true });
+    else { render(); if (codeNeedles().length) ensureCodesLoaded(); }
   }
   function updateFilterBadge() {
     const cnt = $('filterBtn').querySelector('.cnt');
@@ -1238,7 +1310,11 @@
   filterBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     filterPop.hidden = !filterPop.hidden;
-    if (!filterPop.hidden) syncDateInputs(); // mở -> phản ánh đúng phạm vi/ngày đã áp dụng
+    if (!filterPop.hidden) {
+      syncDateInputs();                 // mở -> phản ánh đúng phạm vi/ngày đã áp dụng
+      $('fCode').value = F.code || '';  // + đúng ô Mã đơn và chip đang bật
+      syncCodeChips();
+    }
   });
   filterPop.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => { filterPop.hidden = true; });
@@ -1253,19 +1329,46 @@
   $('fApply').addEventListener('click', () => {
     F.exclude = filterPop.querySelector('.fp-seg[data-key=exclude] .active').dataset.v;
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
-    updateFilterBadge();
+    readCodeInput();          // chốt ô Mã đơn (phòng trường hợp gõ xong bấm Áp dụng luôn)
+    currentPage = 1;          // đổi bộ lọc -> về trang 1
     filterPop.hidden = true;
-    rerender(); // loại trừ/ghi chú là lọc client-side -> chỉ vẽ lại (giữ trang, không gọi server)
+    reapplyClientFilters();   // loại trừ/ghi chú/mã đơn: lọc client-side (không gọi server)
   });
   $('fClear').addEventListener('click', () => {
-    // Popover giờ chỉ còn Loại trừ + Ghi chú (lọc client-side). "Xoá lọc" đưa 2 cái về mặc định.
-    // (Nhân viên / thời gian / trạng thái nằm ở toolbar, không thuộc "Xoá lọc".)
-    F.exclude = 'all'; F.note = 'all';
+    // Đưa Loại trừ + Ghi chú + Mã đơn về mặc định. (NV / thời gian / trạng thái ở toolbar, không thuộc đây.)
+    F.exclude = 'all'; F.note = 'all'; F.code = '';
+    const codeInp = $('fCode'); if (codeInp) codeInp.value = '';
+    syncCodeChips();
     filterPop.querySelectorAll('.fp-seg').forEach((seg) => {
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
-    updateFilterBadge();
-    rerender();
+    currentPage = 1;
+    reapplyClientFilters();
+  });
+
+  // Chip nhanh BS / SU: bật/tắt token tương ứng trong ô Mã đơn rồi lọc ngay.
+  $('fpCodeChips').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const tok = b.dataset.code;
+    const cur = $('fCode').value.split(/[\s,]+/).filter(Boolean);
+    const lower = tok.toLowerCase();
+    const has = cur.some((t) => t.toLowerCase() === lower);
+    $('fCode').value = (has ? cur.filter((t) => t.toLowerCase() !== lower) : [...cur, tok]).join(' ');
+    readCodeInput();
+    currentPage = 1;
+    reapplyClientFilters();
+  });
+  // Gõ mã đơn: lọc tức thì (debounce ngắn) mà vẫn giữ popover mở.
+  let codeTimer;
+  $('fCode').addEventListener('input', () => {
+    clearTimeout(codeTimer);
+    codeTimer = setTimeout(() => { readCodeInput(); currentPage = 1; reapplyClientFilters(); }, 300);
+  });
+  $('fCode').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    clearTimeout(codeTimer);
+    readCodeInput(); currentPage = 1; reapplyClientFilters();
   });
 
   // Delegation cho bảng

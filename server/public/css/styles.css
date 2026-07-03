@@ -474,10 +474,18 @@ a { color: var(--primary); text-decoration: none; }
 .fp-group > label { font-size: 12px; font-weight: 700; color: var(--text-soft); }
 .fp-row2 { display: flex; align-items: center; gap: 8px; }
 .fp-row2 input { flex: 1; min-width: 0; }
-.filter-pop input[type=date], .filter-pop input[type=number] {
+.filter-pop input[type=date], .filter-pop input[type=number], .filter-pop input[type=text] {
   padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   font: inherit; font-size: 13px; color: var(--text); width: 100%; background: #fff;
 }
+.fp-chips { display: flex; gap: 7px; flex-wrap: wrap; }
+.fp-chips button {
+  padding: 6px 14px; font: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: .3px;
+  background: #fff; color: var(--text-soft); border: 1px solid var(--border-strong);
+  border-radius: 999px; cursor: pointer; transition: background .12s var(--ease), color .12s var(--ease);
+}
+.fp-chips button:hover { background: var(--bg); }
+.fp-chips button.active { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); }
 .filter-pop input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
 .fp-seg { display: flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
 .fp-seg button {
