@@ -188,17 +188,26 @@ async function runAutoNotify(opts = {}) {
           actor: 'bot',                  // audit: luồng tự động
         });
 
+        // Phân loại lỗi để quyết định "dừng cả lượt" hay "tính 1 attempt rồi đi tiếp".
+        // CHỈ coi là transient (dừng lượt, KHÔNG trừ lượt) khi runner THỰC SỰ offline — xác
+        // nhận bằng health-check thay vì chỉ dò chữ trong message. Lỗi Playwright CẤP-ĐƠN (vd
+        // mở hội thoại 1 khách bị "Timeout ... exceeded") cũng chứa chữ "timeout"; trước đây bị
+        // hiểu nhầm là transient -> break bỏ dở cả lượt + đơn đó retry vô hạn (không tăng attempt).
+        // eslint-disable-next-line no-await-in-loop
+        const runnerDown = !r.ok && isTransientError(r.error) && !(await checkLocalHealth());
         if (r.ok) {
           recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
           summary.sent += 1;
-        } else if (isTransientError(r.error)) {
-          // Runner vừa sập / mạng lỗi giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
+        } else if (runnerDown) {
+          // Runner sập / mạng tới runner đứt giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
           summary.failed += 1;
           summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
           summary.stopped = 'local-runner offline giữa chừng';
-          console.warn(`[auto-notify:${trigger}] dừng giữa chừng — lỗi tạm thời: ${r.error}`);
+          console.warn(`[auto-notify:${trigger}] dừng giữa chừng — runner offline: ${r.error}`);
           break;
         } else {
+          // Lỗi cấp-đơn (runner vẫn sống, kể cả khi message có chữ "timeout"): tính 1 lượt thử,
+          // ĐI TIẾP đơn khác thay vì bỏ dở cả lượt. Hết maxRetries thì thôi.
           recordAutoNotified(key, 'failed', (prev ? prev.attempts : 0) + 1);
           summary.failed += 1;
         }
