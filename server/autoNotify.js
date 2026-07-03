@@ -158,6 +158,12 @@ async function runAutoNotify(opts = {}) {
           summary.skippedAutoOff = (summary.skippedAutoOff || 0) + 1;
           continue;
         }
+        // HƯỚNG A: NV có gắn brand nhưng không có Zalo cho brand của đơn này -> bỏ qua (KHÔNG gửi,
+        // KHÔNG trừ lượt) để NV báo tay, tránh gửi nhầm brand.
+        if (acct.skip && acct.skipReason === 'brand') {
+          summary.skippedBrand = (summary.skippedBrand || 0) + 1;
+          continue;
+        }
 
         // CHỈ BÁO ĐƠN VỀ TỪ KHI BẬT AUTO: đơn về TRƯỚC ngày account được bật "Tự động báo"
         // (autoEnabledAt) -> bỏ qua, KHÔNG gửi & KHÔNG trừ lượt -> tránh nhắn trùng loạt khách
@@ -208,8 +214,9 @@ async function runAutoNotify(opts = {}) {
         const skipNo = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
         const skipOff = summary.skippedAutoOff ? `, bỏ qua ${summary.skippedAutoOff} đơn (account tắt auto)` : '';
         const skipNoAcc = summary.skippedNoAccount ? `, bỏ qua ${summary.skippedNoAccount} đơn (không khớp account)` : '';
+        const skipBrand = summary.skippedBrand ? `, bỏ qua ${summary.skippedBrand} đơn (NV chưa có Zalo cho brand)` : '';
         const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
-        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipOff}${skipNoAcc}${skipBack})`);
+        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipOff}${skipNoAcc}${skipBrand}${skipBack})`);
       }
     });
   } catch (err) {

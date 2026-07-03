@@ -13,6 +13,9 @@ const config = require('./config');
  *   - saleworkName: TÊN account như hiện trong dropdown zalo.basso.vn (dùng để chọn account khi gửi)
  *   - phone       : (tuỳ chọn) SĐT Zalo — chỉ để hiển thị
  *   - staffId     : (tuỳ chọn) user_id của NV phụ trách — để khớp đơn → account (ưu tiên hơn tên)
+ *   - brand       : (tuỳ chọn) prefix mã đơn của brand account này phụ trách (vd "BS", "SU", "CO").
+ *                   1 NV có thể có NHIỀU account, mỗi account 1 brand → đơn được gửi bằng account
+ *                   khớp prefix mã đơn. Để trống = account "chung", nhận mọi brand của NV đó.
  *   - autoEnabled : có cho luồng TỰ ĐỘNG gửi bằng account này không (mặc định true)
  *   - proxy       : (tuỳ chọn) "host:port" hoặc "user:pass@host:port" — ÁP DỤNG khi mở Chromium cho profile này
  *
@@ -45,6 +48,8 @@ function normalize(a) {
     saleworkName: String(a.saleworkName || '').trim(),
     phone: String(a.phone || '').trim(),
     staffId: a.staffId != null ? String(a.staffId).trim() : '',
+    // Prefix mã đơn (brand) — chuẩn hoá UPPERCASE để so khớp không phân biệt hoa/thường.
+    brand: a.brand != null ? String(a.brand).trim().toUpperCase() : '',
     autoEnabled: a.autoEnabled === undefined ? true : !!a.autoEnabled,
     // Mốc ISO khi account được BẬT "Tự động báo" (dùng để bot chỉ gửi đơn về từ đây trở đi,
     // bỏ qua tồn đọng cũ). Trống = chưa từng đóng dấu -> không lọc theo ngày (hành vi cũ).

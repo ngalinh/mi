@@ -80,13 +80,14 @@
               Thêm tài khoản
             </button>
           </div>
-          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Mỗi nhân viên gắn với một tài khoản Zalo riêng (mỗi tài khoản 1 profile trình duyệt). Thêm tài khoản sẽ mở cửa sổ Chromium trên máy local-runner để đăng nhập + chọn đúng tài khoản, đăng nhập xong thì đóng cửa sổ.</div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Mỗi nhân viên gắn với một tài khoản Zalo riêng (mỗi tài khoản 1 profile trình duyệt). Một nhân viên có thể có <strong>nhiều tài khoản theo brand</strong> (điền cột <strong>Brand</strong> = prefix mã đơn như <code>BS</code>, <code>SU</code>, <code>CO</code>) — đơn sẽ tự gửi bằng tài khoản khớp brand. Thêm tài khoản sẽ mở cửa sổ Chromium trên máy local-runner để đăng nhập + chọn đúng tài khoản, đăng nhập xong thì đóng cửa sổ.</div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>Nhân viên</th>
                   <th>Tên Zalo (dropdown)</th>
+                  <th class="center">Brand</th>
                   <th>SĐT Zalo</th>
                   <th>Kết nối</th>
                   <th class="center">Tự động báo</th>
@@ -94,7 +95,7 @@
                 </tr>
               </thead>
               <tbody id="zaloRows">
-                <tr><td colspan="6" class="muted" style="padding:16px;">Đang tải…</td></tr>
+                <tr><td colspan="7" class="muted" style="padding:16px;">Đang tải…</td></tr>
               </tbody>
             </table>
           </div>
@@ -217,6 +218,7 @@
         <div class="field full"><label>Tên trong dropdown</label><input id="zaSalework" type="text" placeholder="Đúng tên hiện trong dropdown zalo.basso.vn" /></div>
         <div class="field"><label>SĐT Zalo (tuỳ chọn)</label><input id="zaPhone" type="text" placeholder="vd: 0985 093 767" /></div>
         <div class="field"><label>Staff ID (tuỳ chọn)</label><input id="zaStaffId" type="text" placeholder="khớp userId đơn" /></div>
+        <div class="field"><label>Brand (prefix mã đơn — tuỳ chọn)</label><input id="zaBrand" type="text" placeholder="vd: BS, SU, CO — để trống = mọi brand" /></div>
         <div class="field full"><label>Proxy (tuỳ chọn)</label><input id="zaProxy" type="text" placeholder="host:port hoặc user:pass@host:port" /></div>
         <div class="field"><label>Tự động báo</label><select id="zaAuto"><option value="true" selected>Bật</option><option value="false">Tắt</option></select></div>
       </div>

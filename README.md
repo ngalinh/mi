@@ -252,7 +252,7 @@ Local-runner (bảo vệ bằng header `x-api-key`):
 | POST | `/api/zalo/send` `{profile, account?, keyword, name?, message, strictMatch?, imagePaths?}` | Gửi báo hàng (trả `jobId`) |
 | GET | `/api/job/:id` | Trạng thái job gửi |
 | GET | `/api/accounts` | Liệt kê tài khoản + `loggedIn` + `connection` |
-| POST | `/api/accounts` `{type:'zalo', key, name, saleworkName, phone?, staffId?, autoEnabled?, proxy?}` | Thêm account → mở Chromium đăng nhập + chọn tài khoản |
+| POST | `/api/accounts` `{type:'zalo', key, name, saleworkName, phone?, staffId?, brand?, autoEnabled?, proxy?}` | Thêm account → mở Chromium đăng nhập + chọn tài khoản (`brand` = prefix mã đơn để chia đơn theo brand) |
 | PUT | `/api/accounts/:key` | Sửa account |
 | POST | `/api/accounts/:key/login` | Mở lại Chromium đăng nhập lại |
 | POST | `/api/accounts/:key/check` | Kiểm tra profile còn đăng nhập (mở browser) |
@@ -269,6 +269,25 @@ Mỗi tài khoản Zalo = **1 profile trình duyệt riêng** (`playwright-data/
 - `staffId`/`name` để khớp đơn → account; `autoEnabled` tắt thì luồng tự động bỏ qua đơn của NV đó (để báo tay).
 - Fallback khi store rỗng/không khớp: `ZALO_ACCOUNT_MAP` (env, legacy) → `AUTO_NOTIFY_PROFILE`/`AUTO_NOTIFY_ACCOUNT`.
 - `proxy` lưu để tương thích Xeko nhưng **chưa áp dụng** — mi chạy trên máy nhân viên (IP thật).
+
+### Nhiều Zalo cho 1 nhân viên — chia theo brand (prefix mã đơn) 🆕
+
+Một NV có thể phụ trách **nhiều brand**, mỗi brand 1 Zalo. Khai báo cột **`brand`** cho từng account =
+**prefix mã đơn** (vd `BS`, `SU`, `CO`). Khi 1 NV có nhiều account, resolver:
+
+1. Gom **tất cả** account của NV (theo `staffId`, không có thì theo tên).
+2. NV chỉ 1 account **không gắn brand** → dùng luôn (không tra API — nhận mọi brand, hành vi cũ).
+3. NV có account gắn brand → đọc 1 mã đơn (`getArrivedVnItems`, có cache) rồi chọn account có
+   `brand` khớp **prefix** mã đơn (vì mỗi dòng hàng về chỉ thuộc 1 brand). Ví dụ đơn `SU04062403`
+   của Linh Thảo → gửi bằng đúng Zalo brand `SU` của Linh Thảo.
+4. **Không khớp brand nào (HƯỚNG A)**: nếu NV có 1 account **để trống brand** thì dùng làm "chung"
+   (catch-all); không thì **BỎ QUA** đơn — luồng tự động không gửi (không trừ lượt) để NV báo tay,
+   luồng tay ghi 1 dòng `failed` "Chưa có tài khoản Zalo cho brand X" trong Lịch sử báo. Tránh gửi
+   nhầm brand khi không có người soát.
+
+> Cấu hình trên **dashboard**: *Cài đặt → Tài khoản Zalo* → cột **Brand** trong form thêm/sửa.
+> Để trống brand = account nhận mọi đơn của NV đó (giữ nguyên cách dùng cũ). Prefix so khớp
+> không phân biệt hoa/thường; chỉ tra thêm API khi NV thực sự có ≥2 account gắn brand.
 
 ## Tự đăng ký URL runner lên cloud (Xeko pattern) 🆕
 

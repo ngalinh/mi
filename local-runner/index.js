@@ -111,16 +111,16 @@ app.get('/api/accounts', (req, res) => {
 
 /**
  * POST /api/accounts — thêm tài khoản Zalo mới rồi mở Chromium để đăng nhập + chọn account.
- * body: { type:'zalo', key, name, saleworkName, phone?, staffId?, autoEnabled?, proxy? }
+ * body: { type:'zalo', key, name, saleworkName, phone?, staffId?, brand?, autoEnabled?, proxy? }
  */
 app.post('/api/accounts', (req, res) => {
-  const { type, key, name, saleworkName, phone, staffId, autoEnabled, proxy } = req.body || {};
+  const { type, key, name, saleworkName, phone, staffId, brand, autoEnabled, proxy } = req.body || {};
   if (type && type !== 'zalo') {
     return res.status(400).json({ ok: false, error: 'Chỉ hỗ trợ type="zalo"' });
   }
   let account;
   try {
-    account = accountsStore.add({ key, name, saleworkName, phone, staffId, autoEnabled, proxy });
+    account = accountsStore.add({ key, name, saleworkName, phone, staffId, brand, autoEnabled, proxy });
   } catch (e) {
     return res.status(400).json({ ok: false, error: e.message });
   }
@@ -146,9 +146,9 @@ app.post('/api/accounts', (req, res) => {
 /** PUT /api/accounts/:key — sửa thông tin account (không đổi key). */
 app.put('/api/accounts/:key', (req, res) => {
   const { key } = req.params;
-  const { name, saleworkName, phone, staffId, autoEnabled, proxy } = req.body || {};
+  const { name, saleworkName, phone, staffId, brand, autoEnabled, proxy } = req.body || {};
   const patch = {};
-  for (const [k, v] of Object.entries({ name, saleworkName, phone, staffId, autoEnabled, proxy })) {
+  for (const [k, v] of Object.entries({ name, saleworkName, phone, staffId, brand, autoEnabled, proxy })) {
     if (v !== undefined) patch[k] = v;
   }
   const updated = accountsStore.update(key, patch);
