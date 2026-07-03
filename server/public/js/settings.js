@@ -130,7 +130,8 @@
   const zaloRows = $('zaloRows');
   const zm = $('zaloModal');
   const zaKey = $('zaKey'), zaName = $('zaName'), zaSalework = $('zaSalework'),
-    zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaProxy = $('zaProxy'), zaAuto = $('zaAuto');
+    zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
+    zaProxy = $('zaProxy'), zaAuto = $('zaAuto');
   let zEditing = null; // key đang sửa, null = thêm mới
 
   function connBadge(c) {
@@ -143,15 +144,21 @@
       ? '<span class="pill chua" data-action="auto" style="cursor:pointer" title="Bấm để bật">Tắt</span>'
       : '<span class="pill da" data-action="auto" style="cursor:pointer" title="Bấm để tắt">Bật</span>';
   }
+  function brandTag(b) {
+    return b
+      ? `<span class="pill da" style="cursor:default" title="Prefix mã đơn của brand này">${App.esc(b)}</span>`
+      : '<span class="muted" title="Nhận mọi brand">—</span>';
+  }
   function renderZalo(list) {
     if (!list || !list.length) {
-      zaloRows.innerHTML = '<tr><td colspan="6" class="muted" style="padding:16px;">Chưa có tài khoản Zalo nào. Bấm “Thêm tài khoản”.</td></tr>';
+      zaloRows.innerHTML = '<tr><td colspan="7" class="muted" style="padding:16px;">Chưa có tài khoản Zalo nào. Bấm “Thêm tài khoản”.</td></tr>';
       return;
     }
     zaloRows.innerHTML = list.map((a) => `
       <tr class="main-row" data-key="${App.esc(a.key)}">
         <td class="cust">${App.esc(a.name || a.key)}</td>
         <td>${App.esc(a.saleworkName || '')}</td>
+        <td class="center">${brandTag(a.brand || '')}</td>
         <td>${App.esc(a.phone || '')}</td>
         <td>${connBadge(a.connection)}</td>
         <td class="center">${autoPill(a)}</td>
@@ -168,7 +175,7 @@
       const r = await App.api('/api/accounts');
       renderZalo(r.zalo || []);
     } catch (e) {
-      zaloRows.innerHTML = `<tr><td colspan="6" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+      zaloRows.innerHTML = `<tr><td colspan="7" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
     }
   }
   function openZalo(a) {
@@ -181,6 +188,7 @@
     zaSalework.value = a ? (a.saleworkName || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
     zaStaffId.value = a ? (a.staffId || '') : '';
+    zaBrand.value = a ? (a.brand || '') : '';
     zaProxy.value = a ? (a.proxy || '') : '';
     zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
     zm.classList.add('show');
@@ -192,6 +200,7 @@
     const body = {
       name: zaName.value.trim(), saleworkName: zaSalework.value.trim(),
       phone: zaPhone.value.trim(), staffId: zaStaffId.value.trim(),
+      brand: zaBrand.value.trim().toUpperCase(),
       proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
     };
     if (!key || !body.name || !body.saleworkName) {

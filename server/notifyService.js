@@ -63,6 +63,29 @@ async function notifyOne(order, opts = {}) {
   // dùng lại cho cả lúc cập nhật kết quả cuối).
   const meta = await resolveOrderMeta(order);
 
+  // HƯỚNG A: NV phụ trách chưa có Zalo cho brand của đơn -> KHÔNG gửi (tránh gửi nhầm brand).
+  // Ghi thẳng 1 dòng "failed" vào Lịch sử báo với lý do rõ ràng để người soát xử lý (báo tay,
+  // hoặc thêm account brand cho NV). Trên gửi tay có thể chọn tài khoản cụ thể để ép gửi.
+  if (resolved.skip && resolved.skipReason === 'brand') {
+    const err = `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${order.staff || '—'}`;
+    const report = addReport({
+      orderId: meta.orderCode,
+      customerName: order.customerName,
+      phone: order.phone,
+      staff: order.staff,
+      message,
+      status: 'failed',
+      error: err,
+      images: meta.images,
+      sentBy: opts.actor || null,
+      customerId: order.customerId,
+      dateInventory: order.dateInventory,
+      userId: order.userId,
+      zaloAccount: null,
+    });
+    return { order, ok: false, error: err, report };
+  }
+
   // Ghi 1 dòng "đang báo" (pending) NGAY trước khi gửi. Nhờ vậy cả báo tự động lẫn báo tay đều
   // thấy ngay đã nhận lệnh gửi cho khách nào, kể cả khi job kéo dài (sendBaoHang poll tới 10 phút)
   // hay đang xếp hàng trong báo loạt. Sau khi gửi xong sẽ UPDATE chính dòng này thành success/failed.
