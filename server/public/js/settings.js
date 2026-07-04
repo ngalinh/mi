@@ -350,18 +350,46 @@
 
   // ---------------- Chế độ (nối backend thật) ----------------
   let autoEnabled = false;
+  let scheduleTime = '';
 
   function renderAutoBadge(a) {
     autoEnabled = !!(a && a.enabled);
     const el = $('autoBadge');
-    const every = Math.round(((a && a.intervalMs) || 0) / 1000);
-    el.textContent = 'Tự động: ' + (autoEnabled ? `Bật (mỗi ${every}s)` : 'Tắt');
+    const sched = a && a.scheduleTime;
+    let mode;
+    if (!autoEnabled) mode = 'Tắt';
+    else if (sched) mode = `Bật (gửi lúc ${sched})`;
+    else mode = `Bật (mỗi ${Math.round(((a && a.intervalMs) || 0) / 1000)}s)`;
+    el.textContent = 'Tự động: ' + mode;
     el.className = 'badge-status badge-clickable ' + (autoEnabled ? 'badge-online' : 'badge-offline');
+    renderSchedule(a);
+  }
+
+  // Đổ giờ gửi + trạng thái lượt kế vào ô nhập (không đè khi admin đang gõ).
+  function renderSchedule(a) {
+    if (!a) return;
+    scheduleTime = a.scheduleTime || '';
+    const input = $('scheduleInput');
+    if (input && document.activeElement !== input) input.value = scheduleTime;
+    const nextEl = $('scheduleNext');
+    if (!nextEl) return;
+    if (!autoEnabled) { nextEl.textContent = ''; return; }
+    if (!scheduleTime) { nextEl.textContent = '· đang gửi ngay khi có hàng về'; return; }
+    const s = a.schedule || {};
+    const label = s.next === 'done_today' ? 'đã gửi lượt hôm nay'
+      : s.next === 'due' ? 'đã tới giờ — sẽ gửi ở lần kiểm tra kế'
+        : 'sẽ gửi hôm nay lúc ' + scheduleTime;
+    nextEl.textContent = '· ' + label + (a.timezone ? ` (${a.timezone})` : '');
   }
 
   async function toggleAuto() {
     const next = !autoEnabled;
-    if (next && !confirm('Bật TỰ ĐỘNG báo hàng? Hệ thống sẽ tự gửi tin cho mọi đơn "Chưa báo".')) return;
+    if (next) {
+      const msg = scheduleTime
+        ? `Bật TỰ ĐỘNG báo hàng? Mỗi ngày lúc ${scheduleTime} hệ thống sẽ gửi tin cho mọi đơn "Chưa báo" đã có nội dung.`
+        : 'Bật TỰ ĐỘNG báo hàng? Chưa đặt giờ cố định nên hệ thống sẽ gửi NGAY cho mọi đơn "Chưa báo".';
+      if (!confirm(msg)) return;
+    }
     try {
       const a = await App.api('/api/auto-notify/toggle', {
         method: 'POST',
@@ -372,6 +400,46 @@
       App.toast(next ? '✅ Đã bật tự động báo hàng' : 'Đã tắt tự động báo hàng');
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
+    }
+  }
+
+  async function saveSchedule() {
+    const time = ($('scheduleInput').value || '').trim();
+    try {
+      const a = await App.api('/api/auto-notify/schedule', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ time }),
+      });
+      renderAutoBadge(a);
+      App.toast(time ? `✅ Đã đặt giờ gửi cố định: ${a.scheduleTime}` : '✅ Đã bỏ hẹn giờ — gửi ngay khi có hàng về');
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 6000);
+    }
+  }
+
+  async function runPreview() {
+    const box = $('previewResult');
+    const btn = $('previewBtn');
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang kiểm tra…';
+    box.style.display = '';
+    box.innerHTML = 'Đang quét đơn "Chưa báo"…';
+    try {
+      const r = await App.api('/api/auto-notify/preview');
+      const missWarn = r.missingContent
+        ? `<span style="color:var(--danger,#d33)">⚠️ ${r.missingContent} đơn CHƯA có nội dung báo hàng — sẽ bị bỏ qua tới giờ gửi.</span>`
+        : '<span style="color:var(--primary)">✓ Mọi đơn cần gửi đều đã có nội dung.</span>';
+      const names = (r.missingList || []).slice(0, 20)
+        .map((o) => App.esc(o.customerName || o.orderCode || '?') + (o.staff ? ` (${App.esc(o.staff)})` : ''))
+        .join(', ');
+      box.innerHTML = `
+        <div><strong>${r.ready}</strong> đơn sẵn sàng gửi · <strong>${r.missingContent}</strong> thiếu nội dung · ${r.alreadyHandled} đã báo (tổng ${r.scanned} đơn "Chưa báo")</div>
+        <div style="margin-top:6px;">${missWarn}</div>
+        ${r.missingContent ? `<div style="margin-top:6px;" class="muted">Thiếu ND: ${names}${r.missingList.length > 20 ? '…' : ''}</div>` : ''}
+        ${!r.runnerOnline ? '<div style="margin-top:6px; color:var(--danger,#d33)">⚠️ Local-runner đang offline — tới giờ sẽ không gửi được cho tới khi online lại.</div>' : ''}`;
+    } catch (e) {
+      box.innerHTML = `<span style="color:var(--danger,#d33)">❌ ${App.esc(e.message)}</span>`;
+    } finally {
+      btn.disabled = false; btn.innerHTML = label;
     }
   }
 
@@ -463,6 +531,9 @@
   }
 
   $('autoBadge').addEventListener('click', toggleAuto);
+  $('scheduleSave').addEventListener('click', saveSchedule);
+  $('scheduleInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });
+  $('previewBtn').addEventListener('click', runPreview);
   $('bassoBtn').addEventListener('click', pingBasso);
   $('testModeBadge').addEventListener('click', toggleTestMode);
   $('testPhonesSave').addEventListener('click', saveTestPhones);

@@ -481,6 +481,28 @@ app.post('/api/auto-notify/run', async (req, res) => {
   }
 });
 
+// Đặt GIỜ GỬI CỐ ĐỊNH (HH:MM). body: { time: 'HH:MM' | '' }. Trống = gửi ngay theo interval.
+app.post('/api/auto-notify/schedule', (req, res) => {
+  try {
+    const { time } = req.body || {};
+    const status = autoNotify.setScheduleTime(time);
+    res.json({ ok: true, ...status });
+  } catch (err) {
+    if (err.code === 'BAD_TIME') return res.status(400).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Xem trước (không gửi): đếm đơn "Chưa báo" đã đủ ND vs chưa có ND -> nút "Kiểm tra" trên Cài đặt.
+app.get('/api/auto-notify/preview', async (req, res) => {
+  try {
+    const result = await autoNotify.previewAutoNotify();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ---- Webhook: website Basso gọi sang khi CÓ HÀNG VỀ -> gửi ngay (real-time) ----
 // Bảo vệ tùy chọn bằng header `x-webhook-secret` khớp AUTO_NOTIFY_WEBHOOK_SECRET.
 app.post('/api/webhook/arrived', async (req, res) => {

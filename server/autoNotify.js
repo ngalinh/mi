@@ -2,7 +2,7 @@
 const config = require('./config');
 const { getOrders } = require('./bassoApi');
 const { notifyOne } = require('./notifyService');
-const { getAutoRecord, recordAutoNotified, autoKey } = require('./db');
+const { getAutoRecord, recordAutoNotified, autoKey, getSetting, setSetting } = require('./db');
 const { checkLocalHealth } = require('./playwrightProxy');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
@@ -25,6 +25,60 @@ const { resolveForOrder } = require('./accountResolver');
 
 const cfg = config.autoNotify;
 
+// Khoá lưu giờ gửi cố định trong app_settings (admin đổi trên trang Cài đặt -> ghi đè env).
+const SCHEDULE_SETTING_KEY = 'autoNotify.scheduleTime';
+
+/**
+ * Chuẩn hoá chuỗi giờ "HH:MM" (24h). Trả:
+ *   - ''      : trống -> TẮT hẹn giờ (quay lại gửi ngay theo interval)
+ *   - 'HH:MM' : hợp lệ, đã đệm 0
+ *   - null    : SAI định dạng (để nơi gọi báo lỗi)
+ */
+function normalizeTime(value) {
+  if (value == null) return '';
+  const t = String(value).trim();
+  if (!t) return '';
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (h > 23 || mi > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+}
+
+/**
+ * Lấy "ngày" (YYYY-MM-DD) và "số phút trong ngày" theo múi giờ cfg.timezone cho 1 mốc thời gian.
+ * Dùng Intl (built-in) để quy đổi — không phụ thuộc giờ máy chủ (thường UTC). Lỗi tz -> UTC.
+ */
+function localParts(date) {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: cfg.timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    });
+    const p = {};
+    for (const part of fmt.formatToParts(date)) p[part.type] = part.value;
+    return { day: `${p.year}-${p.month}-${p.day}`, minutes: Number(p.hour) * 60 + Number(p.minute) };
+  } catch (_) {
+    // Múi giờ không hợp lệ -> rơi về UTC để vẫn chạy được.
+    return { day: date.toISOString().slice(0, 10), minutes: date.getUTCHours() * 60 + date.getUTCMinutes() };
+  }
+}
+
+// Giờ gửi cố định lúc khởi động: ưu tiên giá trị admin đã lưu (DB), rồi tới mặc định env.
+// Giá trị DB sai định dạng (không nên xảy ra) -> bỏ, dùng env.
+function initialScheduleTime() {
+  let saved = null;
+  try { saved = getSetting(SCHEDULE_SETTING_KEY); } catch (_) { saved = null; }
+  if (saved != null) {
+    const norm = normalizeTime(saved);
+    if (norm !== null) return norm;
+  }
+  const fromEnv = normalizeTime(cfg.scheduleTime);
+  return fromEnv === null ? '' : fromEnv;
+}
+
 // Trạng thái runtime (dùng cho /api/auto-notify + dashboard)
 const state = {
   enabled: cfg.enabled,
@@ -32,9 +86,42 @@ const state = {
   lastRun: null,       // ISO time của lần chạy gần nhất
   lastResult: null,    // tóm tắt lần chạy gần nhất
   startedAt: null,
+  scheduleTime: initialScheduleTime(), // '' = gửi ngay (interval); 'HH:MM' = hẹn giờ
+  lastScheduledDay: null,              // YYYY-MM-DD (giờ VN) của lần chạy-theo-lịch gần nhất
 };
 
 let timer = null;
+
+/**
+ * Tới giờ hẹn chưa? (chạy MỖI scheduleCheckMs). Chỉ gọi Basso khi ĐÃ tới giờ và CHƯA chạy hôm
+ * nay -> mỗi ngày đúng 1 lượt gửi. Nếu server khởi động lại SAU giờ hẹn mà hôm đó chưa chạy,
+ * lượt này vẫn nổ để "gửi bù" — an toàn vì dedup (auto_notified) chặn gửi trùng khách.
+ */
+function scheduleTick() {
+  if (!state.scheduleTime) return;
+  const { day, minutes } = localParts(new Date());
+  const [h, m] = state.scheduleTime.split(':').map(Number);
+  const target = h * 60 + m;
+  if (minutes >= target && state.lastScheduledDay !== day) {
+    state.lastScheduledDay = day;
+    console.log(`[auto-notify] tới giờ ${state.scheduleTime} (${cfg.timezone}) — chạy lượt gửi theo lịch cho ngày ${day}.`);
+    runAutoNotify({ trigger: 'scheduled' });
+  }
+}
+
+/** Tóm tắt tình trạng hẹn giờ cho dashboard/Cài đặt. */
+function scheduleInfo() {
+  if (!state.scheduleTime) return { mode: 'interval', scheduleTime: '' };
+  const { day, minutes } = localParts(new Date());
+  const [h, m] = state.scheduleTime.split(':').map(Number);
+  const target = h * 60 + m;
+  const ranToday = state.lastScheduledDay === day;
+  let next; // trạng thái lượt kế: đã gửi hôm nay | chờ tới giờ hôm nay | (đã qua giờ) gửi ngay/mai
+  if (ranToday) next = 'done_today';
+  else if (minutes < target) next = 'today';
+  else next = 'due';
+  return { mode: 'scheduled', scheduleTime: state.scheduleTime, timezone: cfg.timezone, ranToday, next };
+}
 
 /** Lỗi tạm thời (runner down / mạng / timeout) — KHÔNG nên trừ lượt thử của đơn. */
 function isTransientError(msg) {
@@ -110,6 +197,15 @@ async function fetchAllNotSent(opts = {}) {
  */
 async function runAutoNotify(opts = {}) {
   const trigger = opts.trigger || 'manual';
+  // Chế độ HẸN GIỜ: "có hàng về" (webhook) chỉ để cập nhật — KHÔNG gửi ngay. Cả ngày gom lại,
+  // đúng giờ (trigger 'scheduled') mới gửi. Nút "Quét & gửi ngay" (trigger 'manual') vẫn gửi
+  // được ngay vì đó là hành động chủ đích của admin.
+  if (trigger === 'webhook' && state.scheduleTime) {
+    return {
+      trigger, skipped: true, deferred: true, scheduleTime: state.scheduleTime,
+      reason: `Đã hẹn giờ gửi lúc ${state.scheduleTime} (${cfg.timezone}) — không gửi ngay khi có hàng về`,
+    };
+  }
   if (state.running) {
     return { trigger, skipped: true, reason: 'Đang chạy một lượt khác' };
   }
@@ -252,9 +348,16 @@ function setEnabled(enabled) {
 function startTimer() {
   if (timer) return;
   state.startedAt = new Date().toISOString();
-  // Chạy 1 lượt sau 5s (để local-runner kịp online), rồi lặp theo interval.
-  setTimeout(() => { runAutoNotify({ trigger: 'interval' }); }, 5000);
-  timer = setInterval(() => { runAutoNotify({ trigger: 'interval' }); }, cfg.intervalMs);
+  if (state.scheduleTime) {
+    // HẸN GIỜ: chỉ kiểm tra đồng hồ định kỳ (rẻ), tới giờ mới quét & gửi 1 lượt/ngày.
+    // Kiểm tra sớm sau 5s để "gửi bù" nếu khởi động lại khi đã qua giờ hẹn mà hôm đó chưa chạy.
+    setTimeout(scheduleTick, 5000);
+    timer = setInterval(scheduleTick, cfg.scheduleCheckMs);
+  } else {
+    // GỬI NGAY (không hẹn giờ): chạy 1 lượt sau 5s rồi lặp theo interval như trước.
+    setTimeout(() => { runAutoNotify({ trigger: 'interval' }); }, 5000);
+    timer = setInterval(() => { runAutoNotify({ trigger: 'interval' }); }, cfg.intervalMs);
+  }
   if (timer.unref) timer.unref();
 }
 
@@ -267,10 +370,77 @@ function stopTimer() {
 function startAutoNotify() {
   if (state.enabled) {
     startTimer();
-    console.log(`[auto-notify] BẬT — quét đơn "Chưa báo" mỗi ${Math.round(cfg.intervalMs / 1000)}s, profile=${cfg.profile}`);
+    if (state.scheduleTime) {
+      console.log(`[auto-notify] BẬT — HẸN GIỜ gửi lúc ${state.scheduleTime} (${cfg.timezone}) mỗi ngày, profile=${cfg.profile}`);
+    } else {
+      console.log(`[auto-notify] BẬT — GỬI NGAY, quét đơn "Chưa báo" mỗi ${Math.round(cfg.intervalMs / 1000)}s, profile=${cfg.profile}`);
+    }
   } else {
     console.log('[auto-notify] TẮT (đặt AUTO_NOTIFY=true để bật, hoặc bật trên dashboard)');
   }
+}
+
+/**
+ * Đặt GIỜ GỬI CỐ ĐỊNH lúc runtime (admin đổi trên trang Cài đặt). Lưu bền vào DB để giữ qua
+ * restart. '' hoặc trống -> tắt hẹn giờ (quay lại gửi ngay theo interval). Ném lỗi .code='BAD_TIME'
+ * nếu sai định dạng. Áp dụng NGAY: khởi động lại timer theo chế độ mới.
+ */
+function setScheduleTime(value) {
+  const norm = normalizeTime(value);
+  if (norm === null) {
+    const e = new Error('Giờ không hợp lệ — cần định dạng HH:MM (00:00–23:59), vd 17:00. Để trống = gửi ngay.');
+    e.code = 'BAD_TIME';
+    throw e;
+  }
+  state.scheduleTime = norm;
+  try { setSetting(SCHEDULE_SETTING_KEY, norm); } catch (err) {
+    console.warn('[auto-notify] không lưu được giờ gửi vào DB:', err.message);
+  }
+  // Đổi giờ -> reset mốc "đã chạy hôm nay" (nếu đổi sang giờ đã qua & hôm nay chưa gửi, lượt kế
+  // sẽ nổ; nếu hôm nay đã gửi rồi thì scheduleTick vẫn chặn theo lastScheduledDay lần kế đặt lại).
+  // Thực tế: chỉ reset khi chuyển giờ để không kẹt trạng thái cũ.
+  state.lastScheduledDay = null;
+  // Áp dụng ngay: dựng lại timer theo chế độ mới (hẹn giờ <-> interval).
+  if (state.enabled && timer) { stopTimer(); startTimer(); }
+  console.log(`[auto-notify] đặt giờ gửi cố định = ${norm || '(trống → gửi ngay theo interval)'}`);
+  return getStatus();
+}
+
+/**
+ * XEM TRƯỚC (không gửi): quét "Chưa báo" và đếm bao nhiêu đơn ĐÃ đủ nội dung báo hàng (sẵn sàng
+ * gửi) vs CHƯA có ND (sẽ bị bỏ qua tới giờ gửi). Dùng cho nút "Kiểm tra" trên Cài đặt để người
+ * phụ trách soạn nốt ND trước giờ hẹn. Đọc TƯƠI (bỏ cache) để phản ánh đúng hiện trạng.
+ */
+async function previewAutoNotify() {
+  const online = await checkLocalHealth().catch(() => false);
+  const orders = await fetchAllNotSent({ fresh: true });
+  let ready = 0;
+  let missingContent = 0;
+  let alreadyHandled = 0;
+  const missingList = [];
+  for (const o of orders) {
+    const rec = getAutoRecord(autoKey(o));
+    if (rec && (rec.status === 'success' || rec.status === 'manual')) { alreadyHandled += 1; continue; }
+    const hasContent = o.noiDungBaoHang && String(o.noiDungBaoHang).trim();
+    if (!hasContent) {
+      missingContent += 1;
+      if (missingList.length < 100) {
+        missingList.push({ customerName: o.customerName || '', orderCode: o.orderCode || o.orderId || null, staff: o.staff || '' });
+      }
+      continue;
+    }
+    ready += 1;
+  }
+  return {
+    scanned: orders.length,
+    ready,
+    missingContent,
+    alreadyHandled,
+    missingList,
+    runnerOnline: online,
+    scheduleTime: state.scheduleTime,
+    timezone: cfg.timezone,
+  };
 }
 
 function getStatus() {
@@ -282,7 +452,10 @@ function getStatus() {
     maxRetries: cfg.maxRetries,
     lastRun: state.lastRun,
     lastResult: state.lastResult,
+    scheduleTime: state.scheduleTime,
+    timezone: cfg.timezone,
+    schedule: scheduleInfo(),
   };
 }
 
-module.exports = { runAutoNotify, startAutoNotify, setEnabled, getStatus, autoKey };
+module.exports = { runAutoNotify, startAutoNotify, setEnabled, setScheduleTime, previewAutoNotify, getStatus, autoKey };
