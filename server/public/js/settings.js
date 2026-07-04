@@ -402,16 +402,19 @@
     if (!box) return;
     if (!lp) { box.style.display = 'none'; box.innerHTML = ''; return; }
     const t = lp.at ? new Date(lp.at).toLocaleString('vi-VN') : '';
-    const head = `🔔 Nhắc lúc ${App.esc(t)}: <strong>${lp.ready}</strong> đơn đủ ND · <strong>${lp.missingContent}</strong> thiếu ND`;
+    const willSend = lp.willSend != null ? lp.willSend : lp.ready;
+    const head = `🔔 Nhắc lúc ${App.esc(t)}: <strong style="color:var(--primary)">${willSend}</strong> đơn sẽ gửi · <strong>${lp.missingContent}</strong> thiếu ND`;
     let body = '';
     if (lp.missingContent) {
       const names = (lp.missingList || []).slice(0, 20)
         .map((o) => App.esc(o.customerName || o.orderCode || '?') + (o.staff ? ` (${App.esc(o.staff)})` : ''))
         .join(', ');
-      body = `<div style="margin-top:4px; color:var(--danger,#d33)">⚠️ Cần soạn nốt nội dung: ${names}${(lp.missingList || []).length > 20 ? '…' : ''}</div>`;
+      body += `<div style="margin-top:4px; color:var(--danger,#d33)">⚠️ Cần soạn nốt nội dung: ${names}${(lp.missingList || []).length > 20 ? '…' : ''}</div>`;
     } else {
-      body = '<div style="margin-top:4px; color:var(--primary)">✓ Tất cả đơn cần gửi đều đã có nội dung.</div>';
+      body += '<div style="margin-top:4px; color:var(--primary)">✓ Tất cả đơn sẽ gửi đều đã có nội dung.</div>';
     }
+    const skipLine = fmtSkipReasons(lp);
+    if (skipLine) body += `<div style="margin-top:4px;" class="muted">Bỏ qua: ${skipLine}</div>`;
     box.style.display = '';
     box.innerHTML = head + body;
   }
@@ -454,6 +457,17 @@
     }
   }
 
+  // Gộp các lý do "bỏ qua ngoài thiếu ND" thành 1 dòng dễ đọc.
+  function fmtSkipReasons(r) {
+    const parts = [];
+    if (r.skippedBacklog) parts.push(`${r.skippedBacklog} tồn cũ (về trước khi bật auto)`);
+    if (r.skippedDelayed) parts.push(`${r.skippedDelayed} đã Delay`);
+    if (r.skippedAutoOff) parts.push(`${r.skippedAutoOff} account tắt auto`);
+    if (r.skippedNoAccount) parts.push(`${r.skippedNoAccount} không khớp account`);
+    if (r.skippedBrand) parts.push(`${r.skippedBrand} chưa có Zalo brand`);
+    return parts.join(' · ');
+  }
+
   async function runPreview() {
     const box = $('previewResult');
     const btn = $('previewBtn');
@@ -463,16 +477,20 @@
     box.innerHTML = 'Đang quét đơn "Chưa báo"…';
     try {
       const r = await App.api('/api/auto-notify/preview');
+      const willSend = r.willSend != null ? r.willSend : r.ready;
+      const when = r.scheduleTime ? `lúc ${r.scheduleTime}` : '(chưa đặt giờ)';
       const missWarn = r.missingContent
         ? `<span style="color:var(--danger,#d33)">⚠️ ${r.missingContent} đơn CHƯA có nội dung báo hàng — sẽ bị bỏ qua tới giờ gửi.</span>`
-        : '<span style="color:var(--primary)">✓ Mọi đơn cần gửi đều đã có nội dung.</span>';
+        : '<span style="color:var(--primary)">✓ Mọi đơn sẽ gửi đều đã có nội dung.</span>';
       const names = (r.missingList || []).slice(0, 20)
         .map((o) => App.esc(o.customerName || o.orderCode || '?') + (o.staff ? ` (${App.esc(o.staff)})` : ''))
         .join(', ');
+      const skipLine = fmtSkipReasons(r);
       box.innerHTML = `
-        <div><strong>${r.ready}</strong> đơn sẵn sàng gửi · <strong>${r.missingContent}</strong> thiếu nội dung · ${r.alreadyHandled} đã báo (tổng ${r.scanned} đơn "Chưa báo")</div>
+        <div><strong style="color:var(--primary)">${willSend}</strong> đơn SẼ GỬI ${when} · <strong>${r.missingContent}</strong> thiếu ND · ${r.skippedOther || 0} bỏ qua khác · ${r.alreadyHandled} đã báo <span class="muted">(tổng ${r.scanned} đơn "Chưa báo")</span></div>
         <div style="margin-top:6px;">${missWarn}</div>
         ${r.missingContent ? `<div style="margin-top:6px;" class="muted">Thiếu ND: ${names}${r.missingList.length > 20 ? '…' : ''}</div>` : ''}
+        ${skipLine ? `<div style="margin-top:6px;" class="muted">Bỏ qua: ${skipLine}</div>` : ''}
         ${!r.runnerOnline ? '<div style="margin-top:6px; color:var(--danger,#d33)">⚠️ Local-runner đang offline — tới giờ sẽ không gửi được cho tới khi online lại.</div>' : ''}`;
     } catch (e) {
       box.innerHTML = `<span style="color:var(--danger,#d33)">❌ ${App.esc(e.message)}</span>`;
