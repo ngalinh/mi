@@ -149,6 +149,13 @@
                 <button class="btn secondary" id="previewBtn" title="Xem trước: đơn nào đã đủ nội dung, đơn nào còn thiếu">Kiểm tra đơn</button>
                 <span class="muted" id="scheduleNext" style="font-size:12px;"></span>
               </div>
+              <div style="display:flex; align-items:center; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                <span class="muted" style="font-size:13px;">Nhắc soạn nội dung trước</span>
+                <input class="note-input" id="precheckInput" type="number" min="0" max="1439" step="5" style="max-width:80px;" />
+                <span class="muted" style="font-size:13px;">phút (0 = tắt) — trước giờ gửi, bot tự quét và cảnh báo đơn còn thiếu nội dung.</span>
+                <span class="muted" id="precheckNext" style="font-size:12px;"></span>
+              </div>
+              <div class="muted" id="precheckResult" style="font-size:13px; margin-top:8px; display:none;"></div>
               <div class="muted" id="previewResult" style="font-size:13px; margin-top:10px; display:none;"></div>
             </div>
           </div>

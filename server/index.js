@@ -481,14 +481,16 @@ app.post('/api/auto-notify/run', async (req, res) => {
   }
 });
 
-// Đặt GIỜ GỬI CỐ ĐỊNH (HH:MM). body: { time: 'HH:MM' | '' }. Trống = gửi ngay theo interval.
+// Đặt GIỜ GỬI CỐ ĐỊNH + nhắc soạn ND. body: { time?: 'HH:MM' | '', precheckMinutes?: number }.
+// time trống = gửi ngay theo interval; precheckMinutes=0 = tắt nhắc. Chỉ đổi field được gửi lên.
 app.post('/api/auto-notify/schedule', (req, res) => {
   try {
-    const { time } = req.body || {};
-    const status = autoNotify.setScheduleTime(time);
-    res.json({ ok: true, ...status });
+    const { time, precheckMinutes } = req.body || {};
+    if (time !== undefined) autoNotify.setScheduleTime(time);
+    if (precheckMinutes !== undefined) autoNotify.setPrecheckMinutes(precheckMinutes);
+    res.json({ ok: true, ...autoNotify.getStatus() });
   } catch (err) {
-    if (err.code === 'BAD_TIME') return res.status(400).json({ ok: false, error: err.message });
+    if (err.code === 'BAD_TIME' || err.code === 'BAD_PRECHECK') return res.status(400).json({ ok: false, error: err.message });
     res.status(500).json({ ok: false, error: err.message });
   }
 });

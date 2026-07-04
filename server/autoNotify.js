@@ -27,6 +27,22 @@ const cfg = config.autoNotify;
 
 // Khoá lưu giờ gửi cố định trong app_settings (admin đổi trên trang Cài đặt -> ghi đè env).
 const SCHEDULE_SETTING_KEY = 'autoNotify.scheduleTime';
+// Khoá lưu "nhắc soạn ND trước bao nhiêu phút" (số nguyên phút; 0 = tắt nhắc).
+const PRECHECK_SETTING_KEY = 'autoNotify.precheckMinutes';
+
+/** Chuẩn hoá số phút nhắc-trước: số nguyên 0..1439, ngoài range/không parse -> null. Trống -> null. */
+function normalizeMinutes(value) {
+  if (value == null || String(value).trim() === '') return null;
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 0 || n > 1439) return null;
+  return n;
+}
+
+/** Số phút trong ngày -> 'HH:MM'. */
+function minutesToHHMM(mins) {
+  const mm = ((Math.round(mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(mm / 60)).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}`;
+}
 
 /**
  * Chuẩn hoá chuỗi giờ "HH:MM" (24h). Trả:
@@ -79,6 +95,15 @@ function initialScheduleTime() {
   return fromEnv === null ? '' : fromEnv;
 }
 
+// Số phút nhắc-trước lúc khởi động: giá trị admin đã lưu (DB) -> env -> mặc định 30.
+function initialPrecheckMinutes() {
+  let saved = null;
+  try { saved = getSetting(PRECHECK_SETTING_KEY); } catch (_) { saved = null; }
+  if (saved != null) { const n = normalizeMinutes(saved); if (n != null) return n; }
+  const envN = normalizeMinutes(cfg.precheckMinutes);
+  return envN == null ? 30 : envN;
+}
+
 // Trạng thái runtime (dùng cho /api/auto-notify + dashboard)
 const state = {
   enabled: cfg.enabled,
@@ -88,6 +113,9 @@ const state = {
   startedAt: null,
   scheduleTime: initialScheduleTime(), // '' = gửi ngay (interval); 'HH:MM' = hẹn giờ
   lastScheduledDay: null,              // YYYY-MM-DD (giờ VN) của lần chạy-theo-lịch gần nhất
+  precheckMinutes: initialPrecheckMinutes(), // nhắc soạn ND trước giờ gửi (phút); 0 = tắt
+  lastPrecheckDay: null,               // YYYY-MM-DD của lần nhắc gần nhất (1 lần/ngày)
+  lastPrecheck: null,                  // kết quả nhắc gần nhất (để hiện trên Cài đặt)
 };
 
 let timer = null;
@@ -102,6 +130,19 @@ function scheduleTick() {
   const { day, minutes } = localParts(new Date());
   const [h, m] = state.scheduleTime.split(':').map(Number);
   const target = h * 60 + m;
+
+  // NHẮC SOẠN ND: trước giờ gửi `precheckMinutes` phút, quét (đọc tươi) & cảnh báo đơn thiếu ND.
+  // Chạy 1 lần/ngày trong khung [target-lead, target) — sau giờ gửi thì thôi (lượt gửi tự xử lý).
+  const lead = state.precheckMinutes;
+  if (lead > 0) {
+    const precheckAt = target - lead;
+    if (precheckAt >= 0 && minutes >= precheckAt && minutes < target && state.lastPrecheckDay !== day) {
+      state.lastPrecheckDay = day;
+      runPrecheck(day);
+    }
+  }
+
+  // GỬI đúng giờ (1 lần/ngày).
   if (minutes >= target && state.lastScheduledDay !== day) {
     state.lastScheduledDay = day;
     console.log(`[auto-notify] tới giờ ${state.scheduleTime} (${cfg.timezone}) — chạy lượt gửi theo lịch cho ngày ${day}.`);
@@ -109,9 +150,39 @@ function scheduleTick() {
   }
 }
 
+/**
+ * NHẮC SOẠN ND (không gửi): quét tươi, ghi cảnh báo số đơn còn thiếu nội dung báo hàng + lưu kết
+ * quả vào state.lastPrecheck để trang Cài đặt hiển thị. Chạy trước giờ gửi để NV kịp soạn nốt.
+ */
+async function runPrecheck(day) {
+  try {
+    const p = await previewAutoNotify();
+    state.lastPrecheck = {
+      at: new Date().toISOString(),
+      day,
+      scheduleTime: state.scheduleTime,
+      scanned: p.scanned,
+      ready: p.ready,
+      missingContent: p.missingContent,
+      alreadyHandled: p.alreadyHandled,
+      missingList: p.missingList,
+      runnerOnline: p.runnerOnline,
+    };
+    if (p.missingContent > 0) {
+      const names = p.missingList.slice(0, 20)
+        .map((o) => `${o.customerName || o.orderCode || '?'}${o.staff ? ` (${o.staff})` : ''}`).join(', ');
+      console.warn(`[auto-notify] NHẮC (trước giờ gửi ${state.scheduleTime}): ${p.missingContent} đơn CHƯA có ND báo hàng — sẽ bị bỏ qua nếu không soạn kịp: ${names}`);
+    } else {
+      console.log(`[auto-notify] NHẮC (trước giờ gửi ${state.scheduleTime}): ${p.ready} đơn đã đủ ND, không đơn nào thiếu ✅`);
+    }
+  } catch (e) {
+    console.warn('[auto-notify] nhắc soạn ND lỗi:', e.message);
+  }
+}
+
 /** Tóm tắt tình trạng hẹn giờ cho dashboard/Cài đặt. */
 function scheduleInfo() {
-  if (!state.scheduleTime) return { mode: 'interval', scheduleTime: '' };
+  if (!state.scheduleTime) return { mode: 'interval', scheduleTime: '', precheckMinutes: state.precheckMinutes };
   const { day, minutes } = localParts(new Date());
   const [h, m] = state.scheduleTime.split(':').map(Number);
   const target = h * 60 + m;
@@ -120,7 +191,12 @@ function scheduleInfo() {
   if (ranToday) next = 'done_today';
   else if (minutes < target) next = 'today';
   else next = 'due';
-  return { mode: 'scheduled', scheduleTime: state.scheduleTime, timezone: cfg.timezone, ranToday, next };
+  const lead = state.precheckMinutes;
+  const precheckAt = lead > 0 && target - lead >= 0 ? minutesToHHMM(target - lead) : '';
+  return {
+    mode: 'scheduled', scheduleTime: state.scheduleTime, timezone: cfg.timezone, ranToday, next,
+    precheckMinutes: lead, precheckTime: precheckAt,
+  };
 }
 
 /** Lỗi tạm thời (runner down / mạng / timeout) — KHÔNG nên trừ lượt thử của đơn. */
@@ -224,8 +300,12 @@ async function runAutoNotify(opts = {}) {
     // R6: bọc quét + gửi trong khóa dùng chung -> không chạy chồng với báo-tay (notifyMany).
     // Đặt quét đơn TRONG khóa để thấy trạng thái mới nhất sau khi luồng kia vừa gửi xong.
     await withLock(async () => {
-      // Webhook = "vừa có hàng về" -> đọc TƯƠI (bỏ cache) để thấy ngay đơn mới; poller dùng cache.
-      const orders = await fetchAllNotSent({ fresh: trigger === 'webhook' });
+      // Đọc TƯƠI (bỏ cache) cho:
+      //  - webhook "vừa có hàng về" -> thấy ngay đơn mới;
+      //  - lượt gửi theo lịch (scheduled) -> lấy ND báo hàng MỚI NHẤT do Basso/NV vừa soạn phút
+      //    chót, không dính cache 30s (tránh bỏ sót đơn vừa được soạn nội dung).
+      // Poller định kỳ (interval) vẫn dùng cache cho nhẹ.
+      const orders = await fetchAllNotSent({ fresh: trigger === 'webhook' || trigger === 'scheduled' });
       summary.scanned = orders.length;
       // Đơn "Chưa báo" nhưng Basso chưa soạn "ND báo hàng" -> bỏ qua (không gửi).
       summary.skippedNoContent = orders.filter(
@@ -371,7 +451,8 @@ function startAutoNotify() {
   if (state.enabled) {
     startTimer();
     if (state.scheduleTime) {
-      console.log(`[auto-notify] BẬT — HẸN GIỜ gửi lúc ${state.scheduleTime} (${cfg.timezone}) mỗi ngày, profile=${cfg.profile}`);
+      const pc = state.precheckMinutes > 0 ? `, nhắc soạn ND trước ${state.precheckMinutes} phút` : '';
+      console.log(`[auto-notify] BẬT — HẸN GIỜ gửi lúc ${state.scheduleTime} (${cfg.timezone}) mỗi ngày${pc}, profile=${cfg.profile}`);
     } else {
       console.log(`[auto-notify] BẬT — GỬI NGAY, quét đơn "Chưa báo" mỗi ${Math.round(cfg.intervalMs / 1000)}s, profile=${cfg.profile}`);
     }
@@ -403,6 +484,26 @@ function setScheduleTime(value) {
   // Áp dụng ngay: dựng lại timer theo chế độ mới (hẹn giờ <-> interval).
   if (state.enabled && timer) { stopTimer(); startTimer(); }
   console.log(`[auto-notify] đặt giờ gửi cố định = ${norm || '(trống → gửi ngay theo interval)'}`);
+  return getStatus();
+}
+
+/**
+ * Đặt SỐ PHÚT NHẮC SOẠN ND trước giờ gửi (0 = tắt nhắc). Lưu bền vào DB. Ném lỗi .code='BAD_PRECHECK'
+ * nếu không hợp lệ (cần số nguyên 0–1439). Reset mốc "đã nhắc hôm nay" để áp dụng ngay hôm nay.
+ */
+function setPrecheckMinutes(value) {
+  const n = normalizeMinutes(value);
+  if (n === null) {
+    const e = new Error('Số phút nhắc trước không hợp lệ — cần số nguyên 0–1439 (0 = tắt nhắc).');
+    e.code = 'BAD_PRECHECK';
+    throw e;
+  }
+  state.precheckMinutes = n;
+  try { setSetting(PRECHECK_SETTING_KEY, String(n)); } catch (err) {
+    console.warn('[auto-notify] không lưu được số phút nhắc vào DB:', err.message);
+  }
+  state.lastPrecheckDay = null; // cho phép nhắc lại hôm nay theo mốc mới
+  console.log(`[auto-notify] đặt nhắc soạn ND trước giờ gửi = ${n} phút${n === 0 ? ' (TẮT nhắc)' : ''}`);
   return getStatus();
 }
 
@@ -454,8 +555,10 @@ function getStatus() {
     lastResult: state.lastResult,
     scheduleTime: state.scheduleTime,
     timezone: cfg.timezone,
+    precheckMinutes: state.precheckMinutes,
+    lastPrecheck: state.lastPrecheck,
     schedule: scheduleInfo(),
   };
 }
 
-module.exports = { runAutoNotify, startAutoNotify, setEnabled, setScheduleTime, previewAutoNotify, getStatus, autoKey };
+module.exports = { runAutoNotify, startAutoNotify, setEnabled, setScheduleTime, setPrecheckMinutes, previewAutoNotify, getStatus, autoKey };

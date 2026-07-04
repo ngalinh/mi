@@ -371,15 +371,49 @@
     scheduleTime = a.scheduleTime || '';
     const input = $('scheduleInput');
     if (input && document.activeElement !== input) input.value = scheduleTime;
+    const pcInput = $('precheckInput');
+    if (pcInput && document.activeElement !== pcInput) pcInput.value = (a.precheckMinutes != null ? a.precheckMinutes : 30);
+    // Dòng "giờ gửi kế tiếp"
     const nextEl = $('scheduleNext');
-    if (!nextEl) return;
-    if (!autoEnabled) { nextEl.textContent = ''; return; }
-    if (!scheduleTime) { nextEl.textContent = '· đang gửi ngay khi có hàng về'; return; }
-    const s = a.schedule || {};
-    const label = s.next === 'done_today' ? 'đã gửi lượt hôm nay'
-      : s.next === 'due' ? 'đã tới giờ — sẽ gửi ở lần kiểm tra kế'
-        : 'sẽ gửi hôm nay lúc ' + scheduleTime;
-    nextEl.textContent = '· ' + label + (a.timezone ? ` (${a.timezone})` : '');
+    if (nextEl) {
+      if (!autoEnabled) nextEl.textContent = '';
+      else if (!scheduleTime) nextEl.textContent = '· đang gửi ngay khi có hàng về';
+      else {
+        const s = a.schedule || {};
+        const label = s.next === 'done_today' ? 'đã gửi lượt hôm nay'
+          : s.next === 'due' ? 'đã tới giờ — sẽ gửi ở lần kiểm tra kế'
+            : 'sẽ gửi hôm nay lúc ' + scheduleTime;
+        nextEl.textContent = '· ' + label + (a.timezone ? ` (${a.timezone})` : '');
+      }
+    }
+    // Dòng "giờ nhắc"
+    const pcNext = $('precheckNext');
+    if (pcNext) {
+      const s = a.schedule || {};
+      pcNext.textContent = (scheduleTime && s.precheckTime) ? `· nhắc lúc ${s.precheckTime}` : '';
+    }
+    // Kết quả lần nhắc gần nhất (nếu có)
+    renderPrecheckResult(a.lastPrecheck);
+  }
+
+  // Hiển thị kết quả lần "nhắc soạn ND" gần nhất do bot tự chạy trước giờ gửi.
+  function renderPrecheckResult(lp) {
+    const box = $('precheckResult');
+    if (!box) return;
+    if (!lp) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    const t = lp.at ? new Date(lp.at).toLocaleString('vi-VN') : '';
+    const head = `🔔 Nhắc lúc ${App.esc(t)}: <strong>${lp.ready}</strong> đơn đủ ND · <strong>${lp.missingContent}</strong> thiếu ND`;
+    let body = '';
+    if (lp.missingContent) {
+      const names = (lp.missingList || []).slice(0, 20)
+        .map((o) => App.esc(o.customerName || o.orderCode || '?') + (o.staff ? ` (${App.esc(o.staff)})` : ''))
+        .join(', ');
+      body = `<div style="margin-top:4px; color:var(--danger,#d33)">⚠️ Cần soạn nốt nội dung: ${names}${(lp.missingList || []).length > 20 ? '…' : ''}</div>`;
+    } else {
+      body = '<div style="margin-top:4px; color:var(--primary)">✓ Tất cả đơn cần gửi đều đã có nội dung.</div>';
+    }
+    box.style.display = '';
+    box.innerHTML = head + body;
   }
 
   async function toggleAuto() {
@@ -405,12 +439,16 @@
 
   async function saveSchedule() {
     const time = ($('scheduleInput').value || '').trim();
+    const pcRaw = ($('precheckInput').value || '').trim();
+    const body = { time };
+    if (pcRaw !== '') body.precheckMinutes = Number(pcRaw);
     try {
       const a = await App.api('/api/auto-notify/schedule', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ time }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       renderAutoBadge(a);
-      App.toast(time ? `✅ Đã đặt giờ gửi cố định: ${a.scheduleTime}` : '✅ Đã bỏ hẹn giờ — gửi ngay khi có hàng về');
+      const pcMsg = a.precheckMinutes > 0 ? `, nhắc trước ${a.precheckMinutes} phút` : '';
+      App.toast(time ? `✅ Đã đặt giờ gửi: ${a.scheduleTime}${pcMsg}` : '✅ Đã bỏ hẹn giờ — gửi ngay khi có hàng về');
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     }
@@ -533,6 +571,7 @@
   $('autoBadge').addEventListener('click', toggleAuto);
   $('scheduleSave').addEventListener('click', saveSchedule);
   $('scheduleInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });
+  $('precheckInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });
   $('previewBtn').addEventListener('click', runPreview);
   $('bassoBtn').addEventListener('click', pingBasso);
   $('testModeBadge').addEventListener('click', toggleTestMode);
