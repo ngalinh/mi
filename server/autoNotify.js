@@ -2,7 +2,7 @@
 const config = require('./config');
 const { getOrders } = require('./bassoApi');
 const { notifyOne } = require('./notifyService');
-const { getAutoRecord, recordAutoNotified, autoKey, getSetting, setSetting } = require('./db');
+const { getAutoRecord, recordAutoNotified, autoKey, getSetting, setSetting, getDelayedMap } = require('./db');
 const { checkLocalHealth } = require('./playwrightProxy');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
@@ -157,17 +157,7 @@ function scheduleTick() {
 async function runPrecheck(day) {
   try {
     const p = await previewAutoNotify();
-    state.lastPrecheck = {
-      at: new Date().toISOString(),
-      day,
-      scheduleTime: state.scheduleTime,
-      scanned: p.scanned,
-      ready: p.ready,
-      missingContent: p.missingContent,
-      alreadyHandled: p.alreadyHandled,
-      missingList: p.missingList,
-      runnerOnline: p.runnerOnline,
-    };
+    state.lastPrecheck = { at: new Date().toISOString(), day, ...p };
     if (p.missingContent > 0) {
       const names = p.missingList.slice(0, 20)
         .map((o) => `${o.customerName || o.orderCode || '?'}${o.staff ? ` (${o.staff})` : ''}`).join(', ');
@@ -232,17 +222,41 @@ function dayBucket(value) {
   return Math.floor(ms / 86400000);
 }
 
-/** Đơn có đủ điều kiện tự gửi không? */
-function isCandidate(order) {
-  if (order.statusCode !== 'not_sent') return false; // chỉ "Chưa báo"
-  // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo hàng" (raw.content). Đơn trống nội
-  // dung -> bỏ qua hoàn toàn, KHÔNG dùng template mặc định để tránh gửi câu chung chung.
-  if (!order.noiDungBaoHang || !String(order.noiDungBaoHang).trim()) return false;
+/**
+ * Quyết định 1 đơn có được TỰ ĐỘNG gửi không, và nếu KHÔNG thì vì lý do gì. DÙNG CHUNG cho lượt
+ * gửi thật (runAutoNotify) và xem trước (previewAutoNotify) -> số "sẽ gửi" trên preview LUÔN KHỚP
+ * số thật lúc gửi. Trả { decision:'send'|'skip', reason?, acct? }. Các reason bỏ qua:
+ *   not_target | no_content | already | max_retries | delayed | no_account | auto_off | brand | backlog
+ * Check RẺ (trạng thái/nội dung/đã gửi/Delay) chạy TRƯỚC; chỉ đơn còn lọt mới resolve account (đắt hơn).
+ */
+async function classifyForAuto(order, delayedMap) {
+  if (order.statusCode !== 'not_sent') return { decision: 'skip', reason: 'not_target' }; // chỉ "Chưa báo"
+  // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo hàng" (raw.content). Đơn trống ND -> bỏ qua.
+  if (!order.noiDungBaoHang || !String(order.noiDungBaoHang).trim()) return { decision: 'skip', reason: 'no_content' };
   const rec = getAutoRecord(autoKey(order));
-  if (!rec) return true;
-  // Đã gửi (bot 'success' hoặc đã báo tay 'manual') -> bot không gửi lại.
-  if (rec.status === 'success' || rec.status === 'manual') return false;
-  return rec.attempts < cfg.maxRetries;               // 'failed' -> còn lượt thử lại
+  // Đã gửi (bot 'success' hoặc báo tay 'manual') -> không gửi lại. Hết lượt thử -> thôi.
+  if (rec && (rec.status === 'success' || rec.status === 'manual')) return { decision: 'skip', reason: 'already' };
+  if (rec && rec.attempts >= cfg.maxRetries) return { decision: 'skip', reason: 'max_retries' };
+  // Cờ Delay/Loại trừ (lưu ở mi) -> tạm hoãn: bỏ khỏi cả luồng tự động (khớp "Báo hàng loạt").
+  if (delayedMap && delayedMap.has(autoKey(order))) return { decision: 'skip', reason: 'delayed' };
+
+  // MÔ HÌNH B: chọn account theo NV phụ trách đơn.
+  const acct = await resolveForOrder(order, { defaultAccount: cfg.account, profile: cfg.profile });
+  // CÔ LẬP THEO NV: chỉ gửi đơn khớp đúng 1 account (source='store') khi bật requireAccount.
+  if (cfg.requireAccount && acct.source !== 'store') return { decision: 'skip', reason: 'no_account', acct };
+  // Account của NV bị TẮT "Tự động báo" -> bỏ qua (để NV báo tay).
+  if (acct.source === 'store' && acct.autoEnabled === false) return { decision: 'skip', reason: 'auto_off', acct };
+  // HƯỚNG A: NV chưa có Zalo cho brand của đơn -> bỏ (tránh gửi nhầm brand).
+  if (acct.skip && acct.skipReason === 'brand') return { decision: 'skip', reason: 'brand', acct };
+  // CHỈ BÁO ĐƠN VỀ TỪ KHI BẬT AUTO: đơn về TRƯỚC ngày bật "Tự động báo" (autoEnabledAt) -> bỏ,
+  // tránh nhắn trùng loạt khách cũ đã xử lý tay. Tắt qua AUTO_NOTIFY_ONLY_NEW=false. So theo NGÀY
+  // nên đơn về CÙNG ngày bật auto vẫn gửi. Chỉ áp dụng cho account khớp NV có mốc autoEnabledAt.
+  if (cfg.onlyNewOrders && acct.source === 'store' && acct.autoEnabledAt) {
+    const orderDay = dayBucket(order.dateInventory);
+    const sinceDay = dayBucket(acct.autoEnabledAt);
+    if (orderDay != null && sinceDay != null && orderDay < sinceDay) return { decision: 'skip', reason: 'backlog', acct };
+  }
+  return { decision: 'send', acct };
 }
 
 /**
@@ -307,52 +321,28 @@ async function runAutoNotify(opts = {}) {
       // Poller định kỳ (interval) vẫn dùng cache cho nhẹ.
       const orders = await fetchAllNotSent({ fresh: trigger === 'webhook' || trigger === 'scheduled' });
       summary.scanned = orders.length;
-      // Đơn "Chưa báo" nhưng Basso chưa soạn "ND báo hàng" -> bỏ qua (không gửi).
-      summary.skippedNoContent = orders.filter(
-        (o) => o.statusCode === 'not_sent' && !(o.noiDungBaoHang && String(o.noiDungBaoHang).trim()),
-      ).length;
-      const candidates = orders.filter(isCandidate);
-      summary.candidates = candidates.length;
+      const delayedMap = getDelayedMap();
 
-      for (const order of candidates) {
+      // Phân loại TẤT CẢ đơn 1 lượt (dùng chung với preview) -> danh sách SẼ GỬI + đếm lý do bỏ qua.
+      const toSend = [];
+      for (const order of orders) {
+        // eslint-disable-next-line no-await-in-loop
+        const c = await classifyForAuto(order, delayedMap);
+        if (c.decision === 'send') { toSend.push(order); continue; }
+        const bump = (k) => { summary[k] = (summary[k] || 0) + 1; };
+        if (c.reason === 'no_content') bump('skippedNoContent');
+        else if (c.reason === 'delayed') bump('skippedDelayed');
+        else if (c.reason === 'no_account') bump('skippedNoAccount');
+        else if (c.reason === 'auto_off') bump('skippedAutoOff');
+        else if (c.reason === 'brand') bump('skippedBrand');
+        else if (c.reason === 'backlog') bump('skippedBacklog');
+        // 'already' / 'max_retries' / 'not_target' -> không đếm (không phải "đáng gửi")
+      }
+      summary.candidates = toSend.length;
+
+      for (const order of toSend) {
         const key = autoKey(order);
         const prev = getAutoRecord(key);
-
-        // MÔ HÌNH B: nếu account của NV phụ trách bị TẮT "Tự động báo" (autoEnabled=false)
-        // thì bỏ qua đơn này (không gửi, không trừ lượt) — để NV tự báo tay.
-        // eslint-disable-next-line no-await-in-loop
-        const acct = await resolveForOrder(order, { defaultAccount: cfg.account, profile: cfg.profile });
-
-        // CÔ LẬP THEO NV: chỉ gửi đơn khớp đúng 1 account (source='store'). Đơn không khớp
-        // account nào (rơi về 'default'/legacy) -> BỎ QUA. Bật auto cho 1 account là chỉ NV đó
-        // được gửi, còn lại tự động bỏ (không cần đi tắt từng account chưa map).
-        if (cfg.requireAccount && acct.source !== 'store') {
-          summary.skippedNoAccount = (summary.skippedNoAccount || 0) + 1;
-          continue;
-        }
-        if (acct.source === 'store' && acct.autoEnabled === false) {
-          summary.skippedAutoOff = (summary.skippedAutoOff || 0) + 1;
-          continue;
-        }
-        // HƯỚNG A: NV có gắn brand nhưng không có Zalo cho brand của đơn này -> bỏ qua (KHÔNG gửi,
-        // KHÔNG trừ lượt) để NV báo tay, tránh gửi nhầm brand.
-        if (acct.skip && acct.skipReason === 'brand') {
-          summary.skippedBrand = (summary.skippedBrand || 0) + 1;
-          continue;
-        }
-
-        // CHỈ BÁO ĐƠN VỀ TỪ KHI BẬT AUTO: đơn về TRƯỚC ngày account được bật "Tự động báo"
-        // (autoEnabledAt) -> bỏ qua, KHÔNG gửi & KHÔNG trừ lượt -> tránh nhắn trùng loạt khách
-        // cũ đã xử lý tay. Bỏ qua lọc khi tắt qua AUTO_NOTIFY_ONLY_NEW=false hoặc account chưa
-        // có mốc (autoEnabledAt trống -> giữ hành vi cũ). Đơn không đọc được ngày -> vẫn gửi.
-        if (cfg.onlyNewOrders && acct.source === 'store' && acct.autoEnabledAt) {
-          const orderDay = dayBucket(order.dateInventory);
-          const sinceDay = dayBucket(acct.autoEnabledAt);
-          if (orderDay != null && sinceDay != null && orderDay < sinceDay) {
-            summary.skippedBacklog = (summary.skippedBacklog || 0) + 1;
-            continue;
-          }
-        }
 
         // eslint-disable-next-line no-await-in-loop
         const r = await notifyOne(order, {
@@ -395,13 +385,14 @@ async function runAutoNotify(opts = {}) {
         });
       }
 
-      if (candidates.length || summary.skippedNoContent) {
+      if (toSend.length || summary.skippedNoContent || summary.skippedBacklog) {
         const skipNo = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
+        const skipDelay = summary.skippedDelayed ? `, bỏ qua ${summary.skippedDelayed} đơn đã Delay` : '';
         const skipOff = summary.skippedAutoOff ? `, bỏ qua ${summary.skippedAutoOff} đơn (account tắt auto)` : '';
         const skipNoAcc = summary.skippedNoAccount ? `, bỏ qua ${summary.skippedNoAccount} đơn (không khớp account)` : '';
         const skipBrand = summary.skippedBrand ? `, bỏ qua ${summary.skippedBrand} đơn (NV chưa có Zalo cho brand)` : '';
         const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
-        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipOff}${skipNoAcc}${skipBrand}${skipBack})`);
+        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipDelay}${skipOff}${skipNoAcc}${skipBrand}${skipBack})`);
       }
     });
   } catch (err) {
@@ -515,28 +506,35 @@ function setPrecheckMinutes(value) {
 async function previewAutoNotify() {
   const online = await checkLocalHealth().catch(() => false);
   const orders = await fetchAllNotSent({ fresh: true });
-  let ready = 0;
-  let missingContent = 0;
-  let alreadyHandled = 0;
+  const delayedMap = getDelayedMap();
+  const c = {
+    willSend: 0, no_content: 0, already: 0, max_retries: 0,
+    delayed: 0, no_account: 0, auto_off: 0, brand: 0, backlog: 0,
+  };
   const missingList = [];
-  for (const o of orders) {
-    const rec = getAutoRecord(autoKey(o));
-    if (rec && (rec.status === 'success' || rec.status === 'manual')) { alreadyHandled += 1; continue; }
-    const hasContent = o.noiDungBaoHang && String(o.noiDungBaoHang).trim();
-    if (!hasContent) {
-      missingContent += 1;
-      if (missingList.length < 100) {
-        missingList.push({ customerName: o.customerName || '', orderCode: o.orderCode || o.orderId || null, staff: o.staff || '' });
-      }
-      continue;
+  for (const order of orders) {
+    // eslint-disable-next-line no-await-in-loop
+    const cls = await classifyForAuto(order, delayedMap);
+    if (cls.decision === 'send') { c.willSend += 1; continue; }
+    if (cls.reason && c[cls.reason] != null) c[cls.reason] += 1;
+    if (cls.reason === 'no_content' && missingList.length < 100) {
+      missingList.push({ customerName: order.customerName || '', orderCode: order.orderCode || order.orderId || null, staff: order.staff || '' });
     }
-    ready += 1;
   }
+  // "bỏ qua vì lý do KHÁC ngoài thiếu ND" (tồn cũ, tắt auto, không khớp account, brand, Delay).
+  const skippedOther = c.backlog + c.auto_off + c.no_account + c.brand + c.delayed;
   return {
     scanned: orders.length,
-    ready,
-    missingContent,
-    alreadyHandled,
+    willSend: c.willSend,
+    ready: c.willSend,               // tương thích tên cũ: "ready" = số sẽ gửi thật
+    missingContent: c.no_content,
+    alreadyHandled: c.already + c.max_retries,
+    skippedBacklog: c.backlog,
+    skippedDelayed: c.delayed,
+    skippedAutoOff: c.auto_off,
+    skippedNoAccount: c.no_account,
+    skippedBrand: c.brand,
+    skippedOther,
     missingList,
     runnerOnline: online,
     scheduleTime: state.scheduleTime,
