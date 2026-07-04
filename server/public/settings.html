@@ -135,9 +135,29 @@
           <div class="mode-row">
             <div class="mode-info">
               <div class="mode-title">Tự động báo hàng</div>
-              <div class="mode-desc">Bot tự động gửi báo hàng cho đơn mới về.</div>
+              <div class="mode-desc">Bot tự động gửi báo hàng cho đơn "Chưa báo". Khi đặt <strong>giờ gửi cố định</strong> bên dưới, bot KHÔNG gửi ngay lúc hàng về — cả ngày gom lại, tới đúng giờ mới gửi lần lượt cho các khách.</div>
             </div>
             <button class="badge-status badge-clickable badge-offline" id="autoBadge" title="Bật/tắt tự động báo hàng">Tự động: ...</button>
+          </div>
+          <div class="mode-row" id="scheduleRow">
+            <div class="mode-info" style="flex:1; min-width:0;">
+              <div class="mode-title">Giờ gửi cố định</div>
+              <div class="mode-desc">Đúng giờ này mỗi ngày, bot quét mọi đơn "Chưa báo" đã có nội dung và gửi lần lượt cho khách (giờ Việt Nam). Để <strong>trống</strong> = gửi ngay khi có hàng về (như cũ). Đổi giờ áp dụng ngay, không cần khởi động lại.</div>
+              <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
+                <input class="note-input" id="scheduleInput" type="time" style="max-width:150px;" />
+                <button class="btn accent" id="scheduleSave">Lưu giờ</button>
+                <button class="btn secondary" id="previewBtn" title="Xem trước: đơn nào đã đủ nội dung, đơn nào còn thiếu">Kiểm tra đơn</button>
+                <span class="muted" id="scheduleNext" style="font-size:12px;"></span>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; margin-top:8px; flex-wrap:wrap;">
+                <span class="muted" style="font-size:13px;">Nhắc soạn nội dung trước</span>
+                <input class="note-input" id="precheckInput" type="number" min="0" max="1439" step="5" style="max-width:80px;" />
+                <span class="muted" style="font-size:13px;">phút (0 = tắt) — trước giờ gửi, bot tự quét và cảnh báo đơn còn thiếu nội dung.</span>
+                <span class="muted" id="precheckNext" style="font-size:12px;"></span>
+              </div>
+              <div class="muted" id="precheckResult" style="font-size:13px; margin-top:8px; display:none;"></div>
+              <div class="muted" id="previewResult" style="font-size:13px; margin-top:10px; display:none;"></div>
+            </div>
           </div>
           <div class="mode-row">
             <div class="mode-info">

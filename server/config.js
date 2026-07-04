@@ -132,6 +132,23 @@ module.exports = {
     // về 1 nhân viên: bật auto cho 1 account là chỉ NV đó được gửi, còn lại tự động bỏ. Mặc định
     // false (giữ hành vi cũ: đơn không khớp vẫn gửi bằng account mặc định).
     requireAccount: String(process.env.AUTO_NOTIFY_REQUIRE_ACCOUNT || 'false').toLowerCase() === 'true',
+    // GIỜ GỬI CỐ ĐỊNH (HH:MM, 24h) theo múi giờ `timezone` bên dưới. Khi có giá trị hợp lệ:
+    // bot KHÔNG gửi ngay khi hàng về nữa — cả ngày gom lại, tới đúng giờ này mới quét & gửi 1
+    // lượt cho mọi đơn "Chưa báo". Webhook /api/webhook/arrived chỉ để cập nhật, không gửi.
+    // Để TRỐNG = quay lại hành vi cũ (gửi ngay theo poller mỗi intervalMs). Giá trị lưu trong
+    // DB (app_settings) khi admin đổi trên trang Cài đặt sẽ GHI ĐÈ mặc định env này lúc khởi động.
+    scheduleTime: process.env.AUTO_NOTIFY_SCHEDULE_TIME || '17:00',
+    // Múi giờ dùng để hiểu scheduleTime (IANA tz). Mặc định giờ Việt Nam. Server có thể chạy UTC
+    // nên cần quy đổi để "17:00" là 17h theo giờ VN, không phải theo giờ máy chủ.
+    timezone: process.env.AUTO_NOTIFY_TZ || 'Asia/Ho_Chi_Minh',
+    // Chu kỳ (ms) KIỂM TRA đồng hồ ở chế độ hẹn giờ — chỉ so sánh giờ (rẻ), tới giờ mới gọi
+    // Basso để gửi. 60s là đủ mịn để bắt đúng phút hẹn.
+    scheduleCheckMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SCHEDULE_CHECK_MS || '60000', 10) || 60000, 15000),
+    // NHẮC SOẠN ND trước giờ gửi bao nhiêu PHÚT: trước giờ hẹn `precheckMinutes` phút, bot tự
+    // quét (đọc tươi từ Basso) và cảnh báo số đơn "Chưa báo" còn THIẾU nội dung báo hàng — để
+    // người phụ trách kịp soạn nốt trên Basso trước khi gửi. 0 = tắt nhắc. Mặc định 30 phút.
+    // Admin đổi trên trang Cài đặt sẽ GHI ĐÈ (lưu DB) và áp dụng ngay.
+    precheckMinutes: parseInt(process.env.AUTO_NOTIFY_PRECHECK_MINUTES || '30', 10),
   },
   dbPath: process.env.DB_PATH
     || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),

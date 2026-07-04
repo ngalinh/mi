@@ -481,6 +481,30 @@ app.post('/api/auto-notify/run', async (req, res) => {
   }
 });
 
+// Đặt GIỜ GỬI CỐ ĐỊNH + nhắc soạn ND. body: { time?: 'HH:MM' | '', precheckMinutes?: number }.
+// time trống = gửi ngay theo interval; precheckMinutes=0 = tắt nhắc. Chỉ đổi field được gửi lên.
+app.post('/api/auto-notify/schedule', (req, res) => {
+  try {
+    const { time, precheckMinutes } = req.body || {};
+    if (time !== undefined) autoNotify.setScheduleTime(time);
+    if (precheckMinutes !== undefined) autoNotify.setPrecheckMinutes(precheckMinutes);
+    res.json({ ok: true, ...autoNotify.getStatus() });
+  } catch (err) {
+    if (err.code === 'BAD_TIME' || err.code === 'BAD_PRECHECK') return res.status(400).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Xem trước (không gửi): đếm đơn "Chưa báo" đã đủ ND vs chưa có ND -> nút "Kiểm tra" trên Cài đặt.
+app.get('/api/auto-notify/preview', async (req, res) => {
+  try {
+    const result = await autoNotify.previewAutoNotify();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ---- Webhook: website Basso gọi sang khi CÓ HÀNG VỀ -> gửi ngay (real-time) ----
 // Bảo vệ tùy chọn bằng header `x-webhook-secret` khớp AUTO_NOTIFY_WEBHOOK_SECRET.
 app.post('/api/webhook/arrived', async (req, res) => {
