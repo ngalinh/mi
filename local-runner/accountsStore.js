@@ -54,6 +54,10 @@ function normalize(a) {
     // Mốc ISO khi account được BẬT "Tự động báo" (dùng để bot chỉ gửi đơn về từ đây trở đi,
     // bỏ qua tồn đọng cũ). Trống = chưa từng đóng dấu -> không lọc theo ngày (hành vi cũ).
     autoEnabledAt: a.autoEnabledAt || undefined,
+    // KIỂU BÁO của NV này: 'group' = báo vào NHÓM (bấm tab "Nhóm", chỉ chọn hội thoại nhóm),
+    // 'personal' = nhắn TIN CÁ NHÂN (không bấm tab Nhóm; tìm chat 1-1 trong "Trò chuyện", không
+    // ra thì mở từ "Người dùng Zalo"). Mặc định 'group' để giữ nguyên hành vi cũ.
+    notifyTarget: a.notifyTarget === 'personal' ? 'personal' : 'group',
     proxy: String(a.proxy || '').trim(),
     createdAt: a.createdAt || new Date().toISOString(),
     updatedAt: a.updatedAt || undefined,

@@ -118,6 +118,7 @@ async function notifyOne(order, opts = {}) {
       name: order.customerName,
       message,
       strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
+      notifyTarget: resolved.notifyTarget,     // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
     });
   } catch (err) {
     result = { ok: false, error: err.message };
