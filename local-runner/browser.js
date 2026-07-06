@@ -26,9 +26,23 @@ function withProfileLock(profileName, fn) {
   return run;
 }
 
-function profilePath(profileName) {
+/**
+ * Thư mục userDataDir cho 1 profile. Prefix theo KÊNH để Zalo & Facebook của cùng 1 NV
+ * không đụng nhau:  Zalo -> "salework-<key>" (giữ nguyên như cũ để không mất session đang có),
+ * Facebook -> "fb-<key>". Khi không truyền platform, tự tra từ accountsStore theo key
+ * (mặc định 'zalo' nếu không tìm thấy) — nhờ vậy mọi chỗ chỉ có `key` vẫn ra đúng thư mục.
+ * @param {string} profileName  key của account
+ * @param {('zalo'|'facebook')} [platform]
+ */
+function profilePath(profileName, platform) {
   const safe = String(profileName || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
-  return path.join(config.dataDir, `salework-${safe}`);
+  let plat = platform;
+  if (plat == null) {
+    try { const a = accountsStore.get(profileName); plat = a && a.platform === 'facebook' ? 'facebook' : 'zalo'; }
+    catch { plat = 'zalo'; }
+  }
+  const prefix = plat === 'facebook' ? 'fb' : 'salework';
+  return path.join(config.dataDir, `${prefix}-${safe}`);
 }
 
 /**

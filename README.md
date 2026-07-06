@@ -167,6 +167,30 @@ npm run accounts -- ten_acc   # profile khác
 In ra trạng thái đăng nhập + danh sách tên tài khoản Zalo đang thấy (kèm ảnh
 `screenshots/02a-account-search.png`). Copy đúng tên ở đây để điền vào `ZALO_ACCOUNT_MAP`.
 
+## Báo qua Facebook khi khách không dùng Zalo 🆕
+
+Mặc định mọi đơn báo qua **Zalo**. Với khách không có/không dùng Zalo, có thể **chỉ định báo qua
+Facebook Messenger** thay vì Zalo — cùng một hệ, không phải thao tác riêng.
+
+**Cấu hình tài khoản (gộp Zalo + Facebook):** Cài đặt → **Tài khoản**. Mỗi nhân viên hiển thị trên
+1 dòng và gán được **cả tài khoản Zalo lẫn Facebook** (mỗi tài khoản 1 profile trình duyệt riêng).
+Thêm tài khoản Facebook sẽ mở Chromium trên máy local-runner vào `facebook.com` để **đăng nhập tay
+1 lần** (giống Xeko), session lưu ở `playwright-data/fb-<key>/`.
+
+**Chỉ định khách/kênh báo FB:** Cài đặt → **Báo qua Facebook**:
+- **Theo SĐT khách** — dán danh sách SĐT; đơn của các số này tự chuyển sang gửi Facebook.
+- **Theo nhân viên/kênh** — bật cho NV nào thì *toàn bộ* đơn của NV đó báo qua Facebook.
+
+Khi gửi, hệ chọn **tài khoản Facebook của NV phụ trách** (không khớp NV thì dùng account FB "chung"
+— account không gắn Staff ID), rồi tìm khách trên Messenger **theo SĐT**. Lưu vào Lịch sử báo như
+báo Zalo. Cấu hình định tuyến lưu server (SQLite `app_settings.fb_routing`); API:
+`GET/PUT /api/fb-routing { phones, staffIds }`.
+
+> ⚠️ **Đang hoàn thiện:** phần *tự động thao tác gửi trên Messenger* (tìm hội thoại theo SĐT + soạn
+> & gửi) hiện là **khung stub** trong `local-runner/facebook.js` — chờ map selector element thật của
+> Messenger. Toàn bộ phần còn lại (cấu hình tài khoản, đăng nhập, định tuyến, chọn kênh, ghi log) đã
+> chạy. Khi ráp selector chỉ cần điền 2 hàm `searchAndOpenConversation` + `typeAndSend`.
+
 ## Ráp API website thật (ĐÃ tích hợp Basso Partner API)
 
 Chỉ cần điền `.env` là chạy thật:

@@ -6,6 +6,7 @@ const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getDelayedMap, setDelayed,
+  getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
@@ -206,6 +207,24 @@ function denyStaffEdit(req) {
 }
 
 app.get('/api/staff', (req, res) => res.json({ ok: true, staff: listStaff() }));
+
+// ---- Định tuyến báo qua Facebook (khách/NV cần báo FB thay vì Zalo) ----
+app.get('/api/fb-routing', (req, res) => res.json({ ok: true, ...getFbRouting() }));
+
+/** PUT /api/fb-routing — body { phones?: string[], staffIds?: string[] } (thiếu field nào giữ nguyên field đó). */
+app.put('/api/fb-routing', (req, res) => {
+  const deny = denyStaffEdit(req); // dùng chung quyền quản trị với danh sách nhân viên
+  if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
+  const body = req.body || {};
+  if (body.phones !== undefined && !Array.isArray(body.phones)) return res.status(400).json({ ok: false, error: 'phones phải là mảng' });
+  if (body.staffIds !== undefined && !Array.isArray(body.staffIds)) return res.status(400).json({ ok: false, error: 'staffIds phải là mảng' });
+  try {
+    const saved = setFbRouting({ phones: body.phones, staffIds: body.staffIds });
+    res.json({ ok: true, ...saved });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 function saveStaff(req, res) {
   const deny = denyStaffEdit(req);

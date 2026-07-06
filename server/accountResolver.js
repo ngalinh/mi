@@ -2,6 +2,7 @@
 const config = require('./config');
 const { getAccountsCached } = require('./playwrightProxy');
 const { getArrivedItems } = require('./bassoApi');
+const { isFacebookOrder } = require('./db');
 
 /**
  * Quyết định gửi đơn bằng tài khoản Zalo nào (MÔ HÌNH B: mỗi account 1 profile riêng).
@@ -46,6 +47,7 @@ async function fetchOrderCode(order) {
 /** Đóng gói 1 account store -> shape resolved. */
 function fromStore(acct) {
   return {
+    channel: 'zalo',
     profile: acct.key,
     account: acct.saleworkName || undefined,
     autoEnabled: acct.autoEnabled !== false,
@@ -55,7 +57,45 @@ function fromStore(acct) {
   };
 }
 
+/**
+ * Chọn tài khoản FACEBOOK cho 1 đơn thuộc diện báo qua FB (khách trong danh sách / NV gắn FB).
+ * FB không có brand/dropdown account -> chỉ cần tìm 1 account FB của NV phụ trách.
+ * @returns {object} resolved (channel:'facebook') hoặc skip nếu NV chưa có tài khoản FB.
+ */
+function resolveFacebook(order, accounts) {
+  const fbAccounts = (accounts || []).filter((a) => a.platform === 'facebook');
+  const uid = norm(order && order.userId);
+  const staff = norm(order && order.staff);
+  let mine = uid ? fbAccounts.filter((a) => norm(a.staffId) === uid) : [];
+  if (!mine.length && staff) mine = fbAccounts.filter((a) => norm(a.name) === staff);
+  // Không khớp NV -> chỉ dùng account FB "chung" (không gắn staffId) làm catch-all. KHÔNG lấy
+  // đại account FB của NV khác (tránh gửi nhầm từ trang FB của người khác).
+  if (!mine.length) mine = fbAccounts.filter((a) => !norm(a.staffId));
+  const acct = mine[0];
+  if (!acct) {
+    // Đơn cần báo FB nhưng chưa cấu hình tài khoản Facebook nào cho NV -> bỏ qua có lý do rõ ràng.
+    return { channel: 'facebook', profile: null, account: undefined, autoEnabled: true, source: 'fb', skip: true, skipReason: 'fb_no_account' };
+  }
+  return {
+    channel: 'facebook',
+    profile: acct.key,
+    account: acct.fbName || undefined,
+    autoEnabled: acct.autoEnabled !== false,
+    autoEnabledAt: acct.autoEnabledAt || null,
+    source: 'store-fb',
+  };
+}
+
 async function resolveForOrder(order, opts = {}) {
+  // KÊNH gửi: mặc định Zalo. Chuyển sang Facebook khi ép qua opts.channel='facebook' (nút báo tay),
+  // hoặc đơn thuộc diện định tuyến FB (SĐT khách / NV được gắn FB). Chọn account trước, mọi logic
+  // Zalo bên dưới bỏ qua khi đã ở kênh FB.
+  const wantFb = opts.channel === 'facebook' || (opts.channel !== 'zalo' && isFacebookOrder(order));
+  if (wantFb) {
+    let accounts = [];
+    try { accounts = await getAccountsCached(); } catch { accounts = []; }
+    return resolveFacebook(order, accounts);
+  }
   // 1) Chọn cụ thể từ UI/lệnh. Vẫn tra "Kiểu báo" (notifyTarget) của account được chọn (khớp theo
   // tên dropdown/tên NV) để báo tay chọn account cụ thể KHÔNG bị mất kiểu báo cá nhân -> mặc định 'group'.
   if (opts.account) {
@@ -65,12 +105,12 @@ async function resolveForOrder(order, opts = {}) {
       const found = (accts || []).find((a) => norm(a.saleworkName) === norm(opts.account) || norm(a.name) === norm(opts.account));
       if (found && found.notifyTarget === 'personal') notifyTarget = 'personal';
     } catch { /* không tra được -> giữ 'group' */ }
-    return { profile: opts.profile || 'default', account: opts.account, autoEnabled: true, notifyTarget, source: 'explicit' };
+    return { channel: 'zalo', profile: opts.profile || 'default', account: opts.account, autoEnabled: true, notifyTarget, source: 'explicit' };
   }
 
-  // 2) accountsStore (Hướng B).
+  // 2) accountsStore (Hướng B). Chỉ xét account ZALO ở nhánh này (FB đã xử lý ở trên).
   let accounts = [];
-  try { accounts = await getAccountsCached(); } catch { accounts = []; }
+  try { accounts = (await getAccountsCached()).filter((a) => a.platform !== 'facebook'); } catch { accounts = []; }
   if (Array.isArray(accounts) && accounts.length && order) {
     const uid = norm(order.userId);
     const staff = norm(order.staff);
@@ -103,6 +143,7 @@ async function resolveForOrder(order, opts = {}) {
       // HƯỚNG A: NV chưa có Zalo cho brand này -> bỏ qua (không gửi nhầm brand).
       const first = mine[0];
       return {
+        channel: 'zalo',
         profile: first.key,
         account: undefined,
         autoEnabled: first.autoEnabled !== false,
@@ -118,11 +159,11 @@ async function resolveForOrder(order, opts = {}) {
   // 3) Legacy ZALO_ACCOUNT_MAP — giữ tương thích cấu hình cũ.
   const legacy = config.zaloAccountForOrder(order);
   if (legacy) {
-    return { profile: opts.profile || 'default', account: legacy, autoEnabled: true, source: 'legacy' };
+    return { channel: 'zalo', profile: opts.profile || 'default', account: legacy, autoEnabled: true, source: 'legacy' };
   }
 
   // 4) Mặc định.
-  return { profile: opts.profile || 'default', account: opts.defaultAccount || undefined, autoEnabled: true, source: 'default' };
+  return { channel: 'zalo', profile: opts.profile || 'default', account: opts.defaultAccount || undefined, autoEnabled: true, source: 'default' };
 }
 
 module.exports = { resolveForOrder, brandOfCode };

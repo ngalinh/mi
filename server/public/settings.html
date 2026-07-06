@@ -41,7 +41,8 @@
         <!-- Settings sub-nav -->
         <div class="tabs" id="settingsTabs" style="margin-top:0;">
           <button class="tab active" data-panel="nhanvien">Danh sách nhân viên</button>
-          <button class="tab" data-panel="zalo">Tài khoản Zalo</button>
+          <button class="tab" data-panel="zalo">Tài khoản</button>
+          <button class="tab" data-panel="fbrouting">Báo qua Facebook</button>
           <button class="tab" data-panel="proxy">Proxy</button>
           <button class="tab" data-panel="mode">Chế độ</button>
         </div>
@@ -75,31 +76,71 @@
 
         <div class="card hidden" data-panel-content="zalo" style="margin-top:14px;">
           <div class="card-header">
-            <h1>Tài khoản Zalo</h1>
+            <h1>Tài khoản nhân viên</h1>
             <button class="btn small" id="addZaloBtn">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
               Thêm tài khoản
             </button>
           </div>
-          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Mỗi nhân viên gắn với một tài khoản Zalo riêng (mỗi tài khoản 1 profile trình duyệt). Một nhân viên có thể có <strong>nhiều tài khoản theo brand</strong> (điền cột <strong>Brand</strong> = prefix mã đơn như <code>BS</code>, <code>SU</code>, <code>CO</code>) — đơn sẽ tự gửi bằng tài khoản khớp brand. Thêm tài khoản sẽ mở cửa sổ Chromium trên máy local-runner để đăng nhập + chọn đúng tài khoản, đăng nhập xong thì đóng cửa sổ.</div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Mỗi nhân viên gán được cả <strong>Zalo</strong> lẫn <strong>Facebook</strong> — mặc định báo hàng qua Zalo, khách/kênh thuộc diện "Báo qua Facebook" sẽ gửi bằng tài khoản Facebook của NV. Mỗi tài khoản là 1 profile trình duyệt riêng; NV có thể có nhiều tài khoản Zalo theo <strong>brand</strong> (prefix mã đơn như <code>BS</code>, <code>SU</code>). Thêm/đăng nhập sẽ mở Chromium trên máy local-runner để đăng nhập, xong thì đóng cửa sổ.</div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Nhân viên</th>
-                  <th>Tên Zalo (dropdown)</th>
-                  <th class="center">Brand</th>
-                  <th>SĐT Zalo</th>
-                  <th>Kết nối</th>
-                  <th class="center">Tự động báo</th>
-                  <th class="center">Kiểu báo</th>
-                  <th style="width:230px"></th>
+                  <th style="min-width:150px">Nhân viên</th>
+                  <th>Tài khoản Zalo</th>
+                  <th>Tài khoản Facebook</th>
                 </tr>
               </thead>
               <tbody id="zaloRows">
-                <tr><td colspan="8" class="muted" style="padding:16px;">Đang tải…</td></tr>
+                <tr><td colspan="3" class="muted" style="padding:16px;">Đang tải…</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <div class="card hidden" data-panel-content="fbrouting" style="margin-top:14px;">
+          <div class="card-header">
+            <h1>Báo hàng qua Facebook</h1>
+            <button class="btn small secondary" id="fbRoutingReload">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+              Tải lại
+            </button>
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Mặc định mọi đơn báo qua <strong>Zalo</strong>. Chỉ định riêng ở đây những <strong>khách</strong> (theo SĐT) hoặc <strong>nhân viên/kênh</strong> cần báo qua <strong>Facebook Messenger</strong> thay vì Zalo. Đơn khớp sẽ gửi bằng tài khoản Facebook của NV phụ trách (tìm khách trên Messenger theo SĐT).</div>
+
+          <div class="mode-row" style="align-items:flex-start;">
+            <div class="mode-info" style="flex:1; min-width:0;">
+              <div class="mode-title">Khách báo qua Facebook (theo SĐT)</div>
+              <div class="mode-desc">Danh sách SĐT khách cần báo qua FB, cách nhau bằng dấu phẩy hoặc xuống dòng. Đơn của các số này sẽ tự chuyển sang gửi Facebook.</div>
+              <div class="note-cell" style="margin-top:8px; max-width:640px;">
+                <textarea class="note-input" id="fbPhonesInput" rows="4" placeholder="Vd: 0912345678, 0987654321" style="resize:vertical; font-family:inherit;"></textarea>
+              </div>
+              <div style="margin-top:8px;">
+                <button class="btn accent" id="fbPhonesSave">Lưu danh sách SĐT</button>
+                <span class="muted" id="fbPhonesCount" style="font-size:12px; margin-left:8px;"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mode-row" style="align-items:flex-start;">
+            <div class="mode-info" style="flex:1; min-width:0;">
+              <div class="mode-title">Nhân viên / kênh báo qua Facebook</div>
+              <div class="mode-desc">Bật cho NV nào thì <strong>toàn bộ đơn</strong> của NV đó báo qua Facebook thay vì Zalo.</div>
+              <div class="table-wrap" style="margin-top:10px;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nhân viên (Basso)</th>
+                      <th class="center" style="width:160px">Báo qua Facebook</th>
+                    </tr>
+                  </thead>
+                  <tbody id="fbStaffRows">
+                    <tr><td colspan="2" class="muted" style="padding:16px;">Đang tải…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -244,21 +285,28 @@
     </div>
   </div>
 
-  <!-- Popup thêm / sửa tài khoản Zalo -->
+  <!-- Popup thêm / sửa tài khoản (Zalo hoặc Facebook) -->
   <div class="modal-bg" id="zaloModal">
     <div class="modal" style="width:520px;">
-      <h3 id="zaTitle">Thêm tài khoản Zalo</h3>
+      <h3 id="zaTitle">Thêm tài khoản</h3>
       <p class="muted" id="zaHint">Máy local-runner sẽ mở Chromium để bạn đăng nhập, sau đó đóng cửa sổ — session được lưu lại.</p>
       <div class="form-grid">
-        <div class="field"><label>Mã profile (key)</label><input id="zaKey" type="text" placeholder="vd: nhan_vien_1" /></div>
+        <div class="field full"><label>Nền tảng</label>
+          <select id="zaPlatform">
+            <option value="zalo" selected>Zalo</option>
+            <option value="facebook">Facebook</option>
+          </select>
+        </div>
+        <div class="field"><label>Mã profile (key)</label><input id="zaKey" type="text" placeholder="vd: nhan_vien_1_fb" /></div>
         <div class="field"><label>Tên nhân viên</label><input id="zaName" type="text" placeholder="vd: Nguyễn Văn A" /></div>
-        <div class="field full"><label>Tên trong dropdown</label><input id="zaSalework" type="text" placeholder="Đúng tên hiện trong dropdown zalo.basso.vn" /></div>
-        <div class="field"><label>SĐT Zalo (tuỳ chọn)</label><input id="zaPhone" type="text" placeholder="vd: 0985 093 767" /></div>
+        <div class="field full pf-zalo"><label>Tên trong dropdown (Zalo)</label><input id="zaSalework" type="text" placeholder="Đúng tên hiện trong dropdown zalo.basso.vn" /></div>
+        <div class="field full pf-fb"><label>Nhãn Facebook (tuỳ chọn)</label><input id="zaFbName" type="text" placeholder="vd: FB Nguyễn Văn A" /></div>
+        <div class="field"><label>SĐT (tuỳ chọn)</label><input id="zaPhone" type="text" placeholder="vd: 0985 093 767" /></div>
         <div class="field"><label>Staff ID (tuỳ chọn)</label><input id="zaStaffId" type="text" placeholder="khớp userId đơn" /></div>
-        <div class="field"><label>Brand (prefix mã đơn — tuỳ chọn)</label><input id="zaBrand" type="text" placeholder="vd: BS, SU, CO — để trống = mọi brand" /></div>
+        <div class="field pf-zalo"><label>Brand (prefix mã đơn — tuỳ chọn)</label><input id="zaBrand" type="text" placeholder="vd: BS, SU, CO — để trống = mọi brand" /></div>
         <div class="field full"><label>Proxy (tuỳ chọn)</label><input id="zaProxy" type="text" placeholder="host:port hoặc user:pass@host:port" /></div>
         <div class="field"><label>Tự động báo</label><select id="zaAuto"><option value="true" selected>Bật</option><option value="false">Tắt</option></select></div>
-        <div class="field"><label>Kiểu báo</label><select id="zaTarget"><option value="group" selected>Nhóm</option><option value="personal">Cá nhân</option></select></div>
+        <div class="field pf-zalo"><label>Kiểu báo</label><select id="zaTarget"><option value="group" selected>Nhóm</option><option value="personal">Cá nhân</option></select></div>
       </div>
       <div class="row">
         <button class="btn secondary" id="zaCancel">Huỷ</button>

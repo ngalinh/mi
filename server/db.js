@@ -362,6 +362,51 @@ function setSetting(key, value) {
   return value;
 }
 
+// ---- Định tuyến báo qua Facebook ----
+// Mặc định mọi đơn báo qua Zalo. "Định tuyến FB" chỉ định RIÊNG khách/nhân viên cần báo qua
+// Facebook thay vì Zalo. Lưu 1 bản ghi JSON trong app_settings:
+//   { phones: ["0912..."],   // SĐT khách -> đơn của khách này báo qua FB
+//     staffIds: ["123"] }    // user_id NV/kênh -> mọi đơn của NV này báo qua FB
+const FB_ROUTING_KEY = 'fb_routing';
+const normFbPhone = (p) => String(p == null ? '' : p).replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
+
+/** Đọc cấu hình định tuyến FB (luôn trả { phones:[], staffIds:[] } — không bao giờ null). */
+function getFbRouting() {
+  try {
+    const raw = getSetting(FB_ROUTING_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    return {
+      phones: Array.isArray(obj.phones) ? obj.phones.map((s) => String(s).trim()).filter(Boolean) : [],
+      staffIds: Array.isArray(obj.staffIds) ? obj.staffIds.map((s) => String(s).trim()).filter(Boolean) : [],
+    };
+  } catch {
+    return { phones: [], staffIds: [] };
+  }
+}
+
+/** Ghi cấu hình định tuyến FB (chuẩn hoá + khử trùng). Trả bản đã lưu. */
+function setFbRouting({ phones, staffIds } = {}) {
+  const cur = getFbRouting();
+  const next = {
+    phones: [...new Set((phones !== undefined ? phones : cur.phones).map((s) => String(s).trim()).filter(Boolean))],
+    staffIds: [...new Set((staffIds !== undefined ? staffIds : cur.staffIds).map((s) => String(s).trim()).filter(Boolean))],
+  };
+  setSetting(FB_ROUTING_KEY, JSON.stringify(next));
+  return next;
+}
+
+/** Đơn này có thuộc diện báo qua Facebook không? (SĐT khách trong danh sách, hoặc NV được gắn FB). */
+function isFacebookOrder(order) {
+  if (!order) return false;
+  const { phones, staffIds } = getFbRouting();
+  if (staffIds.length && order.userId != null && staffIds.includes(String(order.userId).trim())) return true;
+  if (phones.length && order.phone) {
+    const t = normFbPhone(order.phone);
+    if (t && phones.some((p) => normFbPhone(p) === t)) return true;
+  }
+  return false;
+}
+
 // ---- Nhân viên (tài khoản dashboard Mi) ----
 const ROLES = ['Admin', 'Quản lý', 'Nhân viên'];
 const STATUSES = ['Hoạt động', 'Tạm khoá'];
@@ -442,5 +487,6 @@ function stats({ q, from, to, staff, sender, account } = {}) {
 module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   getSetting, setSetting,
+  getFbRouting, setFbRouting, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
 };
