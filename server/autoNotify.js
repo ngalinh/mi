@@ -240,6 +240,10 @@ async function dispatchAlert(message, opts = {}) {
       name,
       message,
       strictMatch: false,
+      // Nhắc nội bộ = TIN 1-1 cho người trực -> luôn chế độ cá nhân (tab "Cá nhân" + mục "Tin nhắn"),
+      // không phụ thuộc "Kiểu báo" của account. Trước đây thiếu -> mặc định nhóm -> tìm trong
+      // "Trò chuyện" không ra chat cá nhân của người trực -> KHONG_THAY_HOI_THOAI.
+      notifyTarget: 'personal',
     });
   } catch (e) {
     r = { ok: false, error: e.message };
