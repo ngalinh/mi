@@ -214,6 +214,11 @@ async function listZaloAccounts(page) {
  * Tìm và mở hội thoại khách. GÕ THẲNG SĐT vào ô tìm kiếm trước (SĐT là duy nhất nên khớp
  * chính xác hơn tên — tránh trùng tên / sai dấu), khớp hàng theo SĐT HOẶC tên; nếu gõ SĐT
  * không ra mới tìm theo TÊN. Click bằng toạ độ chuột thật (cách Vue/React ăn đủ pointer events).
+ *
+ * QUAN TRỌNG: CHỈ chọn hàng nằm trong mục "Trò chuyện" (hội thoại NV đã đặt tên sẵn), TUYỆT
+ * ĐỐI bỏ mục "Người dùng Zalo" (kết quả tìm user cá nhân). Vì khi gõ SĐT, panel hiện user cá
+ * nhân TRƯỚC — click vào đó sẽ MỞ CHAT 1-1 MỚI, báo hàng sai chỗ. KH báo hàng luôn đã có sẵn
+ * 1 hội thoại trong "Trò chuyện" nên chỉ tìm trong mục đó là đủ và an toàn.
  * @param {object} p { name, phone, strictMatch }
  */
 async function searchAndClickConversation(page, { name, phone, strictMatch = false }) {
@@ -244,6 +249,34 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
       // Lõi SĐT: bỏ ký tự không phải số + tiền tố 84/0 để khớp dù định dạng khác.
       const phoneCore = (s) => (s || '').replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
+
+      // Toạ độ TOP/BOTTOM của 1 heading theo đúng text (lấy element khớp NHỎ NHẤT = nhãn lá,
+      // không phải wrapper chứa cả danh sách). Dùng để khoanh vùng mục "Trò chuyện".
+      const headingBox = (label) => {
+        const want = label.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+        let box = null;
+        for (const el of document.querySelectorAll('div,span,p,h1,h2,h3,h4,h5,h6,label,small')) {
+          const txt = (el.textContent || '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+          if (txt !== want) continue;
+          const r = el.getBoundingClientRect();
+          if (r.height > 0 && r.width > 0 && (!box || r.height < box.height)) {
+            box = { top: r.top, bottom: r.bottom, height: r.height };
+          }
+        }
+        return box;
+      };
+      // Dải Y hợp lệ = TỪ đáy heading "Trò chuyện" xuống dưới, TỚI heading kế tiếp (nếu có).
+      // "Người dùng Zalo" nằm TRÊN "Trò chuyện" nên tự động bị loại (tâm nằm trên đáy heading).
+      const troChuyen = headingBox('Trò chuyện');
+      const nguoiDung = headingBox('Người dùng Zalo');
+      let secBottom = Infinity;
+      if (troChuyen && nguoiDung && nguoiDung.top > troChuyen.bottom) secBottom = nguoiDung.top;
+      const inTroChuyen = (r) => {
+        if (!troChuyen) return true;              // không thấy heading -> giữ hành vi cũ (best-effort)
+        const cy = r.top + r.height / 2;
+        return cy > troChuyen.bottom && cy < secBottom;
+      };
+
       const terms = (matchTerms || [])
         .map((m) => ({
           text: deacc(m),
@@ -261,6 +294,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       for (const el of els) {
         const r = el.getBoundingClientRect();
         if (!(r.width > 150 && r.height > 30 && r.height < 220 && r.top >= 0)) continue;
+        if (!inTroChuyen(r)) continue;            // loại hàng ngoài mục "Trò chuyện" (vd user cá nhân)
         const raw = el.textContent || '';
         const t = deacc(raw);
         const tPhone = phoneCore(raw);
@@ -304,7 +338,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     // Luồng bot tự động: KHÔNG "lấy đại đơn trên cùng" -> tránh gửi nhầm khách.
     if (!rect) {
       await shot(page, '03b-conversation-notfound');
-      throw new Error(`KHONG_THAY_HOI_THOAI (strict): không khớp chắc chắn hội thoại cho "${phone || name}". Bỏ qua để gửi tay, tránh gửi nhầm.`);
+      throw new Error(`KHONG_THAY_HOI_THOAI (strict): không khớp chắc chắn hội thoại cho "${phone || name}" trong mục "Trò chuyện". Bỏ qua để gửi tay, tránh gửi nhầm.`);
     }
   } else {
     // Luồng gửi tay (có người soát): cho phép fallback lấy kết quả trên cùng.
@@ -312,7 +346,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     if (!rect && name) rect = await attempt(name, null);
     if (!rect) {
       await shot(page, '03b-conversation-notfound');
-      throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${phone || name}". Kiểm tra khách đã từng nhắn Zalo trên tài khoản này chưa.`);
+      throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${phone || name}" trong mục "Trò chuyện". Kiểm tra khách đã có hội thoại (đặt tên sẵn) trên tài khoản này chưa.`);
     }
   }
   // Ưu tiên click bằng element đã đánh dấu (Playwright tự cuộn tới + chờ actionable),
