@@ -617,7 +617,7 @@ async function typeAndSend(page, message, imagePaths = []) {
  *        hội thoại nhóm; 'personal' nhắn chat 1-1 (Trò chuyện trước, fallback "Người dùng Zalo"). Mặc định 'group'.
  * @returns {Promise<{ok:boolean}>}
  */
-async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [], notifyTarget = 'group' }) {
+async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [], notifyTarget = 'group', keepContext = false }) {
   if (!keyword && !name) throw new Error('Thiếu keyword (SĐT) hoặc name (tên khách).');
   if (!message && !(imagePaths && imagePaths.length)) throw new Error('Thiếu nội dung tin nhắn.');
 
@@ -654,7 +654,9 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
     } finally {
       // Gửi xong (kể cả khi lỗi) thì đóng trình duyệt để giải phóng tài nguyên.
       // Tắt bằng CLOSE_AFTER_SEND=false nếu muốn giữ context sống cho lần gửi sau.
-      if (config.closeAfterSend) await closeContext(profile);
+      // keepContext=true: đơn kế TIẾP cùng profile (báo loạt đã gom) -> GIỮ context để tái dùng,
+      // đỡ mở/đóng lặp lại; sẽ đóng ở đơn cuối của profile (keepContext=false).
+      if (config.closeAfterSend && !keepContext) await closeContext(profile);
     }
     return { ok: true };
   });
