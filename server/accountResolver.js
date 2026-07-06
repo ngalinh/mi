@@ -56,9 +56,16 @@ function fromStore(acct) {
 }
 
 async function resolveForOrder(order, opts = {}) {
-  // 1) Chọn cụ thể từ UI/lệnh.
+  // 1) Chọn cụ thể từ UI/lệnh. Vẫn tra "Kiểu báo" (notifyTarget) của account được chọn (khớp theo
+  // tên dropdown/tên NV) để báo tay chọn account cụ thể KHÔNG bị mất kiểu báo cá nhân -> mặc định 'group'.
   if (opts.account) {
-    return { profile: opts.profile || 'default', account: opts.account, autoEnabled: true, source: 'explicit' };
+    let notifyTarget = 'group';
+    try {
+      const accts = await getAccountsCached();
+      const found = (accts || []).find((a) => norm(a.saleworkName) === norm(opts.account) || norm(a.name) === norm(opts.account));
+      if (found && found.notifyTarget === 'personal') notifyTarget = 'personal';
+    } catch { /* không tra được -> giữ 'group' */ }
+    return { profile: opts.profile || 'default', account: opts.account, autoEnabled: true, notifyTarget, source: 'explicit' };
   }
 
   // 2) accountsStore (Hướng B).
