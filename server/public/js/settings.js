@@ -383,6 +383,74 @@
     el.textContent = 'Tự động: ' + mode;
     el.className = 'badge-status badge-clickable ' + (autoEnabled ? 'badge-online' : 'badge-offline');
     renderSchedule(a);
+    renderAlert(a);
+  }
+
+  // ---- Nhắc ra Zalo (nội bộ) ----
+  let alertEnabled = false;
+  function renderAlert(a) {
+    if (!a) return;
+    alertEnabled = !!a.alertEnabled;
+    const badge = $('alertBadge');
+    if (badge) {
+      badge.textContent = 'Nhắc Zalo: ' + (alertEnabled ? 'Bật' : 'Tắt');
+      badge.className = 'badge-status badge-clickable ' + (alertEnabled ? 'badge-online' : 'badge-offline');
+    }
+    const setIf = (id, val) => { const el = $(id); if (el && document.activeElement !== el) el.value = val || ''; };
+    setIf('alertAccount', a.alertAccount);
+    setIf('alertPhone', a.alertPhone);
+    setIf('alertName', a.alertName);
+    const st = $('alertStatus');
+    if (st) {
+      if (a.lastAlert && a.lastAlert.at) {
+        const t = new Date(a.lastAlert.at).toLocaleString('vi-VN');
+        st.innerHTML = a.lastAlert.ok
+          ? `<span style="color:var(--primary)">✓ Đã gửi nhắc lúc ${App.esc(t)}${a.lastAlert.phone ? ` tới ${App.esc(a.lastAlert.phone)}` : ''}</span>`
+          : `<span style="color:var(--danger,#d33)">✗ Nhắc lỗi lúc ${App.esc(t)}: ${App.esc(a.lastAlert.error || '')}</span>`;
+      } else {
+        st.textContent = '';
+      }
+    }
+  }
+
+  async function toggleAlert() {
+    const next = !alertEnabled;
+    if (next && !($('alertPhone').value || '').trim()) {
+      App.toast('❌ Nhập SĐT nhận trước khi bật', 5000); return;
+    }
+    try {
+      const a = await App.api('/api/auto-notify/alert', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next, account: $('alertAccount').value.trim(), phone: $('alertPhone').value.trim(), name: $('alertName').value.trim() }),
+      });
+      renderAlert(a);
+      App.toast(next ? '✅ Đã bật nhắc ra Zalo' : 'Đã tắt nhắc ra Zalo');
+    } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+  }
+
+  async function saveAlert() {
+    try {
+      const a = await App.api('/api/auto-notify/alert', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: $('alertAccount').value.trim(), phone: $('alertPhone').value.trim(), name: $('alertName').value.trim() }),
+      });
+      renderAlert(a);
+      App.toast('✅ Đã lưu cấu hình nhắc Zalo');
+    } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+  }
+
+  async function testAlert() {
+    const btn = $('alertTest');
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi…';
+    try {
+      const r = await App.api('/api/auto-notify/alert-test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: $('alertAccount').value.trim(), phone: $('alertPhone').value.trim(), name: $('alertName').value.trim() }),
+      });
+      App.toast(r.ok ? '✅ Đã gửi tin thử — kiểm tra Zalo của bạn' : `❌ Gửi thử lỗi: ${r.error || 'không rõ'}`, 7000);
+    } catch (e) { App.toast(`❌ ${e.message}`, 7000); }
+    finally { btn.disabled = false; btn.innerHTML = label; }
   }
 
   // Đổ giờ gửi + trạng thái lượt kế vào ô nhập (không đè khi admin đang gõ).
@@ -611,6 +679,9 @@
   $('scheduleInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });
   $('precheckInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });
   $('previewBtn').addEventListener('click', runPreview);
+  $('alertBadge').addEventListener('click', toggleAlert);
+  $('alertSave').addEventListener('click', saveAlert);
+  $('alertTest').addEventListener('click', testAlert);
   $('bassoBtn').addEventListener('click', pingBasso);
   $('testModeBadge').addEventListener('click', toggleTestMode);
   $('testPhonesSave').addEventListener('click', saveTestPhones);
