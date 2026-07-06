@@ -122,6 +122,7 @@ async function notifyOne(order, opts = {}) {
       message,
       strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
       notifyTarget: resolved.notifyTarget,     // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
+      keepContext: opts.keepContext === true,  // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
     });
   } catch (err) {
     result = { ok: false, error: err.message };
@@ -154,6 +155,34 @@ async function notifyOne(order, opts = {}) {
 }
 
 /**
+ * Gom đơn theo PROFILE (tài khoản Zalo) để báo loạt chạy LIÊN TIẾP cùng 1 profile thay vì xen kẽ
+ * NV -> đỡ mở/đóng trình duyệt lặp lại (rõ nhất khi CLOSE_AFTER_SEND=false: profile được tái dùng
+ * giữa các đơn liền kề). Thứ tự profile theo lần XUẤT HIỆN ĐẦU TIÊN; giữ nguyên thứ tự đơn trong
+ * cùng profile (sort ổn định) -> không xáo trộn. Client đã chọn account cụ thể (opts.account) hoặc
+ * ít hơn 2 đơn -> trả nguyên. Có resolve trước để lấy profile (getArrivedItems/getAccountsCached đều
+ * có cache nên lần notifyOne resolve lại gần như không tốn thêm).
+ */
+async function groupOrdersByProfile(orders, opts = {}) {
+  const list = Array.isArray(orders) ? orders : [];
+  if (opts.account || list.length < 2) return list.map((order) => ({ order, profileKey: null }));
+  const tagged = [];
+  for (let i = 0; i < list.length; i += 1) {
+    let key = 'default';
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const r = await resolveForOrder(list[i], { defaultAccount: opts.defaultAccount, profile: opts.profile });
+      key = r.profile || 'default';
+    } catch { /* lỗi resolve -> gom vào 'default' */ }
+    tagged.push({ order: list[i], key, i });
+  }
+  const rank = new Map();
+  for (const t of tagged) if (!rank.has(t.key)) rank.set(t.key, rank.size);
+  return tagged
+    .sort((a, b) => (rank.get(a.key) - rank.get(b.key)) || (a.i - b.i))
+    .map((t) => ({ order: t.order, profileKey: t.key }));
+}
+
+/**
  * Báo hàng cho danh sách ĐƠN (object đầy đủ field do client gửi lên — đã có sẵn trên
  * dashboard). Không phải tra lại theo id nên không lệ thuộc phân trang/bộ lọc.
  * Bọc trong withLock để KHÔNG chạy chồng với luồng tự động (R6) -> tránh gửi trùng.
@@ -162,16 +191,22 @@ async function notifyOne(order, opts = {}) {
  */
 async function notifyOrders(orders, opts = {}) {
   return withLock(async () => {
+    // Gom theo profile trước -> gửi tuần tự HẾT đơn của 1 tài khoản rồi mới sang tài khoản kế.
+    const ordered = await groupOrdersByProfile(orders, opts);
     const results = [];
-    for (const order of orders) {
+    for (let idx = 0; idx < ordered.length; idx += 1) {
+      const { order, profileKey } = ordered[idx];
+      // Giữ context nếu đơn KẾ TIẾP cùng profile (đã gom) -> tái dùng browser, đỡ mở/đóng lặp lại.
+      const keepContext = profileKey != null && idx + 1 < ordered.length
+        && ordered[idx + 1].profileKey === profileKey;
       // eslint-disable-next-line no-await-in-loop
-      const r = await notifyOne(order, opts);
+      const r = await notifyOne(order, { ...opts, keepContext });
       // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không
       // cập nhật web). Không đè lên 'success' của bot để giữ đúng badge.
       if (r.ok) {
-        const key = autoKey(order);
-        const ex = getAutoRecord(key);
-        if (!ex || ex.status !== 'success') recordAutoNotified(key, 'manual', ex ? ex.attempts : 0);
+        const dkey = autoKey(order);
+        const ex = getAutoRecord(dkey);
+        if (!ex || ex.status !== 'success') recordAutoNotified(dkey, 'manual', ex ? ex.attempts : 0);
       }
       results.push({
         orderId: order.id,
