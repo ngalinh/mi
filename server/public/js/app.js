@@ -79,9 +79,77 @@ const App = {
     return Number(n).toLocaleString('vi-VN') + '₫';
   },
 
+  // ------------------------------------------------------------------
+  // Điều hướng mobile: sidebar ẩn, chỉ hiện khi bấm nút menu (drawer).
+  // Chèn nút hamburger vào topbar + lớp phủ nền, và biến rail icon thành
+  // drawer trượt từ trái trên màn hình hẹp. Dùng chung cho mọi trang.
+  // ------------------------------------------------------------------
+  initMobileNav() {
+    if (this._mobileNavInit) return;
+    this._mobileNavInit = true;
+    const app = document.querySelector('.app');
+    const sidebar = document.querySelector('.sidebar');
+    const topbar = document.querySelector('.topbar');
+    if (!app || !sidebar || !topbar) return;
+
+    // Nút mở menu (chỉ hiện trên mobile qua CSS) — đặt đầu topbar.
+    const toggle = document.createElement('button');
+    toggle.className = 'nav-toggle';
+    toggle.type = 'button';
+    toggle.setAttribute('aria-label', 'Mở menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>';
+    topbar.insertBefore(toggle, topbar.firstChild);
+
+    // Lớp phủ nền mờ khi mở drawer.
+    const backdrop = document.createElement('div');
+    backdrop.className = 'nav-backdrop';
+    app.appendChild(backdrop);
+
+    // Gắn nhãn chữ cho từng mục điều hướng (đọc từ title) để drawer dễ đọc.
+    sidebar.querySelectorAll('a.nav').forEach((a) => {
+      if (a.querySelector('.nav-label')) return;
+      const label = a.getAttribute('title');
+      if (!label) return;
+      const span = document.createElement('span');
+      span.className = 'nav-label';
+      span.textContent = label;
+      a.appendChild(span);
+    });
+
+    // Nhãn tên người dùng cạnh avatar (chỉ hiện trong drawer). Cập nhật ở applyIdentity.
+    const avatar = sidebar.querySelector('.avatar');
+    if (avatar && !sidebar.querySelector('.avatar-name')) {
+      const name = document.createElement('span');
+      name.className = 'nav-label avatar-name';
+      name.textContent = 'Tài khoản';
+      avatar.insertAdjacentElement('afterend', name);
+    }
+
+    const open = () => {
+      app.classList.add('nav-open');
+      toggle.setAttribute('aria-expanded', 'true');
+      document.body.classList.add('nav-lock');
+    };
+    const close = () => {
+      app.classList.remove('nav-open');
+      toggle.setAttribute('aria-expanded', 'false');
+      document.body.classList.remove('nav-lock');
+    };
+    toggle.addEventListener('click', () => (app.classList.contains('nav-open') ? close() : open()));
+    backdrop.addEventListener('click', close);
+    // Bấm 1 mục điều hướng thì đóng drawer.
+    sidebar.querySelectorAll('a.nav').forEach((a) => a.addEventListener('click', close));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    // Chuyển sang màn rộng thì luôn đóng để không kẹt trạng thái mở.
+    window.addEventListener('resize', () => { if (window.innerWidth > 900) close(); });
+  },
+
   // Lấy thông tin người đang đăng nhập từ gateway (header x-user-email) và hiển thị ở avatar.
   // Fallback: nếu gateway không forward email, đọc từ localStorage (user tự nhập).
   async initUserAvatar() {
+    if (this._avatarInit) return;
+    this._avatarInit = true;
     const el = document.getElementById('userAvatar') || document.querySelector('.sidebar .avatar');
     if (!el) return;
     el.style.cursor = 'pointer';
@@ -96,6 +164,8 @@ const App = {
         : name.slice(0, 2).toUpperCase();
       el.innerHTML = `<span style="font-size:14px;font-weight:700;line-height:1;">${App.esc(initials)}</span>`;
       el.title = name !== email ? `${name} — ${email}` : email;
+      const nameLabel = document.querySelector('.sidebar .avatar-name');
+      if (nameLabel) nameLabel.textContent = name || email;
     }
 
     let email = '', name = '';
@@ -174,4 +244,7 @@ const App = {
   },
 };
 
-document.addEventListener('DOMContentLoaded', () => App.initUserAvatar());
+document.addEventListener('DOMContentLoaded', () => {
+  App.initMobileNav();
+  App.initUserAvatar();
+});
