@@ -3,7 +3,7 @@ const config = require('./config');
 const { getOrders } = require('./bassoApi');
 const { notifyOne } = require('./notifyService');
 const { getAutoRecord, recordAutoNotified, autoKey, getSetting, setSetting, getDelayedMap } = require('./db');
-const { checkLocalHealth } = require('./playwrightProxy');
+const { checkLocalHealth, sendBaoHang, getAccountsCached } = require('./playwrightProxy');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
@@ -29,6 +29,16 @@ const cfg = config.autoNotify;
 const SCHEDULE_SETTING_KEY = 'autoNotify.scheduleTime';
 // Khoá lưu "nhắc soạn ND trước bao nhiêu phút" (số nguyên phút; 0 = tắt nhắc).
 const PRECHECK_SETTING_KEY = 'autoNotify.precheckMinutes';
+// Khoá lưu cấu hình "nhắc ra Zalo (nội bộ)".
+const ALERT_ENABLED_KEY = 'autoNotify.alertEnabled';
+const ALERT_ACCOUNT_KEY = 'autoNotify.alertAccount';
+const ALERT_PHONE_KEY = 'autoNotify.alertPhone';
+const ALERT_NAME_KEY = 'autoNotify.alertName';
+
+/** Đọc 1 thiết lập, nuốt lỗi -> null. */
+function safeGet(key) {
+  try { return getSetting(key); } catch (_) { return null; }
+}
 
 /** Chuẩn hoá số phút nhắc-trước: số nguyên 0..1439, ngoài range/không parse -> null. Trống -> null. */
 function normalizeMinutes(value) {
@@ -104,6 +114,21 @@ function initialPrecheckMinutes() {
   return envN == null ? 30 : envN;
 }
 
+// Cấu hình "nhắc ra Zalo" lúc khởi động: DB (admin lưu) ghi đè env.
+function initialAlert() {
+  const a = cfg.alert || {};
+  const savedEnabled = safeGet(ALERT_ENABLED_KEY);
+  const savedAccount = safeGet(ALERT_ACCOUNT_KEY);
+  const savedPhone = safeGet(ALERT_PHONE_KEY);
+  const savedName = safeGet(ALERT_NAME_KEY);
+  return {
+    enabled: savedEnabled != null ? savedEnabled === 'true' : !!a.enabled,
+    account: savedAccount != null ? savedAccount : (a.account || ''),
+    phone: savedPhone != null ? savedPhone : (a.phone || ''),
+    name: savedName != null ? savedName : (a.name || 'Admin'),
+  };
+}
+
 // Trạng thái runtime (dùng cho /api/auto-notify + dashboard)
 const state = {
   enabled: cfg.enabled,
@@ -116,6 +141,9 @@ const state = {
   precheckMinutes: initialPrecheckMinutes(), // nhắc soạn ND trước giờ gửi (phút); 0 = tắt
   lastPrecheckDay: null,               // YYYY-MM-DD của lần nhắc gần nhất (1 lần/ngày)
   lastPrecheck: null,                  // kết quả nhắc gần nhất (để hiện trên Cài đặt)
+  // Nhắc ra Zalo (nội bộ)
+  ...(() => { const a = initialAlert(); return { alertEnabled: a.enabled, alertAccount: a.account, alertPhone: a.phone, alertName: a.name }; })(),
+  lastAlert: null,                     // kết quả gửi nhắc Zalo gần nhất
 };
 
 let timer = null;
@@ -153,6 +181,9 @@ function scheduleTick() {
         if (r && r.skipped) {
           state.lastScheduledDay = null;
           console.warn(`[auto-notify] lượt ${state.scheduleTime} bị bỏ (${r.reason || 'không rõ'}) — sẽ thử lại ở lần kiểm tra kế (${Math.round(cfg.scheduleCheckMs / 1000)}s).`);
+        } else if (r && state.alertEnabled) {
+          // Gửi xong -> nhắn tổng kết ra Zalo cho người trực.
+          dispatchAlert(buildSummaryAlertMessage(r)).catch(() => {});
         }
       })
       .catch(() => { state.lastScheduledDay = null; });
@@ -174,9 +205,83 @@ async function runPrecheck(day) {
     } else {
       console.log(`[auto-notify] NHẮC (trước giờ gửi ${state.scheduleTime}): ${p.ready} đơn đã đủ ND, không đơn nào thiếu ✅`);
     }
+    // Nhắc ra Zalo (nếu bật): bắn tin cho người trực để biết mà không cần mở mi.
+    if (state.alertEnabled) {
+      dispatchAlert(buildPrecheckAlertMessage(p)).catch(() => {});
+    }
   } catch (e) {
     console.warn('[auto-notify] nhắc soạn ND lỗi:', e.message);
   }
+}
+
+/**
+ * NHẮC RA ZALO (nội bộ) — bắn 1 tin cho người trực (state.alertPhone) bằng account state.alertAccount
+ * qua chính local-runner. KHÔNG đi qua notifyOne (không ghi Lịch sử báo, không cập nhật web) — chỉ
+ * là tin nội bộ. Trả { ok, error }. Bỏ qua nếu thiếu SĐT/nội dung hoặc runner offline.
+ */
+async function dispatchAlert(message, opts = {}) {
+  const phone = String((opts.phone != null ? opts.phone : state.alertPhone) || '').trim();
+  const account = opts.account != null ? opts.account : state.alertAccount;
+  const name = (opts.name != null ? opts.name : state.alertName) || 'Admin';
+  if (!phone) return { ok: false, error: 'Chưa cấu hình SĐT nhận nhắc' };
+  if (!message) return { ok: false, error: 'Thiếu nội dung' };
+  const online = await checkLocalHealth().catch(() => false);
+  if (!online) {
+    state.lastAlert = { at: new Date().toISOString(), ok: false, error: 'local-runner offline', phone };
+    return { ok: false, error: 'local-runner offline' };
+  }
+  const resolved = await resolveAlertAccount(account);
+  let r;
+  try {
+    r = await sendBaoHang({
+      profile: resolved.profile || 'default',
+      account: resolved.account,
+      keyword: phone,          // tìm hội thoại theo SĐT người nhận
+      name,
+      message,
+      strictMatch: false,
+    });
+  } catch (e) {
+    r = { ok: false, error: e.message };
+  }
+  state.lastAlert = { at: new Date().toISOString(), ok: !!r.ok, error: r.error || null, phone };
+  if (!r.ok) console.warn(`[auto-notify] gửi nhắc Zalo thất bại (${phone}): ${r.error}`);
+  return r;
+}
+
+/** Tìm account Zalo để gửi nhắc theo tên (saleworkName/name/key). Không thấy -> dùng tên như account. */
+async function resolveAlertAccount(nameOrKey) {
+  const target = String(nameOrKey || '').trim().toLowerCase();
+  if (!target) return { profile: 'default', account: undefined };
+  let accounts = [];
+  try { accounts = await getAccountsCached(); } catch (_) { accounts = []; }
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const a = (accounts || []).find((x) => norm(x.saleworkName) === target || norm(x.name) === target || norm(x.key) === target);
+  if (a) return { profile: a.key, account: a.saleworkName || undefined };
+  return { profile: 'default', account: nameOrKey };
+}
+
+/** Soạn tin NHẮC (trước giờ gửi) gửi ra Zalo. */
+function buildPrecheckAlertMessage(p) {
+  const lines = [`🔔 [mi] Nhắc soạn ND — trước giờ gửi ${state.scheduleTime}`,
+    `Sẽ gửi: ${p.willSend} đơn · Thiếu ND: ${p.missingContent}`];
+  if (p.missingContent > 0) {
+    const names = (p.missingList || []).slice(0, 15)
+      .map((o) => `- ${o.customerName || o.orderCode || '?'}${o.staff ? ` (${o.staff})` : ''}`).join('\n');
+    lines.push(`Đơn CHƯA có ND (sẽ bị bỏ qua nếu không soạn kịp):\n${names}${(p.missingList || []).length > 15 ? '\n…' : ''}`);
+  } else {
+    lines.push('✅ Mọi đơn sẽ gửi đều đã có nội dung.');
+  }
+  return lines.join('\n');
+}
+
+/** Soạn tin TỔNG KẾT (sau khi gửi) gửi ra Zalo. */
+function buildSummaryAlertMessage(r) {
+  const other = (r.skippedBacklog || 0) + (r.skippedDelayed || 0) + (r.skippedAutoOff || 0)
+    + (r.skippedNoAccount || 0) + (r.skippedBrand || 0);
+  return [`✅ [mi] Đã chạy gửi lúc ${state.scheduleTime}`,
+    `Gửi thành công: ${r.sent || 0} · Lỗi: ${r.failed || 0}`,
+    `Thiếu ND (bỏ qua): ${r.skippedNoContent || 0} · Bỏ qua khác: ${other}`].join('\n');
 }
 
 /** Tóm tắt tình trạng hẹn giờ cho dashboard/Cài đặt. */
@@ -551,6 +656,43 @@ async function previewAutoNotify() {
   };
 }
 
+/**
+ * Đặt cấu hình NHẮC RA ZALO (nội bộ). Chỉ đổi field được gửi lên. Lưu bền vào DB, áp dụng ngay.
+ * @param {{enabled?:boolean, account?:string, phone?:string, name?:string}} patch
+ */
+function setAlertConfig(patch = {}) {
+  if (patch.enabled !== undefined) {
+    state.alertEnabled = !!patch.enabled;
+    try { setSetting(ALERT_ENABLED_KEY, state.alertEnabled ? 'true' : 'false'); } catch (_) { /* ignore */ }
+  }
+  if (patch.account !== undefined) {
+    state.alertAccount = String(patch.account || '').trim();
+    try { setSetting(ALERT_ACCOUNT_KEY, state.alertAccount); } catch (_) { /* ignore */ }
+  }
+  if (patch.phone !== undefined) {
+    state.alertPhone = String(patch.phone || '').trim();
+    try { setSetting(ALERT_PHONE_KEY, state.alertPhone); } catch (_) { /* ignore */ }
+  }
+  if (patch.name !== undefined) {
+    state.alertName = String(patch.name || '').trim();
+    try { setSetting(ALERT_NAME_KEY, state.alertName); } catch (_) { /* ignore */ }
+  }
+  console.log(`[auto-notify] cấu hình nhắc Zalo: ${state.alertEnabled ? 'BẬT' : 'TẮT'} · account=${state.alertAccount || '(trống)'} · SĐT=${state.alertPhone || '(trống)'}`);
+  return getStatus();
+}
+
+/**
+ * GỬI THỬ 1 tin nhắc ra Zalo NGAY (nút "Gửi thử" trên Cài đặt) để kiểm tra kênh. Dùng giá trị
+ * truyền lên (nếu có) hoặc cấu hình đã lưu. Không phụ thuộc trạng thái bật/tắt.
+ */
+async function sendAlertTest(patch = {}) {
+  const account = patch.account != null ? patch.account : state.alertAccount;
+  const phone = patch.phone != null ? patch.phone : state.alertPhone;
+  const name = patch.name != null ? patch.name : state.alertName;
+  const msg = `🔔 [mi] Tin thử — nếu bạn nhận được tin này thì kênh nhắc ra Zalo đã hoạt động. Giờ gửi cố định: ${state.scheduleTime || '(chưa đặt)'}.`;
+  return dispatchAlert(msg, { account, phone, name });
+}
+
 function getStatus() {
   return {
     enabled: state.enabled,
@@ -565,7 +707,16 @@ function getStatus() {
     precheckMinutes: state.precheckMinutes,
     lastPrecheck: state.lastPrecheck,
     schedule: scheduleInfo(),
+    // Nhắc ra Zalo (nội bộ)
+    alertEnabled: state.alertEnabled,
+    alertAccount: state.alertAccount,
+    alertPhone: state.alertPhone,
+    alertName: state.alertName,
+    lastAlert: state.lastAlert,
   };
 }
 
-module.exports = { runAutoNotify, startAutoNotify, setEnabled, setScheduleTime, setPrecheckMinutes, previewAutoNotify, getStatus, autoKey };
+module.exports = {
+  runAutoNotify, startAutoNotify, setEnabled, setScheduleTime, setPrecheckMinutes,
+  setAlertConfig, sendAlertTest, previewAutoNotify, getStatus, autoKey,
+};

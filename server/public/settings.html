@@ -159,6 +159,21 @@
               <div class="muted" id="previewResult" style="font-size:13px; margin-top:10px; display:none;"></div>
             </div>
           </div>
+          <div class="mode-row" id="alertRow">
+            <div class="mode-info" style="flex:1; min-width:0;">
+              <div class="mode-title">Nhắc ra Zalo (nội bộ)</div>
+              <div class="mode-desc">Tới giờ nhắc và sau khi gửi xong, bot tự nhắn 1 tin Zalo cho người trực để biết mà <strong>không cần mở mi</strong>. Gửi bằng 1 tài khoản Zalo đã đăng nhập (vd <strong>Bụt Ai</strong>) tới SĐT của bạn.</div>
+              <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center;">
+                <input class="note-input" id="alertAccount" placeholder="Tài khoản gửi (vd Bụt Ai)" style="max-width:190px;" />
+                <input class="note-input" id="alertPhone" placeholder="SĐT nhận (của bạn)" style="max-width:170px;" />
+                <input class="note-input" id="alertName" placeholder="Tên người nhận (tuỳ chọn)" style="max-width:170px;" />
+                <button class="btn accent" id="alertSave">Lưu</button>
+                <button class="btn secondary" id="alertTest">Gửi thử</button>
+              </div>
+              <div class="muted" id="alertStatus" style="font-size:12px; margin-top:6px;"></div>
+            </div>
+            <button class="badge-status badge-clickable badge-offline" id="alertBadge" title="Bật/tắt nhắc ra Zalo">Nhắc Zalo: ...</button>
+          </div>
           <div class="mode-row">
             <div class="mode-info">
               <div class="mode-title">Chặn an toàn khi test (TEST_MODE)</div>

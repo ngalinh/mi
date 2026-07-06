@@ -149,6 +149,15 @@ module.exports = {
     // người phụ trách kịp soạn nốt trên Basso trước khi gửi. 0 = tắt nhắc. Mặc định 30 phút.
     // Admin đổi trên trang Cài đặt sẽ GHI ĐÈ (lưu DB) và áp dụng ngay.
     precheckMinutes: parseInt(process.env.AUTO_NOTIFY_PRECHECK_MINUTES || '30', 10),
+    // NHẮC RA ZALO (nội bộ): tới giờ nhắc (16:30) và sau khi gửi (17:00), tự nhắn 1 tin Zalo cho
+    // người trực để biết mà KHÔNG cần mở mi. Gửi bằng 1 account Zalo đã đăng nhập trên runner.
+    // Tất cả chỉnh được trên trang Cài đặt (lưu DB, ghi đè env). enabled mặc định tắt.
+    alert: {
+      enabled: String(process.env.AUTO_NOTIFY_ALERT || 'false').toLowerCase() === 'true',
+      account: process.env.AUTO_NOTIFY_ALERT_ACCOUNT || '', // tên account Zalo gửi (vd "Bụt Ai")
+      phone: process.env.AUTO_NOTIFY_ALERT_PHONE || '',     // SĐT nhận (của người trực)
+      name: process.env.AUTO_NOTIFY_ALERT_NAME || 'Admin',  // tên hiển thị người nhận
+    },
   },
   dbPath: process.env.DB_PATH
     || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),

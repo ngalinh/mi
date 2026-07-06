@@ -505,6 +505,28 @@ app.get('/api/auto-notify/preview', async (req, res) => {
   }
 });
 
+// Cấu hình NHẮC RA ZALO (nội bộ). body: { enabled?, account?, phone?, name? } — chỉ đổi field gửi lên.
+app.post('/api/auto-notify/alert', (req, res) => {
+  try {
+    const { enabled, account, phone, name } = req.body || {};
+    const status = autoNotify.setAlertConfig({ enabled, account, phone, name });
+    res.json({ ok: true, ...status });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GỬI THỬ 1 tin nhắc ra Zalo ngay (nút "Gửi thử"). body: { account?, phone?, name? } (tuỳ chọn).
+app.post('/api/auto-notify/alert-test', async (req, res) => {
+  try {
+    const { account, phone, name } = req.body || {};
+    const r = await autoNotify.sendAlertTest({ account, phone, name });
+    res.json({ ok: !!r.ok, ...r });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // ---- Webhook: website Basso gọi sang khi CÓ HÀNG VỀ -> gửi ngay (real-time) ----
 // Bảo vệ tùy chọn bằng header `x-webhook-secret` khớp AUTO_NOTIFY_WEBHOOK_SECRET.
 app.post('/api/webhook/arrived', async (req, res) => {
