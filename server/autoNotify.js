@@ -210,13 +210,16 @@ function isTransientError(msg) {
 }
 
 /**
- * Quy 1 mốc thời gian về "số ngày" (bucket theo UTC) để so sánh ngày, không lệ thuộc giờ:
- *   - unix giây (date_inventory của Basso, vd 1780531200) hoặc unix ms
- *   - chuỗi ISO (autoEnabledAt)
- * Trả null nếu không parse được. date_inventory là nửa đêm UTC của ngày hàng về nên so bucket
- * ngày là chuẩn: đơn về CÙNG ngày bật auto vẫn được gửi, chỉ đơn về TRƯỚC ngày đó bị bỏ.
+ * Quy 1 mốc thời gian về "ngày lịch" theo múi giờ cfg.timezone (VN) để so sánh, KHÔNG lệ thuộc
+ * giờ máy chủ. Nhận: unix giây (date_inventory của Basso, vd 1780531200), unix ms, hoặc chuỗi
+ * ISO (autoEnabledAt). Trả 'YYYY-MM-DD' (so sánh chuỗi = so ngày), null nếu không parse được.
+ *
+ * PHẢI bucket theo VN, KHÔNG theo UTC: date_inventory là nửa đêm GIỜ VN (vd 06/07 00:00 VN =
+ * 05/07 17:00 UTC). Nếu chia ngày theo UTC (floor ms/86400000) thì đơn "về hôm nay" rơi vào
+ * bucket "hôm qua", còn autoEnabledAt (bấm Bật ban ngày VN) ở bucket "hôm nay" -> đơn hôm nay
+ * bị coi là "tồn cũ" và bỏ HẾT. So theo ngày VN thì "đơn về CÙNG ngày bật auto" mới gửi đúng.
  */
-function dayBucket(value) {
+function localDayKey(value) {
   if (value == null || value === '') return null;
   let ms;
   if (typeof value === 'number' || /^\d+$/.test(String(value))) {
@@ -228,7 +231,7 @@ function dayBucket(value) {
     if (Number.isNaN(t)) return null;
     ms = t;
   }
-  return Math.floor(ms / 86400000);
+  return localParts(new Date(ms)).day; // 'YYYY-MM-DD' theo cfg.timezone (VN)
 }
 
 /**
@@ -261,8 +264,9 @@ async function classifyForAuto(order, delayedMap) {
   // tránh nhắn trùng loạt khách cũ đã xử lý tay. Tắt qua AUTO_NOTIFY_ONLY_NEW=false. So theo NGÀY
   // nên đơn về CÙNG ngày bật auto vẫn gửi. Chỉ áp dụng cho account khớp NV có mốc autoEnabledAt.
   if (cfg.onlyNewOrders && acct.source === 'store' && acct.autoEnabledAt) {
-    const orderDay = dayBucket(order.dateInventory);
-    const sinceDay = dayBucket(acct.autoEnabledAt);
+    const orderDay = localDayKey(order.dateInventory);
+    const sinceDay = localDayKey(acct.autoEnabledAt);
+    // So sánh chuỗi 'YYYY-MM-DD' theo giờ VN: chỉ bỏ đơn về NGÀY TRƯỚC ngày bật auto.
     if (orderDay != null && sinceDay != null && orderDay < sinceDay) return { decision: 'skip', reason: 'backlog', acct };
   }
   return { decision: 'send', acct };
