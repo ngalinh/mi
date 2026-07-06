@@ -1090,10 +1090,10 @@
     }
   }
 
-  // Chỉ còn đếm "Chưa báo" (cho nút Báo hàng loạt + dòng thông tin) bằng ĐÚNG 1 call nhẹ
-  // (page_size=1 -> chỉ lấy total), thay cho 4 call /api/order-counts trước đây. KHÔNG gửi
-  // `days`: đếm all-time để KHỚP "Báo hàng loạt" (notify-all cũng quét all-time), tránh nút
-  // hiện số ít hơn số thực gửi.
+  // Đếm "Chưa báo" (cho nút Báo hàng loạt + dòng thông tin) bằng ĐÚNG 1 call nhẹ (pageSize=1 ->
+  // chỉ lấy total). ÁP DỤNG ĐÚNG phạm vi đang lọc (applyScope: khoảng ngày from/to tường minh,
+  // hoặc ?days) + NV + tìm kiếm -> con số trên nút KHỚP tập thực gửi khi đang lọc theo ngày
+  // (trước đây đếm all-time nên nút hiện nhiều hơn số thực gửi khi có lọc ngày).
   async function loadCounts() {
     const p = new URLSearchParams();
     p.set('status', 'not_sent');
@@ -1101,6 +1101,7 @@
     if (currentStaff) p.set('staff', currentStaff);
     const q = $('fQ').value.trim();
     if (q) p.set('q', q);
+    applyScope(p); // gắn from/to (hoặc days) — đếm đúng phạm vi ngày đang xem
     try {
       const res = await App.api('/api/orders?' + p.toString());
       counts.todo = res.total != null ? res.total : 0;
