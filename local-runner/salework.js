@@ -217,27 +217,69 @@ async function listZaloAccounts(page) {
  * theo NHÃN/tooltip "nhóm"/"group" (ưu tiên, ít nhầm) rồi tới icon mdi account-group/multiple.
  * Bấm nhầm tab khác cùng lắm là KHÔNG tìm ra hội thoại → rơi về báo tay, KHÔNG gửi nhầm người.
  */
-async function clickGroupTab(page) {
-  const candidates = [
-    '[aria-label*="nhóm" i]', '[title*="nhóm" i]', '[data-tooltip*="nhóm" i]',
-    '[aria-label*="group" i]', '[title*="group" i]',
-    'button:has(.mdi-account-group)', 'button:has(.mdi-account-group-outline)',
-    'button:has(.mdi-account-multiple)', 'button:has(.mdi-account-multiple-outline)',
-    '.v-tab:has(.mdi-account-group)', '.v-tab:has(.mdi-account-multiple)',
-  ];
-  for (const sel of candidates) {
+async function clickFilterTab(page, wantLabel, fallbackIndex, guessSelectors = []) {
+  const want = String(wantLabel).toLowerCase();
+  const isActive = (btn) => btn.evaluate((el) => el.classList.contains('filter-active')).catch(() => false);
+  const btns = page.locator('.filter-bar .filter-btn');
+  const n = await btns.count().catch(() => 0);
+
+  // (1) Tìm theo NHÃN TOOLTIP: hover từng nút (hover không đổi bộ lọc), đọc text tooltip qua
+  // aria-describedby (#v-tooltip-...); bấm nút khớp nhãn rồi XÁC MINH .filter-active.
+  for (let i = 0; i < n; i += 1) {
+    const btn = btns.nth(i);
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await btn.hover({ timeout: 1500 });
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(page, 250);
+      // eslint-disable-next-line no-await-in-loop
+      const label = await btn.evaluate((el) => {
+        const id = el.getAttribute('aria-describedby');
+        const tip = id ? document.getElementById(id) : null;
+        return (tip ? tip.textContent : '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+      }).catch(() => '');
+      if (label && label.includes(want)) {
+        // eslint-disable-next-line no-await-in-loop
+        await btn.click({ timeout: 3000 });
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(page, 800);
+        // eslint-disable-next-line no-await-in-loop
+        if (await isActive(btn)) { await shot(page, `02d-tab-${want.replace(/\s+/g, '-')}`); return true; }
+      }
+    } catch { /* thử nút kế */ }
+  }
+
+  // (2) Fallback theo VỊ TRÍ (0-based) khi không đọc được tooltip.
+  if (fallbackIndex != null && n > fallbackIndex) {
+    const btn = btns.nth(fallbackIndex);
+    try {
+      await btn.click({ timeout: 3000 });
+      await sleep(page, 800);
+      if (await isActive(btn)) { await shot(page, `02d-tab-${want.replace(/\s+/g, '-')}`); return true; }
+    } catch { /* rơi xuống fallback selector */ }
+  }
+
+  // (3) Fallback selector đoán — phòng khi DOM đổi hoàn toàn.
+  for (const sel of guessSelectors) {
     const loc = page.locator(sel).first();
     try {
       if (!(await loc.count().catch(() => 0))) continue;
-      await loc.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
       await loc.click({ timeout: 3000 });
       await sleep(page, 800);
-      await shot(page, '02d-group-tab');
+      await shot(page, `02d-tab-${want.replace(/\s+/g, '-')}`);
       return true;
     } catch { /* thử selector kế */ }
   }
   return false;
 }
+
+// Bấm tab "Nhóm" (icon 2 người) — .filter-btn thứ 4 trên .filter-bar của zalo.basso.vn.
+const clickGroupTab = (page) => clickFilterTab(page, 'nhóm', 3,
+  ['[aria-label*="nhóm" i]', '[title*="nhóm" i]', 'button:has(.mdi-account-group)', 'button:has(.mdi-account-multiple)']);
+// Bấm tab "Cá nhân" (icon 1 người) — .filter-btn thứ 3; dùng cho kiểu báo cá nhân để không dính
+// bộ lọc "Nhóm" còn sót từ lần gửi trước (khi giữ context sống).
+const clickPersonalTab = (page) => clickFilterTab(page, 'cá nhân', 2,
+  ['[aria-label*="cá nhân" i]', '[title*="cá nhân" i]']);
 
 /**
  * Tìm và mở hội thoại khách theo KIỂU BÁO của NV (notifyTarget):
@@ -256,9 +298,9 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // nhầm hội thoại của 1 khách KHÁC trùng tên (không nằm trong whitelist). -> Khi TEST_MODE,
   // CHỈ khớp theo SĐT đã whitelist, bỏ qua tìm theo tên cho an toàn.
   if (testModeStore.get().testMode && phone) name = undefined;
-  // CHỈ báo NHÓM mới thu hẹp về tab "Nhóm" (best-effort). Báo cá nhân giữ nguyên danh sách để
-  // còn thấy chat 1-1 và mục "Người dùng Zalo".
-  if (!isPersonal) await clickGroupTab(page);
+  // Chọn tab lọc theo kiểu báo (best-effort): 'group' -> tab "Nhóm"; 'personal' -> tab "Cá nhân"
+  // (để không dính bộ lọc Nhóm còn sót). Không thấy tab thì bỏ qua, còn lớp lọc "Trò chuyện" đỡ.
+  if (isPersonal) await clickPersonalTab(page); else await clickGroupTab(page);
   const searchBox = page
     .locator(
       'input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], '
