@@ -294,6 +294,9 @@ const clickPersonalTab = (page) => clickFilterTab(page, 'cá nhân', 2,
  */
 async function searchAndClickConversation(page, { name, phone, strictMatch = false, notifyTarget = 'group' }) {
   const isPersonal = notifyTarget === 'personal';
+  // LOG CHẨN ĐOÁN: nếu dòng này KHÔNG hiện -> runner đang chạy code CŨ (chưa pull/restart).
+  // Nếu hiện notifyTarget=group cho NV báo cá nhân -> server chưa restart hoặc đơn không khớp account.
+  console.log(`[mi] tìm hội thoại: notifyTarget=${notifyTarget} -> bấm tab ${isPersonal ? 'CÁ NHÂN' : 'NHÓM'} | phone=${phone || '-'} name=${name || '-'}`);
   // TEST_MODE: whitelist chỉ chặn theo SĐT (phoneAllowed). Nếu cho khớp theo TÊN, có thể mở
   // nhầm hội thoại của 1 khách KHÁC trùng tên (không nằm trong whitelist). -> Khi TEST_MODE,
   // CHỈ khớp theo SĐT đã whitelist, bỏ qua tìm theo tên cho an toàn.

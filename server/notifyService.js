@@ -58,6 +58,9 @@ async function notifyOne(order, opts = {}) {
   // MÔ HÌNH B: mỗi tài khoản Zalo 1 profile riêng. Resolver quyết định profile + saleworkName
   // theo NV phụ trách đơn (accountsStore trên runner), fallback ZALO_ACCOUNT_MAP / mặc định.
   const resolved = await resolveForOrder(order, opts);
+  // LOG CHẨN ĐOÁN: server đã chọn account nào + kiểu báo gì cho đơn này. notifyTarget=group cho NV
+  // đáng lẽ cá nhân -> đơn KHÔNG khớp account store (source!='store'), hoặc server chạy code cũ.
+  console.log(`[notify] ${order.customerName || order.phone || '?'} | staff=${order.staff || '-'} userId=${order.userId || '-'} -> account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
 
   // Tra mã ĐH + ảnh SP TRƯỚC khi gửi để dòng "đang báo" đã đủ thông tin hiển thị (chỉ tra 1 lần,
   // dùng lại cho cả lúc cập nhật kết quả cuối).
