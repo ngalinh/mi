@@ -142,11 +142,20 @@ function scheduleTick() {
     }
   }
 
-  // GỬI đúng giờ (1 lần/ngày).
+  // GỬI đúng giờ (1 lần/ngày). Đặt mốc "đã chạy hôm nay" TRƯỚC để không nổ 2 lần ở 2 tick liền
+  // nhau; nhưng nếu lượt bị BỎ (runner offline / đang chạy lượt khác) thì NHẢ mốc ra để thử lại
+  // ở tick kế -> đúng 17h mà runner offline sẽ TỰ GỬI BÙ khi runner online lại, không mất cả ngày.
   if (minutes >= target && state.lastScheduledDay !== day) {
     state.lastScheduledDay = day;
     console.log(`[auto-notify] tới giờ ${state.scheduleTime} (${cfg.timezone}) — chạy lượt gửi theo lịch cho ngày ${day}.`);
-    runAutoNotify({ trigger: 'scheduled' });
+    Promise.resolve(runAutoNotify({ trigger: 'scheduled' }))
+      .then((r) => {
+        if (r && r.skipped) {
+          state.lastScheduledDay = null;
+          console.warn(`[auto-notify] lượt ${state.scheduleTime} bị bỏ (${r.reason || 'không rõ'}) — sẽ thử lại ở lần kiểm tra kế (${Math.round(cfg.scheduleCheckMs / 1000)}s).`);
+        }
+      })
+      .catch(() => { state.lastScheduledDay = null; });
   }
 }
 
