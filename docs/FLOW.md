@@ -151,8 +151,8 @@ runner xử lý job (tuần tự qua jobQueue) ▶ salework.sendBaoHang():
         - gõ SĐT trước (duy nhất) → không ra mới tìm theo TÊN
         - kiểu 'group' (mặc định): BẤM TAB "Nhóm" trước; CHỈ click hàng trong mục "Trò chuyện"
           (hội thoại đặt tên sẵn), BỎ "Người dùng Zalo" (click vào đó mở chat 1-1 MỚI → sai chỗ)
-        - kiểu 'personal': KHÔNG bấm tab Nhóm; tìm chat 1-1 trong "Trò chuyện" trước, không ra
-          thì FALLBACK mở từ "Người dùng Zalo" (khớp CHỈ theo SĐT — duy nhất nên đúng người)
+        - kiểu 'personal': bấm tab "Cá nhân"; chọn chat 1-1 trong mục "TIN NHẮN", không ra thì
+          FALLBACK mở từ "Người dùng Zalo" (khớp CHỈ theo SĐT — duy nhất nên đúng người)
         - strictMatch (bot): KHÔNG khớp chắc → báo lỗi, KHÔNG gửi
         - thường (tay): fallback lấy hội thoại trên cùng (nhóm: trong "Trò chuyện")
    ⑥ (nếu có ảnh) dán ảnh vào ô soạn → bấm Gửi (1 tin ảnh riêng), rồi nhập nội dung
