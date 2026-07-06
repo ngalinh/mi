@@ -450,7 +450,8 @@ async function runAutoNotify(opts = {}) {
       for (const order of orders) {
         // eslint-disable-next-line no-await-in-loop
         const c = await classifyForAuto(order, delayedMap);
-        if (c.decision === 'send') { toSend.push(order); continue; }
+        // classifyForAuto đã resolve account -> lấy luôn profile để gom (khỏi resolve lại).
+        if (c.decision === 'send') { toSend.push({ order, profileKey: (c.acct && c.acct.profile) || 'default' }); continue; }
         const bump = (k) => { summary[k] = (summary[k] || 0) + 1; };
         if (c.reason === 'no_content') bump('skippedNoContent');
         else if (c.reason === 'delayed') bump('skippedDelayed');
@@ -460,9 +461,19 @@ async function runAutoNotify(opts = {}) {
         else if (c.reason === 'backlog') bump('skippedBacklog');
         // 'already' / 'max_retries' / 'not_target' -> không đếm (không phải "đáng gửi")
       }
-      summary.candidates = toSend.length;
+      // GOM THEO PROFILE (ổn định theo thứ tự tài khoản xuất hiện đầu) -> bot gửi tuần tự HẾT đơn
+      // của 1 tài khoản/NV rồi mới sang cái kế, giữ context tái dùng -> đỡ mở/đóng browser.
+      const rank = new Map();
+      toSend.forEach((t) => { if (!rank.has(t.profileKey)) rank.set(t.profileKey, rank.size); });
+      const ordered = toSend
+        .map((t, i) => ({ ...t, _i: i }))
+        .sort((a, b) => (rank.get(a.profileKey) - rank.get(b.profileKey)) || (a._i - b._i));
+      summary.candidates = ordered.length;
 
-      for (const order of toSend) {
+      for (let i = 0; i < ordered.length; i += 1) {
+        const { order, profileKey } = ordered[i];
+        // Giữ context nếu đơn kế cùng profile (đã gom) -> tái dùng browser, đóng ở đơn cuối mỗi profile.
+        const keepContext = i + 1 < ordered.length && ordered[i + 1].profileKey === profileKey;
         const key = autoKey(order);
         const prev = getAutoRecord(key);
 
@@ -474,6 +485,7 @@ async function runAutoNotify(opts = {}) {
           skipWebUpdate: !cfg.updateWeb, // mặc định đẩy trạng thái về web Basso (tắt qua AUTO_NOTIFY_UPDATE_WEB=false)
           strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
           actor: 'bot',                  // audit: luồng tự động
+          keepContext,                   // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
         });
 
         // Phân loại lỗi để quyết định "dừng cả lượt" hay "tính 1 attempt rồi đi tiếp".
