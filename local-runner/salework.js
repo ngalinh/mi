@@ -211,20 +211,33 @@ async function listZaloAccounts(page) {
 }
 
 /**
- * (Best-effort) Bấm tab "Nhóm" trên thanh lọc hội thoại TRƯỚC khi gõ SĐT, để danh sách chỉ còn
- * NHÓM — thu hẹp kết quả, tránh trúng user cá nhân ("Người dùng Zalo"). KHÔNG bắt buộc: không
- * thấy tab (DOM đổi) thì bỏ qua, đã có lớp lọc theo mục "Trò chuyện" đỡ phía sau. Nhận diện tab
- * theo NHÃN/tooltip "nhóm"/"group" (ưu tiên, ít nhầm) rồi tới icon mdi account-group/multiple.
- * Bấm nhầm tab khác cùng lắm là KHÔNG tìm ra hội thoại → rơi về báo tay, KHÔNG gửi nhầm người.
+ * Bấm 1 tab trên thanh lọc .filter-bar của zalo.basso.vn theo VỊ TRÍ (đáng tin nhất). DOM thật:
+ * các nút .filter-btn KHÔNG có class/id cố định — aria-describedby là id tooltip ĐỘNG, icon là
+ * <svg> chung không có class. Thứ tự ổn định: [0] Thư, [1] Chưa đọc, [2] Cá nhân, [3] Nhóm...
+ * Nút đang chọn có class .filter-active -> dùng để XÁC MINH và BỎ QUA nếu đã đúng tab (bấm lại nút
+ * đang active có thể làm BỎ chọn). Dự phòng: hover đọc tooltip theo nhãn, rồi selector đoán.
+ * @param {number} index vị trí nút (0-based) cần bấm (Cá nhân=2, Nhóm=3)
  */
-async function clickFilterTab(page, wantLabel, fallbackIndex, guessSelectors = []) {
+async function clickFilterTab(page, wantLabel, index, guessSelectors = []) {
   const want = String(wantLabel).toLowerCase();
+  const shotName = `02d-tab-${want.replace(/\s+/g, '-')}`;
   const isActive = (btn) => btn.evaluate((el) => el.classList.contains('filter-active')).catch(() => false);
   const btns = page.locator('.filter-bar .filter-btn');
   const n = await btns.count().catch(() => 0);
 
-  // (1) Tìm theo NHÃN TOOLTIP: hover từng nút (hover không đổi bộ lọc), đọc text tooltip qua
-  // aria-describedby (#v-tooltip-...); bấm nút khớp nhãn rồi XÁC MINH .filter-active.
+  // (1) CHÍNH — theo VỊ TRÍ + xác minh .filter-active. Đã active sẵn -> THÔI (không bấm lại kẻo bỏ chọn).
+  if (index != null && n > index) {
+    const btn = btns.nth(index);
+    try {
+      if (await isActive(btn)) { await shot(page, shotName); return true; }
+      await btn.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+      await btn.click({ timeout: 3000 });
+      await sleep(page, 700);
+      if (await isActive(btn)) { await shot(page, shotName); return true; }
+    } catch { /* rơi xuống dự phòng */ }
+  }
+
+  // (2) DỰ PHÒNG — hover từng nút đọc tooltip qua aria-describedby, bấm nút khớp nhãn + xác minh.
   for (let i = 0; i < n; i += 1) {
     const btn = btns.nth(i);
     try {
@@ -240,23 +253,15 @@ async function clickFilterTab(page, wantLabel, fallbackIndex, guessSelectors = [
       }).catch(() => '');
       if (label && label.includes(want)) {
         // eslint-disable-next-line no-await-in-loop
+        if (await isActive(btn)) { await shot(page, shotName); return true; }
+        // eslint-disable-next-line no-await-in-loop
         await btn.click({ timeout: 3000 });
         // eslint-disable-next-line no-await-in-loop
-        await sleep(page, 800);
+        await sleep(page, 700);
         // eslint-disable-next-line no-await-in-loop
-        if (await isActive(btn)) { await shot(page, `02d-tab-${want.replace(/\s+/g, '-')}`); return true; }
+        if (await isActive(btn)) { await shot(page, shotName); return true; }
       }
     } catch { /* thử nút kế */ }
-  }
-
-  // (2) Fallback theo VỊ TRÍ (0-based) khi không đọc được tooltip.
-  if (fallbackIndex != null && n > fallbackIndex) {
-    const btn = btns.nth(fallbackIndex);
-    try {
-      await btn.click({ timeout: 3000 });
-      await sleep(page, 800);
-      if (await isActive(btn)) { await shot(page, `02d-tab-${want.replace(/\s+/g, '-')}`); return true; }
-    } catch { /* rơi xuống fallback selector */ }
   }
 
   // (3) Fallback selector đoán — phòng khi DOM đổi hoàn toàn.
@@ -265,19 +270,18 @@ async function clickFilterTab(page, wantLabel, fallbackIndex, guessSelectors = [
     try {
       if (!(await loc.count().catch(() => 0))) continue;
       await loc.click({ timeout: 3000 });
-      await sleep(page, 800);
-      await shot(page, `02d-tab-${want.replace(/\s+/g, '-')}`);
+      await sleep(page, 700);
+      await shot(page, shotName);
       return true;
     } catch { /* thử selector kế */ }
   }
   return false;
 }
 
-// Bấm tab "Nhóm" (icon 2 người) — .filter-btn thứ 4 trên .filter-bar của zalo.basso.vn.
+// Bấm tab "Nhóm" (icon 2 người) — .filter-btn thứ 4 (index 3) trên .filter-bar của zalo.basso.vn.
 const clickGroupTab = (page) => clickFilterTab(page, 'nhóm', 3,
   ['[aria-label*="nhóm" i]', '[title*="nhóm" i]', 'button:has(.mdi-account-group)', 'button:has(.mdi-account-multiple)']);
-// Bấm tab "Cá nhân" (icon 1 người) — .filter-btn thứ 3; dùng cho kiểu báo cá nhân để không dính
-// bộ lọc "Nhóm" còn sót từ lần gửi trước (khi giữ context sống).
+// Bấm tab "Cá nhân" (icon 1 người) — .filter-btn thứ 3 (index 2); dùng cho kiểu báo cá nhân.
 const clickPersonalTab = (page) => clickFilterTab(page, 'cá nhân', 2,
   ['[aria-label*="cá nhân" i]', '[title*="cá nhân" i]']);
 
