@@ -92,11 +92,12 @@
                   <th>SĐT Zalo</th>
                   <th>Kết nối</th>
                   <th class="center">Tự động báo</th>
+                  <th class="center">Kiểu báo</th>
                   <th style="width:230px"></th>
                 </tr>
               </thead>
               <tbody id="zaloRows">
-                <tr><td colspan="7" class="muted" style="padding:16px;">Đang tải…</td></tr>
+                <tr><td colspan="8" class="muted" style="padding:16px;">Đang tải…</td></tr>
               </tbody>
             </table>
           </div>
@@ -242,6 +243,7 @@
         <div class="field"><label>Brand (prefix mã đơn — tuỳ chọn)</label><input id="zaBrand" type="text" placeholder="vd: BS, SU, CO — để trống = mọi brand" /></div>
         <div class="field full"><label>Proxy (tuỳ chọn)</label><input id="zaProxy" type="text" placeholder="host:port hoặc user:pass@host:port" /></div>
         <div class="field"><label>Tự động báo</label><select id="zaAuto"><option value="true" selected>Bật</option><option value="false">Tắt</option></select></div>
+        <div class="field"><label>Kiểu báo</label><select id="zaTarget"><option value="group" selected>Nhóm</option><option value="personal">Cá nhân</option></select></div>
       </div>
       <div class="row">
         <button class="btn secondary" id="zaCancel">Huỷ</button>

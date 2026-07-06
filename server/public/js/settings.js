@@ -131,7 +131,7 @@
   const zm = $('zaloModal');
   const zaKey = $('zaKey'), zaName = $('zaName'), zaSalework = $('zaSalework'),
     zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
-    zaProxy = $('zaProxy'), zaAuto = $('zaAuto');
+    zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
   let zEditing = null; // key đang sửa, null = thêm mới
 
   function connBadge(c) {
@@ -149,9 +149,15 @@
       ? `<span class="pill da" style="cursor:default" title="Prefix mã đơn của brand này">${App.esc(b)}</span>`
       : '<span class="muted" title="Nhận mọi brand">—</span>';
   }
+  // Kiểu báo: 'personal' = nhắn tin cá nhân, còn lại (mặc định) = báo vào nhóm. Bấm để đổi.
+  function targetPill(a) {
+    return a.notifyTarget === 'personal'
+      ? '<span class="pill chua" data-action="target" style="cursor:pointer" title="Đang: Cá nhân. Bấm để đổi sang Nhóm">Cá nhân</span>'
+      : '<span class="pill da" data-action="target" style="cursor:pointer" title="Đang: Nhóm. Bấm để đổi sang Cá nhân">Nhóm</span>';
+  }
   function renderZalo(list) {
     if (!list || !list.length) {
-      zaloRows.innerHTML = '<tr><td colspan="7" class="muted" style="padding:16px;">Chưa có tài khoản Zalo nào. Bấm “Thêm tài khoản”.</td></tr>';
+      zaloRows.innerHTML = '<tr><td colspan="8" class="muted" style="padding:16px;">Chưa có tài khoản Zalo nào. Bấm “Thêm tài khoản”.</td></tr>';
       return;
     }
     zaloRows.innerHTML = list.map((a) => `
@@ -162,6 +168,7 @@
         <td>${App.esc(a.phone || '')}</td>
         <td>${connBadge(a.connection)}</td>
         <td class="center">${autoPill(a)}</td>
+        <td class="center">${targetPill(a)}</td>
         <td>
           <button class="link-btn" data-action="edit">Sửa</button>
           <button class="link-btn" data-action="login">Đăng nhập</button>
@@ -175,7 +182,7 @@
       const r = await App.api('/api/accounts');
       renderZalo(r.zalo || []);
     } catch (e) {
-      zaloRows.innerHTML = `<tr><td colspan="7" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+      zaloRows.innerHTML = `<tr><td colspan="8" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
     }
   }
   function openZalo(a) {
@@ -191,6 +198,7 @@
     zaBrand.value = a ? (a.brand || '') : '';
     zaProxy.value = a ? (a.proxy || '') : '';
     zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
+    zaTarget.value = a && a.notifyTarget === 'personal' ? 'personal' : 'group';
     zm.classList.add('show');
   }
   function closeZalo() { zm.classList.remove('show'); }
@@ -202,6 +210,7 @@
       phone: zaPhone.value.trim(), staffId: zaStaffId.value.trim(),
       brand: zaBrand.value.trim().toUpperCase(),
       proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
+      notifyTarget: zaTarget.value === 'personal' ? 'personal' : 'group',
     };
     if (!key || !body.name || !body.saleworkName) {
       App.toast('❌ Cần điền: Mã profile, Tên nhân viên, Tên Zalo trong dropdown', 5000);
@@ -262,6 +271,17 @@
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoEnabled: next }),
         });
         App.toast(next ? 'Đã BẬT tự động báo cho tài khoản này' : 'Đã TẮT tự động báo cho tài khoản này');
+        loadZalo();
+      } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+    }
+    if (action === 'target') {
+      const r = await App.api('/api/accounts').catch(() => ({ zalo: [] }));
+      const a = (r.zalo || []).find((x) => x.key === key);
+      const next = a && a.notifyTarget === 'personal' ? 'group' : 'personal';
+      try { await App.api(`/api/accounts/${encodeURIComponent(key)}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notifyTarget: next }),
+        });
+        App.toast(next === 'personal' ? 'Kiểu báo: CÁ NHÂN (nhắn tin cá nhân)' : 'Kiểu báo: NHÓM (báo vào nhóm)');
         loadZalo();
       } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
     }

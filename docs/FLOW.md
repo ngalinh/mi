@@ -147,12 +147,14 @@ runner xử lý job (tuần tự qua jobQueue) ▶ salework.sendBaoHang():
    ③ kiểm tra đã đăng nhập (chưa → lỗi CHUA_DANG_NHAP)
    ④ (nếu cần) chọn đúng tài khoản Zalo trong dropdown Vuetify (.v-list/.acc-tick),
        read-back xác minh CHỈ 1 account "on" → sai thì HUỶ gửi (tránh gửi nhầm tài khoản)
-   ⑤ tìm & mở hội thoại khách (CHỈ trong mục "Trò chuyện", BỎ "Người dùng Zalo"):
+   ⑤ tìm & mở hội thoại khách — theo KIỂU BÁO của NV (account.notifyTarget):
         - gõ SĐT trước (duy nhất) → không ra mới tìm theo TÊN
-        - CHỈ click hàng thuộc mục "Trò chuyện" (hội thoại đặt tên sẵn); bỏ kết quả
-          "Người dùng Zalo" (user cá nhân) vì click vào đó mở chat 1-1 MỚI → sai chỗ
+        - kiểu 'group' (mặc định): BẤM TAB "Nhóm" trước; CHỈ click hàng trong mục "Trò chuyện"
+          (hội thoại đặt tên sẵn), BỎ "Người dùng Zalo" (click vào đó mở chat 1-1 MỚI → sai chỗ)
+        - kiểu 'personal': KHÔNG bấm tab Nhóm; tìm chat 1-1 trong "Trò chuyện" trước, không ra
+          thì FALLBACK mở từ "Người dùng Zalo" (khớp CHỈ theo SĐT — duy nhất nên đúng người)
         - strictMatch (bot): KHÔNG khớp chắc → báo lỗi, KHÔNG gửi
-        - thường (tay): fallback lấy hội thoại trên cùng TRONG "Trò chuyện"
+        - thường (tay): fallback lấy hội thoại trên cùng (nhóm: trong "Trò chuyện")
    ⑥ (nếu có ảnh) dán ảnh vào ô soạn → bấm Gửi (1 tin ảnh riêng), rồi nhập nội dung
        (textarea.msg-textarea, bắn 'input' bật nút) → bấm Gửi (.send-btn) — giống Xeko
    ⑦ trả { ok:true }  (hoặc ném lỗi ở bước nào đó → server ghi failed)

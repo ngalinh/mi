@@ -50,6 +50,7 @@ function fromStore(acct) {
     account: acct.saleworkName || undefined,
     autoEnabled: acct.autoEnabled !== false,
     autoEnabledAt: acct.autoEnabledAt || null, // mốc bật auto -> lọc đơn tồn đọng ở autoNotify
+    notifyTarget: acct.notifyTarget === 'personal' ? 'personal' : 'group', // kiểu báo: nhóm/cá nhân
     source: 'store',
   };
 }
