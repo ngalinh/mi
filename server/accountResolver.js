@@ -95,7 +95,10 @@ async function resolveForOrder(order, opts = {}) {
       const code = await fetchOrderCode(order);
       const orderBrand = brandOfCode(code);
       const codeU = String(code).toUpperCase();
-      const match = mine.find((a) => a.brand && codeU.startsWith(a.brand));
+      // 1 account có thể gắn NHIỀU brand, ngăn cách bằng phẩy/khoảng trắng/;/ (vd "BS, SU").
+      // Tách ra rồi khớp nếu mã đơn bắt đầu bằng BẤT KỲ brand nào -> hỗ trợ account đa-brand.
+      const brandsOf = (a) => String(a.brand || '').split(/[\s,;/|]+/).map((b) => b.trim().toUpperCase()).filter(Boolean);
+      const match = mine.find((a) => brandsOf(a).some((b) => codeU.startsWith(b)));
       if (match) return { ...fromStore(match), orderBrand };
       // Không khớp brand nào: account "chung" (không brand) làm catch-all nếu có.
       const catchAll = mine.find((a) => !a.brand);
