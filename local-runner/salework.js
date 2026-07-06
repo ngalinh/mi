@@ -211,9 +211,38 @@ async function listZaloAccounts(page) {
 }
 
 /**
- * Tìm và mở hội thoại khách. GÕ THẲNG SĐT vào ô tìm kiếm trước (SĐT là duy nhất nên khớp
- * chính xác hơn tên — tránh trùng tên / sai dấu), khớp hàng theo SĐT HOẶC tên; nếu gõ SĐT
- * không ra mới tìm theo TÊN. Click bằng toạ độ chuột thật (cách Vue/React ăn đủ pointer events).
+ * (Best-effort) Bấm tab "Nhóm" trên thanh lọc hội thoại TRƯỚC khi gõ SĐT, để danh sách chỉ còn
+ * NHÓM — thu hẹp kết quả, tránh trúng user cá nhân ("Người dùng Zalo"). KHÔNG bắt buộc: không
+ * thấy tab (DOM đổi) thì bỏ qua, đã có lớp lọc theo mục "Trò chuyện" đỡ phía sau. Nhận diện tab
+ * theo NHÃN/tooltip "nhóm"/"group" (ưu tiên, ít nhầm) rồi tới icon mdi account-group/multiple.
+ * Bấm nhầm tab khác cùng lắm là KHÔNG tìm ra hội thoại → rơi về báo tay, KHÔNG gửi nhầm người.
+ */
+async function clickGroupTab(page) {
+  const candidates = [
+    '[aria-label*="nhóm" i]', '[title*="nhóm" i]', '[data-tooltip*="nhóm" i]',
+    '[aria-label*="group" i]', '[title*="group" i]',
+    'button:has(.mdi-account-group)', 'button:has(.mdi-account-group-outline)',
+    'button:has(.mdi-account-multiple)', 'button:has(.mdi-account-multiple-outline)',
+    '.v-tab:has(.mdi-account-group)', '.v-tab:has(.mdi-account-multiple)',
+  ];
+  for (const sel of candidates) {
+    const loc = page.locator(sel).first();
+    try {
+      if (!(await loc.count().catch(() => 0))) continue;
+      await loc.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+      await loc.click({ timeout: 3000 });
+      await sleep(page, 800);
+      await shot(page, '02d-group-tab');
+      return true;
+    } catch { /* thử selector kế */ }
+  }
+  return false;
+}
+
+/**
+ * Tìm và mở hội thoại khách. BẤM TAB "NHÓM" trước (thu hẹp về nhóm), rồi GÕ THẲNG SĐT vào ô tìm
+ * kiếm (SĐT là duy nhất nên khớp chính xác hơn tên — tránh trùng tên / sai dấu), khớp hàng theo
+ * SĐT HOẶC tên; nếu gõ SĐT không ra mới tìm theo TÊN. Click bằng toạ độ chuột thật (cách Vue/React ăn đủ pointer events).
  *
  * QUAN TRỌNG: CHỈ chọn hàng nằm trong mục "Trò chuyện" (hội thoại NV đã đặt tên sẵn), TUYỆT
  * ĐỐI bỏ mục "Người dùng Zalo" (kết quả tìm user cá nhân). Vì khi gõ SĐT, panel hiện user cá
@@ -226,6 +255,8 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // nhầm hội thoại của 1 khách KHÁC trùng tên (không nằm trong whitelist). -> Khi TEST_MODE,
   // CHỈ khớp theo SĐT đã whitelist, bỏ qua tìm theo tên cho an toàn.
   if (testModeStore.get().testMode && phone) name = undefined;
+  // Thu hẹp về NHÓM trước khi gõ SĐT (best-effort — không thấy tab thì bỏ qua).
+  await clickGroupTab(page);
   const searchBox = page
     .locator(
       'input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], '
