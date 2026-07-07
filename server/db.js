@@ -479,6 +479,16 @@ const delZaloContactStmt = db.prepare('DELETE FROM zalo_contacts WHERE phone = @
 function listZaloContacts() { return listZaloContactsStmt.all(); }
 function zaloContactsCount() { return countZaloContactsStmt.get().n || 0; }
 
+/**
+ * Map SĐT-đã-chuẩn-hoá -> tên Zalo/FB cho toàn bộ danh bạ (1 truy vấn). Dùng khi cần tra hàng
+ * loạt (vd gắn tên group vào danh sách đơn) thay vì query từng đơn.
+ */
+function getZaloMap() {
+  const m = new Map();
+  for (const r of listZaloContactsStmt.all()) m.set(r.phone, r.zalo_name);
+  return m;
+}
+
 /** Lấy TÊN Zalo/FB đã lưu cho 1 SĐT (khớp sau chuẩn hoá). '' nếu chưa có. */
 function getZaloName(phone) {
   const p = normPhone(phone);
@@ -555,5 +565,5 @@ module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   getSetting, setSetting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  normPhone, listZaloContacts, zaloContactsCount, getZaloName, upsertZaloContact, importZaloContacts, deleteZaloContact,
+  normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
 };
