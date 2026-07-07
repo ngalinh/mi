@@ -152,6 +152,9 @@ runner xử lý job (tuần tự qua jobQueue) ▶ salework.sendBaoHang():
         - CHỈ click hàng trong mục "Trò chuyện" (hội thoại đặt tên sẵn của khách); BỎ "Người dùng
           Zalo" (click vào đó mở chat 1-1 MỚI → sai chỗ). Khác nhau chỉ ở tab lọc bấm trước:
           kiểu 'group' (mặc định) → tab "Nhóm"; kiểu 'personal' → tab "Cá nhân"
+        - nếu "Trò chuyện" có CẢ chat 1-1 lẫn nhóm cho cùng khách (cá nhân thường hiện TRƯỚC nhóm):
+          chọn đúng hàng theo kiểu báo — nhóm → avatar GHÉP nhiều thành viên; cá nhân → 1 avatar
+          (chỉ phân giải khi có >1 hàng khớp; 1 hàng thì lấy luôn)
         - KHÔNG khớp được trong "Trò chuyện" → DỪNG LUÔN (cả tay & bot): không lấy đại hàng trên
           cùng, không fallback "Người dùng Zalo"/"Tin nhắn" → tránh mở chat mới / gửi nhầm người
    ⑥ (nếu có ảnh) dán ảnh vào ô soạn → bấm Gửi (1 tin ảnh riêng), rồi nhập nội dung
