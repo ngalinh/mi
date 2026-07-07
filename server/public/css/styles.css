@@ -666,6 +666,92 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .link-btn:hover { background: var(--bg); }
 
 /* ============================================================
+   Tài khoản nhân viên — bảng phẳng, mỗi tài khoản 1 dòng (settings)
+   ============================================================ */
+/* Mỗi tài khoản 1 dòng; các cột thẳng hàng, canh giữa theo chiều dọc. */
+#zaloRows td { vertical-align: middle; }
+/* Vạch đậm ngăn giữa các nhóm nhân viên (không lặp ở dòng đầu ngay dưới header). */
+#zaloRows tr.grp-first td { border-top: 2px solid var(--border-strong); }
+#zaloRows tr.grp-first:first-child td { border-top: none; }
+#zaloRows tr.acct-row:hover td { background: var(--head-tint); }
+
+/* Cột Nhân viên: tên + mã NV + tóm tắt kết nối (chỉ ở dòng đầu nhóm). */
+.acct-emp { vertical-align: top; white-space: normal; }
+.emp-name { font-weight: 700; color: var(--text); white-space: nowrap; }
+.emp-sub { margin-top: 2px; font-weight: 600; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.acct-emp-meta { margin-top: 6px; font-weight: 600; font-size: 12px; color: var(--muted); white-space: normal; max-width: 150px; }
+.acct-emp-meta .on { color: var(--green); }
+.acct-emp-meta .off { color: var(--red); }
+
+.acct-cell { font-weight: 700; color: var(--text); }
+.acct-brand {
+  font-size: 11px; font-weight: 700; letter-spacing: .3px;
+  padding: 2px 9px; border-radius: var(--radius-pill);
+  background: var(--primary-soft); color: var(--primary); white-space: nowrap;
+}
+
+/* Nhãn kênh */
+.chan {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: var(--radius-pill);
+}
+.chan.zalo { background: var(--blue-soft); color: var(--blue); }
+.chan.fb { background: var(--primary-soft); color: var(--primary); }
+
+/* Trạng thái kết nối: 1 chấm màu + chữ. */
+.acct-conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.acct-conn::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 15%, transparent);
+}
+.acct-conn.on { color: var(--green); }
+.acct-conn.off { color: var(--red); }
+.acct-conn.idle { color: var(--muted); }
+
+/* Chip điều khiển có nhãn (Tự động / Báo) — màu theo nghĩa, không mượn đỏ/vàng cảnh báo. */
+.tgl {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font: inherit; font-size: 11.5px; line-height: 1; cursor: pointer;
+  padding: 5px 11px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong); background: var(--card);
+  transition: border-color .15s var(--ease), background .15s var(--ease);
+}
+.tgl:hover { border-color: var(--primary); background: var(--bg); }
+.tgl-label { color: var(--muted); font-weight: 600; }
+.tgl-val { font-weight: 700; color: var(--text); }
+.tgl.is-on .tgl-val { color: var(--green); }   /* bật = xanh (đang chạy) */
+.tgl.is-off .tgl-val { color: var(--muted); }  /* tắt = xám (không cảnh báo) */
+.tgl.is-mode .tgl-val { color: var(--blue); }  /* đích báo = tông trung tính */
+
+/* Cột thao tác: nút icon xếp phải; Đăng nhập bung chữ (primary) khi cần đăng nhập. */
+.acct-act-cell { text-align: right; }
+.acct-acts { display: inline-flex; gap: 5px; align-items: center; justify-content: flex-end; }
+.ibtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 9px;
+  border: 1px solid var(--border-strong); background: var(--card); color: var(--text-soft);
+  cursor: pointer; transition: color .15s var(--ease), border-color .15s var(--ease), background .15s var(--ease);
+}
+.ibtn .icon { width: 16px; height: 16px; }
+.ibtn:hover { border-color: var(--primary); color: var(--primary); background: var(--bg); }
+.ibtn.primary {
+  width: auto; padding: 0 12px; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 600;
+  background: var(--primary-dark); border-color: var(--primary-dark); color: #fff; box-shadow: var(--shadow-sm);
+}
+.ibtn.primary:hover { background: var(--primary-dark); color: #fff; filter: brightness(1.12); }
+.ibtn.danger:hover { border-color: var(--red); color: var(--red); background: var(--red-soft); }
+
+/* Dòng "Thêm tài khoản" của mỗi nhân viên. */
+.acct-add-row td { padding-top: 4px; padding-bottom: 12px; border-top: none; }
+.acct-add-flat {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  color: var(--primary); background: none; border: none; padding: 4px 2px;
+}
+.acct-add-flat .icon { width: 15px; height: 15px; }
+.acct-add-flat:hover { color: var(--primary-dark); }
+
+/* ============================================================
    Phân trang (dưới bảng danh sách)
    ============================================================ */
 .pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 16px; }

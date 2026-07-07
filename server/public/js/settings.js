@@ -138,26 +138,36 @@
   let zEditing = null;   // key đang sửa, null = thêm mới
   let accountsAll = [];  // toàn bộ account (cả 2 kênh) lần tải gần nhất
 
-  function connBadge(c) {
-    if (c === 'connected') return '<span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Đã kết nối</span>';
-    if (c === 'expired') return '<span class="badge-status badge-offline" style="box-shadow:none; padding:5px 12px;">Mất kết nối</span>';
-    return '<span class="badge-status badge-offline" style="box-shadow:none; padding:5px 12px;">Chưa đăng nhập</span>';
+  // Icon SVG line dùng chung cho các nút hành động (đồng bộ với .icon toàn hệ).
+  const IC = {
+    edit: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+    login: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>',
+    check: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+    del: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+    plus: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  };
+
+  function connMeta(c) {
+    if (c === 'connected') return { cls: 'on', label: 'Đã kết nối' };
+    if (c === 'expired') return { cls: 'off', label: 'Mất kết nối' };
+    return { cls: 'idle', label: 'Chưa đăng nhập' };
   }
-  function autoPill(a) {
-    return a.autoEnabled === false
-      ? '<span class="pill chua" data-action="auto" style="cursor:pointer" title="Bấm để bật">Tắt</span>'
-      : '<span class="pill da" data-action="auto" style="cursor:pointer" title="Bấm để tắt">Bật</span>';
+  function connBadge(c) {
+    const m = connMeta(c);
+    return `<span class="acct-conn ${m.cls}">${m.label}</span>`;
+  }
+  // Chip điều khiển CÓ NHÃN: nhãn mờ + giá trị đậm màu theo NGHĨA (không mượn đỏ/vàng "cảnh báo").
+  function autoTgl(a) {
+    const on = a.autoEnabled !== false;
+    return `<button class="tgl ${on ? 'is-on' : 'is-off'}" data-action="auto" title="Tự động báo hàng — bấm để ${on ? 'tắt' : 'bật'}"><span class="tgl-label">Tự động</span><span class="tgl-val">${on ? 'Bật' : 'Tắt'}</span></button>`;
+  }
+  // Đích báo: 'personal' = nhắn cá nhân, mặc định = nhóm. Cả hai đều hợp lệ → dùng tông trung tính.
+  function targetTgl(a) {
+    const personal = a.notifyTarget === 'personal';
+    return `<button class="tgl is-mode" data-action="target" title="Đích báo — bấm để đổi ${personal ? 'sang Nhóm' : 'sang Cá nhân'}"><span class="tgl-label">Báo</span><span class="tgl-val">${personal ? 'Cá nhân' : 'Nhóm'}</span></button>`;
   }
   function brandTag(b) {
-    return b
-      ? `<span class="pill da" style="cursor:default" title="Prefix mã đơn của brand này">${App.esc(b)}</span>`
-      : '<span class="muted" title="Nhận mọi brand">—</span>';
-  }
-  // Kiểu báo: 'personal' = nhắn tin cá nhân, còn lại (mặc định) = báo vào nhóm. Bấm để đổi.
-  function targetPill(a) {
-    return a.notifyTarget === 'personal'
-      ? '<span class="pill chua" data-action="target" style="cursor:pointer" title="Đang: Cá nhân. Bấm để đổi sang Nhóm">Cá nhân</span>'
-      : '<span class="pill da" data-action="target" style="cursor:pointer" title="Đang: Nhóm. Bấm để đổi sang Cá nhân">Nhóm</span>';
+    return b ? `<span class="acct-brand" title="Chỉ nhận đơn brand ${App.esc(b)}">${App.esc(b)}</span>` : '';
   }
   const platLabel = (p) => (p === 'facebook' ? 'Facebook' : 'Zalo');
   const findAcct = (key) => accountsAll.find((x) => x.key === key);
@@ -175,50 +185,76 @@
     return [...groups.values()];
   }
 
-  // 1 khối tài khoản trong ô Zalo/Facebook: tên + kết nối + pill auto/kiểu báo + hành động.
-  function acctBlock(a) {
-    const isFb = a.platform === 'facebook';
-    const title = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName || a.name || a.key);
-    const pills = [connBadge(a.connection), autoPill(a)];
-    if (!isFb) pills.push(targetPill(a));
-    return `<div class="acct-block" data-key="${App.esc(a.key)}" data-platform="${a.platform}" style="padding:8px 0; border-bottom:1px solid var(--border,#eee);">
-      <div class="cust">${App.esc(title)} ${isFb ? '' : brandTag(a.brand || '')}</div>
-      <div style="margin:5px 0; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">${pills.join(' ')}</div>
-      <div>
-        <button class="link-btn" data-action="edit">Sửa</button>
-        <button class="link-btn" data-action="login">Đăng nhập</button>
-        <button class="link-btn" data-action="check">Kiểm tra</button>
-        <button class="link-btn" data-action="del" style="color:var(--danger,#d33)">Xoá</button>
-      </div>
-    </div>`;
+  // Nhãn kênh (Zalo / Facebook) — thay cho 2 cột riêng, giúp gộp mọi tài khoản về 1 bảng phẳng.
+  function chanTag(p) {
+    return p === 'facebook'
+      ? '<span class="chan fb">Facebook</span>'
+      : '<span class="chan zalo">Zalo</span>';
   }
 
-  function accountsCell(items, platform, group) {
-    const blocks = items.map(acctBlock).join('');
-    const add = `<button class="link-btn" data-action="add" data-platform="${platform}" data-name="${App.esc(group.name)}" data-staffid="${App.esc(group.staffId)}" style="margin-top:6px;">＋ Thêm ${platLabel(platform)}</button>`;
-    return blocks + add;
+  // Tóm tắt nhanh cho cột Nhân viên: tổng tài khoản + số kết nối / chưa kết nối.
+  function empMeta(g) {
+    const all = [...g.zalo, ...g.facebook];
+    if (!all.length) return '';
+    const off = all.filter((a) => a.connection !== 'connected').length;
+    const on = all.length - off;
+    const parts = [`${all.length} tài khoản`];
+    if (on) parts.push(`<span class="on">${on} kết nối</span>`);
+    if (off) parts.push(`<span class="off">${off} chưa/mất</span>`);
+    return `<div class="acct-emp-meta">${parts.join(' · ')}</div>`;
+  }
+
+  // 1 tài khoản = 1 dòng; các cột (kênh · trạng thái · tự động · đích báo · thao tác) thẳng hàng.
+  // Tên NV chỉ hiện ở dòng đầu của nhóm. Đăng nhập bung chữ (primary) khi CHƯA kết nối.
+  function acctRow(a, group, first) {
+    const isFb = a.platform === 'facebook';
+    const title = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName || a.name || a.key);
+    const need = a.connection !== 'connected';
+    const empCell = first
+      ? `<div class="emp-name">${App.esc(group.name)}</div>${group.staffId ? `<div class="emp-sub">NV Basso #${App.esc(group.staffId)}</div>` : ''}${empMeta(group)}`
+      : '';
+    return `<tr class="acct-row${first ? ' grp-first' : ''}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
+      <td class="acct-emp">${empCell}</td>
+      <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`}</td>
+      <td>${chanTag(a.platform)}</td>
+      <td>${connBadge(a.connection)}</td>
+      <td>${autoTgl(a)}</td>
+      <td>${isFb ? '<span class="muted">—</span>' : targetTgl(a)}</td>
+      <td class="acct-act-cell"><div class="acct-acts">
+        <button class="ibtn${need ? ' primary' : ''}" data-action="login" title="Mở Chromium trên local-runner để đăng nhập">${IC.login}${need ? '<span>Đăng nhập</span>' : ''}</button>
+        <button class="ibtn" data-action="edit" title="Sửa thông tin tài khoản">${IC.edit}</button>
+        <button class="ibtn" data-action="check" title="Kiểm tra còn đăng nhập không">${IC.check}</button>
+        <button class="ibtn danger" data-action="del" title="Xoá tài khoản">${IC.del}</button>
+      </div></td>
+    </tr>`;
+  }
+
+  // Dòng "Thêm tài khoản" cuối mỗi nhóm — chọn Zalo/Facebook ngay trong popup.
+  function addRow(group) {
+    return `<tr class="acct-add-row">
+      <td></td>
+      <td colspan="6"><button class="acct-add-flat" data-action="add" data-name="${App.esc(group.name)}" data-staffid="${App.esc(group.staffId)}">${IC.plus}<span>Thêm tài khoản cho ${App.esc(group.name)}</span></button></td>
+    </tr>`;
   }
 
   function renderAccounts(list) {
     accountsAll = list || [];
     const groups = groupAccounts(accountsAll);
     if (!groups.length) {
-      zaloRows.innerHTML = '<tr><td colspan="3" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
+      zaloRows.innerHTML = '<tr><td colspan="7" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
       return;
     }
-    zaloRows.innerHTML = groups.map((g) => `
-      <tr class="main-row">
-        <td class="cust">${App.esc(g.name)}${g.staffId ? `<br><span class="muted" style="font-size:12px">NV Basso #${App.esc(g.staffId)}</span>` : ''}</td>
-        <td style="vertical-align:top;">${accountsCell(g.zalo, 'zalo', g)}</td>
-        <td style="vertical-align:top;">${accountsCell(g.facebook, 'facebook', g)}</td>
-      </tr>`).join('');
+    zaloRows.innerHTML = groups.map((g) => {
+      const all = [...g.zalo, ...g.facebook];
+      return all.map((a, i) => acctRow(a, g, i === 0)).join('') + addRow(g);
+    }).join('');
   }
   async function loadZalo() {
     try {
       const r = await App.api('/api/accounts');
       renderAccounts(r.accounts || r.zalo || []);
     } catch (e) {
-      zaloRows.innerHTML = `<tr><td colspan="3" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+      zaloRows.innerHTML = `<tr><td colspan="7" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -347,7 +383,7 @@
     if (b.dataset.action === 'add') {
       return openZalo(null, { platform: b.dataset.platform, name: b.dataset.name, staffId: b.dataset.staffid });
     }
-    const block = b.closest('.acct-block'); if (!block) return undefined;
+    const block = b.closest('.acct-row'); if (!block) return undefined;
     return rowAction(b.dataset.action, block.dataset.key);
   });
   loadZalo();
