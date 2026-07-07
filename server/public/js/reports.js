@@ -178,7 +178,7 @@
         <td>${thumbsCell(r.images)}</td>
         <td class="cust" title="${App.esc(r.customer_name)}">${App.esc(r.customer_name)}</td>
         <td>${App.esc(r.phone)}</td>
-        <td>${App.esc(r.staff)}</td>
+        <td title="${App.esc(r.staff)}">${App.esc(r.staff)}</td>
         <td>${senderCell(r.sent_by)}</td>
         <td>${r.zalo_account ? App.esc(r.zalo_account) : '<span class="muted">—</span>'}</td>
         <td class="msg-cell" data-tip="${App.esc(r.message)}">${msgPreview(r.message)}</td>
