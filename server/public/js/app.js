@@ -92,6 +92,19 @@ const App = {
     const topbar = document.querySelector('.topbar');
     if (!app || !sidebar || !topbar) return;
 
+    // Tự chèn mục "Danh bạ" vào rail-nav nếu HTML còn THIẾU (vd trình duyệt/PWA giữ index.html
+    // bản CŨ trong cache trong khi app.js đã mới). Nhờ vậy menu luôn đủ dù chưa refresh HTML.
+    const rail = sidebar.querySelector('.rail-nav');
+    if (rail && !sidebar.querySelector('a.nav[href="danhba.html"]')) {
+      const a = document.createElement('a');
+      a.className = 'nav';
+      a.href = 'danhba.html';
+      a.title = 'Danh bạ Zalo';
+      a.innerHTML = '<span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><circle cx="12" cy="9" r="2"/><path d="M15.5 15a3.5 3.5 0 0 0-7 0"/></svg></span>';
+      if (/danhba\.html$/.test(location.pathname)) a.classList.add('active');
+      rail.appendChild(a);
+    }
+
     // Nút mở menu (chỉ hiện trên mobile qua CSS) — đặt đầu topbar.
     const toggle = document.createElement('button');
     toggle.className = 'nav-toggle';
