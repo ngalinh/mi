@@ -24,8 +24,8 @@ module.exports = {
   // --- Facebook (báo hàng qua Messenger khi khách không dùng Zalo) ---
   // Trang mở khi ĐĂNG NHẬP Facebook (giống Xeko: mở facebook.com rồi NV đăng nhập tay, lưu session).
   facebookLoginUrl: process.env.FACEBOOK_LOGIN_URL || 'https://www.facebook.com/',
-  // Trang mở khi GỬI tin / KIỂM TRA đăng nhập (Messenger).
-  facebookChatUrl: process.env.FACEBOOK_CHAT_URL || 'https://www.facebook.com/messages/t/',
+  // Trang mở khi GỬI tin / KIỂM TRA đăng nhập (Messenger inbox — có sẵn ô "Search Messenger").
+  facebookChatUrl: process.env.FACEBOOK_CHAT_URL || 'https://www.facebook.com/messages/',
   headless: String(process.env.HEADLESS || 'false').toLowerCase() === 'true',
   // Làm chậm mỗi thao tác (ms) — chỉ để dễ nhìn khi debug. Đặt 0 khi chạy thật cho nhanh.
   slowMo: parseInt(process.env.SLOW_MO || '0', 10),

@@ -42,6 +42,47 @@ async function gotoFacebook(page, url) {
   await shot(page, '01-loaded');
 }
 
+// ---- Selector Messenger (bền theo aria-label; kèm bản tiếng Việt phòng UI đổi ngôn ngữ) ----
+// Ô tìm kiếm hội thoại: input[aria-label="Search Messenger"] / type=search + role=combobox.
+const SEARCH_BOX_SELECTORS = [
+  'input[aria-label="Search Messenger"]',
+  'input[placeholder="Search Messenger"]',
+  'input[aria-label="Tìm kiếm trên Messenger"]',
+  'input[placeholder="Tìm kiếm trên Messenger"]',
+  'input[type="search"][role="combobox"]',
+];
+// Nút Messenger trên thanh trên cùng facebook.com (tooltip/aria-label "Messenger").
+const MESSENGER_BUTTON_SELECTORS = [
+  'div[aria-label="Messenger"][role="button"]',
+  'a[aria-label="Messenger"]',
+  'div[aria-label="Tin nhắn"][role="button"]',
+  'a[href^="https://www.facebook.com/messages"]',
+];
+
+/** Trả về locator đầu tiên đang HIỂN THỊ trong danh sách selector (poll tới timeout). null nếu không có. */
+async function findVisible(page, selectors, timeout = 8000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    for (const sel of selectors) {
+      const el = page.locator(sel).first();
+      // eslint-disable-next-line no-await-in-loop
+      try { if (await el.isVisible()) return el; } catch { /* selector chưa gắn -> thử tiếp */ }
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await page.waitForTimeout(300);
+  }
+  return null;
+}
+
+/** Tìm ô "Search Messenger"; chưa thấy thì bấm nút Messenger để mở khung chat rồi thử lại. */
+async function openSearchBox(page) {
+  let box = await findVisible(page, SEARCH_BOX_SELECTORS, 6000);
+  if (box) return box;
+  const btn = await findVisible(page, MESSENGER_BUTTON_SELECTORS, 6000);
+  if (btn) { await btn.click().catch(() => {}); await page.waitForTimeout(1500); }
+  return findVisible(page, SEARCH_BOX_SELECTORS, 6000);
+}
+
 /**
  * Còn đăng nhập không: FB đẩy về /login hoặc /checkpoint khi hết session (giống ensureLoggedIn của Xeko).
  * Ném lỗi rõ ràng để luồng gọi báo "cần đăng nhập lại".
@@ -54,13 +95,28 @@ async function ensureLoggedIn(page) {
 }
 
 /**
- * TODO (chờ hướng dẫn element): tìm đúng hội thoại của khách trong Messenger theo SĐT.
- * Dự kiến: mở ô tìm kiếm Messenger -> gõ SĐT -> chọn kết quả khớp -> mở khung chat.
+ * Tìm & mở đúng hội thoại của khách trong Messenger theo SĐT (fallback tên).
+ * Đã ráp: mở ô "Search Messenger" (bấm nút Messenger nếu cần) + gõ từ khoá.
+ * TODO (chờ element): chọn item kết quả khớp để mở khung chat.
  * @returns {Promise<boolean>} true nếu mở được đúng hội thoại.
  */
 // eslint-disable-next-line no-unused-vars
 async function searchAndOpenConversation(page, { phone, name, strictMatch = false }) {
-  throw new Error('FB_SEND_CHUA_CAU_HINH: chưa cấu hình bước tìm hội thoại Messenger theo SĐT — đang chờ hướng dẫn element.');
+  const term = (phone && String(phone).trim()) || (name && String(name).trim());
+  if (!term) throw new Error('Thiếu SĐT/tên để tìm hội thoại Facebook.');
+
+  const box = await openSearchBox(page);
+  if (!box) {
+    throw new Error('FB: không thấy ô "Search Messenger" — có thể chưa đăng nhập hoặc giao diện đổi.');
+  }
+  await box.click();
+  await box.fill('');
+  await box.type(String(term), { delay: 40 });
+  await page.waitForTimeout(2000); // chờ danh sách kết quả hiện
+  await shot(page, '02-searched');
+
+  // TODO (chờ element): trong danh sách kết quả, chọn hội thoại khớp SĐT/tên rồi mở khung chat.
+  throw new Error('FB_SEND_CHUA_CAU_HINH: đã gõ tìm khách trên Messenger; chờ element "kết quả hội thoại" để chọn & mở chat.');
 }
 
 /**
