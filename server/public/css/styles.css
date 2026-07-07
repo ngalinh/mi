@@ -569,11 +569,13 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   font-weight: 600; min-width: 124px; cursor: pointer; font-family: inherit;
 }
 .status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
-.status-sel[data-code="notified_arrival"] { color: var(--blue); border-color: var(--blue-soft); background: var(--blue-soft); }
-.status-sel[data-code="notified_ship"] { color: var(--green); border-color: var(--green-soft); background: var(--green-soft); }
-.status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); border-color: var(--red-soft); background: var(--red-soft); }
-/* "Chưa báo" để tông trung tính (navy/cream) — tránh cả màn ngả vàng vì đa số đơn ở trạng thái này. */
-.status-sel[data-code="not_sent"] { color: var(--text-soft); border-color: var(--border-strong); background: #fff; }
+/* 4 trạng thái = 4 tông rõ ràng: Chưa báo (cam) · Đã báo hàng (xanh dương) · Đã báo ship (xanh lá) · Lỗi (đỏ).
+   Viền cùng tông đậm hơn nền để mỗi trạng thái nổi khối, liếc là phân biệt được. */
+.status-sel[data-code="notified_arrival"] { color: var(--blue); background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 32%, transparent); }
+.status-sel[data-code="notified_ship"] { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
+.status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 32%, transparent); }
+/* "Chưa báo" trước đây để trung tính (chữ xám/nền trắng) nên chìm — đổi sang tông cam "cần xử lý" cho dễ nhìn. */
+.status-sel[data-code="not_sent"] { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
 /* Dropdown lý do delay — nhỏ, tông đỏ để báo "tạm hoãn". */
 .delay-reason {
   padding: 4px 8px; border: 1px dashed var(--red); border-radius: var(--radius-sm);
