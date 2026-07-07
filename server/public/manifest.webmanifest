@@ -1,0 +1,26 @@
+{
+  "name": "Mi · Báo hàng về VN",
+  "short_name": "Mi",
+  "description": "Bảng điều khiển báo hàng về VN — danh sách đơn, lịch sử báo, cài đặt.",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fefcf6",
+  "theme_color": "#fefcf6",
+  "lang": "vi",
+  "icons": [
+    {
+      "src": "favicon.png?v=2",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "mi-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

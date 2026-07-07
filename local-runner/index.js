@@ -72,15 +72,17 @@ app.get('/api/profile/:name', (req, res) => {
 
 /**
  * POST /api/zalo/send
- * body: { profile, account?, keyword, name?, message, strictMatch?, imagePaths? }
+ * body: { profile, account?, keyword, name?, message, strictMatch?, imagePaths?, notifyTarget?, keepContext? }
  * => trả { ok, jobId } ngay; poll /api/job/:id để lấy kết quả.
  */
 app.post('/api/zalo/send', (req, res) => {
-  const { profile, account, keyword, name, message, strictMatch, imagePaths } = req.body || {};
+  // notifyTarget ('group'|'personal') + keepContext PHẢI đọc ra + chuyển tiếp — thiếu là
+  // salework.sendBaoHang nhận undefined -> mặc định 'group' -> luôn bấm tab Nhóm dù NV để Cá nhân.
+  const { profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext } = req.body || {};
   if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths }, sendBaoHang);
+  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext }, sendBaoHang);
   res.json({ ok: true, jobId });
 });
 

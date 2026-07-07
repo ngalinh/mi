@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#fefcf6" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Mi" />
+  <title>Mi · Danh bạ Zalo</title>
+  <link rel="icon" type="image/png" href="favicon.png?v=2" />
+  <link rel="apple-touch-icon" href="favicon.png?v=2" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar: icon rail -->
+    <aside class="sidebar">
+      <div class="brand" title="Mi">
+        <img class="brand-logo" src="mi-logo.png" alt="Mi" />
+      </div>
+      <nav class="rail-nav">
+        <a class="nav" href="index.html" title="Hàng về VN"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span></a>
+        <a class="nav" href="reports.html" title="Lịch sử báo"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span></a>
+        <a class="nav active" href="danhba.html" title="Danh bạ Zalo"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><circle cx="12" cy="9" r="2"/><path d="M15.5 15a3.5 3.5 0 0 0-7 0"/></svg></span></a>
+      </nav>
+      <div class="side-foot">
+        <a class="nav" href="settings.html" title="Cài đặt"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span></a>
+        <span class="rail-sep"></span>
+        <div class="avatar" id="userAvatar" title="Đang tải...">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1>Danh bạ Zalo</h1>
+          <div class="sub">Tên hội thoại Zalo/Facebook theo SĐT — giúp gửi đúng người hơn</div>
+        </div>
+      </header>
+
+      <div class="container">
+        <!-- Nhập từ file -->
+        <div class="card" style="margin-top:0;">
+          <div class="card-header">
+            <h1>Nhập nhanh từ file</h1>
+            <label class="btn small" for="fileInput" style="cursor:pointer;">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Chọn file Excel
+            </label>
+            <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" style="display:none;" />
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 16px;">
+            Hỗ trợ Excel (<code>.xlsx</code>, <code>.xls</code>) và <code>.csv</code>. File được đọc ngay trên trình duyệt — chỉ danh sách đã ghép được gửi lên server. Cần tối thiểu 2 cột: <strong>SĐT</strong> và <strong>Tên Zalo/FB</strong>. SĐT là khoá khớp khách; nhập 1 lần, hàng về sau tự nhận theo cùng số.
+          </div>
+
+          <!-- Khu ghép cột + xem trước (ẩn tới khi chọn file) -->
+          <div id="mapArea" style="display:none;">
+            <div class="form-grid" style="margin-bottom:14px;">
+              <div class="field" id="sheetField" style="display:none;">
+                <label>Trang tính (sheet)</label>
+                <select id="sheetSel"></select>
+              </div>
+              <div class="field">
+                <label>Cột SĐT <span style="color:var(--danger,#e05353)">*</span></label>
+                <select id="colPhone"></select>
+              </div>
+              <div class="field">
+                <label>Cột Tên Zalo/FB <span style="color:var(--danger,#e05353)">*</span></label>
+                <select id="colName"></select>
+              </div>
+              <div class="field">
+                <label>Cột Ghi chú (tuỳ chọn)</label>
+                <select id="colNote"></select>
+              </div>
+              <div class="field">
+                <label>Dòng đầu là tiêu đề?</label>
+                <select id="hasHeader"><option value="1" selected>Có (bỏ dòng 1)</option><option value="0">Không</option></select>
+              </div>
+              <div class="field">
+                <label>Cách nhập</label>
+                <select id="importMode"><option value="merge" selected>Gộp (ghi đè theo SĐT)</option><option value="replace">Thay toàn bộ danh bạ</option></select>
+              </div>
+            </div>
+
+            <div class="muted" id="mapSummary" style="font-size:13px; margin-bottom:10px;"></div>
+            <div class="table-wrap" style="margin-bottom:14px;">
+              <table>
+                <thead><tr><th style="width:40px">#</th><th>SĐT</th><th>Tên Zalo/FB</th><th>Ghi chú</th></tr></thead>
+                <tbody id="previewRows"></tbody>
+              </table>
+            </div>
+            <div class="row" style="justify-content:flex-end;">
+              <button class="btn secondary" id="cancelImport">Bỏ chọn file</button>
+              <button class="btn accent" id="doImport">Nhập vào danh bạ</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Danh bạ hiện có -->
+        <div class="card" style="margin-top:14px;">
+          <div class="card-header">
+            <h1>Danh bạ hiện có (<span id="contactCount">0</span>)</h1>
+            <button class="btn small" id="addContactBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Thêm thủ công
+            </button>
+          </div>
+          <div style="margin:-4px 0 14px;">
+            <input class="note-input" id="searchBox" type="text" placeholder="Tìm theo SĐT hoặc tên…" style="max-width:320px;" />
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>SĐT</th>
+                  <th>Tên Zalo/FB</th>
+                  <th>Ghi chú</th>
+                  <th class="center">Nguồn</th>
+                  <th>Cập nhật</th>
+                  <th style="width:120px"></th>
+                </tr>
+              </thead>
+              <tbody id="contactRows">
+                <tr><td colspan="6" class="muted" style="padding:16px;">Đang tải…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Popup thêm / sửa liên hệ -->
+  <div class="modal-bg" id="contactModal">
+    <div class="modal" style="width:460px;">
+      <h3 id="cmTitle">Thêm liên hệ</h3>
+      <p class="muted">SĐT là khoá khớp khách. Tên Zalo/FB là tên hội thoại hiển thị trên Zalo để tìm đúng người.</p>
+      <div class="form-grid">
+        <div class="field full"><label>SĐT khách</label><input id="cmPhone" type="text" placeholder="vd: 0985 093 767" /></div>
+        <div class="field full"><label>Tên Zalo/FB</label><input id="cmName" type="text" placeholder="Đúng tên hội thoại trên Zalo" /></div>
+        <div class="field full"><label>Ghi chú (tuỳ chọn)</label><input id="cmNote" type="text" placeholder="vd: FB, nhóm chung…" /></div>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="cmCancel">Huỷ</button>
+        <button class="btn accent" id="cmSave">Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="js/app.js"></script>
+  <script src="js/xlsx.full.min.js"></script>
+  <script src="js/danhba.js"></script>
+  <script>App.initMobileNav(); App.initUserAvatar();</script>
+</body>
+</html>

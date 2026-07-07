@@ -287,11 +287,16 @@ const clickPersonalTab = (page) => clickFilterTab(page, 'cá nhân', 2,
 
 /**
  * Tìm và mở hội thoại khách theo KIỂU BÁO của NV (notifyTarget):
- * Khi gõ SĐT, panel có 3 mục: "Người dùng Zalo" (user cá nhân), "Trò chuyện" (hội thoại/nhóm đặt
- * tên sẵn), "Tin nhắn" (chat 1-1 thật). Chọn mục theo kiểu báo:
- *  - 'group' (mặc định): BẤM TAB "NHÓM" trước, rồi CHỈ chọn hàng trong mục "Trò chuyện".
- *  - 'personal': BẤM TAB "CÁ NHÂN"; chọn chat 1-1 trong mục "TIN NHẮN"; không ra thì FALLBACK mở
- *    từ "Người dùng Zalo" (khớp CHỈ theo SĐT — duy nhất nên đúng người, kể cả strict).
+ * Khi gõ SĐT, panel có 3 mục: "Người dùng Zalo" (user cá nhân — click vào mở chat 1-1 MỚI, SAI chỗ),
+ * "Trò chuyện" (hội thoại/nhóm đã đặt tên sẵn của khách), "Tin nhắn" (chat 1-1). CẢ 2 KIỂU BÁO đều
+ * CHỈ chọn hàng trong mục "Trò chuyện"; chỉ khác ở tab lọc bấm trước:
+ *  - 'group' (mặc định): BẤM TAB "NHÓM" trước.
+ *  - 'personal': BẤM TAB "CÁ NHÂN" trước.
+ * Nếu mục "Trò chuyện" có CẢ chat 1-1 lẫn nhóm cho cùng khách (Zalo hay liệt kê cá nhân TRƯỚC nhóm),
+ * chọn đúng hàng theo kiểu báo: nhóm -> hàng có avatar GHÉP nhiều thành viên (collage); cá nhân ->
+ * hàng 1 avatar. Chỉ phân giải khi có >1 hàng khớp (1 hàng thì lấy luôn).
+ * KHÔNG khớp được trong "Trò chuyện" -> DỪNG (ném lỗi): KHÔNG lấy đại hàng trên cùng, KHÔNG fallback
+ * sang "Người dùng Zalo"/"Tin nhắn" -> tránh mở chat mới / gửi nhầm người.
  *
  * Gõ THẲNG SĐT vào ô tìm (SĐT duy nhất, khớp chính xác hơn tên); không ra mới tìm theo TÊN.
  * Click bằng element thật (Playwright cuộn tới + chờ actionable), dự phòng toạ độ chuột.
@@ -331,7 +336,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     await searchBox.fill('').catch(() => {});
     await searchBox.type(String(typeTerm), { delay: 30 });
 
-    const scan = () => page.evaluate(({ matchTerms, section }) => {
+    const scan = () => page.evaluate(({ matchTerms, section, preferGroup }) => {
       const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
         .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
       // Lõi SĐT: bỏ ký tự không phải số + tiền tố 84/0 để khớp dù định dạng khác.
@@ -382,8 +387,8 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       );
       // Xoá cờ target cũ trước mỗi lần quét để chỉ còn 1 phần tử được đánh dấu.
       document.querySelectorAll('[data-mi-target]').forEach((e) => e.removeAttribute('data-mi-target'));
-      let best = null;    // hàng KHỚP nhỏ nhất (hàng hội thoại thật)
       let topmost = null; // hàng trên cùng khi không có từ khoá khớp
+      const matches = []; // MỌI hàng khớp — để phân biệt nhóm/cá nhân khi mục có nhiều hàng
       for (const el of els) {
         const r = el.getBoundingClientRect();
         if (!(r.width > 150 && r.height > 30 && r.height < 220 && r.top >= 0)) continue;
@@ -394,22 +399,40 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         if (terms.length) {
           const hit = terms.some((m) =>
             (m.text && t.includes(m.text)) || (m.phone && tPhone.includes(m.phone)));
-          // Chọn phần tử khớp NHỎ NHẤT: tránh trúng WRAPPER của mục "Trò chuyện"
-          // (tâm rơi vào tiêu đề mục -> click không mở hội thoại). Hàng thật nhỏ hơn.
-          if (hit && (!best || r.width * r.height < best.area)) {
-            best = { el, area: r.width * r.height, rect: r };
-          }
+          if (!hit) continue;
+          // Nhận diện NHÓM: avatar là ẢNH GHÉP nhiều thành viên (collage >=2 ảnh) hoặc có icon nhóm.
+          // Chat 1-1 (cá nhân) chỉ có 1 avatar. Dùng để chọn ĐÚNG hàng khi mục có cả 2 loại
+          // (vd: mục "Trò chuyện" liệt kê chat 1-1 TRƯỚC, nhóm SAU cho cùng 1 khách).
+          const imgCount = el.querySelectorAll('img').length;
+          const hasGroupIcon = !!el.querySelector('.mdi-account-group, .mdi-account-multiple');
+          const isGroup = imgCount >= 2 || hasGroupIcon;
+          matches.push({ el, area: r.width * r.height, rect: r, isGroup });
         } else if (!topmost || r.top < topmost.top) {
           topmost = { el, top: r.top, rect: r };
         }
       }
-      const pick = terms.length ? best : topmost;
+      let pick = null;
+      if (terms.length) {
+        // Bỏ WRAPPER: hàng nào CHỨA hàng khớp khác -> loại (giữ hàng lá thật, tránh trúng vùng bọc mục).
+        const leaves = matches.filter((a) => !matches.some((b) => b.el !== a.el && a.el.contains(b.el)));
+        let pool = leaves.length ? leaves : matches;
+        // CHỈ dùng nhóm/cá nhân để PHÂN GIẢI khi có >1 hàng khớp (giữ nguyên case chỉ 1 hàng, tránh
+        // phá luồng phổ biến nếu nhận diện avatar sai). preferGroup: báo nhóm -> chọn hàng nhóm.
+        if (pool.length > 1) {
+          const want = pool.filter((c) => c.isGroup === preferGroup);
+          if (want.length) pool = want;   // có hàng đúng kiểu báo -> chỉ xét chúng
+        }
+        // Trong nhóm ứng viên còn lại: chọn hàng NHỎ NHẤT (hàng thật, không phải wrapper còn sót).
+        for (const c of pool) if (!pick || c.area < pick.area) pick = c;
+      } else {
+        pick = topmost;
+      }
       if (!pick) return null;
       // Đánh dấu để click bằng element thật (auto-scroll + actionable) thay vì chỉ toạ độ.
       pick.el.setAttribute('data-mi-target', '1');
       const rr = pick.rect;
-      return { x: rr.left + rr.width / 2, y: rr.top + rr.height / 2 };
-    }, { matchTerms, section });
+      return { x: rr.left + rr.width / 2, y: rr.top + rr.height / 2, isGroup: !!pick.isGroup };
+    }, { matchTerms, section, preferGroup: !isPersonal });
 
     // Kết quả tìm kiếm có debounce -> poll, TRẢ VỀ NGAY khi có kết quả.
     let rect = null;
@@ -419,36 +442,24 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       rect = await scan();
     } while (!rect && Date.now() < deadline);
     await shot(page, '03-searched');
+    if (rect) console.log(`[mi] khớp hội thoại mục "${section}": isGroup=${rect.isGroup} (cần ${isPersonal ? 'cá nhân' : 'nhóm'})`);
     return rect;
   }
 
   let rect = null;
-  // Mục chính theo kiểu báo: cá nhân -> "Tin nhắn" (chat 1-1); nhóm -> "Trò chuyện".
-  const primary = isPersonal ? 'Tin nhắn' : 'Trò chuyện';
-  // Bước 1: tìm trong mục chính — gõ SĐT trước, khớp theo SĐT/tên; không ra thì tìm theo TÊN.
+  // CẢ 2 kiểu báo (cá nhân/nhóm) đều CHỈ chọn trong mục "Trò chuyện" — hội thoại có sẵn của khách.
+  // Loại "Người dùng Zalo" (click vào mở chat 1-1 MỚI -> sai chỗ) và "Tin nhắn"; không có -> DỪNG.
+  const primary = 'Trò chuyện';
+  // Gõ SĐT trước (duy nhất, khớp chính xác hơn tên); không ra thì tìm theo TÊN.
   if (phone) rect = await attempt(phone, [phone, name].filter(Boolean), primary);
   if (!rect && name) rect = await attempt(name, [name], primary);
-  // Bước 2 (CHỈ kiểu cá nhân): chưa có chat 1-1 -> mở từ "Người dùng Zalo", khớp CHỈ theo SĐT
-  // (duy nhất) nên đúng người — an toàn cho cả strict. KHÔNG khớp theo tên để tránh trùng tên.
-  if (!rect && isPersonal && phone) rect = await attempt(phone, [phone], 'Người dùng Zalo');
 
-  if (strictMatch) {
-    // Luồng bot tự động: KHÔNG "lấy đại đơn trên cùng" -> tránh gửi nhầm khách.
-    if (!rect) {
-      await shot(page, '03b-conversation-notfound');
-      throw new Error(`KHONG_THAY_HOI_THOAI (strict): không khớp chắc chắn hội thoại cho "${phone || name}" (mục "${primary}"). Bỏ qua để gửi tay, tránh gửi nhầm.`);
-    }
-  } else {
-    // Luồng gửi tay (có người soát): fallback lấy kết quả trên cùng TRONG mục chính.
-    if (!rect && phone) rect = await attempt(phone, null, primary);
-    if (!rect && name) rect = await attempt(name, null, primary);
-    if (!rect) {
-      await shot(page, '03b-conversation-notfound');
-      const hint = isPersonal
-        ? 'Kiểm tra khách đã có chat 1-1 trong "Tin nhắn" hoặc hiện ở "Người dùng Zalo" trên tài khoản này chưa.'
-        : 'Kiểm tra khách đã có hội thoại (đặt tên sẵn) trong "Trò chuyện" trên tài khoản này chưa.';
-      throw new Error(`KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại cho "${phone || name}". ${hint}`);
-    }
+  // Không khớp chắc trong "Trò chuyện" -> DỪNG LUÔN (cả tay & bot): KHÔNG lấy đại hàng trên cùng,
+  // KHÔNG fallback sang "Người dùng Zalo"/"Tin nhắn" -> tránh mở chat mới / gửi nhầm người.
+  if (!rect) {
+    await shot(page, '03b-conversation-notfound');
+    const tag = strictMatch ? 'KHONG_THAY_HOI_THOAI (strict)' : 'KHONG_THAY_HOI_THOAI';
+    throw new Error(`${tag}: không tìm thấy hội thoại cho "${phone || name}" trong mục "Trò chuyện". Kiểm tra khách đã có hội thoại (đặt tên sẵn) trong "Trò chuyện" trên tài khoản này chưa.`);
   }
   // Ưu tiên click bằng element đã đánh dấu (Playwright tự cuộn tới + chờ actionable),
   // dự phòng click theo toạ độ chuột nếu Vue đã render lại làm mất cờ.
@@ -613,11 +624,12 @@ async function typeAndSend(page, message, imagePaths = []) {
  * @param {string} [p.name]          - tên khách (dùng để tìm/khớp hội thoại)
  * @param {string} p.message         - nội dung tin nhắn
  * @param {string[]} [p.imagePaths]  - ảnh đính kèm (gửi trước, rồi mới gửi text). Mặc định text-only.
- * @param {'group'|'personal'} [p.notifyTarget] - kiểu báo của NV: 'group' bấm tab Nhóm + chỉ chọn
- *        hội thoại nhóm; 'personal' nhắn chat 1-1 (Trò chuyện trước, fallback "Người dùng Zalo"). Mặc định 'group'.
+ * @param {'group'|'personal'} [p.notifyTarget] - kiểu báo của NV: chỉ khác tab lọc bấm trước
+ *        ('group' -> tab Nhóm, 'personal' -> tab Cá nhân); cả 2 đều CHỈ chọn trong mục "Trò chuyện",
+ *        không khớp -> dừng. Mặc định 'group'.
  * @returns {Promise<{ok:boolean}>}
  */
-async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [], notifyTarget = 'group' }) {
+async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [], notifyTarget = 'group', keepContext = false }) {
   if (!keyword && !name) throw new Error('Thiếu keyword (SĐT) hoặc name (tên khách).');
   if (!message && !(imagePaths && imagePaths.length)) throw new Error('Thiếu nội dung tin nhắn.');
 
@@ -654,7 +666,9 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
     } finally {
       // Gửi xong (kể cả khi lỗi) thì đóng trình duyệt để giải phóng tài nguyên.
       // Tắt bằng CLOSE_AFTER_SEND=false nếu muốn giữ context sống cho lần gửi sau.
-      if (config.closeAfterSend) await closeContext(profile);
+      // keepContext=true: đơn kế TIẾP cùng profile (báo loạt đã gom) -> GIỮ context để tái dùng,
+      // đỡ mở/đóng lặp lại; sẽ đóng ở đơn cuối của profile (keepContext=false).
+      if (config.closeAfterSend && !keepContext) await closeContext(profile);
     }
     return { ok: true };
   });

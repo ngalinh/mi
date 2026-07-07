@@ -135,6 +135,21 @@ db.exec(`  -- Cấu hình hệ thống chỉnh được trên web (key-value). D
   );
 `);
 
+db.exec(`  -- DANH BẠ ZALO/FACEBOOK: ánh xạ SĐT khách -> TÊN hiển thị trên Zalo/FB (do NV nhập/
+  -- import từ file). Dùng làm FALLBACK khi runner tìm hội thoại: SĐT vẫn là khoá chính, nhưng
+  -- tên Basso hay khác tên trên Zalo -> khớp theo tên hay trượt. Có tên Zalo đúng ở đây thì tìm
+  -- chắc hơn (nhất là khách Facebook không có SĐT ra hội thoại). Khoá theo SĐT ĐÃ CHUẨN HOÁ
+  -- (bỏ ký tự thừa + tiền tố 84/0) nên "nhập 1 lần, hàng về sau tự nhận" theo cùng số.
+  CREATE TABLE IF NOT EXISTS zalo_contacts (
+    phone       TEXT PRIMARY KEY,        -- SĐT đã chuẩn hoá (khoá khớp với order.phone)
+    zalo_name   TEXT NOT NULL,           -- tên hội thoại trên Zalo/FB
+    raw_phone   TEXT,                    -- SĐT gốc như nhập (để hiển thị)
+    note        TEXT,                    -- ghi chú tuỳ ý (vd "FB", "nhóm chung")
+    source      TEXT,                    -- 'import' | 'manual' | 'basso' | 'learned'
+    updated_at  TEXT NOT NULL            -- ISO string
+  );
+`);
+
 const insertStmt = db.prepare(`
   INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, zalo_account, customer_id, date_inventory, user_id, kind, created_at)
   VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @images, @sent_by, @zalo_account, @customer_id, @date_inventory, @user_id, @kind, @created_at)
@@ -511,9 +526,117 @@ function stats({ q, from, to, staff, sender, account } = {}) {
   };
 }
 
+// ---- Danh bạ Zalo (SĐT -> tên hội thoại Zalo/FB) ----
+/**
+ * Chuẩn hoá SĐT về khoá khớp ổn định: bỏ mọi ký tự không phải số, bỏ tiền tố quốc gia 84 và
+ * số 0 đầu. Khớp với cách runner so SĐT (phoneCore trong salework.js) để order.phone và số
+ * trong danh bạ luôn quy về cùng 1 khoá dù định dạng nhập khác nhau. Trả '' nếu không có số.
+ */
+function normPhone(phone) {
+  return String(phone == null ? '' : phone).replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
+}
+
+const getZaloContactStmt = db.prepare('SELECT * FROM zalo_contacts WHERE phone = @phone');
+const listZaloContactsStmt = db.prepare('SELECT * FROM zalo_contacts ORDER BY updated_at DESC');
+const countZaloContactsStmt = db.prepare('SELECT COUNT(*) AS n FROM zalo_contacts');
+const upsertZaloContactStmt = db.prepare(`
+  INSERT INTO zalo_contacts (phone, zalo_name, raw_phone, note, source, updated_at)
+  VALUES (@phone, @zalo_name, @raw_phone, @note, @source, @now)
+  ON CONFLICT(phone) DO UPDATE SET
+    zalo_name = @zalo_name, raw_phone = @raw_phone, note = @note, source = @source, updated_at = @now
+`);
+const delZaloContactStmt = db.prepare('DELETE FROM zalo_contacts WHERE phone = @phone');
+
+/** Danh sách toàn bộ danh bạ Zalo (mới cập nhật lên đầu). */
+function listZaloContacts() { return listZaloContactsStmt.all(); }
+function zaloContactsCount() { return countZaloContactsStmt.get().n || 0; }
+
+/**
+ * Map SĐT-đã-chuẩn-hoá -> tên Zalo/FB cho toàn bộ danh bạ (1 truy vấn). Dùng khi cần tra hàng
+ * loạt (vd gắn tên group vào danh sách đơn) thay vì query từng đơn.
+ */
+function getZaloMap() {
+  const m = new Map();
+  for (const r of listZaloContactsStmt.all()) m.set(r.phone, r.zalo_name);
+  return m;
+}
+
+/** Lấy TÊN Zalo/FB đã lưu cho 1 SĐT (khớp sau chuẩn hoá). '' nếu chưa có. */
+function getZaloName(phone) {
+  const p = normPhone(phone);
+  if (!p) return '';
+  const r = getZaloContactStmt.get({ phone: p });
+  return r ? r.zalo_name : '';
+}
+
+/** Thêm/sửa 1 liên hệ. Ném lỗi .code='BAD_INPUT' nếu thiếu SĐT hợp lệ hoặc tên. */
+function upsertZaloContact({ phone, zalo_name, note, source } = {}) {
+  const p = normPhone(phone);
+  const name = String(zalo_name == null ? '' : zalo_name).trim();
+  if (!p) { const err = new Error('SĐT không hợp lệ'); err.code = 'BAD_INPUT'; throw err; }
+  if (!name) { const err = new Error('Thiếu tên Zalo/FB'); err.code = 'BAD_INPUT'; throw err; }
+  upsertZaloContactStmt.run({
+    phone: p,
+    zalo_name: name,
+    raw_phone: String(phone == null ? '' : phone).trim() || null,
+    note: note != null && String(note).trim() !== '' ? String(note).trim() : null,
+    source: source || 'manual',
+    now: new Date().toISOString(),
+  });
+  return getZaloContactStmt.get({ phone: p });
+}
+
+/**
+ * Nhập nhiều liên hệ 1 lần (từ file .xlsx). Mỗi dòng cần { phone, zalo_name, note? }.
+ * mode 'replace' -> xoá sạch danh bạ cũ trước khi nạp; 'merge' (mặc định) -> ghi đè theo SĐT,
+ * giữ số cũ không có trong file. Bỏ qua dòng thiếu SĐT/tên (đếm vào skipped). Dòng trùng SĐT
+ * trong CÙNG file -> dòng sau thắng. Trả thống kê để UI báo lại.
+ * @returns {{added:number, updated:number, skipped:number, total:number}}
+ */
+function importZaloContacts(rows = [], mode = 'merge') {
+  const list = Array.isArray(rows) ? rows : [];
+  // Transaction thủ công (BEGIN/COMMIT) để chạy được cả node:sqlite (không có db.transaction)
+  // lẫn better-sqlite3 — nạp cả file trong 1 giao dịch, lỗi giữa chừng thì ROLLBACK nguyên vẹn.
+  db.exec('BEGIN');
+  try {
+    if (mode === 'replace') db.prepare('DELETE FROM zalo_contacts').run();
+    let added = 0; let updated = 0; let skipped = 0;
+    const now = new Date().toISOString();
+    for (const row of list) {
+      const p = normPhone(row && row.phone);
+      const name = String((row && row.zalo_name) == null ? '' : row.zalo_name).trim();
+      if (!p || !name) { skipped += 1; continue; }
+      const existed = getZaloContactStmt.get({ phone: p });
+      upsertZaloContactStmt.run({
+        phone: p,
+        zalo_name: name,
+        raw_phone: String((row && row.phone) == null ? '' : row.phone).trim() || null,
+        note: row && row.note != null && String(row.note).trim() !== '' ? String(row.note).trim() : null,
+        source: 'import',
+        now,
+      });
+      if (existed) updated += 1; else added += 1;
+    }
+    db.exec('COMMIT');
+    return { added, updated, skipped, total: list.length };
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (_) { /* ignore */ }
+    throw e;
+  }
+}
+
+/** Xoá 1 liên hệ theo SĐT (đã chuẩn hoá). Trả true nếu có xoá. */
+function deleteZaloContact(phone) {
+  const p = normPhone(phone);
+  if (!p) return false;
+  const info = delZaloContactStmt.run({ phone: p });
+  return (info.changes || 0) > 0;
+}
+
 module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
+  normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
 };

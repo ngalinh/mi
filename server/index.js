@@ -7,7 +7,8 @@ const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getDelayedMap, setDelayed,
   getFbRouting, setFbRouting,
-  listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
+  listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
@@ -254,6 +255,45 @@ app.delete('/api/staff/:email', (req, res) => {
   res.json({ ok: removed, removed });
 });
 
+// ---- Danh bạ Zalo (SĐT -> tên hội thoại Zalo/FB) ----
+// Nguồn cho bước tìm hội thoại: khớp SĐT vẫn ưu tiên, tên Zalo dùng làm fallback khi SĐT
+// không ra hội thoại / khách Facebook. Là dữ liệu VẬN HÀNH (rủi ro thấp) nên mọi NV đã đăng
+// nhập đều sửa được — vẫn nằm sau gateway secret như mọi API; thao tác xoá/thay có xác nhận ở UI.
+app.get('/api/zalo-contacts', (req, res) => {
+  res.json({ ok: true, contacts: listZaloContacts(), count: zaloContactsCount() });
+});
+
+app.post('/api/zalo-contacts', (req, res) => {
+  try {
+    const b = req.body || {};
+    const contact = upsertZaloContact({ phone: b.phone, zalo_name: b.zalo_name, note: b.note, source: 'manual' });
+    res.json({ ok: true, contact });
+  } catch (e) {
+    if (e.code === 'BAD_INPUT') return res.status(400).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Import hàng loạt: client parse file .xlsx (SheetJS) -> gửi mảng { phone, zalo_name, note? }.
+app.post('/api/zalo-contacts/import', (req, res) => {
+  const b = req.body || {};
+  const rows = Array.isArray(b.rows) ? b.rows : null;
+  if (!rows) return res.status(400).json({ ok: false, error: 'Thiếu danh sách rows để nhập' });
+  if (rows.length > 100000) return res.status(400).json({ ok: false, error: 'File quá lớn (>100.000 dòng)' });
+  const mode = b.mode === 'replace' ? 'replace' : 'merge';
+  try {
+    const stat = importZaloContacts(rows, mode);
+    res.json({ ok: true, ...stat, mode, count: zaloContactsCount() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/api/zalo-contacts/:phone', (req, res) => {
+  const removed = deleteZaloContact(req.params.phone);
+  res.json({ ok: removed, removed });
+});
+
 // ---- Test kết nối Basso (chỉ đọc): dùng cho nút "Test Basso" trên dashboard ----
 // Luôn trả HTTP 200 + cờ `connected` để frontend hiển thị được cả khi lỗi.
 app.get('/api/basso/ping', async (req, res) => {
@@ -307,15 +347,20 @@ function enrichOrders(orders) {
   const autoMap = getAutoMap();
   // Thời điểm đã gửi báo hàng/ship (từ Lịch sử báo) để dashboard hiện mốc thời gian từng loại.
   const sentTimesMap = getSentTimesMap();
+  // Danh bạ Zalo (SĐT-chuẩn-hoá -> tên group) để hiện cột "Tên Zalo/FB" + cho biết đơn nào
+  // sẽ gửi theo tên group. Nạp 1 lần cho cả tập.
+  const zaloMap = getZaloMap();
   return orders.map((o) => {
     const key = autoNotify.autoKey(o);
     const a = autoMap.get(String(key));
     const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
     const sent = sentTimesMap.get(String(key));
     const withSent = sent ? { ...withAuto, sentAt: sent } : withAuto;
-    return delayedMap.has(key)
+    const withDelay = delayedMap.has(key)
       ? { ...withSent, delayed: true, delayReason: delayedMap.get(key) }
       : withSent;
+    const zaloName = o.phone ? zaloMap.get(normPhone(o.phone)) : '';
+    return zaloName ? { ...withDelay, zaloName } : withDelay;
   });
 }
 
