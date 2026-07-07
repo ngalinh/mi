@@ -249,7 +249,7 @@
     // Tên hội thoại Zalo/FB (từ Danh bạ, khớp SĐT) hiện thành 1 dòng nhỏ dưới tên khách. Có ->
     // khi gửi sẽ tìm nhóm theo tên này; không có -> không hiện gì (thêm ở trang Danh bạ).
     const zalo = o.zaloName
-      ? `<div class="zalo-sub" title="Đã liên kết Danh bạ Zalo — khi gửi tìm nhóm theo tên: ${App.esc(o.zaloName)}">🔗 ${App.esc(o.zaloName)}</div>`
+      ? `<div class="zalo-sub" title="Đã liên kết Danh bạ Zalo — khi gửi tìm nhóm theo tên: ${App.esc(o.zaloName)}"><svg class="zalo-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="zalo-txt">${App.esc(o.zaloName)}</span></div>`
       : '';
     return nameHtml + zalo;
   }
