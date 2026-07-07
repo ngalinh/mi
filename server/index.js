@@ -6,7 +6,8 @@ const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getDelayedMap, setDelayed,
-  listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail } = require('./db');
+  listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
@@ -232,6 +233,45 @@ app.delete('/api/staff/:email', (req, res) => {
     return res.status(409).json({ ok: false, error: 'Không thể xoá Admin hoạt động cuối cùng' });
   }
   const removed = deleteStaff(req.params.email);
+  res.json({ ok: removed, removed });
+});
+
+// ---- Danh bạ Zalo (SĐT -> tên hội thoại Zalo/FB) ----
+// Nguồn cho bước tìm hội thoại: khớp SĐT vẫn ưu tiên, tên Zalo dùng làm fallback khi SĐT
+// không ra hội thoại / khách Facebook. Là dữ liệu VẬN HÀNH (rủi ro thấp) nên mọi NV đã đăng
+// nhập đều sửa được — vẫn nằm sau gateway secret như mọi API; thao tác xoá/thay có xác nhận ở UI.
+app.get('/api/zalo-contacts', (req, res) => {
+  res.json({ ok: true, contacts: listZaloContacts(), count: zaloContactsCount() });
+});
+
+app.post('/api/zalo-contacts', (req, res) => {
+  try {
+    const b = req.body || {};
+    const contact = upsertZaloContact({ phone: b.phone, zalo_name: b.zalo_name, note: b.note, source: 'manual' });
+    res.json({ ok: true, contact });
+  } catch (e) {
+    if (e.code === 'BAD_INPUT') return res.status(400).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Import hàng loạt: client parse file .xlsx (SheetJS) -> gửi mảng { phone, zalo_name, note? }.
+app.post('/api/zalo-contacts/import', (req, res) => {
+  const b = req.body || {};
+  const rows = Array.isArray(b.rows) ? b.rows : null;
+  if (!rows) return res.status(400).json({ ok: false, error: 'Thiếu danh sách rows để nhập' });
+  if (rows.length > 100000) return res.status(400).json({ ok: false, error: 'File quá lớn (>100.000 dòng)' });
+  const mode = b.mode === 'replace' ? 'replace' : 'merge';
+  try {
+    const stat = importZaloContacts(rows, mode);
+    res.json({ ok: true, ...stat, mode, count: zaloContactsCount() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/api/zalo-contacts/:phone', (req, res) => {
+  const removed = deleteZaloContact(req.params.phone);
   res.json({ ok: removed, removed });
 });
 
