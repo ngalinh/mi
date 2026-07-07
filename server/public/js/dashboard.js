@@ -249,11 +249,11 @@
   // Có -> hiện tên + dấu 🔗 (khi gửi sẽ tìm nhóm theo tên này); chưa có -> gợi ý thêm vào danh bạ.
   function zaloNameCell(o) {
     if (o.zaloName) {
-      return `<span class="zalo-name" title="Đã liên kết Danh bạ Zalo — khi gửi sẽ tìm nhóm theo tên này">🔗 ${App.esc(o.zaloName)}</span>`;
+      // Gọn: chỉ 🔗 + tên cắt ngắn (…); di chuột xem đủ tên qua title.
+      return `<span class="zalo-name" title="Đã liên kết Danh bạ Zalo — khi gửi sẽ tìm nhóm theo tên: ${App.esc(o.zaloName)}">🔗 ${App.esc(o.zaloName)}</span>`;
     }
     if (!o.phone) return '<span class="muted">—</span>';
-    const href = 'danhba.html';
-    return `<a class="zalo-name-add" href="${href}" title="Chưa có trong Danh bạ Zalo — bấm để thêm">+ thêm</a>`;
+    return `<a class="zalo-name-add" href="danhba.html" title="Chưa có trong Danh bạ Zalo — bấm để thêm">+</a>`;
   }
   function orderCodeCell(it) {
     const code = App.esc(it.orderCode);
