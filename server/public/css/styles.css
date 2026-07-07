@@ -772,9 +772,9 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .reports-table .c-img     { width: 180px; }
 .reports-table .c-cust    { width: 220px; }
 .reports-table .c-phone   { width: 120px; }
-.reports-table .c-staff   { width: 180px; }
+.reports-table .c-staff   { width: 130px; }
 .reports-table .c-sender  { width: 108px; }
-.reports-table .c-account { width: 100px; }
+.reports-table .c-account { width: 150px; }
 .reports-table .c-msg     { width: 280px; }
 .reports-table .c-result  { width: 120px; }
 .reports-table .c-err     { width: 160px; }
