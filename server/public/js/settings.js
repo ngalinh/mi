@@ -185,37 +185,11 @@
     return [...groups.values()];
   }
 
-  // 1 khối tài khoản: tên + brand + trạng thái kết nối · chip điều khiển · hàng hành động.
-  // Đăng nhập nổi bật (primary) khi CHƯA kết nối; Xoá tách riêng về cuối để tránh bấm nhầm.
-  function acctBlock(a) {
-    const isFb = a.platform === 'facebook';
-    const title = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName || a.name || a.key);
-    const needLogin = a.connection !== 'connected';
-    const chips = [autoTgl(a)];
-    if (!isFb) chips.push(targetTgl(a));
-    return `<div class="acct-block" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
-      <div class="acct-head">
-        <span class="acct-name">${App.esc(title)}</span>
-        ${isFb ? '' : brandTag(a.brand || '')}
-        ${connBadge(a.connection)}
-      </div>
-      <div class="acct-chips">${chips.join('')}</div>
-      <div class="acct-actions">
-        <button class="acct-btn${needLogin ? ' primary' : ''}" data-action="login" title="Mở Chromium trên local-runner để đăng nhập">${IC.login}<span>Đăng nhập</span></button>
-        <button class="acct-btn" data-action="edit" title="Sửa thông tin tài khoản">${IC.edit}<span>Sửa</span></button>
-        <button class="acct-btn" data-action="check" title="Kiểm tra còn đăng nhập không">${IC.check}<span>Kiểm tra</span></button>
-        <span class="acct-actions-sp"></span>
-        <button class="acct-btn danger icon-only" data-action="del" title="Xoá tài khoản">${IC.del}</button>
-      </div>
-    </div>`;
-  }
-
-  function addBtn(platform, group, ghost) {
-    return `<button class="acct-add${ghost ? ' ghost' : ''}" data-action="add" data-platform="${platform}" data-name="${App.esc(group.name)}" data-staffid="${App.esc(group.staffId)}">${IC.plus}<span>Thêm ${platLabel(platform)}</span></button>`;
-  }
-  function accountsCell(items, platform, group) {
-    if (!items.length) return `<div class="acct-empty">${addBtn(platform, group, true)}</div>`;
-    return items.map(acctBlock).join('') + addBtn(platform, group, false);
+  // Nhãn kênh (Zalo / Facebook) — thay cho 2 cột riêng, giúp gộp mọi tài khoản về 1 bảng phẳng.
+  function chanTag(p) {
+    return p === 'facebook'
+      ? '<span class="chan fb">Facebook</span>'
+      : '<span class="chan zalo">Zalo</span>';
   }
 
   // Tóm tắt nhanh cho cột Nhân viên: tổng tài khoản + số kết nối / chưa kết nối.
@@ -230,26 +204,57 @@
     return `<div class="acct-emp-meta">${parts.join(' · ')}</div>`;
   }
 
+  // 1 tài khoản = 1 dòng; các cột (kênh · trạng thái · tự động · đích báo · thao tác) thẳng hàng.
+  // Tên NV chỉ hiện ở dòng đầu của nhóm. Đăng nhập bung chữ (primary) khi CHƯA kết nối.
+  function acctRow(a, group, first) {
+    const isFb = a.platform === 'facebook';
+    const title = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName || a.name || a.key);
+    const need = a.connection !== 'connected';
+    const empCell = first
+      ? `<div class="emp-name">${App.esc(group.name)}</div>${group.staffId ? `<div class="emp-sub">NV Basso #${App.esc(group.staffId)}</div>` : ''}${empMeta(group)}`
+      : '';
+    return `<tr class="acct-row${first ? ' grp-first' : ''}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
+      <td class="acct-emp">${empCell}</td>
+      <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`}</td>
+      <td>${chanTag(a.platform)}</td>
+      <td>${connBadge(a.connection)}</td>
+      <td>${autoTgl(a)}</td>
+      <td>${isFb ? '<span class="muted">—</span>' : targetTgl(a)}</td>
+      <td class="acct-act-cell"><div class="acct-acts">
+        <button class="ibtn${need ? ' primary' : ''}" data-action="login" title="Mở Chromium trên local-runner để đăng nhập">${IC.login}${need ? '<span>Đăng nhập</span>' : ''}</button>
+        <button class="ibtn" data-action="edit" title="Sửa thông tin tài khoản">${IC.edit}</button>
+        <button class="ibtn" data-action="check" title="Kiểm tra còn đăng nhập không">${IC.check}</button>
+        <button class="ibtn danger" data-action="del" title="Xoá tài khoản">${IC.del}</button>
+      </div></td>
+    </tr>`;
+  }
+
+  // Dòng "Thêm tài khoản" cuối mỗi nhóm — chọn Zalo/Facebook ngay trong popup.
+  function addRow(group) {
+    return `<tr class="acct-add-row">
+      <td></td>
+      <td colspan="6"><button class="acct-add-flat" data-action="add" data-name="${App.esc(group.name)}" data-staffid="${App.esc(group.staffId)}">${IC.plus}<span>Thêm tài khoản cho ${App.esc(group.name)}</span></button></td>
+    </tr>`;
+  }
+
   function renderAccounts(list) {
     accountsAll = list || [];
     const groups = groupAccounts(accountsAll);
     if (!groups.length) {
-      zaloRows.innerHTML = '<tr><td colspan="3" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
+      zaloRows.innerHTML = '<tr><td colspan="7" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
       return;
     }
-    zaloRows.innerHTML = groups.map((g) => `
-      <tr class="main-row">
-        <td class="cust acct-emp">${App.esc(g.name)}${g.staffId ? `<div class="acct-emp-sub">NV Basso #${App.esc(g.staffId)}</div>` : ''}${empMeta(g)}</td>
-        <td class="acct-td">${accountsCell(g.zalo, 'zalo', g)}</td>
-        <td class="acct-td">${accountsCell(g.facebook, 'facebook', g)}</td>
-      </tr>`).join('');
+    zaloRows.innerHTML = groups.map((g) => {
+      const all = [...g.zalo, ...g.facebook];
+      return all.map((a, i) => acctRow(a, g, i === 0)).join('') + addRow(g);
+    }).join('');
   }
   async function loadZalo() {
     try {
       const r = await App.api('/api/accounts');
       renderAccounts(r.accounts || r.zalo || []);
     } catch (e) {
-      zaloRows.innerHTML = `<tr><td colspan="3" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+      zaloRows.innerHTML = `<tr><td colspan="7" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -378,7 +383,7 @@
     if (b.dataset.action === 'add') {
       return openZalo(null, { platform: b.dataset.platform, name: b.dataset.name, staffId: b.dataset.staffid });
     }
-    const block = b.closest('.acct-block'); if (!block) return undefined;
+    const block = b.closest('.acct-row'); if (!block) return undefined;
     return rowAction(b.dataset.action, block.dataset.key);
   });
   loadZalo();
