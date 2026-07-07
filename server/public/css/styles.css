@@ -823,6 +823,15 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border: 2px solid currentColor; border-top-color: transparent;
   border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px;
 }
+/* Trình duyệt hỗ trợ color-mix: thêm vòng nền mờ trọn hình tròn + một cung đậm xoay.
+   Luôn thấy đủ hình tròn nên nhìn cân giữa nút, không bị cảm giác lệch như khi hở nguyên
+   đoạn viền trên. Trình duyệt cũ vẫn dùng spinner khe hở phía trên ở khai báo bên trên. */
+@supports (border-color: color-mix(in srgb, red, transparent)) {
+  .spinner {
+    border-color: color-mix(in srgb, currentColor 26%, transparent);
+    border-top-color: currentColor;
+  }
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ============================================================
