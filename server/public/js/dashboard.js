@@ -1213,9 +1213,13 @@
 
   // Lọc trạng thái (toolbar, kế bên thời gian): '' = tất cả, hoặc todo/arrival/ship/failed.
   const fStatusEl = $('fStatus');
+  // Tô màu ô lọc theo trạng thái đang chọn (data-v -> CSS): cam/xanh dương/xanh lá/đỏ như badge từng dòng.
+  const paintStatusFilter = () => { if (fStatusEl) fStatusEl.dataset.v = fStatusEl.value || ''; };
+  paintStatusFilter();
   if (fStatusEl) fStatusEl.addEventListener('change', (e) => {
     currentGroup = e.target.value;
     currentPage = 1;
+    paintStatusFilter();
     reloadScope();
   });
 
@@ -1352,7 +1356,7 @@
   function syncDateInputs() {
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
-    const st = $('fStatus'); if (st) st.value = currentGroup || '';
+    const st = $('fStatus'); if (st) { st.value = currentGroup || ''; st.dataset.v = st.value; }
     const custom = !!(F.from || F.to);
     const sc = $('fScope'); if (sc) sc.value = custom ? 'custom' : String(scopeDays);
     showCustomRange(custom);
