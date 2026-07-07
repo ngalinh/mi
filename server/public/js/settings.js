@@ -11,6 +11,8 @@
     const p = t.dataset.panel;
     panels.forEach((pl) => pl.classList.toggle('hidden', pl.dataset.panelContent !== p));
     if (p === 'proxy') loadProxy();
+    if (p === 'zalo') loadZalo();
+    if (p === 'fbrouting') loadFbRouting();
   });
 
   // ---------------- Nhân viên (lưu thật ở server: SQLite /api/staff) ----------------
@@ -126,13 +128,15 @@
   });
   loadBassoStaff().then(loadStaff); // nạp NV Basso trước để hiển thị đúng tên đã gán
 
-  // ---------------- Tài khoản Zalo (nối backend thật) ----------------
+  // ---------------- Tài khoản nhân viên (Zalo + Facebook, gộp 1 chỗ) ----------------
   const zaloRows = $('zaloRows');
   const zm = $('zaloModal');
   const zaKey = $('zaKey'), zaName = $('zaName'), zaSalework = $('zaSalework'),
+    zaFbName = $('zaFbName'), zaPlatform = $('zaPlatform'),
     zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
-  let zEditing = null; // key đang sửa, null = thêm mới
+  let zEditing = null;   // key đang sửa, null = thêm mới
+  let accountsAll = [];  // toàn bộ account (cả 2 kênh) lần tải gần nhất
 
   function connBadge(c) {
     if (c === 'connected') return '<span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Đã kết nối</span>';
@@ -155,46 +159,92 @@
       ? '<span class="pill chua" data-action="target" style="cursor:pointer" title="Đang: Cá nhân. Bấm để đổi sang Nhóm">Cá nhân</span>'
       : '<span class="pill da" data-action="target" style="cursor:pointer" title="Đang: Nhóm. Bấm để đổi sang Cá nhân">Nhóm</span>';
   }
-  function renderZalo(list) {
-    if (!list || !list.length) {
-      zaloRows.innerHTML = '<tr><td colspan="8" class="muted" style="padding:16px;">Chưa có tài khoản Zalo nào. Bấm “Thêm tài khoản”.</td></tr>';
+  const platLabel = (p) => (p === 'facebook' ? 'Facebook' : 'Zalo');
+  const findAcct = (key) => accountsAll.find((x) => x.key === key);
+
+  // Gom account về từng nhân viên: ưu tiên staffId, rồi tên, cuối cùng key.
+  function groupAccounts(list) {
+    const groups = new Map();
+    for (const a of (list || [])) {
+      const gk = a.staffId ? `s:${a.staffId}` : (a.name ? `n:${a.name.toLowerCase()}` : `k:${a.key}`);
+      if (!groups.has(gk)) groups.set(gk, { name: a.name || a.key, staffId: a.staffId || '', zalo: [], facebook: [] });
+      const g = groups.get(gk);
+      if (!g.name && a.name) g.name = a.name;
+      (a.platform === 'facebook' ? g.facebook : g.zalo).push(a);
+    }
+    return [...groups.values()];
+  }
+
+  // 1 khối tài khoản trong ô Zalo/Facebook: tên + kết nối + pill auto/kiểu báo + hành động.
+  function acctBlock(a) {
+    const isFb = a.platform === 'facebook';
+    const title = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName || a.name || a.key);
+    const pills = [connBadge(a.connection), autoPill(a)];
+    if (!isFb) pills.push(targetPill(a));
+    return `<div class="acct-block" data-key="${App.esc(a.key)}" data-platform="${a.platform}" style="padding:8px 0; border-bottom:1px solid var(--border,#eee);">
+      <div class="cust">${App.esc(title)} ${isFb ? '' : brandTag(a.brand || '')}</div>
+      <div style="margin:5px 0; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">${pills.join(' ')}</div>
+      <div>
+        <button class="link-btn" data-action="edit">Sửa</button>
+        <button class="link-btn" data-action="login">Đăng nhập</button>
+        <button class="link-btn" data-action="check">Kiểm tra</button>
+        <button class="link-btn" data-action="del" style="color:var(--danger,#d33)">Xoá</button>
+      </div>
+    </div>`;
+  }
+
+  function accountsCell(items, platform, group) {
+    const blocks = items.map(acctBlock).join('');
+    const add = `<button class="link-btn" data-action="add" data-platform="${platform}" data-name="${App.esc(group.name)}" data-staffid="${App.esc(group.staffId)}" style="margin-top:6px;">＋ Thêm ${platLabel(platform)}</button>`;
+    return blocks + add;
+  }
+
+  function renderAccounts(list) {
+    accountsAll = list || [];
+    const groups = groupAccounts(accountsAll);
+    if (!groups.length) {
+      zaloRows.innerHTML = '<tr><td colspan="3" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
       return;
     }
-    zaloRows.innerHTML = list.map((a) => `
-      <tr class="main-row" data-key="${App.esc(a.key)}">
-        <td class="cust">${App.esc(a.name || a.key)}</td>
-        <td>${App.esc(a.saleworkName || '')}</td>
-        <td class="center">${brandTag(a.brand || '')}</td>
-        <td>${App.esc(a.phone || '')}</td>
-        <td>${connBadge(a.connection)}</td>
-        <td class="center">${autoPill(a)}</td>
-        <td class="center">${targetPill(a)}</td>
-        <td>
-          <button class="link-btn" data-action="edit">Sửa</button>
-          <button class="link-btn" data-action="login">Đăng nhập</button>
-          <button class="link-btn" data-action="check">Kiểm tra</button>
-          <button class="link-btn" data-action="del" style="color:var(--danger,#d33)">Xoá</button>
-        </td>
+    zaloRows.innerHTML = groups.map((g) => `
+      <tr class="main-row">
+        <td class="cust">${App.esc(g.name)}${g.staffId ? `<br><span class="muted" style="font-size:12px">NV Basso #${App.esc(g.staffId)}</span>` : ''}</td>
+        <td style="vertical-align:top;">${accountsCell(g.zalo, 'zalo', g)}</td>
+        <td style="vertical-align:top;">${accountsCell(g.facebook, 'facebook', g)}</td>
       </tr>`).join('');
   }
   async function loadZalo() {
     try {
       const r = await App.api('/api/accounts');
-      renderZalo(r.zalo || []);
+      renderAccounts(r.accounts || r.zalo || []);
     } catch (e) {
-      zaloRows.innerHTML = `<tr><td colspan="8" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+      zaloRows.innerHTML = `<tr><td colspan="3" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
     }
   }
-  function openZalo(a) {
+
+  // Ẩn/hiện field theo nền tảng: .pf-zalo chỉ cho Zalo, .pf-fb chỉ cho Facebook.
+  function applyPlatformFields(platform) {
+    const fb = platform === 'facebook';
+    document.querySelectorAll('#zaloModal .pf-zalo').forEach((el) => { el.style.display = fb ? 'none' : ''; });
+    document.querySelectorAll('#zaloModal .pf-fb').forEach((el) => { el.style.display = fb ? '' : 'none'; });
+  }
+
+  function openZalo(a, presets) {
+    presets = presets || {};
     zEditing = a ? a.key : null;
-    $('zaTitle').textContent = a ? 'Sửa tài khoản Zalo' : 'Thêm tài khoản Zalo';
+    const platform = a ? (a.platform || 'zalo') : (presets.platform || 'zalo');
+    zaPlatform.value = platform;
+    zaPlatform.disabled = !!a; // nền tảng bất biến khi sửa
+    applyPlatformFields(platform);
+    $('zaTitle').textContent = a ? `Sửa tài khoản ${platLabel(platform)}` : `Thêm tài khoản ${platLabel(platform)}`;
     $('zaHint').style.display = a ? 'none' : '';
     zaKey.value = a ? a.key : '';
     zaKey.disabled = !!a; // không đổi key khi sửa
-    zaName.value = a ? (a.name || '') : '';
+    zaName.value = a ? (a.name || '') : (presets.name || '');
     zaSalework.value = a ? (a.saleworkName || '') : '';
+    zaFbName.value = a ? (a.fbName || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
-    zaStaffId.value = a ? (a.staffId || '') : '';
+    zaStaffId.value = a ? (a.staffId || '') : (presets.staffId || '');
     zaBrand.value = a ? (a.brand || '') : '';
     zaProxy.value = a ? (a.proxy || '') : '';
     zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
@@ -204,28 +254,32 @@
   function closeZalo() { zm.classList.remove('show'); }
 
   async function saveZalo() {
+    const platform = zaPlatform.value === 'facebook' ? 'facebook' : 'zalo';
     const key = zaKey.value.trim();
     const body = {
-      name: zaName.value.trim(), saleworkName: zaSalework.value.trim(),
+      name: zaName.value.trim(),
       phone: zaPhone.value.trim(), staffId: zaStaffId.value.trim(),
-      brand: zaBrand.value.trim().toUpperCase(),
       proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
-      notifyTarget: zaTarget.value === 'personal' ? 'personal' : 'group',
     };
-    if (!key || !body.name || !body.saleworkName) {
-      App.toast('❌ Cần điền: Mã profile, Tên nhân viên, Tên Zalo trong dropdown', 5000);
-      return;
+    if (platform === 'facebook') {
+      body.fbName = zaFbName.value.trim();
+    } else {
+      body.saleworkName = zaSalework.value.trim();
+      body.brand = zaBrand.value.trim().toUpperCase();
+      body.notifyTarget = zaTarget.value === 'personal' ? 'personal' : 'group';
     }
+    if (!key || !body.name) { App.toast('❌ Cần điền: Mã profile và Tên nhân viên', 5000); return; }
+    if (platform === 'zalo' && !body.saleworkName) { App.toast('❌ Zalo cần "Tên trong dropdown"', 5000); return; }
     try {
       if (zEditing) {
         await App.api(`/api/accounts/${encodeURIComponent(zEditing)}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         });
-        App.toast('✅ Đã lưu tài khoản Zalo');
+        App.toast(`✅ Đã lưu tài khoản ${platLabel(platform)}`);
       } else {
         const r = await App.api('/api/accounts', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'zalo', key, ...body }),
+          body: JSON.stringify({ type: platform, key, ...body }),
         });
         App.toast(`✅ ${r.message || 'Đã thêm tài khoản'}`, 7000);
       }
@@ -236,12 +290,10 @@
     }
   }
 
-  async function rowAction(action, key, name) {
-    if (action === 'edit') {
-      const r = await App.api('/api/accounts').catch(() => ({ zalo: [] }));
-      const a = (r.zalo || []).find((x) => x.key === key);
-      return openZalo(a || { key });
-    }
+  async function rowAction(action, key) {
+    const a = findAcct(key);
+    const platform = a ? a.platform : 'zalo';
+    if (action === 'edit') return openZalo(a || { key });
     if (action === 'login') {
       try { const r = await App.api(`/api/accounts/${encodeURIComponent(key)}/login`, { method: 'POST' });
         App.toast(`🖥️ ${r.message || 'Đang mở Chromium trên máy local-runner'}`, 7000);
@@ -257,15 +309,13 @@
       return undefined;
     }
     if (action === 'del') {
-      if (!confirm(`Xoá tài khoản Zalo "${name || key}"? Session đăng nhập cũng bị xoá.`)) return undefined;
-      try { await App.api(`/api/accounts/zalo/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      if (!confirm(`Xoá tài khoản ${platLabel(platform)} "${(a && a.name) || key}"? Session đăng nhập cũng bị xoá.`)) return undefined;
+      try { await App.api(`/api/accounts/${platform}/${encodeURIComponent(key)}`, { method: 'DELETE' });
         App.toast('Đã xoá tài khoản'); loadZalo();
       } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
       return undefined;
     }
     if (action === 'auto') {
-      const r = await App.api('/api/accounts').catch(() => ({ zalo: [] }));
-      const a = (r.zalo || []).find((x) => x.key === key);
       const next = !(a && a.autoEnabled !== false);
       try { await App.api(`/api/accounts/${encodeURIComponent(key)}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoEnabled: next }),
@@ -275,8 +325,6 @@
       } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
     }
     if (action === 'target') {
-      const r = await App.api('/api/accounts').catch(() => ({ zalo: [] }));
-      const a = (r.zalo || []).find((x) => x.key === key);
       const next = a && a.notifyTarget === 'personal' ? 'group' : 'personal';
       try { await App.api(`/api/accounts/${encodeURIComponent(key)}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notifyTarget: next }),
@@ -288,17 +336,117 @@
     return undefined;
   }
 
-  $('addZaloBtn').addEventListener('click', () => openZalo(null));
+  $('addZaloBtn').addEventListener('click', () => openZalo(null, {}));
+  zaPlatform.addEventListener('change', () => applyPlatformFields(zaPlatform.value));
   $('zaCancel').addEventListener('click', closeZalo);
   $('zaSave').addEventListener('click', saveZalo);
   zm.addEventListener('click', (e) => { if (e.target === zm) closeZalo(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeZalo(); });
   zaloRows.addEventListener('click', (e) => {
     const b = e.target.closest('[data-action]'); if (!b) return;
-    const tr = b.closest('tr.main-row'); if (!tr) return;
-    rowAction(b.dataset.action, tr.dataset.key, tr.children[0].textContent.trim());
+    if (b.dataset.action === 'add') {
+      return openZalo(null, { platform: b.dataset.platform, name: b.dataset.name, staffId: b.dataset.staffid });
+    }
+    const block = b.closest('.acct-block'); if (!block) return undefined;
+    return rowAction(b.dataset.action, block.dataset.key);
   });
   loadZalo();
+
+  // ---------------- Báo qua Facebook: định tuyến khách (SĐT + link) / NV ----------------
+  const fbCustomerRows = $('fbCustomerRows');
+  const fbStaffRows = $('fbStaffRows');
+  let fbRouting = { customers: [], staffIds: [] };
+
+  function renderFbCount() {
+    const el = $('fbPhonesCount');
+    const n = fbRouting.customers.length;
+    const noLink = fbRouting.customers.filter((c) => !c.link).length;
+    if (el) el.textContent = n ? `${n} khách báo qua Facebook${noLink ? ` · ${noLink} chưa có link` : ''}` : '';
+  }
+  function fbCustomerRowHtml(c) {
+    return `<tr class="main-row">
+      <td><input class="note-input fb-phone" value="${App.esc((c && c.phone) || '')}" placeholder="Vd: 0912345678" /></td>
+      <td><input class="note-input fb-link" value="${App.esc((c && c.link) || '')}" placeholder="facebook.com/… hoặc m.me/…" /></td>
+      <td class="center"><button class="link-btn" data-action="fbdel" style="color:var(--danger,#d33)">Xoá</button></td>
+    </tr>`;
+  }
+  function renderFbCustomers() {
+    const list = fbRouting.customers.length ? fbRouting.customers : [{ phone: '', link: '' }];
+    fbCustomerRows.innerHTML = list.map(fbCustomerRowHtml).join('');
+    renderFbCount();
+  }
+  function collectFbCustomers() {
+    const rows = [...fbCustomerRows.querySelectorAll('tr.main-row')];
+    return rows.map((tr) => ({
+      phone: (tr.querySelector('.fb-phone') || {}).value ? tr.querySelector('.fb-phone').value.trim() : '',
+      link: (tr.querySelector('.fb-link') || {}).value ? tr.querySelector('.fb-link').value.trim() : '',
+    })).filter((c) => c.phone);
+  }
+  function renderFbStaff() {
+    if (!bassoStaff.length) {
+      fbStaffRows.innerHTML = '<tr><td colspan="2" class="muted" style="padding:16px;">Chưa có danh sách nhân viên Basso.</td></tr>';
+      return;
+    }
+    const on = new Set(fbRouting.staffIds.map(String));
+    fbStaffRows.innerHTML = bassoStaff.map((u) => {
+      const active = on.has(String(u.user_id));
+      const pill = active
+        ? '<span class="pill da" data-action="fbtoggle" style="cursor:pointer" title="Bấm để tắt">Bật</span>'
+        : '<span class="pill chua" data-action="fbtoggle" style="cursor:pointer" title="Bấm để bật">Tắt</span>';
+      return `<tr class="main-row" data-uid="${App.esc(u.user_id)}">
+        <td class="cust">${App.esc(u.name)} <span class="muted" style="font-size:12px">#${App.esc(u.user_id)}</span></td>
+        <td class="center">${pill}</td>
+      </tr>`;
+    }).join('');
+  }
+  async function loadFbRouting() {
+    if (!bassoStaff.length) { try { await loadBassoStaff(); } catch { /* ignore */ } }
+    try {
+      const r = await App.api('/api/fb-routing');
+      fbRouting = { customers: r.customers || [], staffIds: (r.staffIds || []).map(String) };
+    } catch { fbRouting = { customers: [], staffIds: [] }; }
+    renderFbCustomers();
+    renderFbStaff();
+  }
+  async function saveFbCustomers() {
+    const customers = collectFbCustomers();
+    const missing = customers.filter((c) => !c.link).length;
+    if (missing && !confirm(`${missing} khách chưa có link Facebook — sẽ không gửi được cho tới khi thêm link. Vẫn lưu?`)) return;
+    try {
+      const r = await App.api('/api/fb-routing', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customers }),
+      });
+      fbRouting.customers = r.customers || [];
+      renderFbCustomers();
+      App.toast('✅ Đã lưu danh sách khách báo qua Facebook');
+    } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+  }
+  async function toggleFbStaff(uid) {
+    const set = new Set(fbRouting.staffIds.map(String));
+    if (set.has(String(uid))) set.delete(String(uid)); else set.add(String(uid));
+    try {
+      const r = await App.api('/api/fb-routing', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staffIds: [...set] }),
+      });
+      fbRouting.staffIds = (r.staffIds || []).map(String);
+      renderFbStaff();
+      App.toast('✅ Đã cập nhật nhân viên báo qua Facebook');
+    } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
+  }
+  $('fbCustomerAdd').addEventListener('click', () => {
+    // Nếu đang là dòng trống mẫu (chưa có khách nào) thì thêm tiếp 1 dòng nữa.
+    fbCustomerRows.insertAdjacentHTML('beforeend', fbCustomerRowHtml({ phone: '', link: '' }));
+  });
+  $('fbCustomerSave').addEventListener('click', saveFbCustomers);
+  fbCustomerRows.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-action="fbdel"]'); if (!b) return;
+    const tr = b.closest('tr.main-row'); if (tr) tr.remove();
+  });
+  $('fbRoutingReload').addEventListener('click', loadFbRouting);
+  fbStaffRows.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-action="fbtoggle"]'); if (!b) return;
+    const tr = b.closest('tr.main-row'); if (tr) toggleFbStaff(tr.dataset.uid);
+  });
 
   // ---------------- Proxy theo tài khoản Zalo (nối backend thật) ----------------
   const proxyRows = $('proxyRows');
@@ -316,7 +464,7 @@
     proxyRows.innerHTML = list.map((a) => `
       <tr class="main-row" data-key="${App.esc(a.key)}">
         <td class="cust">${App.esc(a.name || a.key)}</td>
-        <td>${App.esc(a.saleworkName || '')}</td>
+        <td>${App.esc(a.saleworkName || a.fbName || '')}${a.platform === 'facebook' ? ' <span class="muted" style="font-size:11px">(FB)</span>' : ''}</td>
         <td>
           <div class="note-cell">
             <input class="note-input proxy-input" data-key="${App.esc(a.key)}" value="${App.esc(a.proxy || '')}" placeholder="host:port hoặc user:pass@host:port" />
@@ -333,7 +481,7 @@
     proxyRows.innerHTML = '<tr><td colspan="5" class="muted" style="padding:16px;">Đang tải…</td></tr>';
     try {
       const r = await App.api('/api/accounts');
-      renderProxy(r.zalo || []);
+      renderProxy(r.accounts || r.zalo || []);
     } catch (e) {
       proxyRows.innerHTML = `<tr><td colspan="5" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
     }

@@ -1,9 +1,9 @@
 'use strict';
 const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
-const { sendBaoHang } = require('./playwrightProxy');
+const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
-const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getZaloName } = require('./db');
+const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getFbLink, getZaloName } = require('./db');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
@@ -69,17 +69,19 @@ async function notifyOne(order, opts = {}) {
   const resolved = await resolveForOrder(order, opts);
   // LOG CHẨN ĐOÁN: server đã chọn account nào + kiểu báo gì cho đơn này. notifyTarget=group cho NV
   // đáng lẽ cá nhân -> đơn KHÔNG khớp account store (source!='store'), hoặc server chạy code cũ.
-  console.log(`[notify] ${order.customerName || order.phone || '?'} | staff=${order.staff || '-'} userId=${order.userId || '-'} -> account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
+  console.log(`[notify] ${order.customerName || order.phone || '?'} | staff=${order.staff || '-'} userId=${order.userId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
 
   // Tra mã ĐH + ảnh SP TRƯỚC khi gửi để dòng "đang báo" đã đủ thông tin hiển thị (chỉ tra 1 lần,
   // dùng lại cho cả lúc cập nhật kết quả cuối).
   const meta = await resolveOrderMeta(order);
 
-  // HƯỚNG A: NV phụ trách chưa có Zalo cho brand của đơn -> KHÔNG gửi (tránh gửi nhầm brand).
-  // Ghi thẳng 1 dòng "failed" vào Lịch sử báo với lý do rõ ràng để người soát xử lý (báo tay,
-  // hoặc thêm account brand cho NV). Trên gửi tay có thể chọn tài khoản cụ thể để ép gửi.
-  if (resolved.skip && resolved.skipReason === 'brand') {
-    const err = `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${order.staff || '—'}`;
+  // Bỏ qua có lý do rõ ràng -> ghi 1 dòng "failed" vào Lịch sử báo để người soát xử lý.
+  //   - brand        : NV chưa có Zalo cho brand của đơn (tránh gửi nhầm brand).
+  //   - fb_no_account: đơn thuộc diện báo qua Facebook nhưng NV chưa cấu hình tài khoản Facebook.
+  if (resolved.skip && (resolved.skipReason === 'brand' || resolved.skipReason === 'fb_no_account')) {
+    const err = resolved.skipReason === 'fb_no_account'
+      ? `Đơn cần báo qua Facebook nhưng NV ${order.staff || '—'} chưa có tài khoản Facebook. Vào Cài đặt → Tài khoản để thêm.`
+      : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${order.staff || '—'}`;
     const report = addReport({
       orderId: meta.orderCode,
       customerName: order.customerName,
@@ -123,16 +125,33 @@ async function notifyOne(order, opts = {}) {
 
   let result;
   try {
-    result = await sendBaoHang({
-      profile: resolved.profile || 'default',
-      account: resolved.account,
-      keyword,
-      name: matchName,
-      message,
-      strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
-      notifyTarget: resolved.notifyTarget,     // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
-      keepContext: opts.keepContext === true,  // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
-    });
+    if (resolved.channel === 'facebook') {
+      // Kênh Facebook: mở THẲNG hội thoại theo LINK FB đã lưu cho khách (không search Messenger).
+      const fbLink = getFbLink(order.phone);
+      if (!fbLink) {
+        result = { ok: false, error: 'Chưa có link Facebook cho khách này — vào Cài đặt → Báo qua Facebook để thêm link.' };
+      } else {
+        result = await sendBaoHangFb({
+          profile: resolved.profile || 'default',
+          fbLink,
+          keyword,
+          name: matchName,
+          message,
+          strictMatch: opts.strictMatch === true,
+        });
+      }
+    } else {
+      result = await sendBaoHang({
+        profile: resolved.profile || 'default',
+        account: resolved.account,
+        keyword,
+        name: matchName,
+        message,
+        strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
+        notifyTarget: resolved.notifyTarget,     // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
+        keepContext: opts.keepContext === true,  // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
+      });
+    }
   } catch (err) {
     result = { ok: false, error: err.message };
   }

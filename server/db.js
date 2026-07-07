@@ -377,6 +377,78 @@ function setSetting(key, value) {
   return value;
 }
 
+// ---- Định tuyến báo qua Facebook ----
+// Mặc định mọi đơn báo qua Zalo. "Định tuyến FB" chỉ định RIÊNG khách/nhân viên cần báo qua
+// Facebook thay vì Zalo. Vì ô Search Messenger tìm theo TÊN (gõ SĐT không ra) nên MỖI khách báo
+// FB lưu kèm LINK Facebook để bot mở thẳng hội thoại (không search). Lưu JSON trong app_settings:
+//   { customers: [ { phone: "0912...", link: "https://facebook.com/..." } ],  // khách -> link chat
+//     staffIds: ["123"] }    // user_id NV/kênh -> mọi đơn của NV này báo qua FB (vẫn cần link khách)
+const FB_ROUTING_KEY = 'fb_routing';
+const normFbPhone = (p) => String(p == null ? '' : p).replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
+
+/** Đọc cấu hình định tuyến FB (luôn trả { customers:[], staffIds:[] }). Tự nâng cấp dữ liệu cũ
+ *  dạng { phones:[...] } thành customers (link rỗng) để không mất cấu hình đã lưu. */
+function getFbRouting() {
+  try {
+    const raw = getSetting(FB_ROUTING_KEY);
+    const obj = raw ? JSON.parse(raw) : {};
+    let customers = [];
+    if (Array.isArray(obj.customers)) {
+      customers = obj.customers
+        .map((c) => ({ phone: String((c && c.phone) || '').trim(), link: String((c && c.link) || '').trim() }))
+        .filter((c) => c.phone);
+    } else if (Array.isArray(obj.phones)) {
+      // Bản cũ chỉ có SĐT -> giữ lại, link để trống (sẽ nhắc nhập link khi gửi).
+      customers = obj.phones.map((p) => ({ phone: String(p).trim(), link: '' })).filter((c) => c.phone);
+    }
+    return {
+      customers,
+      staffIds: Array.isArray(obj.staffIds) ? obj.staffIds.map((s) => String(s).trim()).filter(Boolean) : [],
+    };
+  } catch {
+    return { customers: [], staffIds: [] };
+  }
+}
+
+/** Ghi cấu hình định tuyến FB (chuẩn hoá + khử trùng theo SĐT). Trả bản đã lưu. */
+function setFbRouting({ customers, staffIds } = {}) {
+  const cur = getFbRouting();
+  const srcCustomers = customers !== undefined ? customers : cur.customers;
+  const byPhone = new Map();
+  for (const c of (Array.isArray(srcCustomers) ? srcCustomers : [])) {
+    const phone = String((c && c.phone) || '').trim();
+    if (!phone) continue;
+    byPhone.set(normFbPhone(phone), { phone, link: String((c && c.link) || '').trim() });
+  }
+  const next = {
+    customers: [...byPhone.values()],
+    staffIds: [...new Set((staffIds !== undefined ? staffIds : cur.staffIds).map((s) => String(s).trim()).filter(Boolean))],
+  };
+  setSetting(FB_ROUTING_KEY, JSON.stringify(next));
+  return next;
+}
+
+/** Link FB đã lưu cho 1 SĐT khách ('' nếu chưa có). */
+function getFbLink(phone) {
+  if (!phone) return '';
+  const t = normFbPhone(phone);
+  if (!t) return '';
+  const found = getFbRouting().customers.find((c) => normFbPhone(c.phone) === t);
+  return found ? found.link : '';
+}
+
+/** Đơn này có thuộc diện báo qua Facebook không? (SĐT khách có trong danh sách, hoặc NV được gắn FB). */
+function isFacebookOrder(order) {
+  if (!order) return false;
+  const { customers, staffIds } = getFbRouting();
+  if (staffIds.length && order.userId != null && staffIds.includes(String(order.userId).trim())) return true;
+  if (customers.length && order.phone) {
+    const t = normFbPhone(order.phone);
+    if (t && customers.some((c) => normFbPhone(c.phone) === t)) return true;
+  }
+  return false;
+}
+
 // ---- Nhân viên (tài khoản dashboard Mi) ----
 const ROLES = ['Admin', 'Quản lý', 'Nhân viên'];
 const STATUSES = ['Hoạt động', 'Tạm khoá'];
@@ -564,6 +636,7 @@ function deleteZaloContact(phone) {
 module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   getSetting, setSetting,
+  getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
 };

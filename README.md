@@ -167,6 +167,32 @@ npm run accounts -- ten_acc   # profile khác
 In ra trạng thái đăng nhập + danh sách tên tài khoản Zalo đang thấy (kèm ảnh
 `screenshots/02a-account-search.png`). Copy đúng tên ở đây để điền vào `ZALO_ACCOUNT_MAP`.
 
+## Báo qua Facebook khi khách không dùng Zalo 🆕
+
+Mặc định mọi đơn báo qua **Zalo**. Với khách không có/không dùng Zalo, có thể **chỉ định báo qua
+Facebook Messenger** thay vì Zalo — cùng một hệ, không phải thao tác riêng.
+
+**Cấu hình tài khoản (gộp Zalo + Facebook):** Cài đặt → **Tài khoản**. Mỗi nhân viên hiển thị trên
+1 dòng và gán được **cả tài khoản Zalo lẫn Facebook** (mỗi tài khoản 1 profile trình duyệt riêng).
+Thêm tài khoản Facebook sẽ mở Chromium trên máy local-runner vào `facebook.com` để **đăng nhập tay
+1 lần** (giống Xeko), session lưu ở `playwright-data/fb-<key>/`.
+
+**Chỉ định khách/kênh báo FB:** Cài đặt → **Báo qua Facebook**:
+- **Theo khách** — bảng **SĐT + link Facebook/Messenger** của từng khách. SĐT để khớp đơn Basso,
+  link để bot **mở thẳng đúng hội thoại** (vì ô Search Messenger tìm theo *tên*, gõ SĐT không ra).
+  Chấp nhận `facebook.com/<user>`, `m.me/<user>`, hoặc link `messages/t/…`.
+- **Theo nhân viên/kênh** — bật cho NV nào thì *toàn bộ* đơn của NV đó báo qua Facebook (vẫn cần
+  link FB của từng khách để gửi).
+
+Khi gửi: hệ chọn **tài khoản Facebook của NV phụ trách** (không khớp NV thì dùng account FB "chung"
+— account không gắn Staff ID), **mở thẳng link FB của khách** → gõ nội dung → **Enter để gửi**
+(Messenger gửi bằng Enter, xuống dòng bằng Shift+Enter). Lưu vào Lịch sử báo như báo Zalo. Cấu hình
+lưu server (SQLite `app_settings.fb_routing`); API: `GET/PUT /api/fb-routing { customers:[{phone,link}], staffIds }`.
+
+> ⚠️ **Đang hoàn thiện:** selector **ô soạn tin** Messenger trong `local-runner/facebook.js`
+> (`COMPOSE_BOX_SELECTORS`) đang dùng bộ đoán theo `aria-label` ("Message"/"Tin nhắn"…) — cần chạy
+> thử thật để xác nhận. Việc mở link, chuẩn hoá URL, gõ nội dung + gửi bằng Enter đã ráp xong.
+
 ## Ráp API website thật (ĐÃ tích hợp Basso Partner API)
 
 Chỉ cần điền `.env` là chạy thật:

@@ -53,8 +53,8 @@ async function getLocalHealth() {
  * @param {{profile?:string, account?:string, keyword:string, message:string}} payload
  * @returns {Promise<{ok:boolean, jobId:string, result?:object, error?:string}>}
  */
-async function sendBaoHang(payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60 * 1000 } = {}) {
-  const res = await fetch(localUrl('/api/zalo/send'), {
+async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60 * 1000 } = {}) {
+  const res = await fetch(localUrl(sendPath), {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(payload),
@@ -83,6 +83,16 @@ async function sendBaoHang(payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60
     if (job.status === 'error') return { ok: false, jobId, error: job.error };
   }
   return { ok: false, jobId, error: 'Hết thời gian chờ local-runner (timeout)' };
+}
+
+/** Gửi 1 tin báo hàng qua Zalo và chờ kết quả. */
+function sendBaoHang(payload, opts) {
+  return sendViaRunner('/api/zalo/send', payload, opts);
+}
+
+/** Gửi 1 tin báo hàng qua Facebook Messenger và chờ kết quả (cho khách không dùng Zalo). */
+function sendBaoHangFb(payload, opts) {
+  return sendViaRunner('/api/facebook/send', payload, opts);
 }
 
 /**
@@ -116,13 +126,16 @@ async function forwardAccounts(method, path, { body, query } = {}) {
 let _accountsCache = { at: 0, list: [] };
 const ACCOUNTS_TTL_MS = 60_000;
 
-/** Lấy danh sách account Zalo từ runner (cache 60s). [] nếu runner offline. */
+/** Lấy danh sách account (cả Zalo lẫn Facebook) từ runner (cache 60s). [] nếu runner offline.
+ * Ưu tiên `accounts` (runner mới, gộp 2 kênh + có platform); fallback `zalo` cho runner cũ. */
 async function getAccountsCached() {
   if (Date.now() - _accountsCache.at < ACCOUNTS_TTL_MS) return _accountsCache.list;
   try {
     const { status, data } = await forwardAccounts('GET', '/api/accounts');
-    if (status >= 200 && status < 300 && Array.isArray(data.zalo)) {
-      _accountsCache = { at: Date.now(), list: data.zalo };
+    if (status >= 200 && status < 300) {
+      const list = Array.isArray(data.accounts) ? data.accounts
+        : Array.isArray(data.zalo) ? data.zalo : null;
+      if (list) _accountsCache = { at: Date.now(), list };
     }
   } catch {
     /* runner offline -> giữ cache cũ */
@@ -136,6 +149,6 @@ function invalidateAccountsCache() {
 }
 
 module.exports = {
-  sendBaoHang, checkLocalHealth, getLocalHealth, effectiveBaseUrl,
+  sendBaoHang, sendBaoHangFb, checkLocalHealth, getLocalHealth, effectiveBaseUrl,
   forwardAccounts, getAccountsCached, invalidateAccountsCache,
 };

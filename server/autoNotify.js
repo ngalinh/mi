@@ -361,18 +361,22 @@ async function classifyForAuto(order, delayedMap) {
   // Cờ Delay/Loại trừ (lưu ở mi) -> tạm hoãn: bỏ khỏi cả luồng tự động (khớp "Báo hàng loạt").
   if (delayedMap && delayedMap.has(autoKey(order))) return { decision: 'skip', reason: 'delayed' };
 
-  // MÔ HÌNH B: chọn account theo NV phụ trách đơn.
+  // MÔ HÌNH B: chọn account theo NV phụ trách đơn (kênh Zalo mặc định, Facebook nếu đơn/NV được
+  // định tuyến FB). source 'store' = account Zalo khớp NV, 'store-fb' = account Facebook khớp NV.
   const acct = await resolveForOrder(order, { defaultAccount: cfg.account, profile: cfg.profile });
-  // CÔ LẬP THEO NV: chỉ gửi đơn khớp đúng 1 account (source='store') khi bật requireAccount.
-  if (cfg.requireAccount && acct.source !== 'store') return { decision: 'skip', reason: 'no_account', acct };
+  const fromStore = acct.source === 'store' || acct.source === 'store-fb';
+  // CÔ LẬP THEO NV: chỉ gửi đơn khớp đúng 1 account khi bật requireAccount.
+  if (cfg.requireAccount && !fromStore) return { decision: 'skip', reason: 'no_account', acct };
+  // Đơn cần báo FB nhưng NV chưa có tài khoản Facebook -> bỏ (không gửi nhầm kênh).
+  if (acct.skip && acct.skipReason === 'fb_no_account') return { decision: 'skip', reason: 'no_account', acct };
   // Account của NV bị TẮT "Tự động báo" -> bỏ qua (để NV báo tay).
-  if (acct.source === 'store' && acct.autoEnabled === false) return { decision: 'skip', reason: 'auto_off', acct };
+  if (fromStore && acct.autoEnabled === false) return { decision: 'skip', reason: 'auto_off', acct };
   // HƯỚNG A: NV chưa có Zalo cho brand của đơn -> bỏ (tránh gửi nhầm brand).
   if (acct.skip && acct.skipReason === 'brand') return { decision: 'skip', reason: 'brand', acct };
   // CHỈ BÁO ĐƠN VỀ TỪ KHI BẬT AUTO: đơn về TRƯỚC ngày bật "Tự động báo" (autoEnabledAt) -> bỏ,
   // tránh nhắn trùng loạt khách cũ đã xử lý tay. Tắt qua AUTO_NOTIFY_ONLY_NEW=false. So theo NGÀY
   // nên đơn về CÙNG ngày bật auto vẫn gửi. Chỉ áp dụng cho account khớp NV có mốc autoEnabledAt.
-  if (cfg.onlyNewOrders && acct.source === 'store' && acct.autoEnabledAt) {
+  if (cfg.onlyNewOrders && fromStore && acct.autoEnabledAt) {
     const orderDay = localDayKey(order.dateInventory);
     const sinceDay = localDayKey(acct.autoEnabledAt);
     // So sánh chuỗi 'YYYY-MM-DD' theo giờ VN: chỉ bỏ đơn về NGÀY TRƯỚC ngày bật auto.

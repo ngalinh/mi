@@ -4,16 +4,22 @@ const path = require('path');
 const config = require('./config');
 
 /**
- * Lưu/đọc danh sách tài khoản Zalo (port từ flow quản lý tài khoản của Xeko — Hướng B:
- * MỖI tài khoản 1 profile browser riêng).
+ * Lưu/đọc danh sách tài khoản báo hàng (port từ flow quản lý tài khoản của Xeko — Hướng B:
+ * MỖI tài khoản 1 profile browser riêng). Từ nay chứa CẢ Zalo lẫn Facebook (phân biệt qua
+ * `platform`) để 1 nhân viên có thể gán cả 2 loại — gom chung 1 chỗ cấu hình.
  *
  * Mỗi tài khoản:
- *   - key         : định danh duy nhất + cũng là tên "profile" browser (playwright-data/salework-<key>)
+ *   - platform    : 'zalo' (mặc định) | 'facebook'. Quyết định kênh gửi + prefix thư mục profile
+ *                   (salework-<key> cho Zalo, fb-<key> cho Facebook).
+ *   - key         : định danh duy nhất + cũng là tên "profile" browser
  *   - name        : tên NHÂN VIÊN / nhãn hiển thị (cột "Nhân viên")
- *   - saleworkName: TÊN account như hiện trong dropdown zalo.basso.vn (dùng để chọn account khi gửi)
- *   - phone       : (tuỳ chọn) SĐT Zalo — chỉ để hiển thị
- *   - staffId     : (tuỳ chọn) user_id của NV phụ trách — để khớp đơn → account (ưu tiên hơn tên)
- *   - brand       : (tuỳ chọn) prefix mã đơn của brand account này phụ trách (vd "BS", "SU", "CO").
+ *   - saleworkName: (Zalo) TÊN account như hiện trong dropdown zalo.basso.vn (chọn account khi gửi).
+ *                   KHÔNG bắt buộc với Facebook.
+ *   - fbName      : (Facebook, tuỳ chọn) tên/nhãn tài khoản FB để hiển thị.
+ *   - phone       : (tuỳ chọn) SĐT của tài khoản — chỉ để hiển thị
+ *   - staffId     : (tuỳ chọn) user_id của NV phụ trách — để khớp đơn → account (ưu tiên hơn tên).
+ *                   Cũng là khoá GOM tài khoản Zalo + Facebook về cùng 1 nhân viên trên UI.
+ *   - brand       : (Zalo, tuỳ chọn) prefix mã đơn của brand account này phụ trách (vd "BS", "SU", "CO").
  *                   1 NV có thể có NHIỀU account, mỗi account 1 brand → đơn được gửi bằng account
  *                   khớp prefix mã đơn. Để trống = account "chung", nhận mọi brand của NV đó.
  *   - autoEnabled : có cho luồng TỰ ĐỘNG gửi bằng account này không (mặc định true)
@@ -42,10 +48,15 @@ function save(accounts) {
 
 // Chuẩn hoá 1 bản ghi account: chỉ giữ field hợp lệ, ép kiểu an toàn.
 function normalize(a) {
+  const platform = a.platform === 'facebook' ? 'facebook' : 'zalo';
   return {
+    // Kênh gửi. Bản ghi cũ không có field này -> mặc định 'zalo' (giữ nguyên hành vi).
+    platform,
     key: String(a.key || '').trim(),
     name: String(a.name || '').trim(),
     saleworkName: String(a.saleworkName || '').trim(),
+    // Nhãn tài khoản Facebook (tuỳ chọn) — chỉ dùng để hiển thị.
+    fbName: String(a.fbName || '').trim(),
     phone: String(a.phone || '').trim(),
     staffId: a.staffId != null ? String(a.staffId).trim() : '',
     // Prefix mã đơn (brand) — chuẩn hoá UPPERCASE để so khớp không phân biệt hoa/thường.
@@ -80,7 +91,11 @@ function get(key) {
 function add(input) {
   const account = normalize(input);
   if (!account.key || !account.name) throw new Error('Thiếu key hoặc tên hiển thị');
-  if (!account.saleworkName) throw new Error('Thiếu saleworkName (tên account trong dropdown Zalo Basso)');
+  // saleworkName chỉ bắt buộc với Zalo (để chọn đúng account trong dropdown zalo.basso.vn).
+  // Facebook không có dropdown account nên bỏ qua.
+  if (account.platform !== 'facebook' && !account.saleworkName) {
+    throw new Error('Thiếu saleworkName (tên account trong dropdown Zalo Basso)');
+  }
   const accounts = load();
   if (accounts.find((a) => a.key === account.key)) throw new Error(`Key "${account.key}" đã tồn tại`);
   account.createdAt = new Date().toISOString();
@@ -99,7 +114,8 @@ function update(key, patch) {
   const idx = accounts.findIndex((a) => a.key === key);
   if (idx === -1) return null;
   const prev = normalize(accounts[idx]);
-  const merged = normalize({ ...accounts[idx], ...patch, key }); // key bất biến
+  // key & platform bất biến khi sửa (đổi platform = xoá thêm lại).
+  const merged = normalize({ ...accounts[idx], ...patch, key, platform: prev.platform });
   merged.createdAt = accounts[idx].createdAt || merged.createdAt;
   merged.updatedAt = new Date().toISOString();
   // Chuyển TẮT -> BẬT "Tự động báo": đóng dấu mốc mới = giờ hiện tại -> bot chỉ báo đơn về từ
