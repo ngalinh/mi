@@ -292,6 +292,9 @@ const clickPersonalTab = (page) => clickFilterTab(page, 'cá nhân', 2,
  * CHỈ chọn hàng trong mục "Trò chuyện"; chỉ khác ở tab lọc bấm trước:
  *  - 'group' (mặc định): BẤM TAB "NHÓM" trước.
  *  - 'personal': BẤM TAB "CÁ NHÂN" trước.
+ * Nếu mục "Trò chuyện" có CẢ chat 1-1 lẫn nhóm cho cùng khách (Zalo hay liệt kê cá nhân TRƯỚC nhóm),
+ * chọn đúng hàng theo kiểu báo: nhóm -> hàng có avatar GHÉP nhiều thành viên (collage); cá nhân ->
+ * hàng 1 avatar. Chỉ phân giải khi có >1 hàng khớp (1 hàng thì lấy luôn).
  * KHÔNG khớp được trong "Trò chuyện" -> DỪNG (ném lỗi): KHÔNG lấy đại hàng trên cùng, KHÔNG fallback
  * sang "Người dùng Zalo"/"Tin nhắn" -> tránh mở chat mới / gửi nhầm người.
  *
@@ -333,7 +336,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     await searchBox.fill('').catch(() => {});
     await searchBox.type(String(typeTerm), { delay: 30 });
 
-    const scan = () => page.evaluate(({ matchTerms, section }) => {
+    const scan = () => page.evaluate(({ matchTerms, section, preferGroup }) => {
       const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
         .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
       // Lõi SĐT: bỏ ký tự không phải số + tiền tố 84/0 để khớp dù định dạng khác.
@@ -384,8 +387,8 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       );
       // Xoá cờ target cũ trước mỗi lần quét để chỉ còn 1 phần tử được đánh dấu.
       document.querySelectorAll('[data-mi-target]').forEach((e) => e.removeAttribute('data-mi-target'));
-      let best = null;    // hàng KHỚP nhỏ nhất (hàng hội thoại thật)
       let topmost = null; // hàng trên cùng khi không có từ khoá khớp
+      const matches = []; // MỌI hàng khớp — để phân biệt nhóm/cá nhân khi mục có nhiều hàng
       for (const el of els) {
         const r = el.getBoundingClientRect();
         if (!(r.width > 150 && r.height > 30 && r.height < 220 && r.top >= 0)) continue;
@@ -396,22 +399,40 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         if (terms.length) {
           const hit = terms.some((m) =>
             (m.text && t.includes(m.text)) || (m.phone && tPhone.includes(m.phone)));
-          // Chọn phần tử khớp NHỎ NHẤT: tránh trúng WRAPPER của mục "Trò chuyện"
-          // (tâm rơi vào tiêu đề mục -> click không mở hội thoại). Hàng thật nhỏ hơn.
-          if (hit && (!best || r.width * r.height < best.area)) {
-            best = { el, area: r.width * r.height, rect: r };
-          }
+          if (!hit) continue;
+          // Nhận diện NHÓM: avatar là ẢNH GHÉP nhiều thành viên (collage >=2 ảnh) hoặc có icon nhóm.
+          // Chat 1-1 (cá nhân) chỉ có 1 avatar. Dùng để chọn ĐÚNG hàng khi mục có cả 2 loại
+          // (vd: mục "Trò chuyện" liệt kê chat 1-1 TRƯỚC, nhóm SAU cho cùng 1 khách).
+          const imgCount = el.querySelectorAll('img').length;
+          const hasGroupIcon = !!el.querySelector('.mdi-account-group, .mdi-account-multiple');
+          const isGroup = imgCount >= 2 || hasGroupIcon;
+          matches.push({ el, area: r.width * r.height, rect: r, isGroup });
         } else if (!topmost || r.top < topmost.top) {
           topmost = { el, top: r.top, rect: r };
         }
       }
-      const pick = terms.length ? best : topmost;
+      let pick = null;
+      if (terms.length) {
+        // Bỏ WRAPPER: hàng nào CHỨA hàng khớp khác -> loại (giữ hàng lá thật, tránh trúng vùng bọc mục).
+        const leaves = matches.filter((a) => !matches.some((b) => b.el !== a.el && a.el.contains(b.el)));
+        let pool = leaves.length ? leaves : matches;
+        // CHỈ dùng nhóm/cá nhân để PHÂN GIẢI khi có >1 hàng khớp (giữ nguyên case chỉ 1 hàng, tránh
+        // phá luồng phổ biến nếu nhận diện avatar sai). preferGroup: báo nhóm -> chọn hàng nhóm.
+        if (pool.length > 1) {
+          const want = pool.filter((c) => c.isGroup === preferGroup);
+          if (want.length) pool = want;   // có hàng đúng kiểu báo -> chỉ xét chúng
+        }
+        // Trong nhóm ứng viên còn lại: chọn hàng NHỎ NHẤT (hàng thật, không phải wrapper còn sót).
+        for (const c of pool) if (!pick || c.area < pick.area) pick = c;
+      } else {
+        pick = topmost;
+      }
       if (!pick) return null;
       // Đánh dấu để click bằng element thật (auto-scroll + actionable) thay vì chỉ toạ độ.
       pick.el.setAttribute('data-mi-target', '1');
       const rr = pick.rect;
-      return { x: rr.left + rr.width / 2, y: rr.top + rr.height / 2 };
-    }, { matchTerms, section });
+      return { x: rr.left + rr.width / 2, y: rr.top + rr.height / 2, isGroup: !!pick.isGroup };
+    }, { matchTerms, section, preferGroup: !isPersonal });
 
     // Kết quả tìm kiếm có debounce -> poll, TRẢ VỀ NGAY khi có kết quả.
     let rect = null;
@@ -421,6 +442,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       rect = await scan();
     } while (!rect && Date.now() < deadline);
     await shot(page, '03-searched');
+    if (rect) console.log(`[mi] khớp hội thoại mục "${section}": isGroup=${rect.isGroup} (cần ${isPersonal ? 'cá nhân' : 'nhóm'})`);
     return rect;
   }
 
