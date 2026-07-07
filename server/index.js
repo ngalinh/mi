@@ -7,7 +7,7 @@ const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getDelayedMap, setDelayed,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact } = require('./db');
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
@@ -328,15 +328,20 @@ function enrichOrders(orders) {
   const autoMap = getAutoMap();
   // Thời điểm đã gửi báo hàng/ship (từ Lịch sử báo) để dashboard hiện mốc thời gian từng loại.
   const sentTimesMap = getSentTimesMap();
+  // Danh bạ Zalo (SĐT-chuẩn-hoá -> tên group) để hiện cột "Tên Zalo/FB" + cho biết đơn nào
+  // sẽ gửi theo tên group. Nạp 1 lần cho cả tập.
+  const zaloMap = getZaloMap();
   return orders.map((o) => {
     const key = autoNotify.autoKey(o);
     const a = autoMap.get(String(key));
     const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
     const sent = sentTimesMap.get(String(key));
     const withSent = sent ? { ...withAuto, sentAt: sent } : withAuto;
-    return delayedMap.has(key)
+    const withDelay = delayedMap.has(key)
       ? { ...withSent, delayed: true, delayReason: delayedMap.get(key) }
       : withSent;
+    const zaloName = o.phone ? zaloMap.get(normPhone(o.phone)) : '';
+    return zaloName ? { ...withDelay, zaloName } : withDelay;
   });
 }
 

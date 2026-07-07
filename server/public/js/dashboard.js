@@ -245,6 +245,16 @@
     const href = CUSTOMER_DETAIL_BASE + encodeURIComponent(o.customerId);
     return `<a href="${href}" target="_blank" rel="noopener">${name}</a>`;
   }
+  // Cột "Tên Zalo/FB": tên hội thoại đã lưu trong Danh bạ (server gắn o.zaloName theo SĐT).
+  // Có -> hiện tên + dấu 🔗 (khi gửi sẽ tìm nhóm theo tên này); chưa có -> gợi ý thêm vào danh bạ.
+  function zaloNameCell(o) {
+    if (o.zaloName) {
+      return `<span class="zalo-name" title="Đã liên kết Danh bạ Zalo — khi gửi sẽ tìm nhóm theo tên này">🔗 ${App.esc(o.zaloName)}</span>`;
+    }
+    if (!o.phone) return '<span class="muted">—</span>';
+    const href = 'danhba.html';
+    return `<a class="zalo-name-add" href="${href}" title="Chưa có trong Danh bạ Zalo — bấm để thêm">+ thêm</a>`;
+  }
   function orderCodeCell(it) {
     const code = App.esc(it.orderCode);
     if (!it.orderId) return code;
@@ -357,6 +367,7 @@
       <td>${App.esc(o.warehouseDate)}</td>
       <td class="cust">${customerNameCell(o)}</td>
       <td>${App.esc(o.phone)}</td>
+      <td>${zaloNameCell(o)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>
@@ -371,7 +382,7 @@
     </tr>`;
 
     const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
-      <td colspan="13"><div class="detail-box">
+      <td colspan="14"><div class="detail-box">
         ${itemsSection(o)}
       </div></td>
     </tr>`;
@@ -404,7 +415,7 @@
     const phone = o0.phone ? ` · ${App.esc(o0.phone)}` : '';
     return `<tr class="group-row" data-group-key="${App.esc(key)}">
       <td class="center"><button class="group-expand ${allOpen ? 'open' : ''}" data-group-key="${App.esc(key)}" title="Mở/đóng tất cả đơn của khách">${App.icon('chevron')}</button></td>
-      <td colspan="12"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn · <span class="group-sp">${productText(items)}</span></span></td>
+      <td colspan="13"><span class="group-name">${App.esc(o0.customerName || '—')}</span><span class="group-meta">${phone} · ${items.length} đơn · <span class="group-sp">${productText(items)}</span></span></td>
     </tr>`;
   }
 
@@ -413,7 +424,7 @@
     const chua = items.filter((o) => !isNotified(o)).length;
     const sub = `${items.length} đơn` + (chua ? ` · ${chua} chưa báo` : '');
     return `<tr class="group-row" data-group-key="${App.esc(key)}">
-      <td colspan="13"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
+      <td colspan="14"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
     </tr>`;
   }
 
@@ -422,7 +433,7 @@
     const chua = items.filter((o) => !isNotified(o)).length;
     const sub = `${items.length} đơn` + (chua ? ` · ${chua} chưa báo` : '');
     return `<tr class="group-row" data-group-key="${App.esc(key)}">
-      <td colspan="13"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
+      <td colspan="14"><span class="group-name">${App.esc(key)}</span><span class="group-meta"> · ${sub}</span></td>
     </tr>`;
   }
 
@@ -520,7 +531,7 @@
     const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
     if (!pageList.length) {
       const msg = serverTotal ? 'Không có đơn khớp bộ lọc trên trang này.' : 'Không có dữ liệu';
-      rowsEl.innerHTML = `<tr><td colspan="13" class="empty">${msg}</td></tr>`;
+      rowsEl.innerHTML = `<tr><td colspan="14" class="empty">${msg}</td></tr>`;
       updateCount(pageList);
       renderPager(totalPages);
       return;
@@ -1023,7 +1034,7 @@
     const fast = opts.fastPaint === true; // vẽ nhanh trang 1 trong lúc loadAll kéo tập đầy đủ
     const keepPage = auto || opts.keepPage === true; // autosync/pager/refresh: giữ nguyên trang
     if (!keepPage) currentPage = 1;
-    if (!auto) rowsEl.innerHTML = '<tr><td colspan="13" class="empty">Đang tải...</td></tr>';
+    if (!auto) rowsEl.innerHTML = '<tr><td colspan="14" class="empty">Đang tải...</td></tr>';
     const q = $('fQ').value;
     const base = new URLSearchParams();
     applyScope(base); // from/to tường minh, hoặc ?days=scopeDays (cửa sổ mặc định)
@@ -1064,7 +1075,7 @@
       //  Basso mỗi lần mở, hại nhiều hơn lợi. Tab NV nào bấm mới tải, cache SWR giữ cho lần sau.)
     } catch (e) {
       if (!auto && !fast) {
-        rowsEl.innerHTML = `<tr><td colspan="13" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();window.__miReload&&window.__miReload()">Thử lại</button></td></tr>`;
+        rowsEl.innerHTML = `<tr><td colspan="14" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();window.__miReload&&window.__miReload()">Thử lại</button></td></tr>`;
       }
     }
   }
