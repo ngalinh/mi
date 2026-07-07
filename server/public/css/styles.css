@@ -755,7 +755,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
    ổn định, không co giãn lệch theo nội dung; mỗi hàng cao bằng nhau bất kể có
    thumbnail hay không. Nội dung dài của mọi cột đều cắt 1 dòng bằng ellipsis,
    xem đầy đủ qua tooltip. Bảng cuộn ngang trong .table-wrap trên màn hẹp. */
-.reports-table { table-layout: fixed; min-width: 1374px; }
+.reports-table { table-layout: fixed; min-width: 1846px; }
 .reports-table th, .reports-table td {
   white-space: nowrap; vertical-align: middle;
   overflow: hidden; text-overflow: ellipsis;

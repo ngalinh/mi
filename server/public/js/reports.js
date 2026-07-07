@@ -174,6 +174,7 @@
       }
       rowsEl.innerHTML = items.map((r) => `<tr>
         <td class="time-cell">${App.fmtDateTime(r.created_at)}</td>
+        <td>${resultPill(r.status)}</td>
         <td class="order-cell" ${r.order_id ? `data-tip="${App.esc(r.order_id)}"` : ''}>${App.esc(r.order_id) || '—'}</td>
         <td>${thumbsCell(r.images)}</td>
         <td class="cust" title="${App.esc(r.customer_name)}">${App.esc(r.customer_name)}</td>
@@ -182,7 +183,6 @@
         <td>${senderCell(r.sent_by)}</td>
         <td>${r.zalo_account ? App.esc(r.zalo_account) : '<span class="muted">—</span>'}</td>
         <td class="msg-cell" data-tip="${App.esc(r.message)}">${msgPreview(r.message)}</td>
-        <td>${resultPill(r.status)}</td>
         <td class="err-cell" style="color:var(--red)" data-tip="${App.esc(r.error)}">${errPreview(r.error)}</td>
         <td class="center">${actionCell(r)}</td>
       </tr>`).join('');
