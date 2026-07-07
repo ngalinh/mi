@@ -42,23 +42,6 @@ async function gotoFacebook(page, url) {
   await shot(page, '01-loaded');
 }
 
-// ---- Selector Messenger (bền theo aria-label; kèm bản tiếng Việt phòng UI đổi ngôn ngữ) ----
-// Ô tìm kiếm hội thoại: input[aria-label="Search Messenger"] / type=search + role=combobox.
-const SEARCH_BOX_SELECTORS = [
-  'input[aria-label="Search Messenger"]',
-  'input[placeholder="Search Messenger"]',
-  'input[aria-label="Tìm kiếm trên Messenger"]',
-  'input[placeholder="Tìm kiếm trên Messenger"]',
-  'input[type="search"][role="combobox"]',
-];
-// Nút Messenger trên thanh trên cùng facebook.com (tooltip/aria-label "Messenger").
-const MESSENGER_BUTTON_SELECTORS = [
-  'div[aria-label="Messenger"][role="button"]',
-  'a[aria-label="Messenger"]',
-  'div[aria-label="Tin nhắn"][role="button"]',
-  'a[href^="https://www.facebook.com/messages"]',
-];
-
 /** Trả về locator đầu tiên đang HIỂN THỊ trong danh sách selector (poll tới timeout). null nếu không có. */
 async function findVisible(page, selectors, timeout = 8000) {
   const deadline = Date.now() + timeout;
@@ -74,15 +57,6 @@ async function findVisible(page, selectors, timeout = 8000) {
   return null;
 }
 
-/** Tìm ô "Search Messenger"; chưa thấy thì bấm nút Messenger để mở khung chat rồi thử lại. */
-async function openSearchBox(page) {
-  let box = await findVisible(page, SEARCH_BOX_SELECTORS, 6000);
-  if (box) return box;
-  const btn = await findVisible(page, MESSENGER_BUTTON_SELECTORS, 6000);
-  if (btn) { await btn.click().catch(() => {}); await page.waitForTimeout(1500); }
-  return findVisible(page, SEARCH_BOX_SELECTORS, 6000);
-}
-
 /**
  * Còn đăng nhập không: FB đẩy về /login hoặc /checkpoint khi hết session (giống ensureLoggedIn của Xeko).
  * Ném lỗi rõ ràng để luồng gọi báo "cần đăng nhập lại".
@@ -94,49 +68,94 @@ async function ensureLoggedIn(page) {
   }
 }
 
-/**
- * Tìm & mở đúng hội thoại của khách trong Messenger theo SĐT (fallback tên).
- * Đã ráp: mở ô "Search Messenger" (bấm nút Messenger nếu cần) + gõ từ khoá.
- * TODO (chờ element): chọn item kết quả khớp để mở khung chat.
- * @returns {Promise<boolean>} true nếu mở được đúng hội thoại.
- */
-// eslint-disable-next-line no-unused-vars
-async function searchAndOpenConversation(page, { phone, name, strictMatch = false }) {
-  const term = (phone && String(phone).trim()) || (name && String(name).trim());
-  if (!term) throw new Error('Thiếu SĐT/tên để tìm hội thoại Facebook.');
+// Ô SOẠN TIN của Messenger (Lexical contenteditable). Ưu tiên aria-label, fallback role=textbox.
+const COMPOSE_BOX_SELECTORS = [
+  'div[aria-label="Message"][contenteditable="true"]',
+  'div[aria-label="Aa"][contenteditable="true"]',
+  'div[aria-label="Tin nhắn"][contenteditable="true"]',
+  'div[aria-label="Nhắn tin"][contenteditable="true"]',
+  'div[role="textbox"][contenteditable="true"]',
+];
 
-  const box = await openSearchBox(page);
-  if (!box) {
-    throw new Error('FB: không thấy ô "Search Messenger" — có thể chưa đăng nhập hoặc giao diện đổi.');
+/**
+ * Chuẩn hoá link FB khách thành URL mở THẲNG hội thoại Messenger.
+ *  - .../messages/t/<x>  -> giữ nguyên
+ *  - m.me/<slug>         -> facebook.com/messages/t/<slug>
+ *  - facebook.com/profile.php?id=123 -> messages/t/123
+ *  - facebook.com/<username>          -> messages/t/<username>
+ * Không parse được -> trả nguyên link để vẫn thử mở.
+ */
+function normalizeMessengerUrl(link) {
+  const raw = String(link || '').trim();
+  if (!raw) return '';
+  let u;
+  try { u = new URL(raw.startsWith('http') ? raw : `https://${raw}`); }
+  catch { return raw; }
+  const host = u.hostname.replace(/^www\./, '').toLowerCase();
+  const path = u.pathname.replace(/\/+$/, '');
+  if (/\/messages\/t\//i.test(path)) return `https://www.facebook.com${path}`;
+  if (host === 'm.me') {
+    const slug = path.replace(/^\//, '');
+    if (slug) return `https://www.facebook.com/messages/t/${slug}`;
   }
+  if (host.endsWith('messenger.com') && /\/t\//i.test(path)) {
+    return `https://www.facebook.com/messages/t/${path.split('/t/')[1]}`;
+  }
+  // Link hồ sơ facebook.com
+  if (path === '/profile.php') {
+    const id = u.searchParams.get('id');
+    if (id) return `https://www.facebook.com/messages/t/${id}`;
+  }
+  const slug = path.replace(/^\//, '').split('/')[0];
+  if (slug && slug !== 'messages') return `https://www.facebook.com/messages/t/${slug}`;
+  return raw;
+}
+
+/** Mở THẲNG hội thoại của khách theo link đã lưu, chờ ô soạn tin xuất hiện. */
+async function openConversationByLink(page, link) {
+  const url = normalizeMessengerUrl(link);
+  if (!url) throw new Error('Thiếu/không hợp lệ link Facebook của khách.');
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.waitForTimeout(2500);
+  await ensureLoggedIn(page);
+  await shot(page, '02-conversation');
+  const box = await findVisible(page, COMPOSE_BOX_SELECTORS, 15000);
+  if (!box) {
+    throw new Error('FB: không mở được khung chat (link sai, khách chặn/không nhắn được, hoặc giao diện Messenger đổi selector ô soạn tin).');
+  }
+  return box;
+}
+
+/**
+ * Gõ nội dung vào ô soạn tin rồi GỬI. Messenger gửi bằng phím Enter; xuống dòng dùng Shift+Enter
+ * nên phải gõ từng dòng để \n trong nội dung không gửi sớm giữa chừng.
+ */
+async function typeAndSend(page, box, message) {
   await box.click();
-  await box.fill('');
-  await box.type(String(term), { delay: 40 });
-  await page.waitForTimeout(2000); // chờ danh sách kết quả hiện
-  await shot(page, '02-searched');
-
-  // TODO (chờ element): trong danh sách kết quả, chọn hội thoại khớp SĐT/tên rồi mở khung chat.
-  throw new Error('FB_SEND_CHUA_CAU_HINH: đã gõ tìm khách trên Messenger; chờ element "kết quả hội thoại" để chọn & mở chat.');
+  const lines = String(message == null ? '' : message).split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    if (lines[i]) await page.keyboard.type(lines[i], { delay: 15 });
+    // eslint-disable-next-line no-await-in-loop
+    if (i < lines.length - 1) await page.keyboard.down('Shift'), await page.keyboard.press('Enter'), await page.keyboard.up('Shift');
+  }
+  await page.waitForTimeout(300);
+  await shot(page, '03-typed');
+  await page.keyboard.press('Enter'); // gửi
+  await page.waitForTimeout(1500);
+  await shot(page, '04-sent');
 }
 
 /**
- * TODO (chờ hướng dẫn element): gõ nội dung + gửi trong khung chat Messenger đang mở.
+ * Gửi 1 tin nhắn báo hàng qua Facebook Messenger — mở THẲNG hội thoại theo link FB của khách.
+ * Cùng chữ ký chung với salework.sendBaoHang để notifyService gọi thống nhất theo `channel`.
+ * @param {{profile?:string, fbLink:string, keyword?:string, name?:string, message:string, strictMatch?:boolean}} p
  */
-// eslint-disable-next-line no-unused-vars
-async function typeAndSend(page, message, imagePaths = []) {
-  throw new Error('FB_SEND_CHUA_CAU_HINH: chưa cấu hình bước soạn & gửi tin trên Messenger — đang chờ hướng dẫn element.');
-}
+async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, message }) {
+  if (!fbLink) throw new Error('Thiếu link Facebook của khách (fbLink).');
+  if (!message) throw new Error('Thiếu nội dung tin nhắn.');
 
-/**
- * Gửi 1 tin nhắn báo hàng qua Facebook Messenger.
- * Cùng chữ ký với salework.sendBaoHang để notifyService gọi thống nhất theo `channel`.
- * @param {{profile?:string, keyword:string, name?:string, message:string, strictMatch?:boolean, imagePaths?:string[]}} p
- */
-async function sendBaoHangFb({ profile = 'default', keyword, name, message, strictMatch = false, imagePaths = [] }) {
-  if (!keyword && !name) throw new Error('Thiếu keyword (SĐT) hoặc name (tên khách).');
-  if (!message && !(imagePaths && imagePaths.length)) throw new Error('Thiếu nội dung tin nhắn.');
-
-  // CHẶN AN TOÀN: ở chế độ TEST chỉ gửi tới số nằm trong TEST_PHONES.
+  // CHẶN AN TOÀN: ở chế độ TEST chỉ gửi tới số nằm trong TEST_PHONES (khớp theo SĐT đơn).
   if (!phoneAllowed(keyword)) {
     throw new Error(`TEST_MODE: bỏ qua "${keyword}" — không nằm trong TEST_PHONES (an toàn, không gửi).`);
   }
@@ -145,10 +164,8 @@ async function sendBaoHangFb({ profile = 'default', keyword, name, message, stri
   return withProfileLock(profile, async () => {
     const page = await getPage(profile);
     try {
-      await gotoFacebook(page);
-      await ensureLoggedIn(page);
-      await searchAndOpenConversation(page, { phone: keyword, name, strictMatch });
-      await typeAndSend(page, message, imagePaths);
+      const box = await openConversationByLink(page, fbLink);
+      await typeAndSend(page, box, message);
     } finally {
       if (config.closeAfterSend) await closeContext(profile);
     }
@@ -175,4 +192,4 @@ async function checkLoggedInFb(profile = 'default') {
   });
 }
 
-module.exports = { sendBaoHangFb, checkLoggedInFb, gotoFacebook, ensureLoggedIn };
+module.exports = { sendBaoHangFb, checkLoggedInFb, gotoFacebook, ensureLoggedIn, normalizeMessengerUrl };

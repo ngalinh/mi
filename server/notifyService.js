@@ -3,7 +3,7 @@ const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
-const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey } = require('./db');
+const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getFbLink } = require('./db');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
@@ -117,14 +117,20 @@ async function notifyOne(order, opts = {}) {
   let result;
   try {
     if (resolved.channel === 'facebook') {
-      // Kênh Facebook: gửi qua Messenger (tìm khách theo SĐT). Không có dropdown account / kiểu báo.
-      result = await sendBaoHangFb({
-        profile: resolved.profile || 'default',
-        keyword,
-        name: order.customerName,
-        message,
-        strictMatch: opts.strictMatch === true,
-      });
+      // Kênh Facebook: mở THẲNG hội thoại theo LINK FB đã lưu cho khách (không search Messenger).
+      const fbLink = getFbLink(order.phone);
+      if (!fbLink) {
+        result = { ok: false, error: 'Chưa có link Facebook cho khách này — vào Cài đặt → Báo qua Facebook để thêm link.' };
+      } else {
+        result = await sendBaoHangFb({
+          profile: resolved.profile || 'default',
+          fbLink,
+          keyword,
+          name: order.customerName,
+          message,
+          strictMatch: opts.strictMatch === true,
+        });
+      }
     } else {
       result = await sendBaoHang({
         profile: resolved.profile || 'default',

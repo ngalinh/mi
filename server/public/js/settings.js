@@ -352,14 +352,35 @@
   });
   loadZalo();
 
-  // ---------------- Báo qua Facebook: định tuyến khách/NV ----------------
-  const fbPhonesInput = $('fbPhonesInput');
+  // ---------------- Báo qua Facebook: định tuyến khách (SĐT + link) / NV ----------------
+  const fbCustomerRows = $('fbCustomerRows');
   const fbStaffRows = $('fbStaffRows');
-  let fbRouting = { phones: [], staffIds: [] };
+  let fbRouting = { customers: [], staffIds: [] };
 
   function renderFbCount() {
     const el = $('fbPhonesCount');
-    if (el) el.textContent = fbRouting.phones.length ? `${fbRouting.phones.length} SĐT đang báo qua Facebook` : '';
+    const n = fbRouting.customers.length;
+    const noLink = fbRouting.customers.filter((c) => !c.link).length;
+    if (el) el.textContent = n ? `${n} khách báo qua Facebook${noLink ? ` · ${noLink} chưa có link` : ''}` : '';
+  }
+  function fbCustomerRowHtml(c) {
+    return `<tr class="main-row">
+      <td><input class="note-input fb-phone" value="${App.esc((c && c.phone) || '')}" placeholder="Vd: 0912345678" /></td>
+      <td><input class="note-input fb-link" value="${App.esc((c && c.link) || '')}" placeholder="facebook.com/… hoặc m.me/…" /></td>
+      <td class="center"><button class="link-btn" data-action="fbdel" style="color:var(--danger,#d33)">Xoá</button></td>
+    </tr>`;
+  }
+  function renderFbCustomers() {
+    const list = fbRouting.customers.length ? fbRouting.customers : [{ phone: '', link: '' }];
+    fbCustomerRows.innerHTML = list.map(fbCustomerRowHtml).join('');
+    renderFbCount();
+  }
+  function collectFbCustomers() {
+    const rows = [...fbCustomerRows.querySelectorAll('tr.main-row')];
+    return rows.map((tr) => ({
+      phone: (tr.querySelector('.fb-phone') || {}).value ? tr.querySelector('.fb-phone').value.trim() : '',
+      link: (tr.querySelector('.fb-link') || {}).value ? tr.querySelector('.fb-link').value.trim() : '',
+    })).filter((c) => c.phone);
   }
   function renderFbStaff() {
     if (!bassoStaff.length) {
@@ -382,22 +403,22 @@
     if (!bassoStaff.length) { try { await loadBassoStaff(); } catch { /* ignore */ } }
     try {
       const r = await App.api('/api/fb-routing');
-      fbRouting = { phones: r.phones || [], staffIds: (r.staffIds || []).map(String) };
-    } catch { fbRouting = { phones: [], staffIds: [] }; }
-    if (document.activeElement !== fbPhonesInput) fbPhonesInput.value = fbRouting.phones.join(', ');
-    renderFbCount();
+      fbRouting = { customers: r.customers || [], staffIds: (r.staffIds || []).map(String) };
+    } catch { fbRouting = { customers: [], staffIds: [] }; }
+    renderFbCustomers();
     renderFbStaff();
   }
-  async function saveFbPhones() {
-    const phones = (fbPhonesInput.value || '').split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+  async function saveFbCustomers() {
+    const customers = collectFbCustomers();
+    const missing = customers.filter((c) => !c.link).length;
+    if (missing && !confirm(`${missing} khách chưa có link Facebook — sẽ không gửi được cho tới khi thêm link. Vẫn lưu?`)) return;
     try {
       const r = await App.api('/api/fb-routing', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phones }),
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customers }),
       });
-      fbRouting.phones = r.phones || [];
-      fbPhonesInput.value = fbRouting.phones.join(', ');
-      renderFbCount();
-      App.toast('✅ Đã lưu danh sách SĐT báo qua Facebook');
+      fbRouting.customers = r.customers || [];
+      renderFbCustomers();
+      App.toast('✅ Đã lưu danh sách khách báo qua Facebook');
     } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
   }
   async function toggleFbStaff(uid) {
@@ -412,7 +433,15 @@
       App.toast('✅ Đã cập nhật nhân viên báo qua Facebook');
     } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
   }
-  $('fbPhonesSave').addEventListener('click', saveFbPhones);
+  $('fbCustomerAdd').addEventListener('click', () => {
+    // Nếu đang là dòng trống mẫu (chưa có khách nào) thì thêm tiếp 1 dòng nữa.
+    fbCustomerRows.insertAdjacentHTML('beforeend', fbCustomerRowHtml({ phone: '', link: '' }));
+  });
+  $('fbCustomerSave').addEventListener('click', saveFbCustomers);
+  fbCustomerRows.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-action="fbdel"]'); if (!b) return;
+    const tr = b.closest('tr.main-row'); if (tr) tr.remove();
+  });
   $('fbRoutingReload').addEventListener('click', loadFbRouting);
   fbStaffRows.addEventListener('click', (e) => {
     const b = e.target.closest('[data-action="fbtoggle"]'); if (!b) return;

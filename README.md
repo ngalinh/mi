@@ -178,18 +178,20 @@ Thêm tài khoản Facebook sẽ mở Chromium trên máy local-runner vào `fac
 1 lần** (giống Xeko), session lưu ở `playwright-data/fb-<key>/`.
 
 **Chỉ định khách/kênh báo FB:** Cài đặt → **Báo qua Facebook**:
-- **Theo SĐT khách** — dán danh sách SĐT; đơn của các số này tự chuyển sang gửi Facebook.
-- **Theo nhân viên/kênh** — bật cho NV nào thì *toàn bộ* đơn của NV đó báo qua Facebook.
+- **Theo khách** — bảng **SĐT + link Facebook/Messenger** của từng khách. SĐT để khớp đơn Basso,
+  link để bot **mở thẳng đúng hội thoại** (vì ô Search Messenger tìm theo *tên*, gõ SĐT không ra).
+  Chấp nhận `facebook.com/<user>`, `m.me/<user>`, hoặc link `messages/t/…`.
+- **Theo nhân viên/kênh** — bật cho NV nào thì *toàn bộ* đơn của NV đó báo qua Facebook (vẫn cần
+  link FB của từng khách để gửi).
 
-Khi gửi, hệ chọn **tài khoản Facebook của NV phụ trách** (không khớp NV thì dùng account FB "chung"
-— account không gắn Staff ID), rồi tìm khách trên Messenger **theo SĐT**. Lưu vào Lịch sử báo như
-báo Zalo. Cấu hình định tuyến lưu server (SQLite `app_settings.fb_routing`); API:
-`GET/PUT /api/fb-routing { phones, staffIds }`.
+Khi gửi: hệ chọn **tài khoản Facebook của NV phụ trách** (không khớp NV thì dùng account FB "chung"
+— account không gắn Staff ID), **mở thẳng link FB của khách** → gõ nội dung → **Enter để gửi**
+(Messenger gửi bằng Enter, xuống dòng bằng Shift+Enter). Lưu vào Lịch sử báo như báo Zalo. Cấu hình
+lưu server (SQLite `app_settings.fb_routing`); API: `GET/PUT /api/fb-routing { customers:[{phone,link}], staffIds }`.
 
-> ⚠️ **Đang hoàn thiện:** phần *tự động thao tác gửi trên Messenger* (tìm hội thoại theo SĐT + soạn
-> & gửi) hiện là **khung stub** trong `local-runner/facebook.js` — chờ map selector element thật của
-> Messenger. Toàn bộ phần còn lại (cấu hình tài khoản, đăng nhập, định tuyến, chọn kênh, ghi log) đã
-> chạy. Khi ráp selector chỉ cần điền 2 hàm `searchAndOpenConversation` + `typeAndSend`.
+> ⚠️ **Đang hoàn thiện:** selector **ô soạn tin** Messenger trong `local-runner/facebook.js`
+> (`COMPOSE_BOX_SELECTORS`) đang dùng bộ đoán theo `aria-label` ("Message"/"Tin nhắn"…) — cần chạy
+> thử thật để xác nhận. Việc mở link, chuẩn hoá URL, gõ nội dung + gửi bằng Enter đã ráp xong.
 
 ## Ráp API website thật (ĐÃ tích hợp Basso Partner API)
 

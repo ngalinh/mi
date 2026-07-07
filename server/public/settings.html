@@ -111,13 +111,25 @@
 
           <div class="mode-row" style="align-items:flex-start;">
             <div class="mode-info" style="flex:1; min-width:0;">
-              <div class="mode-title">Khách báo qua Facebook (theo SĐT)</div>
-              <div class="mode-desc">Danh sách SĐT khách cần báo qua FB, cách nhau bằng dấu phẩy hoặc xuống dòng. Đơn của các số này sẽ tự chuyển sang gửi Facebook.</div>
-              <div class="note-cell" style="margin-top:8px; max-width:640px;">
-                <textarea class="note-input" id="fbPhonesInput" rows="4" placeholder="Vd: 0912345678, 0987654321" style="resize:vertical; font-family:inherit;"></textarea>
+              <div class="mode-title">Khách báo qua Facebook (SĐT + link)</div>
+              <div class="mode-desc">Mỗi khách: <strong>SĐT</strong> (để khớp đơn Basso) + <strong>link Facebook/Messenger</strong> để bot mở thẳng đúng hội thoại — vd <code>facebook.com/tenkhach</code>, <code>m.me/tenkhach</code>, hoặc link <code>messages/t/…</code>. Đơn của các SĐT này sẽ gửi qua Facebook thay vì Zalo.</div>
+              <div class="table-wrap" style="margin-top:10px;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width:190px">SĐT khách</th>
+                      <th>Link Facebook / Messenger</th>
+                      <th style="width:60px"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="fbCustomerRows">
+                    <tr><td colspan="3" class="muted" style="padding:16px;">Đang tải…</td></tr>
+                  </tbody>
+                </table>
               </div>
               <div style="margin-top:8px;">
-                <button class="btn accent" id="fbPhonesSave">Lưu danh sách SĐT</button>
+                <button class="btn secondary" id="fbCustomerAdd">＋ Thêm dòng</button>
+                <button class="btn accent" id="fbCustomerSave">Lưu danh sách</button>
                 <span class="muted" id="fbPhonesCount" style="font-size:12px; margin-left:8px;"></span>
               </div>
             </div>
