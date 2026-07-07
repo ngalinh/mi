@@ -219,19 +219,18 @@ a { color: var(--primary); text-decoration: none; }
 /* Badge bấm được (bật/tắt tự động báo hàng) */
 .badge-clickable { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
 .badge-clickable:hover { filter: brightness(0.97); border-color: currentColor; }
-/* Cột trạng thái: dropdown + badge xếp dọc cho thoáng */
+/* Cột trạng thái: dropdown + (icon cách báo · mốc thời gian) xếp dọc cho thoáng */
 .status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
-/* Dấu "bot tự động đã gửi" / "báo thủ công" trong cột trạng thái */
-.bot-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--radius-pill);
-  font-size: 11px; font-weight: 700; line-height: 1.3; color: var(--green); background: var(--green-soft);
-  border: 1px solid color-mix(in srgb, var(--green) 24%, transparent); white-space: nowrap; }
-.bot-tag .icon { width: 13px; height: 13px; }
-.bot-tag.bot-fail { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 24%, transparent); }
-.bot-tag.bot-manual { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 26%, transparent); }
-/* Cột "Thời gian gửi" — mốc thời gian đã gửi báo hàng / báo ship */
-.sent-cell { display: flex; flex-direction: column; align-items: flex-start; }
+/* Gộp "cách báo" + "thời gian gửi": 1 icon tròn nhỏ (thủ công/tự động/lỗi) đứng kế mốc thời gian */
+.report-meta { display: inline-flex; align-items: flex-start; gap: 6px; }
+.rpt-method { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  flex: none; border-radius: 50%; color: var(--green); background: var(--green-soft);
+  border: 1px solid color-mix(in srgb, var(--green) 24%, transparent); }
+.rpt-method .icon { width: 13px; height: 13px; }
+.rpt-method.rpt-fail { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 24%, transparent); }
+.rpt-method.rpt-manual { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 26%, transparent); }
 .sent-times { display: flex; flex-direction: column; gap: 2px; }
-.sent-time { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1.3;
+.sent-time { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1.6;
   color: var(--muted); white-space: nowrap; }
 .sent-time .icon { width: 12px; height: 12px; flex: none; }
 
