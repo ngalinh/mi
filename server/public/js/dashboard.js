@@ -9,8 +9,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 13;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 12; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 12;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 11; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
   // Các nhóm khác giữ lại cho tương thích code cũ (client-mode) nhưng không hiển thị nữa.
@@ -133,28 +133,33 @@
       <option value="" ${selVal ? '' : 'selected'}>— Lý do delay —</option>${opts}<option value="${DELAY_OTHER}" ${selVal === DELAY_OTHER ? 'selected' : ''}>${DELAY_OTHER}</option></select>${otherInput}`;
   }
 
-  function botTag(o) {
+  // Gộp "cách báo" (bot tự động / thủ công / lỗi) + mốc thời gian ĐÃ GỬI vào 1 ô nằm DƯỚI dropdown
+  // trạng thái — bỏ cột "Thời gian gửi" riêng cho gọn. Chỉ còn 1 icon nhỏ (thủ công/tự động/lỗi)
+  // đứng kế mốc thời gian; chi tiết đầy đủ để trong tooltip.
+  //   - Icon cách báo: bot=tự động · hand=thủ công · alert=lỗi (lấy từ `autoNotified`).
+  //   - Mốc thời gian: báo hàng (box) / báo ship (truck) từ Lịch sử báo (server enrich `sentAt`);
+  //     chưa có mốc nào từ lịch sử nhưng đã có hành động báo -> hiện mốc `at` của hành động đó.
+  function reportMetaCell(o) {
     const a = o.autoNotified;
-    if (!a) return '';
-    const when = a.at ? App.fmtDateTime(a.at) : '';
-    if (a.status === 'success') {
-      return `<span class="bot-tag" title="Bot tự động đã gửi${when ? ' lúc ' + when : ''}">${App.icon('bot')} Bot đã gửi</span>`;
-    }
-    if (a.status === 'manual') {
-      return `<span class="bot-tag bot-manual" title="Đã báo thủ công trong mi${when ? ' lúc ' + when : ''}">${App.icon('hand')} Báo thủ công</span>`;
-    }
-    return `<span class="bot-tag bot-fail" title="Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}">${App.icon('alert')} Bot lỗi (${a.attempts})</span>`;
-  }
-
-  // Mốc thời gian ĐÃ GỬI từng loại tin (báo hàng / báo ship), lấy từ Lịch sử báo (server
-  // enrich `sentAt`). Chỉ hiện dòng nào đã có; chưa gửi loại nào thì bỏ trống dòng đó.
-  function sentTimesTag(o) {
     const s = o.sentAt;
-    if (!s || (!s.hang && !s.ship)) return '';
-    const line = (icon, label, at) => at
-      ? `<span class="sent-time" title="${label} lúc ${App.esc(App.fmtDateTime(at))}">${App.icon(icon)} ${App.esc(App.fmtDateTime(at))}</span>`
+    let icon = '', cls = '', title = '';
+    if (a) {
+      const when = a.at ? App.fmtDateTime(a.at) : '';
+      if (a.status === 'success') { icon = 'bot'; cls = 'rpt-auto'; title = `Bot tự động đã gửi${when ? ' lúc ' + when : ''}`; }
+      else if (a.status === 'manual') { icon = 'hand'; cls = 'rpt-manual'; title = `Đã báo thủ công trong mi${when ? ' lúc ' + when : ''}`; }
+      else { icon = 'alert'; cls = 'rpt-fail'; title = `Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}`; }
+    }
+    const line = (ic, label, at) => at
+      ? `<span class="sent-time" title="${label} lúc ${App.esc(App.fmtDateTime(at))}">${App.icon(ic)} ${App.esc(App.fmtDateTime(at))}</span>`
       : '';
-    return `<div class="sent-times">${line('box', 'Đã gửi báo hàng', s.hang)}${line('truck', 'Đã gửi báo ship', s.ship)}</div>`;
+    let times = s ? `${line('box', 'Đã gửi báo hàng', s.hang)}${line('truck', 'Đã gửi báo ship', s.ship)}` : '';
+    // Chưa có mốc từ Lịch sử báo nhưng đã có hành động báo (thủ công/bot) -> vẫn hiện mốc `at`.
+    if (!times && a && a.at) {
+      times = `<span class="sent-time" title="${App.esc(title)}">${App.esc(App.fmtDateTime(a.at))}</span>`;
+    }
+    if (!icon && !times) return '';
+    const method = icon ? `<span class="rpt-method ${cls}" title="${App.esc(title)}">${App.icon(icon)}</span>` : '';
+    return `<div class="report-meta">${method}<div class="sent-times">${times}</div></div>`;
   }
 
   function contentCell(text, id, kind) {
@@ -367,8 +372,7 @@
       <td>${App.esc(o.phone)}</td>
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
-      <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>
-      <td><div class="sent-cell">${sentTimesTag(o) || '<span class="muted">—</span>'}</div></td>
+      <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
       <td><div class="note-cell">
         <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
         <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>
