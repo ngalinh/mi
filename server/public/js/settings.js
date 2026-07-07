@@ -138,26 +138,36 @@
   let zEditing = null;   // key đang sửa, null = thêm mới
   let accountsAll = [];  // toàn bộ account (cả 2 kênh) lần tải gần nhất
 
-  function connBadge(c) {
-    if (c === 'connected') return '<span class="badge-status badge-online" style="box-shadow:none; padding:5px 12px;">Đã kết nối</span>';
-    if (c === 'expired') return '<span class="badge-status badge-offline" style="box-shadow:none; padding:5px 12px;">Mất kết nối</span>';
-    return '<span class="badge-status badge-offline" style="box-shadow:none; padding:5px 12px;">Chưa đăng nhập</span>';
+  // Icon SVG line dùng chung cho các nút hành động (đồng bộ với .icon toàn hệ).
+  const IC = {
+    edit: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+    login: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>',
+    check: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+    del: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+    plus: '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  };
+
+  function connMeta(c) {
+    if (c === 'connected') return { cls: 'on', label: 'Đã kết nối' };
+    if (c === 'expired') return { cls: 'off', label: 'Mất kết nối' };
+    return { cls: 'idle', label: 'Chưa đăng nhập' };
   }
-  function autoPill(a) {
-    return a.autoEnabled === false
-      ? '<span class="pill chua" data-action="auto" style="cursor:pointer" title="Bấm để bật">Tắt</span>'
-      : '<span class="pill da" data-action="auto" style="cursor:pointer" title="Bấm để tắt">Bật</span>';
+  function connBadge(c) {
+    const m = connMeta(c);
+    return `<span class="acct-conn ${m.cls}">${m.label}</span>`;
+  }
+  // Chip điều khiển CÓ NHÃN: nhãn mờ + giá trị đậm màu theo NGHĨA (không mượn đỏ/vàng "cảnh báo").
+  function autoTgl(a) {
+    const on = a.autoEnabled !== false;
+    return `<button class="tgl ${on ? 'is-on' : 'is-off'}" data-action="auto" title="Tự động báo hàng — bấm để ${on ? 'tắt' : 'bật'}"><span class="tgl-label">Tự động</span><span class="tgl-val">${on ? 'Bật' : 'Tắt'}</span></button>`;
+  }
+  // Đích báo: 'personal' = nhắn cá nhân, mặc định = nhóm. Cả hai đều hợp lệ → dùng tông trung tính.
+  function targetTgl(a) {
+    const personal = a.notifyTarget === 'personal';
+    return `<button class="tgl is-mode" data-action="target" title="Đích báo — bấm để đổi ${personal ? 'sang Nhóm' : 'sang Cá nhân'}"><span class="tgl-label">Báo</span><span class="tgl-val">${personal ? 'Cá nhân' : 'Nhóm'}</span></button>`;
   }
   function brandTag(b) {
-    return b
-      ? `<span class="pill da" style="cursor:default" title="Prefix mã đơn của brand này">${App.esc(b)}</span>`
-      : '<span class="muted" title="Nhận mọi brand">—</span>';
-  }
-  // Kiểu báo: 'personal' = nhắn tin cá nhân, còn lại (mặc định) = báo vào nhóm. Bấm để đổi.
-  function targetPill(a) {
-    return a.notifyTarget === 'personal'
-      ? '<span class="pill chua" data-action="target" style="cursor:pointer" title="Đang: Cá nhân. Bấm để đổi sang Nhóm">Cá nhân</span>'
-      : '<span class="pill da" data-action="target" style="cursor:pointer" title="Đang: Nhóm. Bấm để đổi sang Cá nhân">Nhóm</span>';
+    return b ? `<span class="acct-brand" title="Chỉ nhận đơn brand ${App.esc(b)}">${App.esc(b)}</span>` : '';
   }
   const platLabel = (p) => (p === 'facebook' ? 'Facebook' : 'Zalo');
   const findAcct = (key) => accountsAll.find((x) => x.key === key);
@@ -175,28 +185,49 @@
     return [...groups.values()];
   }
 
-  // 1 khối tài khoản trong ô Zalo/Facebook: tên + kết nối + pill auto/kiểu báo + hành động.
+  // 1 khối tài khoản: tên + brand + trạng thái kết nối · chip điều khiển · hàng hành động.
+  // Đăng nhập nổi bật (primary) khi CHƯA kết nối; Xoá tách riêng về cuối để tránh bấm nhầm.
   function acctBlock(a) {
     const isFb = a.platform === 'facebook';
     const title = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName || a.name || a.key);
-    const pills = [connBadge(a.connection), autoPill(a)];
-    if (!isFb) pills.push(targetPill(a));
-    return `<div class="acct-block" data-key="${App.esc(a.key)}" data-platform="${a.platform}" style="padding:8px 0; border-bottom:1px solid var(--border,#eee);">
-      <div class="cust">${App.esc(title)} ${isFb ? '' : brandTag(a.brand || '')}</div>
-      <div style="margin:5px 0; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">${pills.join(' ')}</div>
-      <div>
-        <button class="link-btn" data-action="edit">Sửa</button>
-        <button class="link-btn" data-action="login">Đăng nhập</button>
-        <button class="link-btn" data-action="check">Kiểm tra</button>
-        <button class="link-btn" data-action="del" style="color:var(--danger,#d33)">Xoá</button>
+    const needLogin = a.connection !== 'connected';
+    const chips = [autoTgl(a)];
+    if (!isFb) chips.push(targetTgl(a));
+    return `<div class="acct-block" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
+      <div class="acct-head">
+        <span class="acct-name">${App.esc(title)}</span>
+        ${isFb ? '' : brandTag(a.brand || '')}
+        ${connBadge(a.connection)}
+      </div>
+      <div class="acct-chips">${chips.join('')}</div>
+      <div class="acct-actions">
+        <button class="acct-btn${needLogin ? ' primary' : ''}" data-action="login" title="Mở Chromium trên local-runner để đăng nhập">${IC.login}<span>Đăng nhập</span></button>
+        <button class="acct-btn" data-action="edit" title="Sửa thông tin tài khoản">${IC.edit}<span>Sửa</span></button>
+        <button class="acct-btn" data-action="check" title="Kiểm tra còn đăng nhập không">${IC.check}<span>Kiểm tra</span></button>
+        <span class="acct-actions-sp"></span>
+        <button class="acct-btn danger icon-only" data-action="del" title="Xoá tài khoản">${IC.del}</button>
       </div>
     </div>`;
   }
 
+  function addBtn(platform, group, ghost) {
+    return `<button class="acct-add${ghost ? ' ghost' : ''}" data-action="add" data-platform="${platform}" data-name="${App.esc(group.name)}" data-staffid="${App.esc(group.staffId)}">${IC.plus}<span>Thêm ${platLabel(platform)}</span></button>`;
+  }
   function accountsCell(items, platform, group) {
-    const blocks = items.map(acctBlock).join('');
-    const add = `<button class="link-btn" data-action="add" data-platform="${platform}" data-name="${App.esc(group.name)}" data-staffid="${App.esc(group.staffId)}" style="margin-top:6px;">＋ Thêm ${platLabel(platform)}</button>`;
-    return blocks + add;
+    if (!items.length) return `<div class="acct-empty">${addBtn(platform, group, true)}</div>`;
+    return items.map(acctBlock).join('') + addBtn(platform, group, false);
+  }
+
+  // Tóm tắt nhanh cho cột Nhân viên: tổng tài khoản + số kết nối / chưa kết nối.
+  function empMeta(g) {
+    const all = [...g.zalo, ...g.facebook];
+    if (!all.length) return '';
+    const off = all.filter((a) => a.connection !== 'connected').length;
+    const on = all.length - off;
+    const parts = [`${all.length} tài khoản`];
+    if (on) parts.push(`<span class="on">${on} kết nối</span>`);
+    if (off) parts.push(`<span class="off">${off} chưa/mất</span>`);
+    return `<div class="acct-emp-meta">${parts.join(' · ')}</div>`;
   }
 
   function renderAccounts(list) {
@@ -208,9 +239,9 @@
     }
     zaloRows.innerHTML = groups.map((g) => `
       <tr class="main-row">
-        <td class="cust">${App.esc(g.name)}${g.staffId ? `<br><span class="muted" style="font-size:12px">NV Basso #${App.esc(g.staffId)}</span>` : ''}</td>
-        <td style="vertical-align:top;">${accountsCell(g.zalo, 'zalo', g)}</td>
-        <td style="vertical-align:top;">${accountsCell(g.facebook, 'facebook', g)}</td>
+        <td class="cust acct-emp">${App.esc(g.name)}${g.staffId ? `<div class="acct-emp-sub">NV Basso #${App.esc(g.staffId)}</div>` : ''}${empMeta(g)}</td>
+        <td class="acct-td">${accountsCell(g.zalo, 'zalo', g)}</td>
+        <td class="acct-td">${accountsCell(g.facebook, 'facebook', g)}</td>
       </tr>`).join('');
   }
   async function loadZalo() {
