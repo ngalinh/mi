@@ -9,11 +9,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  // Cột "Tên Zalo/FB" chỉ render khi tiêu đề bảng ĐÃ có cột đó (index.html mới). Nếu trình duyệt
-  // còn giữ index.html CŨ (cache) mà JS đã mới -> bỏ ô này để bảng KHÔNG lệch cột; refresh HTML là hiện.
-  const HAS_ZALO_COL = !!document.querySelector('thead th[data-col="zalo"]');
-  const COLSPAN = HAS_ZALO_COL ? 14 : 13;       // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = HAS_ZALO_COL ? 13 : 12;  // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 13;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 12; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
   // Các nhóm khác giữ lại cho tương thích code cũ (client-mode) nhưng không hiển thị nữa.
@@ -246,19 +243,15 @@
   const CUSTOMER_DETAIL_BASE = 'https://basso.vn/management/customer/detail/';
   function customerNameCell(o) {
     const name = App.esc(o.customerName);
-    if (!o.customerId) return name;
-    const href = CUSTOMER_DETAIL_BASE + encodeURIComponent(o.customerId);
-    return `<a href="${href}" target="_blank" rel="noopener">${name}</a>`;
-  }
-  // Cột "Tên Zalo/FB": tên hội thoại đã lưu trong Danh bạ (server gắn o.zaloName theo SĐT).
-  // Có -> hiện tên + dấu 🔗 (khi gửi sẽ tìm nhóm theo tên này); chưa có -> gợi ý thêm vào danh bạ.
-  function zaloNameCell(o) {
-    if (o.zaloName) {
-      // Gọn: chỉ 🔗 + tên cắt ngắn (…); di chuột xem đủ tên qua title.
-      return `<span class="zalo-name" title="Đã liên kết Danh bạ Zalo — khi gửi sẽ tìm nhóm theo tên: ${App.esc(o.zaloName)}">🔗 ${App.esc(o.zaloName)}</span>`;
-    }
-    if (!o.phone) return '<span class="muted">—</span>';
-    return `<a class="zalo-name-add" href="danhba.html" title="Chưa có trong Danh bạ Zalo — bấm để thêm">+</a>`;
+    const nameHtml = o.customerId
+      ? `<a href="${CUSTOMER_DETAIL_BASE + encodeURIComponent(o.customerId)}" target="_blank" rel="noopener">${name}</a>`
+      : name;
+    // Tên hội thoại Zalo/FB (từ Danh bạ, khớp SĐT) hiện thành 1 dòng nhỏ dưới tên khách. Có ->
+    // khi gửi sẽ tìm nhóm theo tên này; không có -> không hiện gì (thêm ở trang Danh bạ).
+    const zalo = o.zaloName
+      ? `<div class="zalo-sub" title="Đã liên kết Danh bạ Zalo — khi gửi tìm nhóm theo tên: ${App.esc(o.zaloName)}">🔗 ${App.esc(o.zaloName)}</div>`
+      : '';
+    return nameHtml + zalo;
   }
   function orderCodeCell(it) {
     const code = App.esc(it.orderCode);
@@ -372,7 +365,6 @@
       <td>${App.esc(o.warehouseDate)}</td>
       <td class="cust">${customerNameCell(o)}</td>
       <td>${App.esc(o.phone)}</td>
-      ${HAS_ZALO_COL ? `<td>${zaloNameCell(o)}</td>` : ''}
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${botTag(o)}</div></td>

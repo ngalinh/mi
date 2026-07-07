@@ -1050,7 +1050,5 @@ tr.row-excluded .cust a, tr.row-excluded .cust { text-decoration: line-through; 
 /* Mật khẩu ẩn trong bảng nhân viên (settings) */
 .pw { letter-spacing: 2px; color: var(--muted); }
 
-/* Cột "Tên Zalo/FB" trên danh sách hàng về (liên kết Danh bạ Zalo) — hiển thị gọn */
-.zalo-name { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px; display: inline-block; vertical-align: bottom; cursor: default; }
-.zalo-name-add { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; font-size: 15px; line-height: 1; color: var(--primary); opacity: .5; text-decoration: none; border-radius: 6px; }
-.zalo-name-add:hover { opacity: 1; background: var(--primary-soft); }
+/* Tên hội thoại Zalo/FB: dòng nhỏ dưới tên khách trên danh sách hàng về */
+.zalo-sub { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; margin-top: 2px; cursor: default; }
