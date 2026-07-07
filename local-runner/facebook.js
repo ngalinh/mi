@@ -68,14 +68,36 @@ async function ensureLoggedIn(page) {
   }
 }
 
-// Ô SOẠN TIN của Messenger (Lexical contenteditable). Ưu tiên aria-label, fallback role=textbox.
+// Ô SOẠN TIN của Messenger (Lexical contenteditable). LƯU Ý: aria-label là "Write to <Tên>"
+// (đổi theo khách + ngôn ngữ) nên KHÔNG dùng làm selector. Thứ bền: aria-placeholder="Aa" +
+// data-lexical-editor="true" + role="textbox".
 const COMPOSE_BOX_SELECTORS = [
-  'div[aria-label="Message"][contenteditable="true"]',
-  'div[aria-label="Aa"][contenteditable="true"]',
-  'div[aria-label="Tin nhắn"][contenteditable="true"]',
-  'div[aria-label="Nhắn tin"][contenteditable="true"]',
-  'div[role="textbox"][contenteditable="true"]',
+  'div[contenteditable="true"][role="textbox"][aria-placeholder="Aa"]',
+  'div[data-lexical-editor="true"][contenteditable="true"][role="textbox"]',
+  'div[contenteditable="true"][role="textbox"]',
 ];
+// Nút "Nhắn tin"/"Message" trên trang hồ sơ khách (fallback khi mở thẳng link chat không ra khung soạn).
+const MESSAGE_BUTTON_SELECTORS = [
+  'div[aria-label="Message"][role="button"]',
+  'div[aria-label="Nhắn tin"][role="button"]',
+  'a[aria-label="Message"]',
+  'a[aria-label="Nhắn tin"]',
+];
+
+/** URL trang hồ sơ khách từ link (để fallback bấm "Nhắn tin"). '' nếu link là m.me / messages/t. */
+function toProfileUrl(link) {
+  const raw = String(link || '').trim();
+  if (!raw) return '';
+  let u;
+  try { u = new URL(raw.startsWith('http') ? raw : `https://${raw}`); }
+  catch { return ''; }
+  const host = u.hostname.replace(/^www\./, '').toLowerCase();
+  if (host === 'm.me' || host.endsWith('messenger.com')) return '';
+  const path = u.pathname.replace(/\/+$/, '');
+  if (/\/messages\/t\//i.test(path)) return '';
+  if (!host.endsWith('facebook.com')) return '';
+  return `https://www.facebook.com${path}${u.search || ''}`;
+}
 
 /**
  * Chuẩn hoá link FB khách thành URL mở THẲNG hội thoại Messenger.
@@ -118,11 +140,25 @@ async function openConversationByLink(page, link) {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForTimeout(2500);
   await ensureLoggedIn(page);
-  await shot(page, '02-conversation');
-  const box = await findVisible(page, COMPOSE_BOX_SELECTORS, 15000);
+  let box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
+
+  // Fallback: mở thẳng messages/t/<username> đôi khi không ra thread -> mở trang hồ sơ khách
+  // rồi bấm "Nhắn tin"/"Message" để bật cửa sổ chat (đúng như thao tác tay).
   if (!box) {
-    throw new Error('FB: không mở được khung chat (link sai, khách chặn/không nhắn được, hoặc giao diện Messenger đổi selector ô soạn tin).');
+    const profileUrl = toProfileUrl(link);
+    if (profileUrl && profileUrl !== url) {
+      await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      await page.waitForTimeout(2500);
+      await ensureLoggedIn(page);
+      const btn = await findVisible(page, MESSAGE_BUTTON_SELECTORS, 8000);
+      if (btn) { await btn.click().catch(() => {}); await page.waitForTimeout(2500); }
+      box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
+    }
   }
+  if (!box) {
+    throw new Error('FB: không mở được khung soạn tin (link sai, khách chặn/không nhắn được, hoặc Messenger đổi giao diện).');
+  }
+  await shot(page, '02-conversation');
   return box;
 }
 
