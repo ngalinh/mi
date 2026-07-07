@@ -3,7 +3,7 @@ const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
 const { sendBaoHang } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
-const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey } = require('./db');
+const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getZaloName } = require('./db');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
@@ -52,8 +52,17 @@ async function notifyOne(order, opts = {}) {
     ? opts.messageOverride.trim()
     : (kind === 'ship' ? buildBaoShipMessage(order) : buildBaoHangMessage(order));
 
-  // Tìm khách: dùng SĐT (whitelist + tìm) và tên (khớp hội thoại)
-  const keyword = order.phone || order.customerName;
+  // Tìm khách: dùng SĐT (whitelist + tìm) và tên (khớp hội thoại).
+  // DANH BẠ ZALO: nếu SĐT khách có tên Zalo/FB đã lưu (import/nhập tay), dùng tên đó để KHỚP
+  // hội thoại thay cho tên Basso (hay lệch tên hiển thị trên Zalo). SĐT vẫn là khoá chính;
+  // tên Zalo chỉ là fallback (khách không SĐT / SĐT không ra hội thoại). Khách Facebook không
+  // có SĐT thì lấy luôn tên Zalo làm từ khoá tìm.
+  const zaloName = getZaloName(order.phone);
+  const matchName = zaloName || order.customerName;
+  const keyword = order.phone || zaloName || order.customerName;
+  if (zaloName) {
+    console.log(`[notify] danh bạ Zalo: ${order.phone || '-'} -> tên hội thoại "${zaloName}" (thay tên Basso "${order.customerName || '-'}")`);
+  }
 
   // MÔ HÌNH B: mỗi tài khoản Zalo 1 profile riêng. Resolver quyết định profile + saleworkName
   // theo NV phụ trách đơn (accountsStore trên runner), fallback ZALO_ACCOUNT_MAP / mặc định.
@@ -118,7 +127,7 @@ async function notifyOne(order, opts = {}) {
       profile: resolved.profile || 'default',
       account: resolved.account,
       keyword,
-      name: order.customerName,
+      name: matchName,
       message,
       strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
       notifyTarget: resolved.notifyTarget,     // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
