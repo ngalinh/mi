@@ -16,6 +16,8 @@ const config = require('./config');
  *   - saleworkName: (Zalo) TÊN account như hiện trong dropdown zalo.basso.vn (chọn account khi gửi).
  *                   KHÔNG bắt buộc với Facebook.
  *   - fbName      : (Facebook, tuỳ chọn) tên/nhãn tài khoản FB để hiển thị.
+ *   - email       : (Facebook, tuỳ chọn) email/SĐT đăng nhập Facebook — dùng tự điền form login khi mở Chromium.
+ *   - password    : (Facebook, tuỳ chọn) mật khẩu Facebook — dùng tự điền form login khi mở Chromium.
  *   - phone       : (tuỳ chọn) SĐT của tài khoản — chỉ để hiển thị
  *   - staffId     : (tuỳ chọn) user_id của NV phụ trách — để khớp đơn → account (ưu tiên hơn tên).
  *                   Cũng là khoá GOM tài khoản Zalo + Facebook về cùng 1 nhân viên trên UI.
@@ -57,6 +59,9 @@ function normalize(a) {
     saleworkName: String(a.saleworkName || '').trim(),
     // Nhãn tài khoản Facebook (tuỳ chọn) — chỉ dùng để hiển thị.
     fbName: String(a.fbName || '').trim(),
+    // Thông tin đăng nhập Facebook (tuỳ chọn) — chỉ để tự điền form login khi mở Chromium.
+    email: String(a.email || '').trim(),
+    password: String(a.password || ''),
     phone: String(a.phone || '').trim(),
     staffId: a.staffId != null ? String(a.staffId).trim() : '',
     // Prefix mã đơn (brand) — chuẩn hoá UPPERCASE để so khớp không phân biệt hoa/thường.

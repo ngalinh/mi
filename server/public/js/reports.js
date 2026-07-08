@@ -38,13 +38,13 @@
     return App.esc(s.length > 60 ? s.slice(0, 60) + '…' : s);
   }
 
-  // Lỗi Playwright thường rất dài (call log). Chỉ hiện dòng đầu + cắt ngắn,
-  // text đầy đủ xem ở tooltip (title) khi rê chuột.
+  // Lỗi Playwright thường rất dài (call log) và là mã kỹ thuật (KHONG_*). Hiện câu tiếng Việt dễ
+  // hiểu (App.friendlyError) + cắt ngắn; text GỐC đầy đủ vẫn xem ở tooltip (data-tip) khi rê chuột.
   function errPreview(t) {
     const s = String(t || '').trim();
     if (!s) return '';
-    const firstLine = s.split('\n')[0].trim();
-    return App.esc(firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine);
+    const friendly = App.friendlyError(s);
+    return App.esc(friendly.length > 60 ? friendly.slice(0, 60) + '…' : friendly);
   }
 
   // Map email nhân viên (chữ thường) -> tên, để cột "Người gửi" hiện tên gọn thay vì email.
@@ -213,9 +213,10 @@
     try {
       const r = await App.api(`/api/reports/${encodeURIComponent(id)}/retry`, { method: 'POST' });
       if (r.sent > 0) App.toast('✅ Đã gửi lại thành công');
+      else if (r.aborted) App.toast('⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi thử lại.', 8000);
       else {
         const err = (r.results && r.results[0] && r.results[0].error) || 'không rõ lý do';
-        App.toast(`❌ Gửi lại vẫn lỗi: ${err}`, 6000);
+        App.toast(`❌ Gửi lại vẫn lỗi: ${App.friendlyError(err)}`, 7000);
       }
     } catch (err) {
       App.toast(`❌ ${err.message}`, 6000);

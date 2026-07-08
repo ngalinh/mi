@@ -7,6 +7,11 @@ const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, get
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
+// Marker lỗi "chưa đăng nhập Zalo" do runner (salework.ensureLoggedIn) ném ra khi mở trình duyệt
+// mà thấy trang login. Dùng để DỪNG NGAY báo loạt thay vì để mọi đơn còn lại failed như nhau.
+const LOGIN_REQUIRED_RE = /CHUA_DANG_NHAP/i;
+const isLoginRequiredError = (msg) => LOGIN_REQUIRED_RE.test(msg || '');
+
 /**
  * Báo hàng/ship cho 1 đơn: build tin nhắn -> gửi qua local-runner -> (tùy chọn) cập nhật
  * trạng thái về web -> ghi report.
@@ -181,7 +186,10 @@ async function notifyOne(order, opts = {}) {
     jobId: result.jobId,
   });
 
-  return { order, ...result, updateError, report };
+  // loginRequired: Zalo hiện trang login (chưa đăng nhập). Caller (notifyOrders) dùng cờ này để
+  // DỪNG cả loạt ngay — các đơn còn lại chắc chắn cũng fail vì cùng chưa đăng nhập.
+  const loginRequired = !result.ok && isLoginRequiredError(result.error);
+  return { order, ...result, updateError, report, loginRequired };
 }
 
 /**
@@ -224,6 +232,8 @@ async function notifyOrders(orders, opts = {}) {
     // Gom theo profile trước -> gửi tuần tự HẾT đơn của 1 tài khoản rồi mới sang tài khoản kế.
     const ordered = await groupOrdersByProfile(orders, opts);
     const results = [];
+    let aborted = false;
+    let abortError = null;
     for (let idx = 0; idx < ordered.length; idx += 1) {
       const { order, profileKey } = ordered[idx];
       // Giữ context nếu đơn KẾ TIẾP cùng profile (đã gom) -> tái dùng browser, đỡ mở/đóng lặp lại.
@@ -245,9 +255,28 @@ async function notifyOrders(orders, opts = {}) {
         error: r.error || r.updateError || null,
         jobId: r.jobId || null,
       });
+      // Zalo hiện trang login (chưa đăng nhập) -> DỪNG NGAY cả loạt: các đơn còn lại chắc chắn
+      // cũng fail vì cùng chưa đăng nhập. Không gửi tiếp để tránh loạt đơn failed vô ích; trả cờ
+      // aborted để UI hiện cảnh báo đăng nhập thay vì "Hoàn tất".
+      if (r.loginRequired) {
+        aborted = true;
+        abortError = r.error || 'Zalo chưa đăng nhập.';
+        break;
+      }
     }
     const sent = results.filter((r) => r.ok).length;
-    return { total: results.length, sent, failed: results.length - sent, results };
+    // Số đơn CÒN LẠI chưa gửi khi dừng giữa chừng (để UI báo rõ đã bỏ dở bao nhiêu).
+    const skipped = aborted ? ordered.length - results.length : 0;
+    return {
+      total: results.length,
+      sent,
+      failed: results.length - sent,
+      results,
+      aborted,
+      abortReason: aborted ? 'CHUA_DANG_NHAP' : null,
+      abortError,
+      skipped,
+    };
   });
 }
 

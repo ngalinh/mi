@@ -815,6 +815,30 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border-color: color-mix(in srgb, var(--blue) 22%, transparent);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--blue) 16%, transparent);
 }
+/* Cột "Báo qua FB": pill bật/tắt + link gọn xếp dọc, canh giữa cho gọn gàng. */
+.fb-cell {
+  display: inline-flex; flex-direction: row; flex-wrap: wrap;
+  align-items: center; justify-content: center; gap: 8px; max-width: 100%;
+}
+.fb-toggle { cursor: pointer; transition: filter .15s var(--ease), transform .06s var(--ease); }
+.fb-toggle:hover { filter: brightness(.97); }
+.fb-toggle:active { transform: translateY(1px); }
+.fb-link {
+  display: inline-flex; align-items: center; gap: 4px;
+  max-width: 130px; padding: 3px 9px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 600; line-height: 1;
+  color: var(--primary); background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, transparent);
+  white-space: nowrap; transition: filter .15s var(--ease);
+}
+.fb-link:hover { filter: brightness(.97); text-decoration: none; }
+.fb-link .icon { width: 12px; height: 12px; vertical-align: 0; }
+.fb-warn {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; line-height: 1; color: var(--red);
+}
+.fb-warn .icon { width: 12px; height: 12px; vertical-align: 0; }
+
 /* Pill "Bot": tông primary + icon robot (SVG line) cho đồng bộ, thay emoji 🤖 */
 .pill.pill-bot {
   background: var(--primary-soft); color: var(--primary);

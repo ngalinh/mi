@@ -205,14 +205,14 @@
   function fbCell(c) {
     const on = !!c.fb_report;
     const pill = on
-      ? '<span class="pill da" data-action="fbtoggle" style="cursor:pointer" title="Đang báo qua Facebook — bấm để tắt">Bật</span>'
-      : '<span class="pill chua" data-action="fbtoggle" style="cursor:pointer" title="Đang báo qua Zalo — bấm để bật FB">Tắt</span>';
-    if (!on) return pill;
+      ? '<span class="pill da fb-toggle" data-action="fbtoggle" title="Đang báo qua Facebook — bấm để tắt">Bật</span>'
+      : '<span class="pill chua fb-toggle" data-action="fbtoggle" title="Đang báo qua Zalo — bấm để bật FB">Tắt</span>';
+    if (!on) return `<div class="fb-cell">${pill}</div>`;
     const link = String(c.fb_link || '').trim();
-    const side = link
-      ? `<a href="${App.esc(link)}" target="_blank" rel="noopener noreferrer" title="${App.esc(link)}" style="font-size:11.5px; font-weight:600; color:var(--primary); white-space:nowrap; text-decoration:none;">🔗 Xem link</a>`
-      : '<span style="font-size:11px; color:var(--red); white-space:nowrap;">⚠ chưa có link</span>';
-    return `<span style="display:inline-flex; align-items:center; gap:8px; justify-content:center;">${pill}${side}</span>`;
+    const sub = link
+      ? `<a class="fb-link" href="${App.esc(link)}" target="_blank" rel="noopener noreferrer" title="${App.esc(link)}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Xem link</a>`
+      : '<span class="fb-warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>chưa có link</span>';
+    return `<div class="fb-cell">${pill}${sub}</div>`;
   }
 
   function renderContacts() {

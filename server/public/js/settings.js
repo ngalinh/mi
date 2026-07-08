@@ -131,7 +131,7 @@
   const zaloRows = $('zaloRows');
   const zm = $('zaloModal');
   const zaKey = $('zaKey'), zaName = $('zaName'), zaSalework = $('zaSalework'),
-    zaFbName = $('zaFbName'), zaPlatform = $('zaPlatform'),
+    zaEmail = $('zaEmail'), zaPassword = $('zaPassword'), zaPlatform = $('zaPlatform'),
     zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
   let zEditing = null;   // key đang sửa, null = thêm mới
@@ -271,13 +271,14 @@
     zaPlatform.value = platform;
     zaPlatform.disabled = !!a; // nền tảng bất biến khi sửa
     applyPlatformFields(platform);
-    $('zaTitle').textContent = a ? `Sửa tài khoản ${platLabel(platform)}` : `Thêm tài khoản ${platLabel(platform)}`;
+    $('zaTitle').textContent = a ? 'Sửa tài khoản' : 'Thêm tài khoản';
     $('zaHint').style.display = a ? 'none' : '';
     zaKey.value = a ? a.key : '';
     zaKey.disabled = !!a; // không đổi key khi sửa
     zaName.value = a ? (a.name || '') : (presets.name || '');
     zaSalework.value = a ? (a.saleworkName || '') : '';
-    zaFbName.value = a ? (a.fbName || '') : '';
+    zaEmail.value = a ? (a.email || '') : '';
+    zaPassword.value = a ? (a.password || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
     zaStaffId.value = a ? (a.staffId || '') : (presets.staffId || '');
     zaBrand.value = a ? (a.brand || '') : '';
@@ -297,7 +298,8 @@
       proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
     };
     if (platform === 'facebook') {
-      body.fbName = zaFbName.value.trim();
+      body.email = zaEmail.value.trim();
+      body.password = zaPassword.value;
     } else {
       body.saleworkName = zaSalework.value.trim();
       body.brand = zaBrand.value.trim().toUpperCase();

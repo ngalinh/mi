@@ -140,9 +140,11 @@ function profileExists(profileName) {
  * @param {string} profileName
  * @param {string} url  trang để mở (vd config.saleworkLoginUrl)
  * @param {(ev:'opened'|'closed')=>void} [onEvent] callback để ghi log lịch sử
+ * @param {{email:string,password:string}} [prefill] tự điền form login Facebook (tuỳ chọn — nhân viên
+ *        chỉ cần bấm đăng nhập / xử lý xác minh). Bỏ qua an toàn nếu trang không có ô email/mật khẩu.
  * @returns {Promise<void>} resolve khi cửa sổ đã mở & điều hướng xong
  */
-async function openForLogin(profileName, url, onEvent) {
+async function openForLogin(profileName, url, onEvent, prefill) {
   // GIỮ khoá profile tới khi cửa sổ đóng -> trong lúc nhân viên đăng nhập thủ công, mọi
   // lệnh gửi/kiểm tra cùng profile sẽ XẾP HÀNG chờ (an toàn) thay vì mở trùng userDataDir.
   return withProfileLock(profileName, () => new Promise((resolve) => {
@@ -150,6 +152,16 @@ async function openForLogin(profileName, url, onEvent) {
       const context = await getContext(profileName);
       const page = context.pages()[0] || (await context.newPage());
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      // Tự điền email + mật khẩu Facebook nếu có (giống Xeko) — nhân viên chỉ cần bấm đăng nhập.
+      if (prefill && prefill.email && prefill.password) {
+        try {
+          const emailInput = await page.$('input[name="email"]');
+          if (emailInput) {
+            await emailInput.fill(prefill.email);
+            await page.fill('input[name="pass"]', prefill.password);
+          }
+        } catch { /* trang không phải form login FB -> bỏ qua, để nhân viên tự đăng nhập */ }
+      }
       if (typeof onEvent === 'function') onEvent('opened');
       let done = false;
       const finish = () => { if (done) return; done = true; if (typeof onEvent === 'function') onEvent('closed'); resolve(); };
