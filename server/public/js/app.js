@@ -59,6 +59,32 @@ const App = {
     this._t = setTimeout(() => el.classList.remove('show'), ms);
   },
 
+  // Đổi các mã lỗi kỹ thuật từ runner (CHUA_DANG_NHAP, KHONG_THAY_*, lỗi hạ tầng...) thành câu
+  // TIẾNG VIỆT dễ hiểu + hướng xử lý, để người dùng không phải đọc mã lỗi/callog Playwright thô.
+  // Không khớp luật nào -> trả DÒNG ĐẦU của lỗi gốc (bỏ callog dài). Lỗi gốc đầy đủ vẫn xem được
+  // ở tooltip cột lỗi trong Lịch sử báo.
+  friendlyError(msg) {
+    const raw = String(msg == null ? '' : msg).trim();
+    if (!raw) return 'Lỗi không rõ';
+    const rules = [
+      [/CHUA_DANG_NHAP/i, '⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi gửi lại.'],
+      [/Session Facebook đã hết hạn|phiên Facebook/i, '⛔ Phiên Facebook đã hết hạn — vào Cài đặt → Tài khoản để đăng nhập lại.'],
+      [/KHONG_THAY_HOI_THOAI/i, '🔍 Không tìm thấy cuộc trò chuyện của khách trong mục "Trò chuyện" trên Zalo — kiểm tra khách đã có hội thoại chưa.'],
+      [/KHONG_THAY_TAI_KHOAN_ZALO/i, 'Không thấy tài khoản Zalo cần gửi trong danh sách — kiểm tra tài khoản đã kết nối trên Zalo Basso.'],
+      [/KHONG_CHON_DUNG_TAI_KHOAN/i, 'Không chọn được đúng tài khoản Zalo — đã huỷ để tránh gửi nhầm. Kiểm tra danh sách tài khoản trên Zalo Basso.'],
+      [/KHONG_RO_TAI_KHOAN/i, 'Chưa xác định được tài khoản Zalo để gửi — cấu hình tài khoản cho nhân viên ở Cài đặt → Tài khoản.'],
+      [/KHONG_THAY_O_TIM_KIEM|KHONG_THAY_O_NHAP/i, 'Giao diện Zalo chưa sẵn sàng (chưa thấy ô tìm kiếm/nhập tin) — thử lại sau giây lát.'],
+      [/KHONG_GUI_DUOC/i, 'Đã bấm gửi nhưng không gửi được (ảnh và tin nhắn đều lỗi) — thử lại.'],
+      [/TEST_MODE/i, 'Đang ở chế độ TEST — số khách này không nằm trong danh sách được phép gửi thử.'],
+      [/không mở được khung soạn tin|^FB:/i, 'Không mở được khung chat Facebook — link sai, khách chặn, hoặc Messenger đổi giao diện.'],
+      [/link Facebook|fbLink/i, 'Chưa có/không hợp lệ link Facebook của khách — vào Cài đặt → Báo qua Facebook để thêm link.'],
+      [/Local-runner|local-runner|không trả jobId|Hết thời gian chờ local/i, 'Máy chạy Zalo (local-runner) không phản hồi — kiểm tra máy chạy bot còn bật và kết nối mạng.'],
+      [/Quá thời gian chờ|timeout/i, 'Quá thời gian chờ — kết nối chậm hoặc Zalo phản hồi lâu, thử lại.'],
+    ];
+    for (const [re, friendly] of rules) if (re.test(raw)) return friendly;
+    return raw.split('\n')[0].trim();
+  },
+
   esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]

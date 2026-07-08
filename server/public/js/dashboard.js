@@ -877,7 +877,7 @@
       else if (isNoConversationError(r.error)) {
         App.toast(`🔍 Không tìm thấy cuộc trò chuyện của ${r.customerName || o.customerName || id}`
           + ' trong mục "Trò chuyện" trên Zalo — kiểm tra khách đã có hội thoại chưa.', 8000);
-      } else App.toast(`❌ ${r.error}`, 6000);
+      } else App.toast(`❌ ${App.friendlyError(r.error)}`, 7000);
       afterMutation();
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
