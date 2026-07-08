@@ -96,6 +96,7 @@ async function notifyOne(order, opts = {}) {
       dateInventory: order.dateInventory,
       userId: order.userId,
       kind,
+      channel: resolved.channel,
       zaloAccount: null,
     });
     return { order, ok: false, error: err, report };
@@ -118,6 +119,7 @@ async function notifyOne(order, opts = {}) {
     customerId: order.customerId,
     dateInventory: order.dateInventory,
     userId: order.userId,
+    channel: resolved.channel,
     // Tài khoản Zalo dùng để gửi (để đối chiếu trên Lịch sử báo): ưu tiên tên dropdown,
     // không có thì tới profile/key, cuối cùng 'default'.
     zaloAccount: resolved.account || resolved.profile || null,

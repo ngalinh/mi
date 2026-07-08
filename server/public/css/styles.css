@@ -665,6 +665,17 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 8px; border-radius: 8px; white-space: nowrap; }
 .link-btn:hover { background: var(--bg); }
 
+/* Badge kênh gửi (Lịch sử báo): 'f' = Facebook, 'Z' = Zalo, trước tên tài khoản. */
+.acct-with-ic { display: inline-flex; align-items: center; gap: 6px; }
+.chan-ic {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 18px; height: 18px; border-radius: 5px;
+  font-size: 11px; font-weight: 800; line-height: 1; color: #fff;
+  font-family: "Be Vietnam Pro", sans-serif;
+}
+.chan-ic.fb { background: #1877f2; }
+.chan-ic.zalo { background: #0068ff; }
+
 /* ============================================================
    Tài khoản nhân viên — bảng phẳng, mỗi tài khoản 1 dòng (settings)
    ============================================================ */

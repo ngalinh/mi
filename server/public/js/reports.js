@@ -61,6 +61,16 @@
 
   // Người gửi: 'bot' = tự động; chuỗi khác = nhân viên (gateway forward); rỗng = không rõ.
   // Nếu là email khớp danh sách NV -> hiện tên cho gọn (email đầy đủ ở tooltip).
+  // Icon kênh gửi trước tên tài khoản: 'f' xanh FB cho Facebook, 'Z' xanh Zalo cho còn lại.
+  function chanIcon(channel) {
+    const fb = channel === 'facebook';
+    return `<span class="chan-ic ${fb ? 'fb' : 'zalo'}" title="${fb ? 'Facebook' : 'Zalo'}">${fb ? 'f' : 'Z'}</span>`;
+  }
+  function accountCell(r) {
+    if (!r.zalo_account) return '<span class="muted">—</span>';
+    return `<span class="acct-with-ic">${chanIcon(r.channel)}${App.esc(r.zalo_account)}</span>`;
+  }
+
   function senderCell(v) {
     const s = String(v || '').trim();
     if (!s) return '<span class="muted">—</span>';
@@ -181,7 +191,7 @@
         <td>${resultPill(r.status)}</td>
         <td title="${App.esc(r.staff)}">${App.esc(r.staff)}</td>
         <td>${senderCell(r.sent_by)}</td>
-        <td>${r.zalo_account ? App.esc(r.zalo_account) : '<span class="muted">—</span>'}</td>
+        <td>${accountCell(r)}</td>
         <td class="msg-cell" data-tip="${App.esc(r.message)}">${msgPreview(r.message)}</td>
         <td class="err-cell" style="color:var(--red)" data-tip="${App.esc(r.error)}">${errPreview(r.error)}</td>
         <td class="center">${actionCell(r)}</td>
