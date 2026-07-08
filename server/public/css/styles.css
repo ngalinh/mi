@@ -817,8 +817,8 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 }
 /* Cột "Báo qua FB": pill bật/tắt + link gọn xếp dọc, canh giữa cho gọn gàng. */
 .fb-cell {
-  display: inline-flex; flex-direction: row; flex-wrap: wrap;
-  align-items: center; justify-content: center; gap: 8px; max-width: 100%;
+  display: inline-flex; flex-direction: row; flex-wrap: nowrap;
+  align-items: center; justify-content: center; gap: 8px;
 }
 .fb-toggle { cursor: pointer; transition: filter .15s var(--ease), transform .06s var(--ease); }
 .fb-toggle:hover { filter: brightness(.97); }
