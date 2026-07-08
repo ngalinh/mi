@@ -201,7 +201,7 @@
   // ================= DANH BẠ HIỆN CÓ =================
   const SOURCE_LABEL = { import: 'File', manual: 'Nhập tay', basso: 'Basso', learned: 'Tự học' };
 
-  // 1 ô "Báo qua FB": pill bật/tắt (bấm để đổi) + link gọn/cảnh báo thiếu link khi đang bật.
+  // 1 ô "Báo qua FB": pill bật/tắt (bấm để đổi) + link/cảnh báo NẰM CẠNH (cùng hàng) khi đang bật.
   function fbCell(c) {
     const on = !!c.fb_report;
     const pill = on
