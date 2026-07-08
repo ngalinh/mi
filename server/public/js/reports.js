@@ -203,6 +203,7 @@
     try {
       const r = await App.api(`/api/reports/${encodeURIComponent(id)}/retry`, { method: 'POST' });
       if (r.sent > 0) App.toast('✅ Đã gửi lại thành công');
+      else if (r.aborted) App.toast('⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi thử lại.', 8000);
       else {
         const err = (r.results && r.results[0] && r.results[0].error) || 'không rõ lý do';
         App.toast(`❌ Gửi lại vẫn lỗi: ${err}`, 6000);

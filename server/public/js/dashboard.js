@@ -869,7 +869,8 @@
         }),
       });
       const r = res.results[0];
-      if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
+      if (res.aborted) App.toast('⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi gửi lại.', 8000);
+      else if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
       else App.toast(`❌ ${r.error}`, 6000);
       afterMutation();
     } catch (e) {
@@ -920,7 +921,14 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
+      // Zalo hiện trang login -> server đã DỪNG loạt ngay. Báo rõ để đăng nhập rồi thử lại,
+      // thay vì hiện "Hoàn tất" gây hiểu nhầm là đã gửi hết.
+      if (res.aborted) {
+        App.toast(`⛔ Zalo chưa đăng nhập — đã dừng báo loạt (còn ${res.skipped || 0} đơn chưa gửi).`
+          + ' Hãy đăng nhập Zalo rồi báo lại.', 9000);
+      } else {
+        App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
+      }
       afterMutation();
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
