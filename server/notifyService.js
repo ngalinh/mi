@@ -12,6 +12,27 @@ const { resolveForOrder } = require('./accountResolver');
 const LOGIN_REQUIRED_RE = /CHUA_DANG_NHAP/i;
 const isLoginRequiredError = (msg) => LOGIN_REQUIRED_RE.test(msg || '');
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Khoảng nghỉ NGẪU NHIÊN (ms) chèn GIỮA 2 khách liên tiếp khi báo loạt — tránh gửi dồn quá nhanh
+ * (giảm rủi ro chống spam Zalo/FB). Đọc [minMs, maxMs] từ config.notify. Trả 0 (tắt) khi max<=0.
+ * min>max thì hoán đổi để luôn hợp lệ.
+ */
+function betweenSendDelayMs() {
+  let min = config.notify?.delayBetweenMinMs || 0;
+  let max = config.notify?.delayBetweenMaxMs || 0;
+  if (max <= 0) return 0;
+  if (min > max) [min, max] = [max, min];
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+/** Nghỉ giữa 2 khách theo cấu hình (no-op nếu delay = 0). */
+async function delayBetweenCustomers() {
+  const ms = betweenSendDelayMs();
+  if (ms > 0) await sleep(ms);
+}
+
 /**
  * Báo hàng/ship cho 1 đơn: build tin nhắn -> gửi qua local-runner -> (tùy chọn) cập nhật
  * trạng thái về web -> ghi report.
@@ -263,6 +284,12 @@ async function notifyOrders(orders, opts = {}) {
         abortError = r.error || 'Zalo chưa đăng nhập.';
         break;
       }
+      // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn — bỏ qua sau đơn cuối) để tránh
+      // gửi dồn quá nhanh -> giảm rủi ro chống spam Zalo/FB. Tắt bằng SEND_DELAY_BETWEEN_MAX_MS=0.
+      if (idx + 1 < ordered.length) {
+        // eslint-disable-next-line no-await-in-loop
+        await delayBetweenCustomers();
+      }
     }
     const sent = results.filter((r) => r.ok).length;
     // Số đơn CÒN LẠI chưa gửi khi dừng giữa chừng (để UI báo rõ đã bỏ dở bao nhiêu).
@@ -303,4 +330,4 @@ async function notifyMany(orderIds, opts = {}) {
   return res;
 }
 
-module.exports = { notifyOne, notifyMany, notifyOrders };
+module.exports = { notifyOne, notifyMany, notifyOrders, delayBetweenCustomers };
