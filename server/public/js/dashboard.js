@@ -12,6 +12,7 @@
   const COLSPAN = 12;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
   const COLSPAN_CUST = 11; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
+  let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
   // Các nhóm khác giữ lại cho tương thích code cũ (client-mode) nhưng không hiển thị nữa.
   let counts = { todo: 0, arrival: 0, ship: 0, failed: 0, total: 0 };
@@ -529,7 +530,7 @@
     renderStatusTabs();
     // `orders` đã là 1 trang do server trả về; chỉ áp thêm lọc client-side (exclude/note).
     const pageList = visibleOrders();
-    const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
+    const totalPages = pageCount;
     if (!pageList.length) {
       const msg = serverTotal ? 'Không có đơn khớp bộ lọc trên trang này.' : 'Không có dữ liệu';
       rowsEl.innerHTML = `<tr><td colspan="${COLSPAN}" class="empty">${msg}</td></tr>`;
@@ -582,13 +583,14 @@
     el.innerHTML = info + pages + jump;
   }
 
-  // Nhảy tới 1 trang (kẹp về [1, totalPages]) rồi tải từ server.
+  // Nhảy tới 1 trang (kẹp về [1, pageCount]). Client-mode: phân trang ngay tại client (đã gom
+  // cả tập nên trang nào cũng chứa trọn nhóm); server-mode: kéo đúng trang từ server.
   function goToPage(p) {
-    const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
-    p = Math.min(Math.max(1, parseInt(p, 10) || 1), totalPages);
+    p = Math.min(Math.max(1, parseInt(p, 10) || 1), pageCount);
     if (p === currentPage) return;
     currentPage = p;
-    load({ keepPage: true }); // server-mode: kéo đúng trang (đếm không đổi khi chỉ lật trang)
+    if (clientMode) applyView({ keepPage: true });
+    else load({ keepPage: true }); // server-mode: kéo đúng trang (đếm không đổi khi chỉ lật trang)
     const tw = document.querySelector('.table-wrap');
     if (tw) tw.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -599,8 +601,7 @@
     // KHÁC "Chưa báo" (lúc đó số backlog mới là thông tin phụ cho nút Báo hàng loạt).
     if (ci) {
       const scope = currentGroup ? GROUP_LABELS[currentGroup] : 'Tất cả trạng thái';
-      const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
-      let txt = `${scope} · ${serverTotal} đơn · trang ${currentPage}/${totalPages}`;
+      let txt = `${scope} · ${serverTotal} đơn · trang ${currentPage}/${pageCount}`;
       if (currentGroup !== 'todo') txt += ` · ${counts.todo} chưa báo`;
       ci.textContent = txt;
     }
@@ -960,6 +961,27 @@
     return c;
   }
 
+  // Chia TOÀN BỘ tập đã lọc thành các trang. Khi KHÔNG gom: cắt đều PAGE_SIZE đơn/trang.
+  // Khi ĐANG gom (khách/ngày/kênh): gom cả tập trước rồi phân trang theo NHÓM — giữ trọn mọi
+  // đơn của một nhóm trên cùng một trang (dồn lần lượt các nhóm tới khi đủ ~PAGE_SIZE đơn thì
+  // sang trang mới, không cắt đôi nhóm). Nhờ vậy tất cả đơn của một khách luôn nằm cùng trang
+  // và được gom đúng trên toàn tập, thay vì chỉ gom trong phạm vi 20 đơn của trang đang xem.
+  function buildPages(list) {
+    if (!currentGroupBy) {
+      const pages = [];
+      for (let i = 0; i < list.length; i += PAGE_SIZE) pages.push(list.slice(i, i + PAGE_SIZE));
+      return pages.length ? pages : [[]];
+    }
+    const pages = [];
+    let cur = [];
+    for (const [, items] of groupListBy(list, currentGroupBy)) {
+      if (cur.length && cur.length + items.length > PAGE_SIZE) { pages.push(cur); cur = []; }
+      cur.push(...items);
+    }
+    if (cur.length) pages.push(cur);
+    return pages.length ? pages : [[]];
+  }
+
   // Lọc allOrders theo NV + tìm kiếm + trạng thái + loại trừ/ghi chú, cập nhật 4 thẻ đếm,
   // rồi phân trang client. Tức thì, KHÔNG round-trip. (Ngày đã lọc lúc kéo tập nên bỏ qua.)
   function applyView(opts = {}) {
@@ -972,10 +994,10 @@
     let list = currentGroup ? base.filter((o) => groupOf(o) === currentGroup) : base;
     list = applyExcludeNote(list);
     serverTotal = list.length;
-    const totalPages = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
-    if (currentPage > totalPages) currentPage = totalPages;
-    const start = (currentPage - 1) * PAGE_SIZE;
-    orders = list.slice(start, start + PAGE_SIZE);
+    const pages = buildPages(list); // gom cả tập rồi phân trang (theo nhóm nếu đang gom)
+    pageCount = pages.length;
+    if (currentPage > pageCount) currentPage = pageCount;
+    orders = pages[currentPage - 1] || [];
     renderTabs();
     render();
     renderStatusTabs();
@@ -995,8 +1017,12 @@
     try {
       const res = await App.api('/api/orders/all?' + p.toString());
       if (res.truncated) {
-        // Tập quá lớn để giữ ở client -> dùng phân trang server như cũ.
+        // Tập quá lớn để giữ ở client -> dùng phân trang server như cũ. Đang gom nhóm thì báo
+        // cho user biết gom chỉ trong phạm vi trang hiện tại (không đủ chỗ gom cả tập).
         clientMode = false;
+        if (!auto && currentGroupBy) {
+          App.toast('⚠️ Quá nhiều đơn để gom cả tập — thu hẹp khoảng ngày/bộ lọc để gom đầy đủ.', 6000);
+        }
         if (res.tabUsers && res.tabUsers.length) mergeTabUsers(res.tabUsers);
         return load({ keepPage: auto || opts.keepPage });
       }
@@ -1053,6 +1079,7 @@
       if (fast && clientMode) return;
       orders = res.orders || [];
       serverTotal = res.total != null ? res.total : orders.length;
+      pageCount = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE)); // server-mode: phân trang theo tổng đơn
       if (res.tabUsers && res.tabUsers.length) mergeTabUsers(res.tabUsers);
       // Trang hiện tại vượt quá tổng (vd sau khi báo loạt làm đơn rời nhóm) -> nhảy về trang cuối.
       if (!orders.length && currentPage > 1 && serverTotal > 0) {
@@ -1122,22 +1149,30 @@
     } catch (_) { /* lỗi -> giữ số cũ, không phá màn hình */ }
   }
 
-  // Điều phối SERVER-MODE (mặc định): mỗi thao tác chỉ kéo 1 trang nhẹ + đếm nhẹ, không kéo
-  // toàn bộ all-time -> tải nhanh. Đổi tab/trạng thái/trang = 1 nhịp Basso nhẹ.
+  // Điều phối: MẶC ĐỊNH server-mode (mỗi thao tác chỉ kéo 1 trang nhẹ + đếm nhẹ -> tải nhanh).
+  // Khi đang GOM NHÓM, clientMode=true -> giữ nguyên trên tập đầy đủ (đã kéo) để gom đúng qua
+  // mọi trang: lọc/đổi trang tức thì tại client, chỉ kéo lại cả tập khi đổi ngày hoặc đồng bộ.
   function reloadScope(opts = {}) {                               // ngày đổi / Tải lại
     // User chủ động đồng bộ -> cho các dòng đã hết lượt thử lại (Basso có thể đã sinh ND).
     if (opts.auto !== true) contentAttempts.clear();
+    if (clientMode) return loadAll(opts); // gom nhóm: kéo lại cả tập rồi gom + phân trang
     loadCounts();
     return load(opts);
   }
   function applyFilters(opts = {}) {                              // NV/trạng thái/trang/tìm kiếm đổi
+    if (clientMode) return applyView(opts); // lọc tức thì trên tập đầy đủ (đã có đủ 4 thẻ đếm)
     loadCounts();
     return load(opts);
   }
-  // Sau thao tác làm đổi dữ liệu (đổi trạng thái/gửi Zalo/Delay): tải lại trang + đếm lại.
-  function afterMutation() { load({ keepPage: true }); loadCounts(); }
-  // Vẽ lại không gọi server (đổi cách hiển thị/loại trừ/ghi chú): render lại trang hiện tại.
-  function rerender() { render(); }
+  // Sau thao tác làm đổi dữ liệu (đổi trạng thái/gửi Zalo/Delay): client-mode phản hồi tức thì
+  // rồi resync nền; server-mode tải lại trang + đếm lại.
+  function afterMutation() {
+    if (clientMode) { applyView({ keepPage: true }); loadAll({ auto: true }); }
+    else { load({ keepPage: true }); loadCounts(); }
+  }
+  // Vẽ lại không gọi server (đổi cách hiển thị/loại trừ/ghi chú): client-mode lọc lại + phân
+  // trang cả tập (giữ gom đúng qua mọi trang); server-mode chỉ render lại trang hiện tại.
+  function rerender() { if (clientMode) applyView({ keepPage: true }); else render(); }
   window.__miReload = () => reloadScope();
 
   function autoSync() {
@@ -1147,7 +1182,8 @@
     if (!$('filterPop').hidden) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
-    load({ auto: true }); loadCounts();
+    if (clientMode) loadAll({ auto: true }); // gom nhóm: resync cả tập ở nền, giữ gom đúng
+    else { load({ auto: true }); loadCounts(); }
   }
 
   // ---------------- Health (chỉ cờ MOCK / TEST trên topbar) ----------------
@@ -1183,8 +1219,24 @@
   // ---------------- Events ----------------
   $('syncBtn').addEventListener('click', () => reloadScope({ keepPage: true }));
 
-  // Gom nhóm chỉ là cách hiển thị TRONG trang hiện tại -> không đổi trang, không tải lại.
-  $('fGroupBy').addEventListener('change', (e) => { currentGroupBy = e.target.value; render(); });
+  // Gom nhóm cần TOÀN BỘ tập để gom đúng qua mọi trang (không chỉ 20 đơn của trang đang xem).
+  // -> Bật gom = kéo cả tập 1 lần (client-mode) rồi gom + phân trang theo nhóm trên toàn tập.
+  // Tập quá lớn -> loadAll tự fallback server-mode (đành gom trong phạm vi trang hiện tại).
+  // Bỏ gom -> quay lại server-mode phân trang nhẹ (mặc định, tải nhanh).
+  $('fGroupBy').addEventListener('change', (e) => {
+    currentGroupBy = e.target.value;
+    currentPage = 1; // đổi cách gom -> cách phân trang đổi theo, về trang 1
+    if (currentGroupBy) {
+      loadAll({ keepPage: true });
+    } else if (clientMode) {
+      clientMode = false;
+      allOrders = [];
+      loadCounts();
+      load({ keepPage: true });
+    } else {
+      render();
+    }
+  });
 
   // Phạm vi thời gian (toolbar): 0 = Tất cả, hoặc N ngày gần đây -> kéo lại từ server.
   function showCustomRange(on) { const c = $('customRange'); if (c) c.hidden = !on; }
