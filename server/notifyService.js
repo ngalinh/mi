@@ -129,7 +129,7 @@ async function notifyOne(order, opts = {}) {
       // Kênh Facebook: mở THẲNG hội thoại theo LINK FB đã lưu cho khách (không search Messenger).
       const fbLink = getFbLink(order.phone);
       if (!fbLink) {
-        result = { ok: false, error: 'Chưa có link Facebook cho khách này — vào Cài đặt → Báo qua Facebook để thêm link.' };
+        result = { ok: false, error: `Chưa có link Facebook cho khách ${order.phone || '—'} — vào trang Danh bạ, mở khách này và thêm link (đang bật "Báo qua Facebook").` };
       } else {
         result = await sendBaoHangFb({
           profile: resolved.profile || 'default',
