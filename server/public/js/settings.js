@@ -203,6 +203,13 @@
     return `<div class="acct-emp-meta">${parts.join(' · ')}</div>`;
   }
 
+  // Vạch trạng thái trái mỗi dòng (đọc nhanh ở rìa mắt): đỏ = cần đăng nhập,
+  // xanh = đang chạy (kết nối + tự động bật), xám = ổn nhưng tự động đang tắt.
+  function healthClass(a) {
+    if (a.connection !== 'connected') return 'st-alert';
+    return a.autoEnabled !== false ? 'st-live' : 'st-quiet';
+  }
+
   // 1 tài khoản = 1 dòng; các cột (kênh · trạng thái · tự động · đích báo · thao tác) thẳng hàng.
   // Tên NV chỉ hiện ở dòng đầu của nhóm. Đăng nhập bung chữ (primary) khi CHƯA kết nối.
   function acctRow(a, group, first) {
@@ -212,7 +219,7 @@
     const empCell = first
       ? `<div class="emp-name">${App.esc(group.name)}</div>${group.staffId ? `<div class="emp-sub">NV Basso #${App.esc(group.staffId)}</div>` : ''}${empMeta(group)}`
       : '';
-    return `<tr class="acct-row${first ? ' grp-first' : ''}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
+    return `<tr class="acct-row ${healthClass(a)}${first ? ' grp-first' : ''}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
       <td class="acct-emp">${empCell}</td>
       <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`}</td>
       <td>${chanTag(a.platform)}</td>
