@@ -61,10 +61,11 @@
 
   // Người gửi: 'bot' = tự động; chuỗi khác = nhân viên (gateway forward); rỗng = không rõ.
   // Nếu là email khớp danh sách NV -> hiện tên cho gọn (email đầy đủ ở tooltip).
-  // Icon kênh gửi trước tên tài khoản: 'f' xanh FB cho Facebook, 'Z' xanh Zalo cho còn lại.
+  // Logo kênh gửi trước tên tài khoản: logo Zalo cho Zalo, logo Messenger cho Facebook.
+  const ZALO_LOGO = '<svg class="chan-logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="11" fill="#0068FF"/><text x="24" y="31" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="800" fill="#fff" text-anchor="middle">Zalo</text></svg>';
+  const MSG_LOGO = '<svg class="chan-logo" viewBox="0 0 36 36" aria-hidden="true"><defs><linearGradient id="mgic" x1="50%" y1="97%" x2="50%" y2="3%"><stop offset="0" stop-color="#0062E0"/><stop offset="1" stop-color="#19AFFF"/></linearGradient></defs><path fill="url(#mgic)" d="M18 0C7.9 0 0 7.42 0 17.44c0 5.24 2.15 9.77 5.65 12.9.3.26.47.62.48 1.01l.1 3.2a1.44 1.44 0 0 0 2.02 1.27l3.57-1.57c.3-.13.63-.16.94-.08 1.64.45 3.39.69 5.24.69 10.1 0 18-7.42 18-17.44S28.1 0 18 0z"/><path fill="#fff" d="m7.19 22.57 5.29-8.39a2.74 2.74 0 0 1 3.96-.73l4.21 3.15c.39.29.92.29 1.3 0l5.69-4.32c.76-.58 1.75.33 1.24 1.14l-5.29 8.39a2.74 2.74 0 0 1-3.96.73l-4.21-3.15a1.09 1.09 0 0 0-1.3 0l-5.69 4.32c-.76.58-1.75-.33-1.24-1.14z"/></svg>';
   function chanIcon(channel) {
-    const fb = channel === 'facebook';
-    return `<span class="chan-ic ${fb ? 'fb' : 'zalo'}" title="${fb ? 'Facebook' : 'Zalo'}">${fb ? 'f' : 'Z'}</span>`;
+    return channel === 'facebook' ? MSG_LOGO : ZALO_LOGO;
   }
   function accountCell(r) {
     if (!r.zalo_account) return '<span class="muted">—</span>';
