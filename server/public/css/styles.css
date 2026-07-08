@@ -684,6 +684,11 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 #zaloRows tr.grp-first td { border-top: 2px solid var(--border-strong); }
 #zaloRows tr.grp-first:first-child td { border-top: none; }
 #zaloRows tr.acct-row:hover td { background: var(--head-tint); }
+/* Bỏ kẻ ngang giữa các dòng cùng nhóm — mọi tài khoản của một nhân viên đọc như
+   một khối liền. Ranh giới giữa các nhóm vẫn do vạch 2px trên .grp-first đảm nhiệm,
+   còn trạng thái từng tài khoản vẫn hiện qua vạch màu bên trái cột nhân viên. */
+#zaloRows tr.acct-row td,
+#zaloRows tr.acct-add-row td { border-bottom: none; }
 
 /* Vạch trạng thái bên trái mỗi dòng — đọc nhanh ở rìa mắt, nền vẫn sạch.
    Đỏ = cần đăng nhập · xanh = đang chạy · xám = ổn nhưng tự động tắt. */
