@@ -88,14 +88,15 @@ app.post('/api/zalo/send', (req, res) => {
 
 /**
  * POST /api/facebook/send — báo hàng qua Facebook Messenger cho khách không dùng Zalo.
- * body: { profile, keyword, name?, message, strictMatch?, imagePaths? } => { ok, jobId }.
+ * body: { profile, fbLink, keyword, name?, message, strictMatch?, imagePaths? } => { ok, jobId }.
+ * fbLink = link hội thoại FB/Messenger của khách để mở thẳng (bắt buộc, sendBaoHangFb cần).
  */
 app.post('/api/facebook/send', (req, res) => {
-  const { profile, keyword, name, message, strictMatch, imagePaths } = req.body || {};
+  const { profile, fbLink, keyword, name, message, strictMatch, imagePaths } = req.body || {};
   if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, keyword, name, message, strictMatch, imagePaths }, sendBaoHangFb);
+  const jobId = createJob({ profile, fbLink, keyword, name, message, strictMatch, imagePaths }, sendBaoHangFb);
   res.json({ ok: true, jobId });
 });
 
