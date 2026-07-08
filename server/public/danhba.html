@@ -113,14 +113,18 @@
           </div>
           <div style="margin:-4px 0 14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <input class="note-input" id="searchBox" type="text" placeholder="Tìm theo SĐT hoặc tên…" style="max-width:300px;" />
-            <select class="note-input" id="fbFilter" style="max-width:220px;">
+            <select class="note-input" id="fbFilter" style="max-width:160px;">
               <option value="all">Tất cả khách</option>
-              <option value="fb">Chỉ khách báo qua Facebook</option>
-              <option value="nofb">Chỉ khách báo qua Zalo</option>
+              <option value="fb">Báo qua FB</option>
+              <option value="nofb">Báo qua Zalo</option>
             </select>
-            <select class="note-input" id="nvFilter" style="max-width:200px;">
-              <option value="">Mọi NV phụ trách</option>
-            </select>
+            <div class="ms" id="nvFilter" style="max-width:220px;">
+              <button type="button" class="note-input ms-toggle" id="nvToggle" aria-haspopup="true" aria-expanded="false">
+                <span class="ms-label" id="nvLabel">Tất cả nhân viên</span>
+                <svg class="ms-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="ms-panel" id="nvPanel" hidden></div>
+            </div>
           </div>
           <div class="table-wrap">
             <table>

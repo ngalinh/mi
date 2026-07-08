@@ -615,6 +615,31 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .note-input.dirty { border-color: var(--primary); background: rgba(232,76,142,.05); }
 .save-note.dirty { color: var(--primary); background: var(--primary-soft); }
 
+/* multi-select (bộ lọc chọn nhiều NV) */
+.ms { position: relative; }
+.ms-toggle {
+  width: 100%; display: flex; align-items: center; gap: 6px;
+  background: #fff; cursor: pointer; text-align: left;
+}
+.ms-toggle:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
+.ms-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-caret { width: 16px; height: 16px; flex: none; color: var(--muted); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s var(--ease); }
+.ms.open .ms-caret { transform: rotate(180deg); }
+.ms.open .ms-toggle { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
+.ms-panel {
+  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+  max-height: 260px; overflow-y: auto; padding: 4px;
+  background: #fff; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,.12);
+}
+.ms-opt {
+  display: flex; align-items: center; gap: 8px; padding: 7px 9px;
+  border-radius: 8px; font-size: 13px; cursor: pointer; user-select: none;
+}
+.ms-opt:hover { background: var(--bg); }
+.ms-opt input { accent-color: var(--primary); width: 15px; height: 15px; cursor: pointer; }
+.ms-opt.all { border-bottom: 1px solid var(--border); margin-bottom: 2px; font-weight: 600; }
+
 /* detail row */
 .detail-row > td { background: #fff; padding: 14px 20px; }
 .detail-box { padding: 20px 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
