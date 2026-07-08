@@ -302,8 +302,15 @@
   const cmFbReport = $('cmFbReport'), cmFbLink = $('cmFbLink'), cmFbLinkField = $('cmFbLinkField'), cmStaff = $('cmStaff');
   let editingPhone = null; // SĐT (đã chuẩn hoá) đang sửa; null = thêm mới
 
-  // Chỉ hiện ô Link khi đang bật "báo qua Facebook".
-  function syncFbLinkField() { cmFbLinkField.style.display = cmFbReport.value === '1' ? '' : 'none'; }
+  // Ô Link luôn hiển thị để dễ thấy; chỉ khoá mờ + đổi gợi ý khi đang Tắt (báo qua Zalo).
+  function syncFbLinkField() {
+    const on = cmFbReport.value === '1';
+    cmFbLink.disabled = !on;
+    cmFbLinkField.style.opacity = on ? '' : '0.55';
+    cmFbLink.placeholder = on
+      ? 'facebook.com/… , m.me/… hoặc messages/t/…'
+      : 'Bật "Báo qua Facebook" để nhập link';
+  }
   cmFbReport.addEventListener('change', syncFbLinkField);
 
   function openModal(c) {
