@@ -201,7 +201,7 @@
   // ================= DANH BẠ HIỆN CÓ =================
   const SOURCE_LABEL = { import: 'File', manual: 'Nhập tay', basso: 'Basso', learned: 'Tự học' };
 
-  // 1 ô "Báo qua FB": pill bật/tắt (bấm để đổi) + link/cảnh báo thiếu link khi đang bật.
+  // 1 ô "Báo qua FB": pill bật/tắt (bấm để đổi) + link/cảnh báo NẰM CẠNH (cùng hàng) khi đang bật.
   function fbCell(c) {
     const on = !!c.fb_report;
     const pill = on
@@ -209,10 +209,10 @@
       : '<span class="pill chua" data-action="fbtoggle" style="cursor:pointer" title="Đang báo qua Zalo — bấm để bật FB">Tắt</span>';
     if (!on) return pill;
     const link = String(c.fb_link || '').trim();
-    const sub = link
-      ? `<div class="muted" style="font-size:11px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${App.esc(link)}">${App.esc(link)}</div>`
-      : '<div style="font-size:11px; color:var(--red);">⚠ chưa có link</div>';
-    return `${pill}${sub}`;
+    const side = link
+      ? `<a href="${App.esc(link)}" target="_blank" rel="noopener noreferrer" title="${App.esc(link)}" style="font-size:11.5px; font-weight:600; color:var(--primary); white-space:nowrap; text-decoration:none;">🔗 Xem link</a>`
+      : '<span style="font-size:11px; color:var(--red); white-space:nowrap;">⚠ chưa có link</span>';
+    return `<span style="display:inline-flex; align-items:center; gap:8px; justify-content:center;">${pill}${side}</span>`;
   }
 
   function renderContacts() {
