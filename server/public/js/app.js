@@ -131,6 +131,16 @@ const App = {
       rail.appendChild(a);
     }
 
+    // Đồng bộ vị trí icon "Cài đặt": bản HTML CŨ (còn trong cache) để gear tách dưới đáy
+    // trong .side-foot; bản MỚI đưa vào rail-nav ngay dưới Danh bạ. Nếu gặp bản cũ thì tự
+    // dời gear lên nhóm nav để mọi trang hiển thị nhất quán dù client chưa refresh HTML.
+    const gear = sidebar.querySelector('a.nav[href="settings.html"]');
+    if (rail && gear && !rail.contains(gear)) {
+      const danhba = rail.querySelector('a.nav[href="danhba.html"]');
+      if (danhba) danhba.insertAdjacentElement('afterend', gear);
+      else rail.appendChild(gear);
+    }
+
     // Nút mở menu (chỉ hiện trên mobile qua CSS) — đặt đầu topbar.
     const toggle = document.createElement('button');
     toggle.className = 'nav-toggle';
