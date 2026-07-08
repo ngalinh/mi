@@ -679,6 +679,13 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 #zaloRows tr.grp-first:first-child td { border-top: none; }
 #zaloRows tr.acct-row:hover td { background: var(--head-tint); }
 
+/* Vạch trạng thái bên trái mỗi dòng — đọc nhanh ở rìa mắt, nền vẫn sạch.
+   Đỏ = cần đăng nhập · xanh = đang chạy · xám = ổn nhưng tự động tắt. */
+#zaloRows tr.acct-row > td.acct-emp { box-shadow: inset 3px 0 0 var(--border-strong); }
+#zaloRows tr.st-alert > td.acct-emp { box-shadow: inset 3px 0 0 var(--red); }
+#zaloRows tr.st-live  > td.acct-emp { box-shadow: inset 3px 0 0 var(--green); }
+#zaloRows tr.st-quiet > td.acct-emp { box-shadow: inset 3px 0 0 var(--border-strong); }
+
 /* Cột Nhân viên: tên + mã NV + tóm tắt kết nối (chỉ ở dòng đầu nhóm). */
 .acct-emp { vertical-align: top; white-space: normal; }
 .emp-name { font-weight: 700; color: var(--text); white-space: nowrap; }
