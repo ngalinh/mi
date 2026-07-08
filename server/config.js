@@ -159,6 +159,14 @@ module.exports = {
       name: process.env.AUTO_NOTIFY_ALERT_NAME || 'Admin',  // tên hiển thị người nhận
     },
   },
+  // Báo hàng loạt (áp dụng cho CẢ báo tay lẫn bot tự động): nghỉ một khoảng NGẪU NHIÊN giữa 2
+  // khách LIÊN TIẾP để tránh gửi dồn quá nhanh -> giảm rủi ro chạm ngưỡng chống spam của Zalo/FB.
+  // Delay chỉ chèn GIỮA các đơn (không nghỉ trước đơn đầu / sau đơn cuối / khi dừng cả loạt).
+  // Mỗi lần nghỉ = số ngẫu nhiên trong [minMs, maxMs]. Đặt cả 2 = 0 để TẮT (gửi liền như trước).
+  notify: {
+    delayBetweenMinMs: Math.max(parseInt(process.env.SEND_DELAY_BETWEEN_MIN_MS ?? '3000', 10) || 0, 0),
+    delayBetweenMaxMs: Math.max(parseInt(process.env.SEND_DELAY_BETWEEN_MAX_MS ?? '7000', 10) || 0, 0),
+  },
   dbPath: process.env.DB_PATH
     || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),
 };

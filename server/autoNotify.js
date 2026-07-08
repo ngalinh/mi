@@ -1,7 +1,7 @@
 'use strict';
 const config = require('./config');
 const { getOrders } = require('./bassoApi');
-const { notifyOne } = require('./notifyService');
+const { notifyOne, delayBetweenCustomers } = require('./notifyService');
 const { getAutoRecord, recordAutoNotified, autoKey, getSetting, setSetting, getDelayedMap } = require('./db');
 const { checkLocalHealth, sendBaoHang, getAccountsCached } = require('./playwrightProxy');
 const { withLock } = require('./lock');
@@ -530,6 +530,12 @@ async function runAutoNotify(opts = {}) {
           ok: r.ok,
           error: r.error || r.updateError || null,
         });
+        // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn) để tránh gửi dồn quá nhanh
+        // -> giảm rủi ro chống spam Zalo/FB. Tắt bằng SEND_DELAY_BETWEEN_MAX_MS=0.
+        if (i + 1 < ordered.length) {
+          // eslint-disable-next-line no-await-in-loop
+          await delayBetweenCustomers();
+        }
       }
 
       if (toSend.length || summary.skippedNoContent || summary.skippedBacklog) {
