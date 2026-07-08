@@ -8,6 +8,7 @@
   let workbook = null;   // workbook SheetJS đã parse
   let sheetRows = [];    // mảng-của-mảng (array of arrays) của sheet đang chọn
   let contacts = [];     // danh bạ hiện có (từ server)
+  let bassoStaff = [];   // NV Basso (user_id + name) cho dropdown "NV phụ trách"
 
   const els = {
     file: $('fileInput'), mapArea: $('mapArea'),
@@ -18,7 +19,23 @@
     cancelImport: $('cancelImport'), doImport: $('doImport'),
     contactRows: $('contactRows'), contactCount: $('contactCount'),
     searchBox: $('searchBox'), addBtn: $('addContactBtn'),
+    fbFilter: $('fbFilter'), nvFilter: $('nvFilter'),
   };
+
+  const staffName = (uid) => {
+    if (uid == null || uid === '') return '';
+    const f = bassoStaff.find((u) => String(u.user_id) === String(uid));
+    return f ? f.name : `#${uid}`;
+  };
+  async function loadBassoStaff() {
+    try {
+      const r = await App.api('/api/tab-users');
+      bassoStaff = (r && r.tabUsers) || [];
+    } catch { bassoStaff = []; }
+    const opts = bassoStaff.map((u) => `<option value="${App.esc(u.user_id)}">${App.esc(u.name)} (#${App.esc(u.user_id)})</option>`).join('');
+    els.nvFilter.innerHTML = '<option value="">Mọi NV phụ trách</option>' + opts;
+    $('cmStaff').innerHTML = '<option value="">— Không gán —</option>' + opts;
+  }
 
   // ================= IMPORT =================
   els.file.addEventListener('change', async (e) => {
@@ -184,22 +201,46 @@
   // ================= DANH BẠ HIỆN CÓ =================
   const SOURCE_LABEL = { import: 'File', manual: 'Nhập tay', basso: 'Basso', learned: 'Tự học' };
 
+  // 1 ô "Báo qua FB": pill bật/tắt (bấm để đổi) + link/cảnh báo thiếu link khi đang bật.
+  function fbCell(c) {
+    const on = !!c.fb_report;
+    const pill = on
+      ? '<span class="pill da" data-action="fbtoggle" style="cursor:pointer" title="Đang báo qua Facebook — bấm để tắt">Bật</span>'
+      : '<span class="pill chua" data-action="fbtoggle" style="cursor:pointer" title="Đang báo qua Zalo — bấm để bật FB">Tắt</span>';
+    if (!on) return pill;
+    const link = String(c.fb_link || '').trim();
+    const sub = link
+      ? `<div class="muted" style="font-size:11px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${App.esc(link)}">${App.esc(link)}</div>`
+      : '<div style="font-size:11px; color:var(--red);">⚠ chưa có link</div>';
+    return `${pill}${sub}`;
+  }
+
   function renderContacts() {
     const q = (els.searchBox.value || '').trim().toLowerCase();
-    const list = q
-      ? contacts.filter((c) => (c.zalo_name || '').toLowerCase().includes(q)
+    const fbMode = els.fbFilter.value || 'all';
+    const nv = els.nvFilter.value || '';
+    const list = contacts.filter((c) => {
+      if (fbMode === 'fb' && !c.fb_report) return false;
+      if (fbMode === 'nofb' && c.fb_report) return false;
+      if (nv && String(c.staff_id || '') !== String(nv)) return false;
+      if (q) {
+        return (c.zalo_name || '').toLowerCase().includes(q)
           || (c.raw_phone || c.phone || '').toLowerCase().includes(q)
-          || (c.phone || '').includes(q.replace(/\D/g, '')))
-      : contacts;
+          || (c.phone || '').includes(q.replace(/\D/g, ''));
+      }
+      return true;
+    });
     els.contactCount.textContent = contacts.length;
     if (!list.length) {
-      els.contactRows.innerHTML = `<tr><td colspan="6" class="muted" style="padding:16px;">${contacts.length ? 'Không có liên hệ khớp tìm kiếm.' : 'Chưa có liên hệ nào — nhập từ file hoặc thêm thủ công.'}</td></tr>`;
+      els.contactRows.innerHTML = `<tr><td colspan="8" class="muted" style="padding:16px;">${contacts.length ? 'Không có liên hệ khớp bộ lọc.' : 'Chưa có liên hệ nào — nhập từ file hoặc thêm thủ công.'}</td></tr>`;
       return;
     }
     els.contactRows.innerHTML = list.map((c) => `
       <tr data-phone="${App.esc(c.phone)}">
         <td>${App.esc(c.raw_phone || c.phone)}</td>
-        <td class="cust">${App.esc(c.zalo_name)}</td>
+        <td class="cust">${App.esc(c.zalo_name || '—')}</td>
+        <td class="center">${fbCell(c)}</td>
+        <td>${c.staff_id ? App.esc(staffName(c.staff_id)) : '<span class="muted">—</span>'}</td>
         <td>${App.esc(c.note || '')}</td>
         <td class="center"><span class="pill chua">${App.esc(SOURCE_LABEL[c.source] || c.source || '—')}</span></td>
         <td class="muted" style="font-size:12px;">${App.esc(App.fmtDateTime(c.updated_at))}</td>
@@ -211,12 +252,28 @@
   }
 
   els.searchBox.addEventListener('input', renderContacts);
+  els.fbFilter.addEventListener('change', renderContacts);
+  els.nvFilter.addEventListener('change', renderContacts);
 
   els.contactRows.addEventListener('click', async (e) => {
     const tr = e.target.closest('tr[data-phone]');
     if (!tr) return;
     const phone = tr.dataset.phone;
     const c = contacts.find((x) => x.phone === phone);
+    if (e.target.closest('[data-action="fbtoggle"]') && c) {
+      const next = c.fb_report ? 0 : 1;
+      try {
+        await App.api('/api/zalo-contacts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: c.raw_phone || c.phone, fb_report: next }),
+        });
+        App.toast(next
+          ? (c.fb_link ? '✅ Đã bật báo qua Facebook' : '✅ Đã bật FB — nhớ thêm link để bot mở đúng hội thoại')
+          : 'Đã tắt — khách này báo qua Zalo');
+        await loadContacts();
+      } catch (err) { App.toast('Lỗi: ' + err.message); }
+      return;
+    }
     if (e.target.closest('.act-edit')) { openModal(c); return; }
     if (e.target.closest('.act-del')) {
       if (!confirm(`Xoá liên hệ "${c ? c.zalo_name : phone}"?`)) return;
@@ -242,14 +299,23 @@
   // ================= MODAL THÊM / SỬA =================
   const modal = $('contactModal');
   const cmTitle = $('cmTitle'), cmPhone = $('cmPhone'), cmName = $('cmName'), cmNote = $('cmNote');
+  const cmFbReport = $('cmFbReport'), cmFbLink = $('cmFbLink'), cmFbLinkField = $('cmFbLinkField'), cmStaff = $('cmStaff');
   let editingPhone = null; // SĐT (đã chuẩn hoá) đang sửa; null = thêm mới
+
+  // Chỉ hiện ô Link khi đang bật "báo qua Facebook".
+  function syncFbLinkField() { cmFbLinkField.style.display = cmFbReport.value === '1' ? '' : 'none'; }
+  cmFbReport.addEventListener('change', syncFbLinkField);
 
   function openModal(c) {
     editingPhone = c ? c.phone : null;
     cmTitle.textContent = c ? 'Sửa liên hệ' : 'Thêm liên hệ';
     cmPhone.value = c ? (c.raw_phone || c.phone) : '';
-    cmName.value = c ? c.zalo_name : '';
+    cmName.value = c ? (c.zalo_name || '') : '';
     cmNote.value = c ? (c.note || '') : '';
+    cmFbReport.value = c && c.fb_report ? '1' : '0';
+    cmFbLink.value = c ? (c.fb_link || '') : '';
+    cmStaff.value = c && c.staff_id != null ? String(c.staff_id) : '';
+    syncFbLinkField();
     modal.classList.add('show');
     setTimeout(() => (c ? cmName : cmPhone).focus(), 30);
   }
@@ -262,8 +328,12 @@
   $('cmSave').addEventListener('click', async () => {
     const phone = cmPhone.value.trim();
     const name = cmName.value.trim();
+    const fbReport = cmFbReport.value === '1' ? 1 : 0;
+    const fbLink = cmFbLink.value.trim();
     if (!phone.replace(/\D/g, '')) { App.toast('Nhập SĐT hợp lệ'); return; }
-    if (!name) { App.toast('Nhập tên Zalo/FB'); return; }
+    // Khách chỉ báo qua FB thì cần link thay cho tên; còn lại vẫn cần tên Zalo/FB.
+    if (!name && !(fbReport && fbLink)) { App.toast('Nhập tên Zalo/FB, hoặc bật báo qua FB kèm link'); return; }
+    if (fbReport && !fbLink && !confirm('Bật báo qua Facebook nhưng chưa có link — bot sẽ không mở được hội thoại. Vẫn lưu?')) return;
     try {
       // Sửa mà đổi SĐT -> xoá bản ghi cũ (khoá theo SĐT) rồi ghi bản mới.
       if (editingPhone && normPhone(phone) !== editingPhone) {
@@ -272,7 +342,10 @@
       await App.api('/api/zalo-contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, zalo_name: name, note: cmNote.value.trim() }),
+        body: JSON.stringify({
+          phone, zalo_name: name, note: cmNote.value.trim(),
+          fb_report: fbReport, fb_link: fbLink, staff_id: cmStaff.value || '',
+        }),
       });
       App.toast('Đã lưu');
       closeModal();
@@ -281,5 +354,5 @@
   });
 
   // ================= INIT =================
-  loadContacts();
+  loadBassoStaff().then(loadContacts); // nạp NV trước để hiển thị đúng tên "NV phụ trách"
 })();
