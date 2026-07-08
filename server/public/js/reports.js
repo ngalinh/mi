@@ -210,6 +210,10 @@
     btn.disabled = true;
     const label = btn.innerHTML;
     btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
+    // Retry chạy ĐỒNG BỘ tới lúc gửi xong, nhưng server đã ghi sẵn 1 dòng 'pending' ngay khi bắt
+    // đầu. Poll bảng trong lúc chờ để dòng 'pending' hiện lên (rồi tự lật Done/Failed nhờ
+    // scheduleAutoRefresh) thay vì người dùng chỉ thấy spinner ở nút. Dừng poll khi API trả về.
+    const poll = setInterval(load, 3000);
     try {
       const r = await App.api(`/api/reports/${encodeURIComponent(id)}/retry`, { method: 'POST' });
       if (r.sent > 0) App.toast('✅ Đã gửi lại thành công');
@@ -219,11 +223,13 @@
         App.toast(`❌ Gửi lại vẫn lỗi: ${App.friendlyError(err)}`, 7000);
       }
     } catch (err) {
+      clearInterval(poll);
       App.toast(`❌ ${err.message}`, 6000);
       btn.disabled = false;
       btn.innerHTML = label;
       return;
     }
+    clearInterval(poll);
     load(); // làm mới bảng (dòng mới 'pending' -> lật success/failed)
   });
 
