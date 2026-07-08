@@ -16,6 +16,10 @@ const { checkLoggedInFb } = require('./facebook');
 // Trang mở khi đăng nhập theo kênh: Facebook -> facebook.com, còn lại -> Zalo Basso.
 const loginUrlFor = (platform) => (platform === 'facebook' ? config.facebookLoginUrl : config.saleworkLoginUrl);
 
+// Thông tin tự điền form login Facebook (nếu có) — chỉ áp dụng cho tài khoản FB có email + mật khẩu.
+const fbPrefill = (a) =>
+  (a && a.platform === 'facebook' && a.email && a.password) ? { email: a.email, password: a.password } : null;
+
 const app = express();
 app.use(express.json({ limit: '5mb' }));
 
@@ -141,12 +145,12 @@ app.get('/api/accounts', (req, res) => {
  *         brand?, autoEnabled?, proxy?, notifyTarget? }
  */
 app.post('/api/accounts', (req, res) => {
-  const { type, platform: platformIn, key, name, saleworkName, fbName, phone, staffId, brand, autoEnabled, proxy, notifyTarget } = req.body || {};
+  const { type, platform: platformIn, key, name, saleworkName, fbName, email, password, phone, staffId, brand, autoEnabled, proxy, notifyTarget } = req.body || {};
   const platform = (platformIn || type) === 'facebook' ? 'facebook' : 'zalo';
   const label = platform === 'facebook' ? 'Facebook' : 'Zalo';
   let account;
   try {
-    account = accountsStore.add({ platform, key, name, saleworkName, fbName, phone, staffId, brand, autoEnabled, proxy, notifyTarget });
+    account = accountsStore.add({ platform, key, name, saleworkName, fbName, email, password, phone, staffId, brand, autoEnabled, proxy, notifyTarget });
   } catch (e) {
     return res.status(400).json({ ok: false, error: e.message });
   }
@@ -168,16 +172,16 @@ app.post('/api/accounts', (req, res) => {
     openForLogin(account.key, loginUrlFor(platform), (ev) => {
       if (ev === 'opened') loginHistory.add(account.key, account.name, 'login', `Mở Chromium để đăng nhập ${label}`);
       else loginHistory.add(account.key, account.name, 'login', 'Đã đóng cửa sổ — session đã lưu');
-    }).catch((e) => console.error(`[accounts] mở Chromium lỗi: ${e.message}`));
+    }, fbPrefill(account)).catch((e) => console.error(`[accounts] mở Chromium lỗi: ${e.message}`));
   }
 });
 
 /** PUT /api/accounts/:key — sửa thông tin account (không đổi key/platform). */
 app.put('/api/accounts/:key', (req, res) => {
   const { key } = req.params;
-  const { name, saleworkName, fbName, phone, staffId, brand, autoEnabled, proxy, notifyTarget } = req.body || {};
+  const { name, saleworkName, fbName, email, password, phone, staffId, brand, autoEnabled, proxy, notifyTarget } = req.body || {};
   const patch = {};
-  for (const [k, v] of Object.entries({ name, saleworkName, fbName, phone, staffId, brand, autoEnabled, proxy, notifyTarget })) {
+  for (const [k, v] of Object.entries({ name, saleworkName, fbName, email, password, phone, staffId, brand, autoEnabled, proxy, notifyTarget })) {
     if (v !== undefined) patch[k] = v;
   }
   const updated = accountsStore.update(key, patch);
@@ -193,7 +197,7 @@ app.post('/api/accounts/:key/login', (req, res) => {
 
   res.json({ ok: true, message: `Đang mở Chromium cho "${account.name}". Đăng nhập xong thì đóng cửa sổ.` });
   openForLogin(key, loginUrlFor(account.platform), (ev) =>
-    loginHistory.add(key, account.name, 'login', ev === 'opened' ? 'Mở lại để đăng nhập' : 'Đã đóng — session đã lưu'))
+    loginHistory.add(key, account.name, 'login', ev === 'opened' ? 'Mở lại để đăng nhập' : 'Đã đóng — session đã lưu'), fbPrefill(account))
     .catch((e) => console.error(`[accounts] re-login lỗi: ${e.message}`));
 });
 
