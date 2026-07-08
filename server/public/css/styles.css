@@ -665,9 +665,15 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 8px; border-radius: 8px; white-space: nowrap; }
 .link-btn:hover { background: var(--bg); }
 
-/* Logo kênh gửi (Lịch sử báo): logo Zalo / Messenger thật, trước tên tài khoản. */
-.acct-with-ic { display: inline-flex; align-items: center; gap: 7px; }
-.chan-logo { width: 19px; height: 19px; flex: none; border-radius: 5px; display: block; }
+/* Nhãn kênh gửi (Lịch sử báo): chip mềm "Zalo" / "FB" trước tên tài khoản. */
+.acct-with-ic { display: inline-flex; align-items: center; gap: 8px; }
+.chan-tag {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  padding: 3px 9px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 700; line-height: 1;
+}
+.chan-tag.zalo { background: #e7f0ff; color: #0068ff; }
+.chan-tag.fb { background: #eaf1fd; color: #1877f2; }
 
 /* ============================================================
    Tài khoản nhân viên — bảng phẳng, mỗi tài khoản 1 dòng (settings)
