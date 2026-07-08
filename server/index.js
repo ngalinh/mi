@@ -10,7 +10,7 @@ const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoM
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
 const { notifyMany, notifyOrders } = require('./notifyService');
-const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache } = require('./playwrightProxy');
+const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
 const cacheWarmer = require('./cacheWarmer');
@@ -617,12 +617,31 @@ app.post('/api/webhook/arrived', async (req, res) => {
 });
 
 // ---- Lịch sử report ----
-app.get('/api/reports', (req, res) => {
+app.get('/api/reports', async (req, res) => {
   try {
     const { limit, status, q, from, to, staff, sender, account } = req.query;
     const filters = { status, q, from, to, staff, sender, account };
     const items = listReports({ limit: limit ? parseInt(limit, 10) : 200, ...filters });
-    res.json({ ok: true, stats: stats(filters), items, facets: reportFacets() });
+    // Kênh hiển thị bám theo NỀN TẢNG tài khoản đã gửi (chuẩn hơn cột channel đã lưu — đúng cả
+    // report cũ chưa có channel): report gửi bằng 1 tài khoản Facebook -> chip 'facebook'.
+    let fbIds = null;
+    try {
+      const accts = await getAccountsCached();
+      const s = new Set();
+      for (const a of (accts || [])) {
+        if (a && a.platform === 'facebook') {
+          [a.fbName, a.key, a.name].forEach((v) => { if (v) s.add(String(v).trim()); });
+        }
+      }
+      fbIds = s;
+    } catch { fbIds = null; }
+    const items2 = fbIds
+      ? items.map((r) => ({
+        ...r,
+        channel: (r.zalo_account && fbIds.has(String(r.zalo_account).trim())) ? 'facebook' : (r.channel || 'zalo'),
+      }))
+      : items;
+    res.json({ ok: true, stats: stats(filters), items: items2, facets: reportFacets() });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
