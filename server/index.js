@@ -266,7 +266,10 @@ app.get('/api/zalo-contacts', (req, res) => {
 app.post('/api/zalo-contacts', (req, res) => {
   try {
     const b = req.body || {};
-    const contact = upsertZaloContact({ phone: b.phone, zalo_name: b.zalo_name, note: b.note, source: 'manual' });
+    const contact = upsertZaloContact({
+      phone: b.phone, zalo_name: b.zalo_name, note: b.note, source: 'manual',
+      fb_report: b.fb_report, fb_link: b.fb_link, staff_id: b.staff_id,
+    });
     res.json({ ok: true, contact });
   } catch (e) {
     if (e.code === 'BAD_INPUT') return res.status(400).json({ ok: false, error: e.message });

@@ -12,7 +12,6 @@
     panels.forEach((pl) => pl.classList.toggle('hidden', pl.dataset.panelContent !== p));
     if (p === 'proxy') loadProxy();
     if (p === 'zalo') loadZalo();
-    if (p === 'fbrouting') loadFbRouting();
   });
 
   // ---------------- Nhân viên (lưu thật ở server: SQLite /api/staff) ----------------
@@ -390,101 +389,7 @@
   });
   loadZalo();
 
-  // ---------------- Báo qua Facebook: định tuyến khách (SĐT + link) / NV ----------------
-  const fbCustomerRows = $('fbCustomerRows');
-  const fbStaffRows = $('fbStaffRows');
-  let fbRouting = { customers: [], staffIds: [] };
-
-  function renderFbCount() {
-    const el = $('fbPhonesCount');
-    const n = fbRouting.customers.length;
-    const noLink = fbRouting.customers.filter((c) => !c.link).length;
-    if (el) el.textContent = n ? `${n} khách báo qua Facebook${noLink ? ` · ${noLink} chưa có link` : ''}` : '';
-  }
-  function fbCustomerRowHtml(c) {
-    return `<tr class="main-row">
-      <td><input class="note-input fb-phone" value="${App.esc((c && c.phone) || '')}" placeholder="Vd: 0912345678" /></td>
-      <td><input class="note-input fb-link" value="${App.esc((c && c.link) || '')}" placeholder="facebook.com/… hoặc m.me/…" /></td>
-      <td class="center"><button class="link-btn" data-action="fbdel" style="color:var(--danger,#d33)">Xoá</button></td>
-    </tr>`;
-  }
-  function renderFbCustomers() {
-    const list = fbRouting.customers.length ? fbRouting.customers : [{ phone: '', link: '' }];
-    fbCustomerRows.innerHTML = list.map(fbCustomerRowHtml).join('');
-    renderFbCount();
-  }
-  function collectFbCustomers() {
-    const rows = [...fbCustomerRows.querySelectorAll('tr.main-row')];
-    return rows.map((tr) => ({
-      phone: (tr.querySelector('.fb-phone') || {}).value ? tr.querySelector('.fb-phone').value.trim() : '',
-      link: (tr.querySelector('.fb-link') || {}).value ? tr.querySelector('.fb-link').value.trim() : '',
-    })).filter((c) => c.phone);
-  }
-  function renderFbStaff() {
-    if (!bassoStaff.length) {
-      fbStaffRows.innerHTML = '<tr><td colspan="2" class="muted" style="padding:16px;">Chưa có danh sách nhân viên Basso.</td></tr>';
-      return;
-    }
-    const on = new Set(fbRouting.staffIds.map(String));
-    fbStaffRows.innerHTML = bassoStaff.map((u) => {
-      const active = on.has(String(u.user_id));
-      const pill = active
-        ? '<span class="pill da" data-action="fbtoggle" style="cursor:pointer" title="Bấm để tắt">Bật</span>'
-        : '<span class="pill chua" data-action="fbtoggle" style="cursor:pointer" title="Bấm để bật">Tắt</span>';
-      return `<tr class="main-row" data-uid="${App.esc(u.user_id)}">
-        <td class="cust">${App.esc(u.name)} <span class="muted" style="font-size:12px">#${App.esc(u.user_id)}</span></td>
-        <td class="center">${pill}</td>
-      </tr>`;
-    }).join('');
-  }
-  async function loadFbRouting() {
-    if (!bassoStaff.length) { try { await loadBassoStaff(); } catch { /* ignore */ } }
-    try {
-      const r = await App.api('/api/fb-routing');
-      fbRouting = { customers: r.customers || [], staffIds: (r.staffIds || []).map(String) };
-    } catch { fbRouting = { customers: [], staffIds: [] }; }
-    renderFbCustomers();
-    renderFbStaff();
-  }
-  async function saveFbCustomers() {
-    const customers = collectFbCustomers();
-    const missing = customers.filter((c) => !c.link).length;
-    if (missing && !confirm(`${missing} khách chưa có link Facebook — sẽ không gửi được cho tới khi thêm link. Vẫn lưu?`)) return;
-    try {
-      const r = await App.api('/api/fb-routing', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customers }),
-      });
-      fbRouting.customers = r.customers || [];
-      renderFbCustomers();
-      App.toast('✅ Đã lưu danh sách khách báo qua Facebook');
-    } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
-  }
-  async function toggleFbStaff(uid) {
-    const set = new Set(fbRouting.staffIds.map(String));
-    if (set.has(String(uid))) set.delete(String(uid)); else set.add(String(uid));
-    try {
-      const r = await App.api('/api/fb-routing', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ staffIds: [...set] }),
-      });
-      fbRouting.staffIds = (r.staffIds || []).map(String);
-      renderFbStaff();
-      App.toast('✅ Đã cập nhật nhân viên báo qua Facebook');
-    } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
-  }
-  $('fbCustomerAdd').addEventListener('click', () => {
-    // Nếu đang là dòng trống mẫu (chưa có khách nào) thì thêm tiếp 1 dòng nữa.
-    fbCustomerRows.insertAdjacentHTML('beforeend', fbCustomerRowHtml({ phone: '', link: '' }));
-  });
-  $('fbCustomerSave').addEventListener('click', saveFbCustomers);
-  fbCustomerRows.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-action="fbdel"]'); if (!b) return;
-    const tr = b.closest('tr.main-row'); if (tr) tr.remove();
-  });
-  $('fbRoutingReload').addEventListener('click', loadFbRouting);
-  fbStaffRows.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-action="fbtoggle"]'); if (!b) return;
-    const tr = b.closest('tr.main-row'); if (tr) toggleFbStaff(tr.dataset.uid);
-  });
+  // Khách báo qua Facebook nay quản ở trang Danh bạ (theo SĐT + link + NV phụ trách) — bỏ tab riêng.
 
   // ---------------- Proxy theo tài khoản Zalo (nối backend thật) ----------------
   const proxyRows = $('proxyRows');
