@@ -502,6 +502,15 @@ async function runAutoNotify(opts = {}) {
         if (r.ok) {
           recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
           summary.sent += 1;
+        } else if (r.loginRequired) {
+          // Zalo hiện trang login (chưa đăng nhập): mọi đơn còn lại cũng sẽ fail như nhau -> DỪNG
+          // cả lượt NGAY, KHÔNG trừ lượt thử (giống runner offline) để thử lại sau khi đã đăng nhập,
+          // tránh đốt hết maxRetries của mọi đơn chỉ vì chưa đăng nhập.
+          summary.failed += 1;
+          summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
+          summary.stopped = 'Zalo chưa đăng nhập';
+          console.warn(`[auto-notify:${trigger}] dừng giữa chừng — Zalo chưa đăng nhập: ${r.error}`);
+          break;
         } else if (runnerDown) {
           // Runner sập / mạng tới runner đứt giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
           summary.failed += 1;

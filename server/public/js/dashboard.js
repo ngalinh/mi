@@ -839,6 +839,9 @@
   }
 
   // ---------------- Gửi Zalo ----------------
+  // Lỗi "không tìm thấy cuộc trò chuyện" do runner ném (KHONG_THAY_HOI_THOAI) khi search SĐT/tên
+  // không ra hàng nào trong mục "Trò chuyện". Dùng để hiện thông báo rõ ràng cho người dùng.
+  const isNoConversationError = (msg) => /KHONG_THAY_HOI_THOAI/i.test(msg || '');
   // override (tuỳ chọn) = { profile, account } để ép gửi qua 1 tài khoản Zalo cụ thể (gửi thử).
   async function sendZalo(id, messageOverride, btnEl, kind = 'hang', override = null) {
     const o = byId(id); if (!o) return;
@@ -869,8 +872,12 @@
         }),
       });
       const r = res.results[0];
-      if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
-      else App.toast(`❌ ${r.error}`, 6000);
+      if (res.aborted) App.toast('⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi gửi lại.', 8000);
+      else if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
+      else if (isNoConversationError(r.error)) {
+        App.toast(`🔍 Không tìm thấy cuộc trò chuyện của ${r.customerName || o.customerName || id}`
+          + ' trong mục "Trò chuyện" trên Zalo — kiểm tra khách đã có hội thoại chưa.', 8000);
+      } else App.toast(`❌ ${App.friendlyError(r.error)}`, 7000);
       afterMutation();
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
@@ -920,7 +927,19 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      App.toast(`Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`, 6000);
+      // Zalo hiện trang login -> server đã DỪNG loạt ngay. Báo rõ để đăng nhập rồi thử lại,
+      // thay vì hiện "Hoàn tất" gây hiểu nhầm là đã gửi hết.
+      if (res.aborted) {
+        App.toast(`⛔ Zalo chưa đăng nhập — đã dừng báo loạt (còn ${res.skipped || 0} đơn chưa gửi).`
+          + ' Hãy đăng nhập Zalo rồi báo lại.', 9000);
+      } else {
+        // Đếm riêng số khách KHÔNG tìm thấy cuộc trò chuyện để báo rõ (thay vì chỉ "❌ N" chung chung).
+        // Chi tiết từng khách vẫn xem được ở Lịch sử báo.
+        const notFound = (res.results || []).filter((r) => !r.ok && isNoConversationError(r.error)).length;
+        let msg = `Hoàn tất: ✅ ${res.sent} · ❌ ${res.failed}`;
+        if (notFound) msg += ` · 🔍 ${notFound} khách không tìm thấy cuộc trò chuyện`;
+        App.toast(msg, notFound ? 8000 : 6000);
+      }
       afterMutation();
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
