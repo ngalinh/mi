@@ -19,8 +19,12 @@
     cancelImport: $('cancelImport'), doImport: $('doImport'),
     contactRows: $('contactRows'), contactCount: $('contactCount'),
     searchBox: $('searchBox'), addBtn: $('addContactBtn'),
-    fbFilter: $('fbFilter'), nvFilter: $('nvFilter'),
+    fbFilter: $('fbFilter'),
+    nvToggle: $('nvToggle'), nvLabel: $('nvLabel'), nvPanel: $('nvPanel'),
   };
+
+  // NV phụ trách được chọn để lọc (rỗng = tất cả nhân viên)
+  const nvSelected = new Set();
 
   const staffName = (uid) => {
     if (uid == null || uid === '') return '';
@@ -33,8 +37,25 @@
       bassoStaff = (r && r.tabUsers) || [];
     } catch { bassoStaff = []; }
     const opts = bassoStaff.map((u) => `<option value="${App.esc(u.user_id)}">${App.esc(u.name)} (#${App.esc(u.user_id)})</option>`).join('');
-    els.nvFilter.innerHTML = '<option value="">Mọi NV phụ trách</option>' + opts;
     $('cmStaff').innerHTML = '<option value="">— Không gán —</option>' + opts;
+    renderNvPanel();
+  }
+
+  // Dựng danh sách checkbox NV phụ trách (chọn nhiều) + dòng "Tất cả nhân viên" để bỏ chọn nhanh.
+  function renderNvPanel() {
+    const rows = bassoStaff.map((u) => {
+      const id = String(u.user_id);
+      const on = nvSelected.has(id) ? ' checked' : '';
+      return `<label class="ms-opt"><input type="checkbox" value="${App.esc(id)}"${on}/><span>${App.esc(u.name)} (#${App.esc(id)})</span></label>`;
+    }).join('');
+    els.nvPanel.innerHTML = `<label class="ms-opt all"><input type="checkbox" value="__all__"${nvSelected.size ? '' : ' checked'}/><span>Tất cả nhân viên</span></label>${rows}`;
+    updateNvLabel();
+  }
+
+  function updateNvLabel() {
+    if (!nvSelected.size) { els.nvLabel.textContent = 'Tất cả nhân viên'; return; }
+    if (nvSelected.size === 1) { els.nvLabel.textContent = staffName([...nvSelected][0]); return; }
+    els.nvLabel.textContent = `${nvSelected.size} nhân viên`;
   }
 
   // ================= IMPORT =================
@@ -218,11 +239,10 @@
   function renderContacts() {
     const q = (els.searchBox.value || '').trim().toLowerCase();
     const fbMode = els.fbFilter.value || 'all';
-    const nv = els.nvFilter.value || '';
     const list = contacts.filter((c) => {
       if (fbMode === 'fb' && !c.fb_report) return false;
       if (fbMode === 'nofb' && c.fb_report) return false;
-      if (nv && String(c.staff_id || '') !== String(nv)) return false;
+      if (nvSelected.size && !nvSelected.has(String(c.staff_id || ''))) return false;
       if (q) {
         return (c.zalo_name || '').toLowerCase().includes(q)
           || (c.raw_phone || c.phone || '').toLowerCase().includes(q)
@@ -253,7 +273,32 @@
 
   els.searchBox.addEventListener('input', renderContacts);
   els.fbFilter.addEventListener('change', renderContacts);
-  els.nvFilter.addEventListener('change', renderContacts);
+
+  // Mở/đóng panel chọn nhiều NV
+  const nvBox = $('nvFilter');
+  function toggleNv(open) {
+    const willOpen = open != null ? open : els.nvPanel.hidden;
+    els.nvPanel.hidden = !willOpen;
+    nvBox.classList.toggle('open', willOpen);
+    els.nvToggle.setAttribute('aria-expanded', String(willOpen));
+  }
+  els.nvToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleNv(); });
+  els.nvPanel.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"]');
+    if (!cb) return;
+    if (cb.value === '__all__') {
+      nvSelected.clear();
+    } else if (cb.checked) {
+      nvSelected.add(cb.value);
+    } else {
+      nvSelected.delete(cb.value);
+    }
+    renderNvPanel();
+    renderContacts();
+  });
+  document.addEventListener('click', (e) => {
+    if (!els.nvPanel.hidden && !nvBox.contains(e.target)) toggleNv(false);
+  });
 
   els.contactRows.addEventListener('click', async (e) => {
     const tr = e.target.closest('tr[data-phone]');
