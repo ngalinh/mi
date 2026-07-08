@@ -164,8 +164,8 @@ module.exports = {
   // Delay chỉ chèn GIỮA các đơn (không nghỉ trước đơn đầu / sau đơn cuối / khi dừng cả loạt).
   // Mỗi lần nghỉ = số ngẫu nhiên trong [minMs, maxMs]. Đặt cả 2 = 0 để TẮT (gửi liền như trước).
   notify: {
-    delayBetweenMinMs: Math.max(parseInt(process.env.SEND_DELAY_BETWEEN_MIN_MS ?? '3000', 10) || 0, 0),
-    delayBetweenMaxMs: Math.max(parseInt(process.env.SEND_DELAY_BETWEEN_MAX_MS ?? '7000', 10) || 0, 0),
+    delayBetweenMinMs: Math.max(parseInt(process.env.SEND_DELAY_BETWEEN_MIN_MS ?? '5000', 10) || 0, 0),
+    delayBetweenMaxMs: Math.max(parseInt(process.env.SEND_DELAY_BETWEEN_MAX_MS ?? '10000', 10) || 0, 0),
   },
   dbPath: process.env.DB_PATH
     || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),
