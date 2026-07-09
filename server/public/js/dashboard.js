@@ -171,17 +171,18 @@
     return `<span class="chan-tag ${fb ? 'fb' : 'zalo'}" title="${fb ? 'Facebook' : 'Zalo'}">${fb ? 'FB' : 'Zalo'}</span>`;
   }
   // Người gửi: 'bot' = luồng tự động; chuỗi khác = danh tính nhân viên (email do gateway forward).
+  // Text dài (email) rút gọn 1 dòng bằng ellipsis, xem đầy đủ qua tooltip.
   function senderCell(o) {
     const v = String((o.lastReport && o.lastReport.sender) || '').trim();
     if (!v) return '<span class="muted">—</span>';
     if (v === 'bot') return `<span class="pill pill-bot">${App.icon('bot')} Bot</span>`;
-    return `<span title="${App.esc(v)}">${App.esc(v)}</span>`;
+    return `<span class="sender-name" title="${App.esc(v)}">${App.esc(v)}</span>`;
   }
-  // Tài khoản Zalo/FB đã dùng để gửi, kèm chip kênh trước tên.
+  // Tài khoản Zalo/FB đã dùng để gửi, kèm chip kênh trước tên (tên dài -> ellipsis + tooltip).
   function accountCell(o) {
     const acct = String((o.lastReport && o.lastReport.account) || '').trim();
     if (!acct) return '<span class="muted">—</span>';
-    return `<span class="acct-with-ic">${chanTag(o.lastReport.channel)}${App.esc(acct)}</span>`;
+    return `<span class="acct-with-ic" title="${App.esc(acct)}">${chanTag(o.lastReport.channel)}<span class="acct-name">${App.esc(acct)}</span></span>`;
   }
 
   function contentCell(text, id, kind) {
@@ -395,8 +396,8 @@
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
-      <td>${senderCell(o)}</td>
-      <td>${accountCell(o)}</td>
+      <td class="sender-col">${senderCell(o)}</td>
+      <td class="acct-col">${accountCell(o)}</td>
       <td><div class="note-cell">
         <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
         <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>
