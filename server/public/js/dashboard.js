@@ -176,7 +176,9 @@
     const v = String((o.lastReport && o.lastReport.sender) || '').trim();
     if (!v) return '<span class="muted">—</span>';
     if (v === 'bot') return `<span class="pill pill-bot">${App.icon('bot')} Bot</span>`;
-    return `<span class="sender-name" title="${App.esc(v)}">${App.esc(v)}</span>`;
+    // Email -> chỉ lấy phần trước @ cho gọn (vd tram@gmail.com -> Tram); email đầy đủ ở tooltip.
+    const short = v.includes('@') ? v.split('@')[0] : v;
+    return `<span class="sender-name" title="${App.esc(v)}">${App.esc(short)}</span>`;
   }
   // Trạng thái GỬI TIN của lượt báo đại diện (khác cột "Trạng thái" là trạng thái đơn):
   // pending = đang gửi · success = đã gửi · failed = lỗi. Đơn chưa từng báo -> "—".
@@ -406,6 +408,7 @@
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
+      <td>${sendStatusCell(o)}</td>
       <td><div class="note-cell">
         <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
         <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>
@@ -415,7 +418,6 @@
       <td class="staff-col">${App.esc(o.staff)}</td>
       <td class="sender-col">${senderCell(o)}</td>
       <td class="acct-col">${accountCell(o)}</td>
-      <td>${sendStatusCell(o)}</td>
     </tr>`;
 
     const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
