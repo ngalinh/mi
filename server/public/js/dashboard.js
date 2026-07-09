@@ -396,15 +396,15 @@
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
-      <td class="sender-col">${senderCell(o)}</td>
-      <td class="acct-col">${accountCell(o)}</td>
       <td><div class="note-cell">
         <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
         <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>
       </div></td>
       <td>${actionsCell}</td>
       <td class="center">${excludeCell}</td>
-      <td>${App.esc(o.staff)}</td>
+      <td class="staff-col">${App.esc(o.staff)}</td>
+      <td class="sender-col">${senderCell(o)}</td>
+      <td class="acct-col">${accountCell(o)}</td>
     </tr>`;
 
     const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
