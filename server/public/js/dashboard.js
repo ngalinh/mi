@@ -1475,6 +1475,32 @@
     updateFilterBadge();
   }
 
+  // Header bảng vẽ bằng JS (nguồn DUY NHẤT, cùng deploy với phần vẽ dòng) để tiêu đề cột LUÔN
+  // khớp số/thứ tự ô mỗi dòng — kể cả khi trình duyệt/gateway còn giữ index.html bản CŨ trong
+  // cache. HTML tĩnh chỉ là khung tạm; JS ghi đè lại header đúng ngay khi tải trang, nên không
+  // còn cảnh "header cũ + body mới" gây lệch cột/thiếu tiêu đề. Thứ tự PHẢI khớp rowHtml().
+  function renderHeader() {
+    const headRow = document.querySelector('.table-wrap table thead tr');
+    if (!headRow) return;
+    headRow.innerHTML = `
+      <th style="width:34px"></th>
+      <th class="center" style="width:50px">STT</th>
+      <th>Ngày nhập kho</th>
+      <th>Khách hàng</th>
+      <th>SĐT</th>
+      <th class="center">ND báo hàng</th>
+      <th class="center">ND báo ship</th>
+      <th>Trạng thái</th>
+      <th style="width:120px" title="Kết quả gửi tin của lượt báo gần nhất">Trạng thái gửi tin</th>
+      <th>Ghi chú</th>
+      <th class="center" style="width:120px">Gửi tin</th>
+      <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Loại trừ</th>
+      <th>Nhân viên</th>
+      <th style="width:120px" title="Người đã gửi lượt báo (Bot hoặc nhân viên)">Người gửi</th>
+      <th style="width:150px" title="Tài khoản Zalo/FB đã dùng để gửi">Tài khoản</th>`;
+  }
+  renderHeader();
+
   // Khởi tạo: mặc định tab "Chưa báo" (all-time) nên không set from; lần đầu load
   // currentGroup = 'todo' -> không giới hạn ngày. Sync input để popover hiện đúng.
   if (currentGroup !== 'todo') syncDateInputs();
