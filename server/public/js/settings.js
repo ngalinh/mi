@@ -131,6 +131,7 @@
   const zaloRows = $('zaloRows');
   const zm = $('zaloModal');
   const zaKey = $('zaKey'), zaName = $('zaName'), zaSalework = $('zaSalework'),
+    zaFbName = $('zaFbName'),
     zaEmail = $('zaEmail'), zaPassword = $('zaPassword'), zaPlatform = $('zaPlatform'),
     zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
@@ -284,6 +285,7 @@
     zaKey.disabled = !!a; // không đổi key khi sửa
     zaName.value = a ? (a.name || '') : (presets.name || '');
     zaSalework.value = a ? (a.saleworkName || '') : '';
+    zaFbName.value = a ? (a.fbName || '') : '';
     zaEmail.value = a ? (a.email || '') : '';
     zaPassword.value = a ? (a.password || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
@@ -305,6 +307,7 @@
       proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
     };
     if (platform === 'facebook') {
+      body.fbName = zaFbName.value.trim();
       body.email = zaEmail.value.trim();
       body.password = zaPassword.value;
     } else {
