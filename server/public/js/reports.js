@@ -11,7 +11,7 @@
   }
 
   function resultPill(s) {
-    if (s === 'pending') return '<span class="pill pending">⏳ Pending</span>';
+    if (s === 'pending') return `<span class="pill pending">${App.icon('hourglass')} Pending</span>`;
     const ok = s === 'success';
     const cls = ok ? 'success' : 'failed';
     const txt = ok ? 'Done' : 'Failed';
