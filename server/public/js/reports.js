@@ -1,6 +1,12 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
+  const pagerEl = $('pager');
+
+  // Phân trang phía client: API trả nguyên tập (tối đa 200 lượt), chia 20 dòng/trang cho gọn.
+  const PAGE_SIZE = 20;
+  let allItems = [];                                          // toàn bộ lượt báo lần tải gần nhất
+  let currentPage = 1;
 
   // Khi danh sách còn dòng "đang báo", tự tải lại sau vài giây để badge tự cập nhật khi job
   // gửi xong. Hết pending thì dừng (không poll vô ích). Mỗi lần load() gọi lại để gia hạn/huỷ.
@@ -142,6 +148,71 @@
     if (t && t === tipTarget) hideTip();
   });
 
+  // Danh sách nút trang dạng cửa sổ: 1 … (cur-1) cur (cur+1) … N.
+  function pageItems(total, cur) {
+    const out = [];
+    for (let p = 1; p <= total; p++) {
+      if (p === 1 || p === total || (p >= cur - 1 && p <= cur + 1)) out.push(p);
+      else if (out[out.length - 1] !== '…') out.push('…');
+    }
+    return out;
+  }
+
+  function renderPager(total, totalPages) {
+    if (!pagerEl) return;
+    if (!total) { pagerEl.innerHTML = ''; pagerEl.classList.add('hidden'); return; }
+    pagerEl.classList.remove('hidden');
+    const cur = currentPage;
+    const info = `<span class="pg-info">Tổng <b>${total}</b> lượt báo — Trang <b>${cur}</b> / <b>${totalPages}</b></span>`;
+    let pages = '';
+    let jump = '';
+    if (totalPages > 1) {
+      const parts = [`<button class="pg-btn" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''}>Trước</button>`];
+      for (const p of pageItems(totalPages, cur)) {
+        parts.push(p === '…'
+          ? '<span class="pg-ellip">…</span>'
+          : `<button class="pg-btn ${p === cur ? 'active' : ''}" data-page="${p}">${p}</button>`);
+      }
+      parts.push(`<button class="pg-btn" data-page="${cur + 1}" ${cur === totalPages ? 'disabled' : ''}>Sau</button>`);
+      pages = `<span class="pg-pages">${parts.join('')}</span>`;
+      jump = `<span class="pg-jump">Đến trang <input class="pg-jump-input" type="number" min="1" max="${totalPages}" value="${cur}" aria-label="Đến trang" /> <button class="pg-btn pg-go" id="pgGo">Đi</button></span>`;
+    }
+    pagerEl.innerHTML = info + pages + jump;
+  }
+
+  // Vẽ đúng 1 trang (20 dòng) từ allItems + thanh phân trang. Gọi lại khi đổi trang mà không tải lại API.
+  function renderPage() {
+    hideTip();                                                // tránh tooltip "kẹt" khi bảng render lại
+    const total = allItems.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const pageItemsList = allItems.slice(start, start + PAGE_SIZE);
+    rowsEl.innerHTML = pageItemsList.map((r) => `<tr>
+      <td class="time-cell">${App.fmtDateTime(r.created_at)}</td>
+      <td class="order-cell" ${r.order_id ? `data-tip="${App.esc(r.order_id)}"` : ''}>${App.esc(r.order_id) || '—'}</td>
+      <td>${thumbsCell(r.images)}</td>
+      <td class="cust" title="${App.esc(r.customer_name)}">${App.esc(r.customer_name)}</td>
+      <td>${App.esc(r.phone)}</td>
+      <td>${resultPill(r.status)}</td>
+      <td title="${App.esc(r.staff)}">${App.esc(r.staff)}</td>
+      <td>${senderCell(r.sent_by)}</td>
+      <td>${accountCell(r)}</td>
+      <td class="msg-cell" data-tip="${App.esc(r.message)}">${msgPreview(r.message)}</td>
+      <td class="err-cell" style="color:var(--red)" data-tip="${App.esc(r.error)}">${errPreview(r.error)}</td>
+      <td class="center">${actionCell(r)}</td>
+    </tr>`).join('');
+    renderPager(total, totalPages);
+  }
+
+  // Nhảy tới 1 trang (kẹp về [1, số trang]) rồi vẽ lại, không gọi API.
+  function goToPage(p) {
+    const totalPages = Math.max(1, Math.ceil(allItems.length / PAGE_SIZE));
+    currentPage = Math.min(Math.max(1, parseInt(p, 10) || 1), totalPages);
+    renderPage();
+  }
+
   // Ô "Thao tác": chỉ dòng THẤT BẠI mới có nút Thử lại (gửi lại đúng đơn đó).
   function actionCell(r) {
     if (r.status !== 'failed') return '<span class="muted">—</span>';
@@ -178,28 +249,26 @@
       const items = res.items || [];
       // Còn dòng "đang báo" -> tự tải lại để badge tự lật sang Thành công/Thất bại khi job xong.
       scheduleAutoRefresh(items.some((r) => r.status === 'pending'));
+      allItems = items;
       if (!items.length) {
+        currentPage = 1;
         rowsEl.innerHTML = '<tr><td colspan="12" class="empty">Chưa có lượt báo nào</td></tr>';
+        renderPager(0, 1);
         return;
       }
-      rowsEl.innerHTML = items.map((r) => `<tr>
-        <td class="time-cell">${App.fmtDateTime(r.created_at)}</td>
-        <td class="order-cell" ${r.order_id ? `data-tip="${App.esc(r.order_id)}"` : ''}>${App.esc(r.order_id) || '—'}</td>
-        <td>${thumbsCell(r.images)}</td>
-        <td class="cust" title="${App.esc(r.customer_name)}">${App.esc(r.customer_name)}</td>
-        <td>${App.esc(r.phone)}</td>
-        <td>${resultPill(r.status)}</td>
-        <td title="${App.esc(r.staff)}">${App.esc(r.staff)}</td>
-        <td>${senderCell(r.sent_by)}</td>
-        <td>${accountCell(r)}</td>
-        <td class="msg-cell" data-tip="${App.esc(r.message)}">${msgPreview(r.message)}</td>
-        <td class="err-cell" style="color:var(--red)" data-tip="${App.esc(r.error)}">${errPreview(r.error)}</td>
-        <td class="center">${actionCell(r)}</td>
-      </tr>`).join('');
+      // Kẹp trang hiện tại theo tập mới (bộ lọc đổi có thể làm ít trang hơn) rồi vẽ trang.
+      const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+      if (currentPage > totalPages) currentPage = totalPages;
+      renderPage();
     } catch (e) {
+      allItems = [];
       rowsEl.innerHTML = `<tr><td colspan="12" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      renderPager(0, 1);
     }
   }
+
+  // Đổi bộ lọc/tìm kiếm/tải lại -> quay về trang 1 rồi gọi API.
+  function reload() { currentPage = 1; load(); }
 
   // Bấm "Thử lại" trên 1 dòng thất bại -> gọi API gửi lại đúng đơn đó, rồi tải lại bảng.
   rowsEl.addEventListener('click', async (e) => {
@@ -239,23 +308,42 @@
       c.classList.toggle('active', c.dataset.filter === val));
   }
 
-  $('reloadBtn').addEventListener('click', load);
-  $('fStatus').addEventListener('change', () => { syncStatCards($('fStatus').value); load(); });
-  $('fFrom').addEventListener('change', load);
-  $('fTo').addEventListener('change', load);
-  $('fStaff').addEventListener('change', load);
-  $('fSender').addEventListener('change', load);
-  $('fAccount').addEventListener('change', load);
+  $('reloadBtn').addEventListener('click', reload);
+  $('fStatus').addEventListener('change', () => { syncStatCards($('fStatus').value); reload(); });
+  $('fFrom').addEventListener('change', reload);
+  $('fTo').addEventListener('change', reload);
+  $('fStaff').addEventListener('change', reload);
+  $('fSender').addEventListener('change', reload);
+  $('fAccount').addEventListener('change', reload);
   // Bấm thẻ thống kê = lọc theo loại (Tổng = tất cả, Thành công, Thất bại)
   $('statCards').addEventListener('click', (e) => {
     const card = e.target.closest('.status-tab');
     if (!card) return;
     $('fStatus').value = card.dataset.filter;
     syncStatCards(card.dataset.filter);
-    load();
+    reload();
   });
   let t;
-  $('fQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 400); });
+  $('fQ').addEventListener('input', () => { clearTimeout(t); t = setTimeout(reload, 400); });
+
+  // Phân trang: bấm số trang / Trước / Sau, hoặc nhập số rồi "Đi" (Enter cũng được). Chỉ vẽ lại
+  // trang từ tập đã tải, không gọi API.
+  pagerEl.addEventListener('click', (e) => {
+    const b = e.target.closest('.pg-btn');
+    if (!b) return;
+    if (b.classList.contains('pg-go')) {
+      const inp = pagerEl.querySelector('.pg-jump-input');
+      goToPage(inp ? inp.value : 1);
+    } else if (b.dataset.page) {
+      goToPage(b.dataset.page);
+    }
+  });
+  pagerEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.classList.contains('pg-jump-input')) {
+      e.preventDefault();
+      goToPage(e.target.value);
+    }
+  });
   // Tải map nhân viên trước, xong mới render để cột "Người gửi" hiện tên ngay lượt đầu.
   loadStaffMap().finally(load);
 })();
