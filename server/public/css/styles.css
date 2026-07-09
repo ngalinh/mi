@@ -701,6 +701,17 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .chan-tag.zalo { background: #e7f0ff; color: #0068ff; }
 .chan-tag.fb { background: #eaf1fd; color: #1877f2; }
 
+/* Cột "Người gửi" / "Tài khoản" trên danh sách hàng về (gộp từ Lịch sử báo):
+   giữ mỗi ô 1 dòng gọn, tên dài thì cắt bằng … và xem đầy đủ qua tooltip. */
+td.sender-col, td.acct-col { max-width: 160px; }
+td.staff-col { white-space: nowrap; }
+.sender-name, .acct-name {
+  display: inline-block; max-width: 130px; vertical-align: middle;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.acct-with-ic { gap: 6px; min-width: 0; max-width: 100%; }
+.acct-with-ic .acct-name { max-width: 96px; font-size: 13px; }
+
 /* ============================================================
    Tài khoản nhân viên — bảng phẳng, mỗi tài khoản 1 dòng (settings)
    ============================================================ */
