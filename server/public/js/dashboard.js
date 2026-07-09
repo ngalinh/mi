@@ -9,8 +9,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 14;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 13; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 15;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 14; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -178,6 +178,16 @@
     if (v === 'bot') return `<span class="pill pill-bot">${App.icon('bot')} Bot</span>`;
     return `<span class="sender-name" title="${App.esc(v)}">${App.esc(v)}</span>`;
   }
+  // Trạng thái GỬI TIN của lượt báo đại diện (khác cột "Trạng thái" là trạng thái đơn):
+  // pending = đang gửi · success = đã gửi · failed = lỗi. Đơn chưa từng báo -> "—".
+  function sendStatusCell(o) {
+    const s = o.lastReport && o.lastReport.status;
+    if (!s) return '<span class="muted">—</span>';
+    if (s === 'pending') return `<span class="pill pending">${App.icon('hourglass')} Đang gửi</span>`;
+    if (s === 'success') return `<span class="pill success">${App.icon('check')} Đã gửi</span>`;
+    return `<span class="pill failed">${App.icon('alert')} Lỗi</span>`;
+  }
+
   // Tài khoản Zalo/FB đã dùng để gửi, kèm chip kênh trước tên (tên dài -> ellipsis + tooltip).
   function accountCell(o) {
     const acct = String((o.lastReport && o.lastReport.account) || '').trim();
@@ -405,6 +415,7 @@
       <td class="staff-col">${App.esc(o.staff)}</td>
       <td class="sender-col">${senderCell(o)}</td>
       <td class="acct-col">${accountCell(o)}</td>
+      <td>${sendStatusCell(o)}</td>
     </tr>`;
 
     const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
