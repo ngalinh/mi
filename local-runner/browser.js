@@ -47,7 +47,12 @@ function profilePath(profileName, platform) {
 
 /**
  * Phân tích chuỗi proxy đã gán cho tài khoản thành option proxy của Playwright.
- * Hỗ trợ: "host:port", "user:pass@host:port", có/không tiền tố scheme (http://, socks5://...).
+ * Hỗ trợ:
+ *   - "host:port"
+ *   - "user:pass@host:port"
+ *   - "host:port:user:pass"  (định dạng dấu hai chấm phổ biến của nhà cung cấp proxy VN)
+ *   - "user:pass:host:port"
+ *   - có/không tiền tố scheme (http://, https://, socks5://...).
  * @param {string} raw
  * @returns {{server:string, username?:string, password?:string}|null} null nếu rỗng/không có host:port.
  */
@@ -57,18 +62,36 @@ function parseProxy(raw) {
   let scheme = 'http://';
   const m = rest.match(/^([a-z0-9]+:\/\/)/i);
   if (m) { scheme = m[1]; rest = rest.slice(m[1].length); }
-  let username; let password;
+  let username; let password; let hostport;
   const at = rest.lastIndexOf('@');
   if (at !== -1) {
+    // Dạng "user:pass@host:port"
     const cred = rest.slice(0, at);
-    rest = rest.slice(at + 1);
+    hostport = rest.slice(at + 1).trim();
     const ci = cred.indexOf(':');
-    if (ci !== -1) { username = cred.slice(0, ci); password = cred.slice(ci + 1); }
-    else { username = cred; }
+    if (ci !== -1) { username = cred.slice(0, ci).trim(); password = cred.slice(ci + 1).trim(); }
+    else { username = cred.trim(); }
+  } else {
+    // Không có "@": có thể là "host:port", "host:port:user:pass" hoặc "user:pass:host:port".
+    const parts = rest.split(':').map((s) => s.trim());
+    const isPort = (s) => /^\d{1,5}$/.test(s);
+    if (parts.length === 4) {
+      if (isPort(parts[1])) {
+        // host:port:user:pass — cổng ở vị trí 2
+        hostport = `${parts[0]}:${parts[1]}`; username = parts[2]; password = parts[3];
+      } else if (isPort(parts[3])) {
+        // user:pass:host:port — cổng ở vị trí cuối
+        username = parts[0]; password = parts[1]; hostport = `${parts[2]}:${parts[3]}`;
+      } else {
+        hostport = rest; // không rõ cấu trúc, giữ nguyên
+      }
+    } else {
+      hostport = parts.join(':'); // "host:port" hoặc chỉ "host"
+    }
   }
-  if (!rest) return null; // thiếu host:port
-  const opt = { server: scheme + rest };
-  if (username != null) opt.username = username;
+  if (!hostport) return null; // thiếu host:port
+  const opt = { server: scheme + hostport };
+  if (username != null && username !== '') opt.username = username;
   if (password != null) opt.password = password;
   return opt;
 }
