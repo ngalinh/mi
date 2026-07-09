@@ -9,8 +9,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 12;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 11; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 14;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 13; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -161,6 +161,27 @@
     if (!icon && !times) return '';
     const method = icon ? `<span class="rpt-method ${cls}" title="${App.esc(title)}">${App.icon(icon)}</span>` : '';
     return `<div class="report-meta">${method}<div class="sent-times">${times}</div></div>`;
+  }
+
+  // ---- Người gửi / Tài khoản (gộp từ Lịch sử báo) ----
+  // Lấy từ lượt báo đại diện của đơn (server enrich `lastReport`): ưu tiên lượt gửi thành công
+  // mới nhất, chưa có thì lượt gần nhất. Đơn chưa từng báo -> ô trống "—".
+  function chanTag(channel) {
+    const fb = channel === 'facebook';
+    return `<span class="chan-tag ${fb ? 'fb' : 'zalo'}" title="${fb ? 'Facebook' : 'Zalo'}">${fb ? 'FB' : 'Zalo'}</span>`;
+  }
+  // Người gửi: 'bot' = luồng tự động; chuỗi khác = danh tính nhân viên (email do gateway forward).
+  function senderCell(o) {
+    const v = String((o.lastReport && o.lastReport.sender) || '').trim();
+    if (!v) return '<span class="muted">—</span>';
+    if (v === 'bot') return `<span class="pill pill-bot">${App.icon('bot')} Bot</span>`;
+    return `<span title="${App.esc(v)}">${App.esc(v)}</span>`;
+  }
+  // Tài khoản Zalo/FB đã dùng để gửi, kèm chip kênh trước tên.
+  function accountCell(o) {
+    const acct = String((o.lastReport && o.lastReport.account) || '').trim();
+    if (!acct) return '<span class="muted">—</span>';
+    return `<span class="acct-with-ic">${chanTag(o.lastReport.channel)}${App.esc(acct)}</span>`;
   }
 
   function contentCell(text, id, kind) {
@@ -374,6 +395,8 @@
       <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
       <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
+      <td>${senderCell(o)}</td>
+      <td>${accountCell(o)}</td>
       <td><div class="note-cell">
         <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
         <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>

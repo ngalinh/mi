@@ -5,7 +5,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
-const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getDelayedMap, setDelayed,
+const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
@@ -350,6 +350,8 @@ function enrichOrders(orders) {
   const autoMap = getAutoMap();
   // Thời điểm đã gửi báo hàng/ship (từ Lịch sử báo) để dashboard hiện mốc thời gian từng loại.
   const sentTimesMap = getSentTimesMap();
+  // Lượt báo đại diện của mỗi đơn (Người gửi + Tài khoản) — gộp Lịch sử báo lên thẳng danh sách.
+  const lastReportMap = getLastReportMap();
   // Danh bạ Zalo (SĐT-chuẩn-hoá -> tên group) để hiện cột "Tên Zalo/FB" + cho biết đơn nào
   // sẽ gửi theo tên group. Nạp 1 lần cho cả tập.
   const zaloMap = getZaloMap();
@@ -359,9 +361,11 @@ function enrichOrders(orders) {
     const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
     const sent = sentTimesMap.get(String(key));
     const withSent = sent ? { ...withAuto, sentAt: sent } : withAuto;
+    const last = lastReportMap.get(String(key));
+    const withLast = last ? { ...withSent, lastReport: last } : withSent;
     const withDelay = delayedMap.has(key)
-      ? { ...withSent, delayed: true, delayReason: delayedMap.get(key) }
-      : withSent;
+      ? { ...withLast, delayed: true, delayReason: delayedMap.get(key) }
+      : withLast;
     const zaloName = o.phone ? zaloMap.get(normPhone(o.phone)) : '';
     return zaloName ? { ...withDelay, zaloName } : withDelay;
   });
