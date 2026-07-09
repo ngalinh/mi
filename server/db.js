@@ -333,6 +333,42 @@ function getSentTimesMap() {
   return m;
 }
 
+// Lượt báo ĐẠI DIỆN của từng đơn — để danh sách hàng về hiện cột "Người gửi" + "Tài khoản"
+// inline (gộp Lịch sử báo vào danh sách, khỏi mở trang riêng cho thông tin thường soi nhất).
+// Ưu tiên lượt THÀNH CÔNG mới nhất (đó là account thật đã gửi tới khách); chưa có success thì
+// lấy lượt mới nhất bất kỳ (để đơn báo lỗi vẫn cho biết ai/định gửi bằng account nào). Order by
+// đẩy success lên trước rồi mới nhất trước -> JS lấy dòng ĐẦU mỗi khoá là đại diện. 1 query.
+const getLastReportsStmt = db.prepare(`
+  SELECT customer_id, date_inventory, sent_by, zalo_account, channel, status,
+         CASE WHEN kind = 'ship' THEN 'ship' ELSE 'hang' END AS kind, created_at
+    FROM reports
+   WHERE customer_id IS NOT NULL AND date_inventory IS NOT NULL
+   ORDER BY customer_id, date_inventory,
+            CASE WHEN status = 'success' THEN 0 ELSE 1 END,
+            created_at DESC
+`);
+
+/**
+ * Map khoá đơn (autoKey) -> { sender, account, channel, status, kind, at } của lượt báo đại diện.
+ * Dùng cho enrichOrders để dashboard hiện Người gửi/Tài khoản ngay trên dòng đơn.
+ */
+function getLastReportMap() {
+  const m = new Map();
+  for (const r of getLastReportsStmt.all()) {
+    const key = `c${r.customer_id}:d${r.date_inventory}`;
+    if (m.has(key)) continue;                                 // dòng đầu mỗi khoá = đại diện (đã sort)
+    m.set(key, {
+      sender: r.sent_by || null,
+      account: r.zalo_account || null,
+      channel: r.channel || null,
+      status: r.status || null,
+      kind: r.kind || null,
+      at: r.created_at || null,
+    });
+  }
+  return m;
+}
+
 /** Ghi/cập nhật trạng thái tự động báo của 1 đơn. */
 function recordAutoNotified(orderId, status, attempts) {
   upsertAutoStmt.run({
@@ -708,7 +744,7 @@ function migrateFbRoutingIntoContacts() {
 migrateFbRoutingIntoContacts();
 
 module.exports = {
-  db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
+  db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
