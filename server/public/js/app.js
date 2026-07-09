@@ -122,6 +122,12 @@ const App = {
     // Tự chèn mục "Danh bạ" vào rail-nav nếu HTML còn THIẾU (vd trình duyệt/PWA giữ index.html
     // bản CŨ trong cache trong khi app.js đã mới). Nhờ vậy menu luôn đủ dù chưa refresh HTML.
     const rail = sidebar.querySelector('.rail-nav');
+
+    // Gỡ mục "Lịch sử báo" (reports.html) nếu HTML còn trong cache: trang này đã bỏ (gộp vào
+    // danh sách hàng về). Xoá thẳng khỏi sidebar để mọi trang nhất quán dù client chưa refresh
+    // HTML — nếu không, index.html bản cũ vẫn hiện icon Lịch sử báo còn trang mới thì không.
+    sidebar.querySelectorAll('a.nav[href="reports.html"]').forEach((el) => el.remove());
+
     if (rail && !sidebar.querySelector('a.nav[href="danhba.html"]')) {
       const a = document.createElement('a');
       a.className = 'nav';
