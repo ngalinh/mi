@@ -398,7 +398,7 @@
 
   // Khách báo qua Facebook nay quản ở trang Danh bạ (theo SĐT + link + NV phụ trách) — bỏ tab riêng.
 
-  // ---------------- Proxy theo tài khoản Zalo (nối backend thật) ----------------
+  // ---------------- Proxy theo tài khoản Zalo & Facebook (nối backend thật) ----------------
   const proxyRows = $('proxyRows');
 
   function proxyStatusPill(p) {
@@ -408,13 +408,13 @@
   }
   function renderProxy(list) {
     if (!list || !list.length) {
-      proxyRows.innerHTML = '<tr><td colspan="5" class="muted" style="padding:16px;">Chưa có tài khoản Zalo nào. Thêm tài khoản ở tab “Tài khoản Zalo”.</td></tr>';
+      proxyRows.innerHTML = '<tr><td colspan="5" class="muted" style="padding:16px;">Chưa có tài khoản Zalo hoặc Facebook nào. Thêm tài khoản ở tab “Tài khoản”.</td></tr>';
       return;
     }
     proxyRows.innerHTML = list.map((a) => `
       <tr class="main-row" data-key="${App.esc(a.key)}">
         <td class="cust">${App.esc(a.name || a.key)}</td>
-        <td>${App.esc(a.saleworkName || a.fbName || '')}${a.platform === 'facebook' ? ' <span class="muted" style="font-size:11px">(FB)</span>' : ''}</td>
+        <td>${App.esc(a.saleworkName || a.fbName || '')} <span class="muted" style="font-size:11px">${a.platform === 'facebook' ? '(FB)' : '(Zalo)'}</span></td>
         <td>
           <div class="note-cell">
             <input class="note-input proxy-input" data-key="${App.esc(a.key)}" value="${App.esc(a.proxy || '')}" placeholder="host:port hoặc user:pass@host:port" />
