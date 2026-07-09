@@ -60,11 +60,24 @@ function safeEqual(a, b) {
   const bb = Buffer.from(String(b || ''));
   return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
 }
-// Tắt cache asset tĩnh (dev): tránh trình duyệt giữ JS/CSS cũ sau khi sửa code
+// Tắt cache asset tĩnh (dev): tránh trình duyệt giữ JS/CSS cũ sau khi sửa code.
+// Riêng file .html (nhất là trang "/" = index.html): dùng BỘ header chống cache đầy đủ
+// (no-store + no-cache + must-revalidate + Pragma + Expires) vì một số proxy/CDN (vd gateway
+// ai.basso.vn đứng trước server) chỉ tôn trọng no-store cho tài liệu HTML khi có đủ bộ này —
+// nếu không, chúng cache trang gốc và giữ header bảng cũ trong khi js/ vẫn được tải mới, làm
+// các cột mới không có tiêu đề.
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   lastModified: false,
-  setHeaders: (res) => res.setHeader('Cache-Control', 'no-store'),
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    } else {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+  },
 }));
 
 // ---- Secret gateway↔app (tuỳ chọn) ----
