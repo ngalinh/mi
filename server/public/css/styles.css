@@ -41,7 +41,7 @@
   --blue: #3b82f6;
   --blue-soft: #e7edfb;
   --head-tint: #e7ebf5;      /* nền header bảng — xanh navy nhạt */
-  --zebra: #faf6ec;          /* sọc xen kẽ dòng bảng — kem rất nhạt */
+  --zebra: #f3f4f6;          /* sọc xen kẽ dòng bảng — xám trung tính rất nhạt */
   --violet: #e84c8e;         /* alias accent (giữ tên cũ) */
   --violet-soft: #fbe4ee;
   --pink: #e84c8e;           /* alias hồng */
@@ -739,9 +739,10 @@ td.staff-col { white-space: nowrap; }
 .content-pair { display: flex; flex-direction: column; align-items: stretch; gap: 1px; }
 .content-line { display: flex; align-items: center; gap: 6px; justify-content: flex-start; }
 .content-lbl {
-  flex: none; min-width: 34px; text-align: left;
-  font-size: 11px; font-weight: 700; color: var(--muted);
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; color: var(--muted);
 }
+.content-lbl .icon { width: 15px; height: 15px; }
 .content-line .link-btn { padding: 3px 6px; }
 
 /* ============================================================
