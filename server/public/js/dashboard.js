@@ -1346,6 +1346,26 @@
     reloadScope();
   });
 
+  // Bơm ô lọc "Trạng thái gửi tin" + gỡ option "Lỗi - Báo lại" cũ bằng JS nếu trình duyệt/gateway
+  // còn giữ index.html BẢN CŨ trong cache (giống renderHeader — miễn nhiễm HTML cache cũ). HTML mới
+  // đã có sẵn ô này thì hàm thành no-op.
+  function ensureSendStatusFilter() {
+    const st = $('fStatus');
+    if (st) { const old = st.querySelector('option[value="failed"]'); if (old) old.remove(); }
+    if ($('fSendStatus') || !st) return;
+    const sel = document.createElement('select');
+    sel.id = 'fSendStatus';
+    sel.className = 'tb-select';
+    sel.title = 'Lọc theo trạng thái gửi tin';
+    sel.innerHTML = '<option value="" selected>Tất cả gửi tin</option>'
+      + '<option value="success">Đã gửi</option>'
+      + '<option value="pending">Đang gửi</option>'
+      + '<option value="failed">Lỗi gửi</option>'
+      + '<option value="none">Chưa gửi</option>';
+    st.insertAdjacentElement('afterend', sel);
+  }
+  ensureSendStatusFilter();
+
   // Lọc theo TRẠNG THÁI GỬI TIN (toolbar, kế bên trạng thái đơn): '' = tất cả, hoặc
   // success/pending/failed/none. Dữ liệu `lastReport` được server enrich theo TỪNG đơn (không lọc
   // được ở Basso) -> lọc CLIENT-SIDE. Để lọc trên CẢ tập chứ không chỉ 20 đơn/trang, khi bật lọc
