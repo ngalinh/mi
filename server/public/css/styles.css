@@ -475,6 +475,11 @@ a { color: var(--primary); text-decoration: none; }
 #fStatus[data-v="arrival"] { color: var(--blue);  background-color: var(--blue-soft);  border-color: color-mix(in srgb, var(--blue) 40%, transparent); }
 #fStatus[data-v="ship"]    { color: var(--green); background-color: var(--green-soft); border-color: color-mix(in srgb, var(--green) 40%, transparent); }
 #fStatus[data-v="failed"]  { color: var(--red);   background-color: var(--red-soft);   border-color: color-mix(in srgb, var(--red) 40%, transparent); }
+/* Ô lọc trạng thái GỬI TIN (#fSendStatus) đổi màu theo giá trị đang chọn — cùng tông với pill
+   "Trạng thái gửi tin" từng dòng: Đã gửi (xanh lá) · Đang gửi (xanh dương) · Lỗi (đỏ). */
+#fSendStatus[data-v="success"] { color: var(--green); background-color: var(--green-soft); border-color: color-mix(in srgb, var(--green) 40%, transparent); }
+#fSendStatus[data-v="pending"] { color: var(--blue);  background-color: var(--blue-soft);  border-color: color-mix(in srgb, var(--blue) 40%, transparent); }
+#fSendStatus[data-v="failed"]  { color: var(--red);   background-color: var(--red-soft);   border-color: color-mix(in srgb, var(--red) 40%, transparent); }
 .toolbar-bar .tb-filter .cnt { background: var(--primary-soft); color: var(--primary); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
 .toolbar-bar .tb-filter .cnt.zero { display: none; }
 /* Ô chọn khoảng ngày inline (hiện khi phạm vi = "Tuỳ chỉnh"). */
