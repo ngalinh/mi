@@ -590,6 +590,13 @@
     return applyExcludeNote(orders.slice());
   }
 
+  // Kẻ sọc xen kẽ: tô nền nhạt cho các dòng chính lẻ (0-based) — làm sau render để đúng
+  // dù đang gom nhóm (dòng nhóm/chi tiết không tính). Dòng loại trừ/hover có nền riêng đè lên.
+  function applyZebra() {
+    const rows = rowsEl.querySelectorAll('tr.main-row');
+    rows.forEach((r, i) => r.classList.toggle('zebra', i % 2 === 1));
+  }
+
   function render() {
     renderStatusTabs();
     // `orders` đã là 1 trang do server trả về; chỉ áp thêm lọc client-side (exclude/note).
@@ -605,6 +612,7 @@
     rowsEl.innerHTML = currentGroupBy
       ? groupedRowsHtml(pageList, currentGroupBy)
       : pageList.map((o) => rowHtml(o)).join('');
+    applyZebra();
     updateCount(pageList);
     pageList.forEach((o) => { if (openRows.has(String(o.id))) loadItems(o); });
     if (currentGroupBy === 'customer') fillGroupProductCounts(pageList);

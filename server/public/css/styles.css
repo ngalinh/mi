@@ -41,6 +41,7 @@
   --blue: #3b82f6;
   --blue-soft: #e7edfb;
   --head-tint: #e7ebf5;      /* nền header bảng — xanh navy nhạt */
+  --zebra: #faf6ec;          /* sọc xen kẽ dòng bảng — kem rất nhạt */
   --violet: #e84c8e;         /* alias accent (giữ tên cũ) */
   --violet-soft: #fbe4ee;
   --pink: #e84c8e;           /* alias hồng */
@@ -546,14 +547,19 @@ a { color: var(--primary); text-decoration: none; }
   background: #fff;
 }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+thead th { padding-top: 10px; padding-bottom: 10px; }
 thead th {
   font-size: 11px; color: var(--text-soft); text-transform: uppercase;
   letter-spacing: .5px; font-weight: 700;
   background: var(--head-tint); position: sticky; top: 0;
 }
 tbody tr { transition: background .12s var(--ease); }
+/* Kẻ sọc xen kẽ rất nhạt để mắt bám dòng khi liếc ngang qua nhiều cột.
+   Đặt TRƯỚC hover & loại trừ để 2 trạng thái đó luôn đè lên được. */
+tbody tr.main-row.zebra { background: var(--zebra); }
 tbody tr.main-row:hover { background: var(--head-tint); }
+tbody tr.main-row.row-excluded { background: var(--bg-soft); }
 tbody tr:last-child td { border-bottom: none; }
 td.center, th.center { text-align: center; }
 .cust { color: var(--text); font-weight: 700; white-space: nowrap; }
@@ -581,11 +587,13 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
 /* 4 trạng thái = 4 tông rõ ràng: Chưa báo (cam) · Đã báo hàng (xanh dương) · Đã báo ship (xanh lá) · Lỗi (đỏ).
    Viền cùng tông đậm hơn nền để mỗi trạng thái nổi khối, liếc là phân biệt được. */
-.status-sel[data-code="notified_arrival"] { color: var(--blue); background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 32%, transparent); }
-.status-sel[data-code="notified_ship"] { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
-.status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 32%, transparent); }
+/* Nền tint dịu (pha thêm trắng) để cột trạng thái lặp suốt bảng không tạo vệt màu nặng;
+   vẫn giữ chữ + viền theo tông nên liếc là phân biệt được trạng thái. */
+.status-sel[data-code="notified_arrival"] { color: var(--blue); background: color-mix(in srgb, var(--blue-soft) 55%, #fff); border-color: color-mix(in srgb, var(--blue) 32%, transparent); }
+.status-sel[data-code="notified_ship"] { color: var(--green); background: color-mix(in srgb, var(--green-soft) 55%, #fff); border-color: color-mix(in srgb, var(--green) 32%, transparent); }
+.status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); background: color-mix(in srgb, var(--red-soft) 55%, #fff); border-color: color-mix(in srgb, var(--red) 32%, transparent); }
 /* "Chưa báo" trước đây để trung tính (chữ xám/nền trắng) nên chìm — đổi sang tông cam "cần xử lý" cho dễ nhìn. */
-.status-sel[data-code="not_sent"] { color: var(--amber); background: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
+.status-sel[data-code="not_sent"] { color: var(--amber); background: color-mix(in srgb, var(--amber-soft) 55%, #fff); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
 /* Dropdown lý do delay — nhỏ, tông đỏ để báo "tạm hoãn". */
 .delay-reason {
   padding: 4px 8px; border: 1px dashed var(--red); border-radius: var(--radius-sm);
@@ -602,7 +610,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .delay-other:focus { outline: none; box-shadow: 0 0 0 3px rgba(229,72,77,.16); }
 
 /* note inline */
-.note-cell { display: flex; gap: 6px; align-items: center; }
+.note-cell { display: flex; gap: 4px; align-items: center; }
 .note-input {
   flex: 1; min-width: 120px; padding: 9px 12px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit;
@@ -612,13 +620,16 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   background: none; border: none; cursor: pointer; color: var(--muted);
   padding: 6px; border-radius: 9px; transition: .15s var(--ease);
   display: inline-flex; align-items: center; justify-content: center;
+  opacity: .4;  /* mờ khi rảnh để icon lưu không nhiễu suốt cả cột; rõ lên khi hover/soạn dở */
 }
 .save-note .icon { width: 17px; height: 17px; }
+.note-cell:hover .save-note, .save-note:focus, .save-note:hover { opacity: 1; }
 .save-note:hover { color: var(--primary); background: var(--bg); }
 .save-note.saved { color: var(--green); }
 /* Ghi chú đã gõ nhưng chưa lưu: viền hồng + nút lưu nổi bật để nhắc bấm lưu. */
 .note-input.dirty { border-color: var(--primary); background: rgba(232,76,142,.05); }
-.save-note.dirty { color: var(--primary); background: var(--primary-soft); }
+.save-note.dirty { color: var(--primary); background: var(--primary-soft); opacity: 1; }
+.save-note.saved { opacity: 1; }
 
 /* multi-select (bộ lọc chọn nhiều NV) */
 .ms { position: relative; }
@@ -694,6 +705,11 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 
 .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 13px; font-weight: 600; padding: 5px 8px; border-radius: 8px; white-space: nowrap; }
 .link-btn:hover { background: var(--bg); }
+/* "Xem nội dung" lặp 2 lần/dòng ở mọi hàng -> hạ xuống link trầm (navy nhạt), chỉ lên hồng
+   khi hover; để dành màu hồng primary cho hành động chính (nút Gửi tin). */
+.view-content { color: var(--text-soft); }
+.view-content:hover { color: var(--primary); background: var(--primary-soft); }
+.view-content.muted { color: var(--muted); font-weight: 500; }
 
 /* Nhãn kênh gửi (Lịch sử báo): chip mềm "Zalo" / "FB" trước tên tài khoản. */
 .acct-with-ic { display: inline-flex; align-items: center; gap: 8px; }
@@ -720,7 +736,7 @@ td.staff-col { white-space: nowrap; }
 .sender-acct .acct-sub { min-width: 0; max-width: 100%; }
 
 /* Cột gộp "Nội dung" = ND báo hàng + ND báo ship: 2 dòng có nhãn Hàng / Ship. */
-.content-pair { display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
+.content-pair { display: flex; flex-direction: column; align-items: stretch; gap: 1px; }
 .content-line { display: flex; align-items: center; gap: 6px; justify-content: flex-start; }
 .content-lbl {
   flex: none; min-width: 34px; text-align: left;
