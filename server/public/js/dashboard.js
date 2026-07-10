@@ -6,6 +6,7 @@
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
+  let currentSendStatus = ''; // lọc theo TRẠNG THÁI GỬI TIN (lastReport): '' = tất cả | success | pending | failed | none
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
@@ -188,6 +189,15 @@
     if (s === 'pending') return `<span class="pill pending">${App.icon('hourglass')} Đang gửi</span>`;
     if (s === 'success') return `<span class="pill success">${App.icon('check')} Đã gửi</span>`;
     return `<span class="pill failed">${App.icon('alert')} Lỗi</span>`;
+  }
+  // Gom trạng thái GỬI TIN của lượt báo đại diện về nhãn để LỌC (khớp sendStatusCell ở trên):
+  // none = chưa từng báo · pending = đang gửi · success = đã gửi · failed = lỗi.
+  function sendStatusOf(o) {
+    const s = o.lastReport && o.lastReport.status;
+    if (!s) return 'none';
+    if (s === 'pending') return 'pending';
+    if (s === 'success') return 'success';
+    return 'failed';
   }
 
   // Tài khoản Zalo/FB đã dùng để gửi, kèm chip kênh trước tên (tên dài -> ellipsis + tooltip).
@@ -547,9 +557,10 @@
   // (không còn 4 call /api/order-counts mỗi lần tải). Giữ hàm rỗng để các nơi gọi khỏi lỗi.
   function renderStatusTabs() { /* no-op */ }
 
-  // Bộ lọc nâng cao "Loại trừ/Ghi chú" (client-side) — tách riêng để dùng được cả khi
+  // Bộ lọc client-side (Trạng thái gửi tin + Loại trừ/Ghi chú) — tách riêng để dùng được cả khi
   // lọc cả tập (client-mode, trước khi phân trang) lẫn trong phạm vi 1 trang (server-mode).
   function applyExcludeNote(list) {
+    if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -1333,6 +1344,31 @@
     currentPage = 1;
     paintStatusFilter();
     reloadScope();
+  });
+
+  // Lọc theo TRẠNG THÁI GỬI TIN (toolbar, kế bên trạng thái đơn): '' = tất cả, hoặc
+  // success/pending/failed/none. Dữ liệu `lastReport` được server enrich theo TỪNG đơn (không lọc
+  // được ở Basso) -> lọc CLIENT-SIDE. Để lọc trên CẢ tập chứ không chỉ 20 đơn/trang, khi bật lọc
+  // ta kéo cả tập 1 lần rồi lọc/phân trang tại client (giống bật gom nhóm); bỏ lọc & không gom thì
+  // quay lại server-mode phân trang nhẹ (mặc định).
+  const fSendStatusEl = $('fSendStatus');
+  // Tô màu ô lọc theo giá trị đang chọn (data-v -> CSS): xanh lá/xanh dương/đỏ như pill từng dòng.
+  const paintSendStatusFilter = () => { if (fSendStatusEl) fSendStatusEl.dataset.v = fSendStatusEl.value || ''; };
+  paintSendStatusFilter();
+  if (fSendStatusEl) fSendStatusEl.addEventListener('change', (e) => {
+    currentSendStatus = e.target.value || '';
+    currentPage = 1;
+    paintSendStatusFilter();
+    if (currentSendStatus && !clientMode) {
+      loadAll({ keepPage: true }); // kéo cả tập rồi lọc client (tập quá lớn -> tự fallback server-mode)
+    } else if (!currentSendStatus && !currentGroupBy && clientMode) {
+      clientMode = false;
+      allOrders = [];
+      loadCounts();
+      load({ keepPage: true });
+    } else {
+      rerender(); // đã ở client-mode (đang gom / đã kéo tập) -> lọc lại + phân trang tức thì
+    }
   });
 
   // Tìm kiếm: client-mode lọc tức thì (debounce ngắn); server-mode debounce dài hơn rồi gọi API.
