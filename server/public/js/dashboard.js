@@ -230,9 +230,11 @@
   // Gom "ND báo hàng" + "ND báo ship" về 1 ô: 2 dòng có nhãn Hàng / Ship, mỗi dòng là nút
   // "Xem/Tải nội dung" như cũ (giữ nguyên data-id/data-kind để updateHangCellDom & handler khớp).
   function contentCombinedCell(o) {
+    // Nhãn dòng dùng icon hộp (hàng) / xe (ship) — CÙNG bộ icon với nút Gửi tin ngay cạnh,
+    // để cùng icon = cùng nghĩa xuyên suốt (chi tiết trong tooltip).
     return `<div class="content-pair">
-      <div class="content-line"><span class="content-lbl" title="Nội dung báo hàng">Hàng</span>${contentCell(o.noiDungBaoHang, o.id, 'hang')}</div>
-      <div class="content-line"><span class="content-lbl" title="Nội dung báo ship">Ship</span>${contentCell(o.noiDungBaoShip, o.id, 'ship')}</div>
+      <div class="content-line"><span class="content-lbl" title="Nội dung báo hàng" aria-label="Báo hàng">${App.icon('box')}</span>${contentCell(o.noiDungBaoHang, o.id, 'hang')}</div>
+      <div class="content-line"><span class="content-lbl" title="Nội dung báo ship" aria-label="Báo ship">${App.icon('truck')}</span>${contentCell(o.noiDungBaoShip, o.id, 'ship')}</div>
     </div>`;
   }
 
@@ -434,13 +436,13 @@
       <td class="cust">${customerNameCell(o)}</td>
       <td>${App.esc(o.phone)}</td>
       <td class="center content-col">${contentCombinedCell(o)}</td>
+      <td>${actionsCell}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
       <td>${sendStatusCell(o)}</td>
       <td><div class="note-cell">
         <input class="note-input${noteDirty ? ' dirty' : ''}" list="notePresets" data-id="${App.esc(o.id)}" value="${App.esc(noteVal)}" placeholder="Ghi chú..." />
         <button class="save-note${noteDirty ? ' dirty' : ''}" data-id="${App.esc(o.id)}" title="${noteDirty ? 'Ghi chú chưa lưu — bấm để lưu' : 'Lưu ghi chú'}">${App.icon('save')}</button>
       </div></td>
-      <td>${actionsCell}</td>
       <td class="center">${excludeCell}</td>
       <td class="staff-col">${App.esc(o.staff)}</td>
       <td class="sender-col">${senderAccountCell(o)}</td>
@@ -1569,10 +1571,10 @@
       <th>Khách hàng</th>
       <th>SĐT</th>
       <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
+      <th class="center" style="width:120px">Gửi tin</th>
       <th>Trạng thái</th>
       <th style="width:120px" title="Kết quả gửi tin của lượt báo gần nhất">Trạng thái gửi tin</th>
       <th>Ghi chú</th>
-      <th class="center" style="width:120px">Gửi tin</th>
       <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Loại trừ</th>
       <th>Nhân viên</th>
       <th style="width:160px" title="Người đã gửi lượt báo (Bot/nhân viên) & tài khoản Zalo/FB đã dùng">Người gửi / TK</th>`;
