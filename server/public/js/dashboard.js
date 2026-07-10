@@ -10,8 +10,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 15;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 14; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 13;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 12; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -207,6 +207,15 @@
     return `<span class="acct-with-ic" title="${App.esc(acct)}">${chanTag(o.lastReport.channel)}<span class="acct-name">${App.esc(acct)}</span></span>`;
   }
 
+  // Gom "Người gửi" + "Tài khoản" về 1 ô: người gửi ở trên, chip tài khoản Zalo/FB ở dòng dưới.
+  // Đơn chưa từng báo -> 1 ô trống "—" (không hiện 2 dấu "—" chồng nhau).
+  function senderAccountCell(o) {
+    if (!o.lastReport) return '<span class="muted">—</span>';
+    const acctRaw = String((o.lastReport && o.lastReport.account) || '').trim();
+    const acctLine = acctRaw ? `<div class="acct-sub">${accountCell(o)}</div>` : '';
+    return `<div class="sender-acct">${senderCell(o)}${acctLine}</div>`;
+  }
+
   function contentCell(text, id, kind) {
     if (text && String(text).trim()) {
       return `<button class="link-btn view-content" data-id="${App.esc(id)}" data-kind="${kind}">Xem nội dung</button>`;
@@ -216,6 +225,15 @@
     // mới cho tải riêng: Basso có thể đã soạn sẵn nhưng danh sách (đã cache) chưa kèm.
     if (kind === 'ship') return '<span class="muted">—</span>';
     return `<button class="link-btn muted view-content" data-id="${App.esc(id)}" data-kind="${kind}" title="Chưa có sẵn — bấm để lấy nội dung báo hàng của đơn từ Basso">Tải nội dung</button>`;
+  }
+
+  // Gom "ND báo hàng" + "ND báo ship" về 1 ô: 2 dòng có nhãn Hàng / Ship, mỗi dòng là nút
+  // "Xem/Tải nội dung" như cũ (giữ nguyên data-id/data-kind để updateHangCellDom & handler khớp).
+  function contentCombinedCell(o) {
+    return `<div class="content-pair">
+      <div class="content-line"><span class="content-lbl" title="Nội dung báo hàng">Hàng</span>${contentCell(o.noiDungBaoHang, o.id, 'hang')}</div>
+      <div class="content-line"><span class="content-lbl" title="Nội dung báo ship">Ship</span>${contentCell(o.noiDungBaoShip, o.id, 'ship')}</div>
+    </div>`;
   }
 
   // ---- Tự lấp "ND báo hàng" cho dòng đang trống (ngầm, sau khi render) ----
@@ -415,8 +433,7 @@
       <td>${App.esc(o.warehouseDate)}</td>
       <td class="cust">${customerNameCell(o)}</td>
       <td>${App.esc(o.phone)}</td>
-      <td class="center">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</td>
-      <td class="center">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</td>
+      <td class="center content-col">${contentCombinedCell(o)}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
       <td>${sendStatusCell(o)}</td>
       <td><div class="note-cell">
@@ -426,8 +443,7 @@
       <td>${actionsCell}</td>
       <td class="center">${excludeCell}</td>
       <td class="staff-col">${App.esc(o.staff)}</td>
-      <td class="sender-col">${senderCell(o)}</td>
-      <td class="acct-col">${accountCell(o)}</td>
+      <td class="sender-col">${senderAccountCell(o)}</td>
     </tr>`;
 
     const detail = `<tr class="detail-row${gc} ${open ? '' : 'hidden'}" data-detail="${App.esc(o.id)}">
@@ -1544,16 +1560,14 @@
       <th>Ngày nhập kho</th>
       <th>Khách hàng</th>
       <th>SĐT</th>
-      <th class="center">ND báo hàng</th>
-      <th class="center">ND báo ship</th>
+      <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
       <th>Trạng thái</th>
       <th style="width:120px" title="Kết quả gửi tin của lượt báo gần nhất">Trạng thái gửi tin</th>
       <th>Ghi chú</th>
       <th class="center" style="width:120px">Gửi tin</th>
       <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Loại trừ</th>
       <th>Nhân viên</th>
-      <th style="width:120px" title="Người đã gửi lượt báo (Bot hoặc nhân viên)">Người gửi</th>
-      <th style="width:150px" title="Tài khoản Zalo/FB đã dùng để gửi">Tài khoản</th>`;
+      <th style="width:160px" title="Người đã gửi lượt báo (Bot/nhân viên) & tài khoản Zalo/FB đã dùng">Người gửi / TK</th>`;
   }
   renderHeader();
 
