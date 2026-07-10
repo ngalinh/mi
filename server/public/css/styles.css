@@ -737,9 +737,11 @@ td.staff-col { white-space: nowrap; }
 .sender-acct { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
 .sender-acct .acct-sub { min-width: 0; max-width: 100%; }
 
-/* Cột gộp "Nội dung" = ND báo hàng + ND báo ship: 2 dòng có nhãn Hàng / Ship. */
-.content-pair { display: flex; flex-direction: column; align-items: stretch; gap: 1px; }
-.content-line { display: flex; align-items: center; gap: 6px; justify-content: flex-start; }
+/* Cột gộp "Nội dung" = ND báo hàng + ND báo ship: 2 dòng có nhãn hộp / xe.
+   Chiều cao mỗi dòng + khoảng cách khớp đúng nút Gửi tin (37px + gap 5px) để dòng
+   Hàng thẳng hàng với nút hộp, dòng Ship thẳng hàng với nút xe ở cột kế bên. */
+.content-pair { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+.content-line { display: flex; align-items: center; gap: 6px; justify-content: flex-start; min-height: 37px; }
 .content-lbl {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 20px; color: var(--muted);
