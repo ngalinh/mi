@@ -230,11 +230,12 @@
   // Gom "ND báo hàng" + "ND báo ship" về 1 ô: 2 dòng có nhãn Hàng / Ship, mỗi dòng là nút
   // "Xem/Tải nội dung" như cũ (giữ nguyên data-id/data-kind để updateHangCellDom & handler khớp).
   function contentCombinedCell(o) {
-    // Nhãn dòng dùng icon hộp (hàng) / xe (ship) — CÙNG bộ icon với nút Gửi tin ngay cạnh,
-    // để cùng icon = cùng nghĩa xuyên suốt (chi tiết trong tooltip).
+    // Bỏ icon nhãn hộp/xe: dòng trên (hàng) / dòng dưới (ship) đã căn thẳng hàng đúng với
+    // nút Gửi tin hộp/xe ngay cạnh nên nút gửi đã tự chỉ rõ hàng/ship — nhãn ở đây thừa.
+    // Giữ tooltip trên từng dòng để vẫn tra được khi cần.
     return `<div class="content-pair">
-      <div class="content-line"><span class="content-lbl" title="Nội dung báo hàng" aria-label="Báo hàng">${App.icon('box')}</span>${contentCell(o.noiDungBaoHang, o.id, 'hang')}</div>
-      <div class="content-line"><span class="content-lbl" title="Nội dung báo ship" aria-label="Báo ship">${App.icon('truck')}</span>${contentCell(o.noiDungBaoShip, o.id, 'ship')}</div>
+      <div class="content-line" title="Nội dung báo hàng">${contentCell(o.noiDungBaoHang, o.id, 'hang')}</div>
+      <div class="content-line" title="Nội dung báo ship">${contentCell(o.noiDungBaoShip, o.id, 'ship')}</div>
     </div>`;
   }
 

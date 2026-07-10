@@ -670,17 +670,17 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .action-cell { display: flex; justify-content: center; align-items: center; }
 /* Xếp DỌC 2 nút gửi (hộp trên / xe dưới) để thẳng hàng với 2 dòng "Xem nội dung"
    (Hàng / Ship) ở cột Nội dung ngay bên trái. */
-.action-btns { display: flex; flex-direction: column; gap: 5px; flex-wrap: nowrap; align-items: center; }
+.action-btns { display: flex; flex-direction: column; gap: 4px; flex-wrap: nowrap; align-items: center; }
 .action-cell .btn.small { padding: 6px 13px; font-size: 12px; justify-content: center; white-space: nowrap; flex: 0 0 auto; }
-.action-cell .btn.icon-only { padding: 8px; min-width: 0; width: 37px; height: 37px; }
-.action-cell .btn.icon-only .icon { width: 19px; height: 19px; }
+.action-cell .btn.icon-only { padding: 6px; min-width: 0; width: 30px; height: 30px; }
+.action-cell .btn.icon-only .icon { width: 16px; height: 16px; }
 /* Khi đang gửi: spinner bằng đúng kích thước icon để nút giữ nguyên cỡ, không nhảy layout. */
-.action-cell .btn.icon-only .spinner { width: 19px; height: 19px; vertical-align: 0; }
+.action-cell .btn.icon-only .spinner { width: 16px; height: 16px; vertical-align: 0; }
 /* Lúc đang gửi: giữ nguyên khối vuông của nút, chỉ xoay spinner (không phình thành pill).
    Ghi đè kiểu :disabled xám để nút vẫn nền tối + spinner trắng, trông "đang chạy" rõ ràng. */
 .action-cell .btn.icon-only.is-loading,
 .action-cell .btn.icon-only.is-loading:disabled {
-  width: 37px; opacity: 1; cursor: progress;
+  width: 30px; opacity: 1; cursor: progress;
   background: var(--ink); background-image: none; color: #fff; border-color: transparent;
 }
 /* Disable = xám rõ ràng (không phải tông nhấn) để phân biệt với nút bật được. */
@@ -737,16 +737,11 @@ td.staff-col { white-space: nowrap; }
 .sender-acct { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
 .sender-acct .acct-sub { min-width: 0; max-width: 100%; }
 
-/* Cột gộp "Nội dung" = ND báo hàng + ND báo ship: 2 dòng có nhãn hộp / xe.
-   Chiều cao mỗi dòng + khoảng cách khớp đúng nút Gửi tin (37px + gap 5px) để dòng
+/* Cột gộp "Nội dung" = ND báo hàng + ND báo ship: 2 dòng (hàng trên / ship dưới).
+   Chiều cao mỗi dòng + khoảng cách khớp đúng nút Gửi tin (30px + gap 4px) để dòng
    Hàng thẳng hàng với nút hộp, dòng Ship thẳng hàng với nút xe ở cột kế bên. */
-.content-pair { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
-.content-line { display: flex; align-items: center; gap: 6px; justify-content: flex-start; min-height: 37px; }
-.content-lbl {
-  flex: none; display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; color: var(--muted);
-}
-.content-lbl .icon { width: 15px; height: 15px; }
+.content-pair { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+.content-line { display: flex; align-items: center; justify-content: flex-start; min-height: 30px; }
 .content-line .link-btn { padding: 3px 6px; }
 
 /* ============================================================
