@@ -547,7 +547,7 @@ a { color: var(--primary); text-decoration: none; }
   background: #fff;
 }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 thead th { padding-top: 10px; padding-bottom: 10px; }
 thead th {
   font-size: 11px; color: var(--text-soft); text-transform: uppercase;
@@ -667,8 +667,10 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   border-radius: var(--radius-sm); padding: 13px 15px; line-height: 1.55;
 }
 .detail-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.action-cell { display: flex; }
-.action-btns { display: flex; gap: 7px; flex-wrap: nowrap; }
+.action-cell { display: flex; justify-content: center; align-items: center; }
+/* Xếp DỌC 2 nút gửi (hộp trên / xe dưới) để thẳng hàng với 2 dòng "Xem nội dung"
+   (Hàng / Ship) ở cột Nội dung ngay bên trái. */
+.action-btns { display: flex; flex-direction: column; gap: 5px; flex-wrap: nowrap; align-items: center; }
 .action-cell .btn.small { padding: 6px 13px; font-size: 12px; justify-content: center; white-space: nowrap; flex: 0 0 auto; }
 .action-cell .btn.icon-only { padding: 8px; min-width: 0; width: 37px; height: 37px; }
 .action-cell .btn.icon-only .icon { width: 19px; height: 19px; }
