@@ -547,7 +547,7 @@ a { color: var(--primary); text-decoration: none; }
   background: #fff;
 }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 thead th { padding-top: 10px; padding-bottom: 10px; }
 thead th {
   font-size: 11px; color: var(--text-soft); text-transform: uppercase;
