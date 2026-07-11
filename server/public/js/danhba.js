@@ -19,7 +19,7 @@
     cancelImport: $('cancelImport'), doImport: $('doImport'),
     contactRows: $('contactRows'), contactCount: $('contactCount'),
     searchBox: $('searchBox'), addBtn: $('addContactBtn'),
-    fbFilter: $('fbFilter'),
+    fbFilter: $('fbFilter'), rtFilter: $('rtFilter'),
     nvToggle: $('nvToggle'), nvLabel: $('nvLabel'), nvPanel: $('nvPanel'),
   };
 
@@ -241,7 +241,7 @@
   function rtCell(c) {
     if (c.fb_report) return '<span class="muted" title="Báo qua Facebook không dùng tab cá nhân/nhóm">—</span>';
     const v = c.report_target === 'personal' ? 'personal' : c.report_target === 'group' ? 'group' : '';
-    return `<select class="note-input rt-sel" data-action="rtset" title="Kiểu báo riêng cho khách này (ghi đè NV)" style="max-width:130px;padding:5px 8px;font-size:13px;">
+    return `<select class="rt-sel" data-action="rtset" data-v="${v}" title="Kiểu báo riêng cho khách này (ghi đè NV)">
       <option value=""${v === '' ? ' selected' : ''}>Theo NV</option>
       <option value="personal"${v === 'personal' ? ' selected' : ''}>Cá nhân</option>
       <option value="group"${v === 'group' ? ' selected' : ''}>Nhóm</option>
@@ -251,9 +251,15 @@
   function renderContacts() {
     const q = (els.searchBox.value || '').trim().toLowerCase();
     const fbMode = els.fbFilter.value || 'all';
+    const rtMode = els.rtFilter.value || 'all';
     const list = contacts.filter((c) => {
       if (fbMode === 'fb' && !c.fb_report) return false;
       if (fbMode === 'nofb' && c.fb_report) return false;
+      // Lọc theo kiểu báo Zalo: 'default' = theo NV (không đặt ngoại lệ), else khớp override.
+      if (rtMode !== 'all') {
+        const rt = c.report_target === 'personal' ? 'personal' : c.report_target === 'group' ? 'group' : 'default';
+        if (rt !== rtMode) return false;
+      }
       if (nvSelected.size && !nvSelected.has(String(c.staff_id || ''))) return false;
       if (q) {
         return (c.zalo_name || '').toLowerCase().includes(q)
@@ -270,7 +276,7 @@
     els.contactRows.innerHTML = list.map((c) => `
       <tr data-phone="${App.esc(c.phone)}">
         <td>${App.esc(c.raw_phone || c.phone)}</td>
-        <td class="cust">${App.esc(c.zalo_name || '—')}</td>
+        <td class="cust">${c.zalo_name ? `<span class="cust-text" title="${App.esc(c.zalo_name)}">${App.esc(c.zalo_name)}</span>` : '—'}</td>
         <td class="center">${fbCell(c)}</td>
         <td class="center">${rtCell(c)}</td>
         <td>${c.staff_id ? App.esc(staffName(c.staff_id)) : '<span class="muted">—</span>'}</td>
@@ -286,6 +292,7 @@
 
   els.searchBox.addEventListener('input', renderContacts);
   els.fbFilter.addEventListener('change', renderContacts);
+  els.rtFilter.addEventListener('change', renderContacts);
 
   // Mở/đóng panel chọn nhiều NV
   const nvBox = $('nvFilter');

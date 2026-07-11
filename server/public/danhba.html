@@ -18,14 +18,44 @@
     .contact-table thead th { white-space: nowrap; }
     /* Cột Cập nhật: ngày giờ trên 1 dòng cho gọn. */
     .contact-table td:nth-child(8) { white-space: nowrap; }
+    /* Tên Zalo/FB dài: cắt 1 dòng + "…" (tooltip xem đủ) để bảng không tràn ngang. */
+    .contact-table td.cust .cust-text {
+      display: inline-block; max-width: 210px; vertical-align: middle;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     /* Sọc xen kẽ rất nhạt để mắt bám dòng khi danh bạ dài; hover đè lên. */
     .contact-table tbody tr:nth-child(even) { background: var(--zebra); }
     .contact-table tbody tr:hover { background: var(--head-tint); }
     /* Ghi chú dài: cắt 1 dòng + "…", xem đầy đủ bằng tooltip (title) khi rê chuột.
        (Đặt tên riêng zalo-note để không đụng class .note-cell có sẵn trong styles.css.) */
     .contact-table td.zalo-note .note-text {
-      display: inline-block; max-width: 150px; vertical-align: middle;
+      display: inline-block; max-width: 140px; vertical-align: middle;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    /* Ô chọn "Kiểu báo Zalo" trên hàng: tạo dáng CHIP màu cho đồng bộ với pill FB.
+       Theo NV = trung tính (mặc định), Cá nhân = xanh dương, Nhóm = xanh lá. */
+    .contact-table .rt-sel {
+      -webkit-appearance: none; appearance: none; cursor: pointer;
+      font-size: 12px; font-weight: 700; line-height: 1;
+      padding: 5px 26px 5px 12px; border-radius: var(--radius-pill);
+      border: 1px solid transparent;
+      color: var(--muted);
+      background-color: var(--zebra);
+      border-color: color-mix(in srgb, var(--muted) 18%, transparent);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a826a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 9px center; background-size: 11px;
+      transition: filter .15s var(--ease);
+    }
+    .contact-table .rt-sel:hover { filter: brightness(.97); }
+    .contact-table .rt-sel[data-v="personal"] {
+      color: var(--blue); background-color: var(--blue-soft);
+      border-color: color-mix(in srgb, var(--blue) 24%, transparent);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233b82f6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    }
+    .contact-table .rt-sel[data-v="group"] {
+      color: var(--green); background-color: var(--green-soft);
+      border-color: color-mix(in srgb, var(--green) 24%, transparent);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231e9e5a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     }
   </style>
 </head>
@@ -132,6 +162,12 @@
               <option value="fb">Báo qua FB</option>
               <option value="nofb">Báo qua Zalo</option>
             </select>
+            <select class="note-input" id="rtFilter" style="max-width:170px;">
+              <option value="all">Báo Zalo: tất cả</option>
+              <option value="default">Zalo: Theo NV</option>
+              <option value="personal">Zalo: Cá nhân</option>
+              <option value="group">Zalo: Nhóm</option>
+            </select>
             <div class="ms" id="nvFilter" style="max-width:220px;">
               <button type="button" class="note-input ms-toggle" id="nvToggle" aria-haspopup="true" aria-expanded="false">
                 <span class="ms-label" id="nvLabel">Tất cả nhân viên</span>
@@ -146,10 +182,10 @@
                 <tr>
                   <th>SĐT</th>
                   <th>Tên Zalo/FB</th>
-                  <th class="center" style="width:180px">FB</th>
-                  <th class="center" style="width:130px">Zalo</th>
-                  <th style="width:130px">NV phụ trách</th>
-                  <th style="width:150px">Ghi chú</th>
+                  <th class="center" style="width:150px">FB</th>
+                  <th class="center" style="width:120px">Zalo</th>
+                  <th style="width:120px">NV phụ trách</th>
+                  <th style="width:140px">Ghi chú</th>
                   <th class="center" style="width:96px">Nguồn</th>
                   <th style="width:96px">Cập nhật</th>
                   <th style="width:96px"></th>
