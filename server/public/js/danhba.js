@@ -236,6 +236,18 @@
     return `<div class="fb-cell">${pill}${sub}</div>`;
   }
 
+  // 1 ô "Kiểu báo Zalo": select ngoại lệ cho từng khách — ghi đè kiểu báo (cá nhân/nhóm) của NV.
+  // Rỗng = theo NV. Khách báo qua FB không có tab cá nhân/nhóm nên hiện "—".
+  function rtCell(c) {
+    if (c.fb_report) return '<span class="muted" title="Báo qua Facebook không dùng tab cá nhân/nhóm">—</span>';
+    const v = c.report_target === 'personal' ? 'personal' : c.report_target === 'group' ? 'group' : '';
+    return `<select class="note-input rt-sel" data-action="rtset" title="Kiểu báo riêng cho khách này (ghi đè NV)" style="max-width:130px;padding:5px 8px;font-size:13px;">
+      <option value=""${v === '' ? ' selected' : ''}>Theo NV</option>
+      <option value="personal"${v === 'personal' ? ' selected' : ''}>Cá nhân</option>
+      <option value="group"${v === 'group' ? ' selected' : ''}>Nhóm</option>
+    </select>`;
+  }
+
   function renderContacts() {
     const q = (els.searchBox.value || '').trim().toLowerCase();
     const fbMode = els.fbFilter.value || 'all';
@@ -252,7 +264,7 @@
     });
     els.contactCount.textContent = contacts.length;
     if (!list.length) {
-      els.contactRows.innerHTML = `<tr><td colspan="8" class="muted" style="padding:16px;">${contacts.length ? 'Không có liên hệ khớp bộ lọc.' : 'Chưa có liên hệ nào — nhập từ file hoặc thêm thủ công.'}</td></tr>`;
+      els.contactRows.innerHTML = `<tr><td colspan="9" class="muted" style="padding:16px;">${contacts.length ? 'Không có liên hệ khớp bộ lọc.' : 'Chưa có liên hệ nào — nhập từ file hoặc thêm thủ công.'}</td></tr>`;
       return;
     }
     els.contactRows.innerHTML = list.map((c) => `
@@ -260,6 +272,7 @@
         <td>${App.esc(c.raw_phone || c.phone)}</td>
         <td class="cust">${App.esc(c.zalo_name || '—')}</td>
         <td class="center">${fbCell(c)}</td>
+        <td class="center">${rtCell(c)}</td>
         <td>${c.staff_id ? App.esc(staffName(c.staff_id)) : '<span class="muted">—</span>'}</td>
         <td>${App.esc(c.note || '')}</td>
         <td class="center"><span class="pill chua">${App.esc(SOURCE_LABEL[c.source] || c.source || '—')}</span></td>
@@ -298,6 +311,24 @@
   });
   document.addEventListener('click', (e) => {
     if (!els.nvPanel.hidden && !nvBox.contains(e.target)) toggleNv(false);
+  });
+
+  // Đổi "Kiểu báo Zalo" ngay trên hàng (select ngoại lệ) -> lưu report_target cho riêng khách này.
+  els.contactRows.addEventListener('change', async (e) => {
+    const sel = e.target.closest('[data-action="rtset"]');
+    if (!sel) return;
+    const tr = e.target.closest('tr[data-phone]');
+    const c = tr && contacts.find((x) => x.phone === tr.dataset.phone);
+    if (!c) return;
+    const val = sel.value === 'personal' ? 'personal' : sel.value === 'group' ? 'group' : '';
+    try {
+      await App.api('/api/zalo-contacts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: c.raw_phone || c.phone, report_target: val }),
+      });
+      App.toast(val === 'personal' ? '✅ Khách này: báo CÁ NHÂN' : val === 'group' ? '✅ Khách này: báo NHÓM' : 'Đã bỏ ngoại lệ — theo kiểu báo của NV');
+      await loadContacts();
+    } catch (err) { App.toast('Lỗi: ' + err.message); }
   });
 
   els.contactRows.addEventListener('click', async (e) => {
@@ -345,6 +376,7 @@
   const modal = $('contactModal');
   const cmTitle = $('cmTitle'), cmPhone = $('cmPhone'), cmName = $('cmName'), cmNote = $('cmNote');
   const cmFbReport = $('cmFbReport'), cmFbLink = $('cmFbLink'), cmFbLinkField = $('cmFbLinkField'), cmStaff = $('cmStaff');
+  const cmReportTarget = $('cmReportTarget');
   let editingPhone = null; // SĐT (đã chuẩn hoá) đang sửa; null = thêm mới
 
   // Ô Link luôn hiển thị để dễ thấy; chỉ khoá mờ + đổi gợi ý khi đang Tắt (báo qua Zalo).
@@ -367,6 +399,7 @@
     cmFbReport.value = c && c.fb_report ? '1' : '0';
     cmFbLink.value = c ? (c.fb_link || '') : '';
     cmStaff.value = c && c.staff_id != null ? String(c.staff_id) : '';
+    cmReportTarget.value = c && (c.report_target === 'personal' || c.report_target === 'group') ? c.report_target : '';
     syncFbLinkField();
     modal.classList.add('show');
     setTimeout(() => (c ? cmName : cmPhone).focus(), 30);
@@ -397,6 +430,7 @@
         body: JSON.stringify({
           phone, zalo_name: name, note: cmNote.value.trim(),
           fb_report: fbReport, fb_link: fbLink, staff_id: cmStaff.value || '',
+          report_target: cmReportTarget.value || '',
         }),
       });
       App.toast('Đã lưu');

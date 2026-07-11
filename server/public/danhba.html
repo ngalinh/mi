@@ -132,6 +132,7 @@
                   <th>SĐT</th>
                   <th>Tên Zalo/FB</th>
                   <th class="center" style="width:210px">Báo qua FB</th>
+                  <th class="center" style="width:150px">Kiểu báo Zalo</th>
                   <th style="width:140px">NV phụ trách</th>
                   <th>Ghi chú</th>
                   <th class="center">Nguồn</th>
@@ -140,7 +141,7 @@
                 </tr>
               </thead>
               <tbody id="contactRows">
-                <tr><td colspan="8" class="muted" style="padding:16px;">Đang tải…</td></tr>
+                <tr><td colspan="9" class="muted" style="padding:16px;">Đang tải…</td></tr>
               </tbody>
             </table>
           </div>
@@ -163,6 +164,14 @@
         </div>
         <div class="field"><label>NV phụ trách (tuỳ chọn)</label>
           <select id="cmStaff"><option value="">— Không gán —</option></select>
+        </div>
+        <div class="field full"><label>Kiểu báo Zalo (ngoại lệ)</label>
+          <select id="cmReportTarget">
+            <option value="">Theo NV phụ trách (mặc định)</option>
+            <option value="personal">Báo cá nhân — nhắn tin cá nhân</option>
+            <option value="group">Báo nhóm — gửi vào nhóm Zalo</option>
+          </select>
+          <div class="muted" style="font-size:12px;margin-top:4px;">Chỉ dùng cho trường hợp ngoại lệ: NV báo cá nhân nhưng khách này lại báo theo nhóm (hoặc ngược lại). Không dùng khi báo qua Facebook.</div>
         </div>
         <div class="field full" id="cmFbLinkField"><label>Link Facebook / Messenger</label><input id="cmFbLink" type="text" placeholder="facebook.com/… , m.me/… hoặc messages/t/…" /></div>
       </div>

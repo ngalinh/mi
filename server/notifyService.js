@@ -3,7 +3,7 @@ const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
-const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getFbLink, getZaloName } = require('./db');
+const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getFbLink, getZaloName, getContactReportTarget } = require('./db');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
@@ -93,6 +93,13 @@ async function notifyOne(order, opts = {}) {
   // MÔ HÌNH B: mỗi tài khoản Zalo 1 profile riêng. Resolver quyết định profile + saleworkName
   // theo NV phụ trách đơn (accountsStore trên runner), fallback ZALO_ACCOUNT_MAP / mặc định.
   const resolved = await resolveForOrder(order, opts);
+  // NGOẠI LỆ THEO KHÁCH: nếu khách này có "Kiểu báo riêng" trong danh bạ ('personal'/'group'), nó
+  // GHI ĐÈ kiểu báo của NV phụ trách (vd NV báo cá nhân nhưng riêng khách này báo vào group Zalo).
+  // Chỉ áp cho kênh Zalo — kênh Facebook không có tab cá nhân/nhóm.
+  if (resolved.channel !== 'facebook') {
+    const override = getContactReportTarget(order.phone);
+    if (override) resolved.notifyTarget = override;
+  }
   // LOG CHẨN ĐOÁN: server đã chọn account nào + kiểu báo gì cho đơn này. notifyTarget=group cho NV
   // đáng lẽ cá nhân -> đơn KHÔNG khớp account store (source!='store'), hoặc server chạy code cũ.
   console.log(`[notify] ${order.customerName || order.phone || '?'} | staff=${order.staff || '-'} userId=${order.userId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
