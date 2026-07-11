@@ -555,8 +555,12 @@ thead th {
   background: var(--head-tint); position: sticky; top: 0;
 }
 /* Bảng danh sách hàng về: tiêu đề cột gọn 1 dòng (nhãn đã rút ngắn) — tránh gãy 2-3 dòng
-   làm header cao/rối; nghĩa đầy đủ đưa vào tooltip. */
-.table-wrap thead th { white-space: nowrap; }
+   làm header cao/rối; nghĩa đầy đủ đưa vào tooltip. Chữ + chiều cao dòng tiêu đề nhỉnh hơn
+   để không bị "mỏng" lọt thỏm so với các dòng nội dung cao. */
+.table-wrap thead th {
+  white-space: nowrap; font-size: 12.5px;
+  padding-top: 15px; padding-bottom: 15px;
+}
 tbody tr { transition: background .12s var(--ease); }
 /* Kẻ sọc xen kẽ rất nhạt để mắt bám dòng khi liếc ngang qua nhiều cột.
    Đặt TRƯỚC hover & loại trừ để 2 trạng thái đó luôn đè lên được. */
