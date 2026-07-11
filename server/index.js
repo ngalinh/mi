@@ -404,8 +404,8 @@ app.get('/api/orders', async (req, res) => {
 // Trả truncated=true khi tập quá lớn -> client tự fallback về /api/orders phân trang server.
 app.get('/api/orders/all', async (req, res) => {
   try {
-    const { from, to } = req.query;
-    const data = await getAllOrders({ from, to });
+    const { from, to, days } = req.query;
+    const data = await getAllOrders({ from, to, days });
     data.orders = enrichOrders(data.orders);
     res.json({ ok: true, ...data });
   } catch (err) {

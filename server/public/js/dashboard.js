@@ -1106,8 +1106,7 @@
     if (!auto && !allOrders.length && !clientMode) load({ fastPaint: true }); // vẽ nhanh, không block
     const prevTodo = new Set(allOrders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
     const p = new URLSearchParams();
-    if (F.from) p.set('from', F.from);
-    if (F.to) p.set('to', F.to);
+    applyScope(p); // from/to tường minh HOẶC ?days=scopeDays — giữ đúng phạm vi thời gian cả ở client-mode
     try {
       const res = await App.api('/api/orders/all?' + p.toString());
       if (res.truncated) {
@@ -1205,8 +1204,7 @@
   // Warm server-side SWR cache cho từng tab nhân viên (chỉ dùng ở fallback server-mode).
   async function prefetchStaffTabs() {
     const base = new URLSearchParams();
-    if (F.from) base.set('from', F.from);
-    if (F.to) base.set('to', F.to);
+    applyScope(base); // warm đúng cache theo phạm vi ngày đang xem (from/to hoặc ?days)
     await new Promise((r) => setTimeout(r, 3000));
     for (const u of tabUsers) {
       if (clientMode) break; // đã chuyển sang client-mode -> không cần warm nữa
@@ -1267,6 +1265,28 @@
   // Vẽ lại không gọi server (đổi cách hiển thị/loại trừ/ghi chú): client-mode lọc lại + phân
   // trang cả tập (giữ gom đúng qua mọi trang); server-mode chỉ render lại trang hiện tại.
   function rerender() { if (clientMode) applyView({ keepPage: true }); else render(); }
+
+  // Có bất kỳ bộ lọc CLIENT-SIDE nào đang bật không? (gom nhóm, trạng thái gửi tin, hoặc
+  // Loại trừ/Ghi chú trong popover). Các lọc này không làm được ở Basso -> phải lọc tại client.
+  function hasClientFilter() {
+    return !!currentGroupBy || !!currentSendStatus || F.exclude !== 'all' || F.note !== 'all';
+  }
+  // Đồng bộ chế độ theo bộ lọc client-side: nếu đang bật mà chưa kéo cả tập -> kéo cả tập rồi
+  // lọc/phân trang tại client (để lọc trên TOÀN tập chứ không chỉ 20 đơn của trang đang xem);
+  // nếu đã tắt hết mà đang ở client-mode -> quay lại server-mode phân trang nhẹ. Còn lại: chỉ
+  // lọc lại + phân trang tức thì trên tập đã kéo.
+  function syncClientFilterMode() {
+    if (hasClientFilter() && !clientMode) {
+      loadAll({ keepPage: true }); // kéo cả tập rồi lọc client (tập quá lớn -> tự fallback server-mode)
+    } else if (!hasClientFilter() && clientMode) {
+      clientMode = false;
+      allOrders = [];
+      loadCounts();
+      load({ keepPage: true });
+    } else {
+      rerender(); // đã ở client-mode (đang gom / đã kéo tập) -> lọc lại + phân trang tức thì
+    }
+  }
   window.__miReload = () => reloadScope();
 
   function autoSync() {
@@ -1406,16 +1426,9 @@
     currentSendStatus = e.target.value || '';
     currentPage = 1;
     paintSendStatusFilter();
-    if (currentSendStatus && !clientMode) {
-      loadAll({ keepPage: true }); // kéo cả tập rồi lọc client (tập quá lớn -> tự fallback server-mode)
-    } else if (!currentSendStatus && !currentGroupBy && clientMode) {
-      clientMode = false;
-      allOrders = [];
-      loadCounts();
-      load({ keepPage: true });
-    } else {
-      rerender(); // đã ở client-mode (đang gom / đã kéo tập) -> lọc lại + phân trang tức thì
-    }
+    // Lọc trên TOÀN tập: bật -> kéo cả tập (client-mode); tắt & không còn lọc client-side nào ->
+    // quay lại server-mode. Dùng chung helper để không "rơi" nhầm mode khi Loại trừ/Ghi chú còn bật.
+    syncClientFilterMode();
   });
 
   // Tìm kiếm: client-mode lọc tức thì (debounce ngắn); server-mode debounce dài hơn rồi gọi API.
@@ -1475,7 +1488,10 @@
     F.note = filterPop.querySelector('.fp-seg[data-key=note] .active').dataset.v;
     updateFilterBadge();
     filterPop.hidden = true;
-    rerender(); // loại trừ/ghi chú là lọc client-side -> chỉ vẽ lại (giữ trang, không gọi server)
+    currentPage = 1; // đổi bộ lọc -> tập kết quả đổi, về trang 1
+    // Loại trừ/Ghi chú là lọc CLIENT-SIDE: phải lọc trên TOÀN tập (không chỉ 20 đơn/trang) thì
+    // pager + số trang mới đúng -> kéo cả tập rồi lọc client (giống lọc "Trạng thái gửi tin").
+    syncClientFilterMode();
   });
   $('fClear').addEventListener('click', () => {
     // Popover giờ chỉ còn Loại trừ + Ghi chú (lọc client-side). "Xoá lọc" đưa 2 cái về mặc định.
@@ -1485,7 +1501,8 @@
       seg.querySelectorAll('button').forEach((x, i) => x.classList.toggle('active', i === 0));
     });
     updateFilterBadge();
-    rerender();
+    currentPage = 1;
+    syncClientFilterMode(); // tắt hết lọc client-side -> quay lại server-mode phân trang nhẹ
   });
 
   // Delegation cho bảng

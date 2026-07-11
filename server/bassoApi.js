@@ -414,7 +414,9 @@ async function mapLimit(items, limit, fn) {
  * @returns {Promise<{source, orders, tabUsers, total, truncated}>}
  */
 async function getAllOrders(filters = {}) {
-  const { from, to } = filters;
+  // `days` (cửa sổ N ngày gần đây) -> from/to giống getOrders, để client-mode giữ đúng phạm vi
+  // thời gian. Không có days & không from/to -> all-time như cũ (các luồng nền không bị ảnh hưởng).
+  const { from, to } = resolveDateWindow(filters);
 
   if (config.basso.useMock) {
     const rows = loadMock();
