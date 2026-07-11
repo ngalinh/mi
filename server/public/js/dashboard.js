@@ -1585,15 +1585,15 @@
     headRow.innerHTML = `
       <th style="width:34px"></th>
       <th class="center" style="width:50px">STT</th>
-      <th>Ngày nhập kho</th>
+      <th title="Ngày nhập kho">Ngày về</th>
       <th>Khách hàng</th>
       <th>SĐT</th>
       <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
-      <th class="center" style="width:120px">Gửi tin</th>
+      <th class="center" style="width:120px" title="Gửi báo hàng / báo ship qua Zalo">Gửi</th>
       <th>Trạng thái</th>
-      <th style="width:120px" title="Kết quả gửi tin của lượt báo gần nhất">Trạng thái gửi tin</th>
+      <th style="width:120px" title="Kết quả gửi tin của lượt báo gần nhất">Kết quả gửi</th>
       <th>Ghi chú</th>
-      <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Loại trừ</th>
+      <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Delay</th>
       <th>Nhân viên</th>
       <th style="width:160px" title="Người đã gửi lượt báo (Bot/nhân viên) & tài khoản Zalo/FB đã dùng">Người gửi / TK</th>`;
   }
