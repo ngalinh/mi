@@ -205,14 +205,11 @@
   <div class="modal-bg" id="contactModal">
     <div class="modal" style="width:460px;">
       <h3 id="cmTitle">Thêm liên hệ</h3>
-      <p class="muted">SĐT là khoá khớp khách. Tên Zalo/FB là tên hội thoại hiển thị trên Zalo để tìm đúng người. Bật <strong>Báo qua Facebook</strong> nếu khách này cần gửi qua Messenger thay vì Zalo (phải có link để bot mở đúng hội thoại).</p>
+      <p class="muted">SĐT là khoá khớp khách. Tên Zalo/FB là tên hội thoại hiển thị trên Zalo để tìm đúng người. Nhập <strong>Link Facebook/Messenger</strong> nếu khách này báo qua Messenger thay vì Zalo — có link là tự báo qua FB, để trống là báo qua Zalo.</p>
       <div class="form-grid">
         <div class="field full"><label>SĐT</label><input id="cmPhone" type="text" placeholder="vd: 0985 093 767" /></div>
         <div class="field full"><label>Tên Zalo/FB</label><input id="cmName" type="text" placeholder="Đúng tên hội thoại trên Zalo" /></div>
-        <div class="field"><label>Báo FB</label>
-          <select id="cmFbReport"><option value="0" selected>Tắt</option><option value="1">Bật</option></select>
-        </div>
-        <div class="field"><label>NV phụ trách</label>
+        <div class="field full"><label>NV phụ trách</label>
           <select id="cmStaff"><option value="">— Không gán —</option></select>
         </div>
         <div class="field full"><label>Báo Zalo</label>
@@ -223,7 +220,7 @@
           </select>
           <div class="muted" style="font-size:12px;margin-top:4px;">Chỉ dùng cho trường hợp ngoại lệ: NV báo cá nhân nhưng khách này lại báo theo nhóm (hoặc ngược lại). Không dùng khi báo qua Facebook.</div>
         </div>
-        <div class="field full" id="cmFbLinkField"><label>Link FB/Messenger</label><input id="cmFbLink" type="text" placeholder="facebook.com/… , m.me/… hoặc messages/t/…" /></div>
+        <div class="field full" id="cmFbLinkField"><label>Link FB/Messenger</label><input id="cmFbLink" type="text" placeholder="facebook.com/… , m.me/… hoặc messages/t/… (để trống = báo Zalo)" /></div>
         <div class="field full"><label>Ghi chú</label><input id="cmNote" type="text" placeholder="vd: FB, nhóm chung…" /></div>
       </div>
       <div class="row">

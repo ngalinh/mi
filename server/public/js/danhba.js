@@ -222,24 +222,18 @@
   // ================= DANH BẠ HIỆN CÓ =================
   const SOURCE_LABEL = { import: 'File', manual: 'Nhập tay', basso: 'Basso', learned: 'Tự học' };
 
-  // 1 ô "Báo qua FB": pill bật/tắt (bấm để đổi) + link/cảnh báo NẰM CẠNH (cùng hàng) khi đang bật.
+  // 1 ô "FB": KHÔNG còn nút bật/tắt. Có LINK Facebook = báo qua FB -> hiện "Xem link"; không có
+  // link = báo qua Zalo -> hiện "—". (Muốn báo FB thì thêm link trong nút Sửa.)
   function fbCell(c) {
-    const on = !!c.fb_report;
-    const pill = on
-      ? '<span class="pill da fb-toggle" data-action="fbtoggle" title="Đang báo qua Facebook — bấm để tắt">Bật</span>'
-      : '<span class="pill chua fb-toggle" data-action="fbtoggle" title="Đang báo qua Zalo — bấm để bật FB">Tắt</span>';
-    if (!on) return `<div class="fb-cell">${pill}</div>`;
     const link = String(c.fb_link || '').trim();
-    const sub = link
-      ? `<a class="fb-link" href="${App.esc(link)}" target="_blank" rel="noopener noreferrer" title="${App.esc(link)}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Xem link</a>`
-      : '<span class="fb-warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>chưa có link</span>';
-    return `<div class="fb-cell">${pill}${sub}</div>`;
+    if (!link) return '<span class="muted" title="Chưa có link Facebook — khách này báo qua Zalo">—</span>';
+    return `<div class="fb-cell"><a class="fb-link" href="${App.esc(link)}" target="_blank" rel="noopener noreferrer" title="${App.esc(link)}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Xem link</a></div>`;
   }
 
   // 1 ô "Kiểu báo Zalo": select ngoại lệ cho từng khách — ghi đè kiểu báo (cá nhân/nhóm) của NV.
-  // Rỗng = theo NV. Khách báo qua FB không có tab cá nhân/nhóm nên hiện "—".
+  // Rỗng = theo NV. Khách báo qua FB (có link) không có tab cá nhân/nhóm nên hiện "—".
   function rtCell(c) {
-    if (c.fb_report) return '<span class="muted" title="Báo qua Facebook không dùng tab cá nhân/nhóm">—</span>';
+    if (String(c.fb_link || '').trim()) return '<span class="muted" title="Báo qua Facebook không dùng tab cá nhân/nhóm">—</span>';
     const v = c.report_target === 'personal' ? 'personal' : c.report_target === 'group' ? 'group' : '';
     return `<select class="rt-sel" data-action="rtset" data-v="${v}" title="Kiểu báo riêng cho khách này (ghi đè NV)">
       <option value=""${v === '' ? ' selected' : ''}>Theo NV</option>
@@ -253,8 +247,10 @@
     const fbMode = els.fbFilter.value || 'all';
     const rtMode = els.rtFilter.value || 'all';
     const list = contacts.filter((c) => {
-      if (fbMode === 'fb' && !c.fb_report) return false;
-      if (fbMode === 'nofb' && c.fb_report) return false;
+      // Báo qua FB = có link Facebook (không còn cờ bật/tắt riêng).
+      const hasFb = !!String(c.fb_link || '').trim();
+      if (fbMode === 'fb' && !hasFb) return false;
+      if (fbMode === 'nofb' && hasFb) return false;
       // Lọc theo kiểu báo Zalo: 'default' = theo NV (không đặt ngoại lệ), else khớp override.
       if (rtMode !== 'all') {
         const rt = c.report_target === 'personal' ? 'personal' : c.report_target === 'group' ? 'group' : 'default';
@@ -343,20 +339,6 @@
     if (!tr) return;
     const phone = tr.dataset.phone;
     const c = contacts.find((x) => x.phone === phone);
-    if (e.target.closest('[data-action="fbtoggle"]') && c) {
-      const next = c.fb_report ? 0 : 1;
-      try {
-        await App.api('/api/zalo-contacts', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: c.raw_phone || c.phone, fb_report: next }),
-        });
-        App.toast(next
-          ? (c.fb_link ? '✅ Đã bật báo qua Facebook' : '✅ Đã bật FB — nhớ thêm link để bot mở đúng hội thoại')
-          : 'Đã tắt — khách này báo qua Zalo');
-        await loadContacts();
-      } catch (err) { App.toast('Lỗi: ' + err.message); }
-      return;
-    }
     if (e.target.closest('.act-edit')) { openModal(c); return; }
     if (e.target.closest('.act-del')) {
       if (!confirm(`Xoá liên hệ "${c ? c.zalo_name : phone}"?`)) return;
@@ -382,20 +364,9 @@
   // ================= MODAL THÊM / SỬA =================
   const modal = $('contactModal');
   const cmTitle = $('cmTitle'), cmPhone = $('cmPhone'), cmName = $('cmName'), cmNote = $('cmNote');
-  const cmFbReport = $('cmFbReport'), cmFbLink = $('cmFbLink'), cmFbLinkField = $('cmFbLinkField'), cmStaff = $('cmStaff');
+  const cmFbLink = $('cmFbLink'), cmStaff = $('cmStaff');
   const cmReportTarget = $('cmReportTarget');
   let editingPhone = null; // SĐT (đã chuẩn hoá) đang sửa; null = thêm mới
-
-  // Ô Link luôn hiển thị để dễ thấy; chỉ khoá mờ + đổi gợi ý khi đang Tắt (báo qua Zalo).
-  function syncFbLinkField() {
-    const on = cmFbReport.value === '1';
-    cmFbLink.disabled = !on;
-    cmFbLinkField.style.opacity = on ? '' : '0.55';
-    cmFbLink.placeholder = on
-      ? 'facebook.com/… , m.me/… hoặc messages/t/…'
-      : 'Bật "Báo qua Facebook" để nhập link';
-  }
-  cmFbReport.addEventListener('change', syncFbLinkField);
 
   function openModal(c) {
     editingPhone = c ? c.phone : null;
@@ -403,11 +374,9 @@
     cmPhone.value = c ? (c.raw_phone || c.phone) : '';
     cmName.value = c ? (c.zalo_name || '') : '';
     cmNote.value = c ? (c.note || '') : '';
-    cmFbReport.value = c && c.fb_report ? '1' : '0';
     cmFbLink.value = c ? (c.fb_link || '') : '';
     cmStaff.value = c && c.staff_id != null ? String(c.staff_id) : '';
     cmReportTarget.value = c && (c.report_target === 'personal' || c.report_target === 'group') ? c.report_target : '';
-    syncFbLinkField();
     modal.classList.add('show');
     setTimeout(() => (c ? cmName : cmPhone).focus(), 30);
   }
@@ -420,12 +389,10 @@
   $('cmSave').addEventListener('click', async () => {
     const phone = cmPhone.value.trim();
     const name = cmName.value.trim();
-    const fbReport = cmFbReport.value === '1' ? 1 : 0;
     const fbLink = cmFbLink.value.trim();
     if (!phone.replace(/\D/g, '')) { App.toast('Nhập SĐT hợp lệ'); return; }
-    // Khách chỉ báo qua FB thì cần link thay cho tên; còn lại vẫn cần tên Zalo/FB.
-    if (!name && !(fbReport && fbLink)) { App.toast('Nhập tên Zalo/FB, hoặc bật báo qua FB kèm link'); return; }
-    if (fbReport && !fbLink && !confirm('Bật báo qua Facebook nhưng chưa có link — bot sẽ không mở được hội thoại. Vẫn lưu?')) return;
+    // Có link = báo qua FB (cần link thay cho tên); không link thì vẫn cần tên Zalo.
+    if (!name && !fbLink) { App.toast('Nhập tên Zalo/FB, hoặc nhập link Facebook để báo qua FB'); return; }
     try {
       // Sửa mà đổi SĐT -> xoá bản ghi cũ (khoá theo SĐT) rồi ghi bản mới.
       if (editingPhone && normPhone(phone) !== editingPhone) {
@@ -436,7 +403,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone, zalo_name: name, note: cmNote.value.trim(),
-          fb_report: fbReport, fb_link: fbLink, staff_id: cmStaff.value || '',
+          fb_link: fbLink, staff_id: cmStaff.value || '',
           report_target: cmReportTarget.value || '',
         }),
       });

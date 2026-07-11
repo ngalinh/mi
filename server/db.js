@@ -485,16 +485,20 @@ function getFbLink(phone) {
   const p = normPhone(phone);
   if (!p) return '';
   const r = getZaloContactStmt.get({ phone: p });
-  return r && r.fb_report && r.fb_link ? String(r.fb_link) : '';
+  return r && r.fb_link ? String(r.fb_link).trim() : '';
 }
 
-/** Đơn này có thuộc diện báo qua Facebook không? = khách (theo SĐT) được bật "báo qua FB" trong danh bạ. */
+/**
+ * Đơn này có thuộc diện báo qua Facebook không?
+ * = khách (theo SĐT) đã lưu LINK Facebook trong danh bạ. Có link -> báo FB; không link -> báo Zalo.
+ * (Bỏ cờ bật/tắt riêng: chỉ cần dựa vào việc có link hay không.)
+ */
 function isFacebookOrder(order) {
   if (!order || order.phone == null) return false;
   const p = normPhone(order.phone);
   if (!p) return false;
   const r = getZaloContactStmt.get({ phone: p });
-  return !!(r && r.fb_report);
+  return !!(r && r.fb_link && String(r.fb_link).trim());
 }
 
 // ---- Nhân viên (tài khoản dashboard Mi) ----
@@ -637,10 +641,11 @@ function getZaloName(phone) {
 
 /**
  * Thêm/sửa 1 liên hệ. Trường không truyền (undefined) sẽ GIỮ giá trị cũ để cập nhật một phần
- * (vd chỉ bật/tắt "báo qua FB") không xoá các trường khác. Ném .code='BAD_INPUT' nếu thiếu SĐT,
- * hoặc thiếu cả tên lẫn (báo-qua-FB + link) — khách chỉ báo qua FB thì cần link thay cho tên.
+ * (vd chỉ đổi ghi chú) không xoá các trường khác. Ném .code='BAD_INPUT' nếu thiếu SĐT, hoặc thiếu
+ * cả tên lẫn link — khách chỉ báo qua FB thì cần link thay cho tên.
+ * "Báo qua FB" KHÔNG còn cờ bật/tắt riêng: suy ra từ việc có LINK hay không (có link = báo FB).
  */
-function upsertZaloContact({ phone, zalo_name, note, source, fb_report, fb_link, staff_id, report_target } = {}) {
+function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, report_target } = {}) {
   const p = normPhone(phone);
   if (!p) { const err = new Error('SĐT không hợp lệ'); err.code = 'BAD_INPUT'; throw err; }
   const existed = getZaloContactStmt.get({ phone: p });
@@ -650,18 +655,19 @@ function upsertZaloContact({ phone, zalo_name, note, source, fb_report, fb_link,
   const name = zalo_name !== undefined
     ? String(zalo_name == null ? '' : zalo_name).trim()
     : (existed ? existed.zalo_name : '');
-  const fbReport = fb_report !== undefined ? (fb_report ? 1 : 0) : (existed && existed.fb_report ? 1 : 0);
   const fbLink = fb_link !== undefined
     ? String(fb_link == null ? '' : fb_link).trim()
     : (existed ? String(existed.fb_link || '') : '');
+  // Cờ fb_report suy ra từ link (giữ cột đồng bộ để các truy vấn cũ vẫn đúng): có link = 1.
+  const fbReport = fbLink ? 1 : 0;
   const staffId = staff_id !== undefined
     ? (String(staff_id == null ? '' : staff_id).trim() || null)
     : (existed ? (existed.staff_id || null) : null);
   const noteVal = note !== undefined
     ? (String(note == null ? '' : note).trim() || null)
     : (existed ? (existed.note || null) : null);
-  if (!name && !(fbReport && fbLink)) {
-    const err = new Error('Thiếu tên Zalo/FB (hoặc bật báo qua FB kèm link)'); err.code = 'BAD_INPUT'; throw err;
+  if (!name && !fbLink) {
+    const err = new Error('Thiếu tên Zalo/FB (hoặc nhập link Facebook)'); err.code = 'BAD_INPUT'; throw err;
   }
   upsertZaloContactStmt.run({
     phone: p,
