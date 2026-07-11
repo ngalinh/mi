@@ -18,6 +18,15 @@
     .contact-table thead th { white-space: nowrap; }
     /* Cột Cập nhật: ngày giờ trên 1 dòng cho gọn. */
     .contact-table td:nth-child(8) { white-space: nowrap; }
+    /* Sọc xen kẽ rất nhạt để mắt bám dòng khi danh bạ dài; hover đè lên. */
+    .contact-table tbody tr:nth-child(even) { background: var(--zebra); }
+    .contact-table tbody tr:hover { background: var(--head-tint); }
+    /* Ghi chú dài: cắt 1 dòng + "…", xem đầy đủ bằng tooltip (title) khi rê chuột.
+       (Đặt tên riêng zalo-note để không đụng class .note-cell có sẵn trong styles.css.) */
+    .contact-table td.zalo-note .note-text {
+      display: inline-block; max-width: 150px; vertical-align: middle;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
   </style>
 </head>
 <body>

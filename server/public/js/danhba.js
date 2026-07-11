@@ -274,7 +274,7 @@
         <td class="center">${fbCell(c)}</td>
         <td class="center">${rtCell(c)}</td>
         <td>${c.staff_id ? App.esc(staffName(c.staff_id)) : '<span class="muted">—</span>'}</td>
-        <td>${App.esc(c.note || '')}</td>
+        <td class="zalo-note">${c.note ? `<span class="note-text" title="${App.esc(c.note)}">${App.esc(c.note)}</span>` : ''}</td>
         <td class="center"><span class="pill chua">${App.esc(SOURCE_LABEL[c.source] || c.source || '—')}</span></td>
         <td class="muted" style="font-size:12px;">${App.esc(App.fmtDateTime(c.updated_at))}</td>
         <td>
