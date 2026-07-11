@@ -13,6 +13,12 @@
   <link rel="apple-touch-icon" href="favicon.png?v=3" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="css/styles.css" />
+  <style>
+    /* Tiêu đề cột danh bạ không xuống dòng (tránh "GHI/CHÚ", "CẬP/NHẬT" gãy 2 dòng). */
+    .contact-table thead th { white-space: nowrap; }
+    /* Cột Cập nhật: ngày giờ trên 1 dòng cho gọn. */
+    .contact-table td:nth-child(8) { white-space: nowrap; }
+  </style>
 </head>
 <body>
   <div class="app">
@@ -126,18 +132,18 @@
             </div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="contact-table">
               <thead>
                 <tr>
                   <th>SĐT</th>
                   <th>Tên Zalo/FB</th>
-                  <th class="center" style="width:210px">FB</th>
-                  <th class="center" style="width:150px">Zalo</th>
-                  <th style="width:140px">NV phụ trách</th>
-                  <th>Ghi chú</th>
-                  <th class="center">Nguồn</th>
-                  <th>Cập nhật</th>
-                  <th style="width:120px"></th>
+                  <th class="center" style="width:180px">FB</th>
+                  <th class="center" style="width:130px">Zalo</th>
+                  <th style="width:130px">NV phụ trách</th>
+                  <th style="width:150px">Ghi chú</th>
+                  <th class="center" style="width:96px">Nguồn</th>
+                  <th style="width:96px">Cập nhật</th>
+                  <th style="width:96px"></th>
                 </tr>
               </thead>
               <tbody id="contactRows">
