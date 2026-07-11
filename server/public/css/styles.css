@@ -561,6 +561,10 @@ thead th {
   white-space: nowrap; font-size: 12.5px;
   padding-top: 15px; padding-bottom: 15px;
 }
+/* Bảng chính nhiều cột (13) dễ tràn ngang làm cột cuối "Người gửi / TK" bị cắt trên màn
+   laptop. Giảm padding ngang ô để bảng gọn ~1330px -> vừa khít desktop, khỏi phải cuộn.
+   (.items-table ở dưới có rule padding riêng nên không bị ảnh hưởng.) */
+.table-wrap th, .table-wrap td { padding-left: 9px; padding-right: 9px; }
 tbody tr { transition: background .12s var(--ease); }
 /* Kẻ sọc xen kẽ rất nhạt để mắt bám dòng khi liếc ngang qua nhiều cột.
    Đặt TRƯỚC hover & loại trừ để 2 trạng thái đó luôn đè lên được. */
@@ -589,7 +593,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .status-sel {
   padding: 8px 12px; border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); background: #fff; font-size: 13px;
-  font-weight: 600; min-width: 124px; cursor: pointer; font-family: inherit;
+  font-weight: 600; min-width: 108px; cursor: pointer; font-family: inherit;
 }
 .status-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
 /* 4 trạng thái = 4 tông rõ ràng: Chưa báo (cam) · Đã báo hàng (xanh dương) · Đã báo ship (xanh lá) · Lỗi (đỏ).
@@ -617,9 +621,9 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .delay-other:focus { outline: none; box-shadow: 0 0 0 3px rgba(229,72,77,.16); }
 
 /* note inline */
-.note-cell { display: flex; gap: 4px; align-items: center; }
+.note-cell { display: flex; gap: 4px; align-items: center; max-width: 168px; }
 .note-input {
-  flex: 1; min-width: 120px; padding: 9px 12px;
+  flex: 0 1 140px; min-width: 90px; padding: 9px 12px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit;
 }
 .note-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
@@ -734,7 +738,7 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 /* Cột gộp "Người gửi / TK" trên danh sách hàng về (gộp từ Lịch sử báo):
    dòng trên = người gửi (icon người mờ + tên); dòng dưới = tài khoản (chip kênh + tên).
    Tên dài cắt … + xem đầy đủ qua tooltip. */
-td.sender-col { max-width: 180px; }
+td.sender-col { max-width: 168px; }
 td.staff-col { white-space: nowrap; }
 .sender-acct {
   display: flex; flex-direction: column; align-items: flex-start;
