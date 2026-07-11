@@ -393,15 +393,22 @@ async function classifyForAuto(order, delayedMap) {
 async function fetchAllNotSent(opts = {}) {
   const all = [];
   const seen = new Set();
-  for (let page = 1; page <= 50; page += 1) {
+  const MAX_PAGES = 50;
+  let capped = false;
+  for (let page = 1; page <= MAX_PAGES; page += 1) {
     // eslint-disable-next-line no-await-in-loop
     const { orders, total } = await getOrders({ status: 'not_sent', page, pageSize: 100, fresh: !!opts.fresh });
     for (const o of orders) {
       const k = autoKey(o);
       if (!seen.has(k)) { seen.add(k); all.push(o); }
     }
-    if (orders.length < 100) break;                 // hết trang
-    if (total != null && all.length >= total) break; // đã lấy đủ
+    if (orders.length < 100) return all;               // hết trang thật -> đã quét hết
+    if (total != null && all.length >= total) return all; // đã lấy đủ tổng
+    if (page === MAX_PAGES) capped = true;             // còn trang đầy mà đã tới trần -> có thể sót
+  }
+  // Chạm trần khi vẫn còn trang đầy: cảnh báo để không tưởng nhầm "đã quét hết" (bỏ sót đơn cuối).
+  if (capped) {
+    console.warn(`[auto-notify] ⚠️ CHẠM TRẦN ${MAX_PAGES} trang (${all.length} đơn "Chưa báo") — có thể CÒN đơn chưa quét/gửi. Backlog thực sự lớn thì tăng trần trong fetchAllNotSent.`);
   }
   return all;
 }

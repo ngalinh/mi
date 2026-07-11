@@ -758,7 +758,10 @@ app.listen(config.port, () => {
   console.log(`[server] mock=${config.basso.useMock} | local-runner=${config.playwrightLocalUrl}`);
   console.log(`[server] DB: ${config.dbPath}`);
   if (config.gatewaySecret) console.log('[server] Gateway secret: BẬT (yêu cầu X-Gateway-Secret cho /api/*)');
+  else if (config.requireApiKey) console.warn('[server] ⚠️  GATEWAY_SECRET chưa đặt (production): đường gọi THẲNG app có thể tự bịa header danh tính để giả mạo NV/Admin. Bật GATEWAY_SECRET + cấu hình gateway gắn X-Gateway-Secret.');
   if (config.registerAllowedHosts.length) console.log(`[server] register-local allowlist: ${config.registerAllowedHosts.join(', ')}`);
+  else if (config.requireApiKey) console.warn('[server] ⚠️  REGISTER_ALLOWED_HOSTS RỖNG (production): mọi host biết API_KEY đều đăng ký được URL runner — server sẽ forward x-api-key + dữ liệu khách tới đó (rủi ro SSRF/rò rỉ). Đặt allowlist host tunnel thật.');
+  if (config.requireApiKey && !config.corsOrigins.length) console.warn('[server] ⚠️  CORS đang MỞ cho mọi origin (production). Đặt CORS_ORIGIN để siết nếu app có thể truy cập ngoài gateway.');
   if (config.requireApiKey && !config.autoNotify.webhookSecret) {
     console.warn('[server] ⚠️  Webhook /api/webhook/arrived BỊ KHÓA (production nhưng chưa đặt AUTO_NOTIFY_WEBHOOK_SECRET). Đặt secret để bật, hoặc chỉ dùng poller AUTO_NOTIFY.');
   }

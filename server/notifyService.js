@@ -315,14 +315,26 @@ async function notifyOrders(orders, opts = {}) {
 }
 
 /**
- * (Legacy) Báo hàng theo danh sách orderId — tự tra đơn từ Basso. CẢNH BÁO: chỉ lấy
- * trang đầu nên có thể không tìm thấy khi dữ liệu nhiều; ưu tiên dùng notifyOrders.
+ * (Legacy) Báo hàng theo danh sách orderId — tự tra đơn từ Basso. QUÉT QUA CÁC TRANG cho tới khi
+ * tìm đủ id cần (hoặc hết trang), không còn kẹt ở trang đầu. Vẫn ưu tiên notifyOrders (client gửi
+ * sẵn đơn đầy đủ) vì rẻ hơn; nhánh này chỉ dùng cho payload orderIds cũ.
  * @param {string[]} orderIds
  * @param {object} [opts]
  */
 async function notifyMany(orderIds, opts = {}) {
-  const { orders } = await getOrders();
-  const byId = new Map(orders.map((o) => [String(o.id), o]));
+  const want = new Set(orderIds.map((id) => String(id)));
+  const byId = new Map();
+  // Lật trang tới khi gom đủ id cần hoặc hết dữ liệu (trần 100 trang × 100 đơn cho an toàn).
+  for (let page = 1; page <= 100 && byId.size < want.size; page += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { orders, total } = await getOrders({ page, pageSize: 100 });
+    for (const o of orders) {
+      const key = String(o.id);
+      if (want.has(key) && !byId.has(key)) byId.set(key, o);
+    }
+    if (orders.length < 100) break;                    // hết trang
+    if (total != null && page * 100 >= total) break;   // đã quét đủ tổng
+  }
   const found = [];
   const missing = [];
   for (const id of orderIds) {
