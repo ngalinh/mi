@@ -179,7 +179,7 @@
     if (v === 'bot') return `<span class="pill pill-bot">${App.icon('bot')} Bot</span>`;
     // Email -> chỉ lấy phần trước @ cho gọn (vd tram@gmail.com -> Tram); email đầy đủ ở tooltip.
     const short = v.includes('@') ? v.split('@')[0] : v;
-    return `<span class="sender-name" title="${App.esc(v)}">${App.esc(short)}</span>`;
+    return `<span class="sender-name" title="${App.esc(v)}">${App.icon('user', 'sender-ic')}<span class="txt">${App.esc(short)}</span></span>`;
   }
   // Trạng thái GỬI TIN của lượt báo đại diện (khác cột "Trạng thái" là trạng thái đơn):
   // pending = đang gửi · success = đã gửi · failed = lỗi. Đơn chưa từng báo -> "—".

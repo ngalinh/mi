@@ -713,29 +713,40 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .view-content:hover { color: var(--primary); background: var(--primary-soft); }
 .view-content.muted { color: var(--muted); font-weight: 500; }
 
-/* Nhãn kênh gửi (Lịch sử báo): chip mềm "Zalo" / "FB" trước tên tài khoản. */
-.acct-with-ic { display: inline-flex; align-items: center; gap: 8px; }
+/* Nhãn kênh gửi: chip mềm "Zalo" / "FB" trước tên tài khoản (dùng ở cột "Người gửi / TK").
+   Chip cỡ nhỏ, không đặt min-width để cân đối với tên account bên cạnh. */
 .chan-tag {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
-  box-sizing: border-box; min-width: 44px;
-  padding: 3px 9px; border-radius: var(--radius-pill);
-  font-size: 11px; font-weight: 700; line-height: 1;
+  box-sizing: border-box;
+  padding: 2px 7px; border-radius: var(--radius-pill);
+  font-size: 10px; font-weight: 700; line-height: 1; letter-spacing: .2px;
 }
 .chan-tag.zalo { background: #e7f0ff; color: #0068ff; }
 .chan-tag.fb { background: #eaf1fd; color: #1877f2; }
 
 /* Cột gộp "Người gửi / TK" trên danh sách hàng về (gộp từ Lịch sử báo):
-   người gửi ở dòng trên, chip tài khoản ở dòng dưới; tên dài cắt … + tooltip. */
-td.sender-col { max-width: 170px; }
+   dòng trên = người gửi (icon người mờ + tên); dòng dưới = tài khoản (chip kênh + tên).
+   Tên dài cắt … + xem đầy đủ qua tooltip. */
+td.sender-col { max-width: 180px; }
 td.staff-col { white-space: nowrap; }
-.sender-name, .acct-name {
-  display: inline-block; max-width: 130px; vertical-align: middle;
+.sender-acct {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 4px; min-width: 0; max-width: 100%;
+}
+/* Dòng người gửi: icon người (mờ) canh giữa với tên; tên đậm vừa, cắt … khi dài. */
+.sender-name {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+.sender-name .sender-ic { width: 13px; height: 13px; color: var(--muted); flex: none; }
+.sender-name .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* Dòng tài khoản: chip kênh nhỏ + tên account tông mềm, cắt … khi dài. */
+.sender-acct .acct-sub { min-width: 0; max-width: 100%; }
+.acct-with-ic { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; }
+.acct-with-ic .acct-name {
+  max-width: 122px; font-size: 12.5px; color: var(--text-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.acct-with-ic { gap: 6px; min-width: 0; max-width: 100%; }
-.acct-with-ic .acct-name { max-width: 96px; font-size: 13px; }
-.sender-acct { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
-.sender-acct .acct-sub { min-width: 0; max-width: 100%; }
 
 /* Cột gộp "Nội dung" = ND báo hàng + ND báo ship: 2 dòng (hàng trên / ship dưới).
    Chiều cao mỗi dòng + khoảng cách khớp đúng nút Gửi tin (30px + gap 4px) để dòng
