@@ -1106,8 +1106,7 @@
     if (!auto && !allOrders.length && !clientMode) load({ fastPaint: true }); // vẽ nhanh, không block
     const prevTodo = new Set(allOrders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
     const p = new URLSearchParams();
-    if (F.from) p.set('from', F.from);
-    if (F.to) p.set('to', F.to);
+    applyScope(p); // from/to tường minh HOẶC ?days=scopeDays — giữ đúng phạm vi thời gian cả ở client-mode
     try {
       const res = await App.api('/api/orders/all?' + p.toString());
       if (res.truncated) {
@@ -1205,8 +1204,7 @@
   // Warm server-side SWR cache cho từng tab nhân viên (chỉ dùng ở fallback server-mode).
   async function prefetchStaffTabs() {
     const base = new URLSearchParams();
-    if (F.from) base.set('from', F.from);
-    if (F.to) base.set('to', F.to);
+    applyScope(base); // warm đúng cache theo phạm vi ngày đang xem (from/to hoặc ?days)
     await new Promise((r) => setTimeout(r, 3000));
     for (const u of tabUsers) {
       if (clientMode) break; // đã chuyển sang client-mode -> không cần warm nữa
