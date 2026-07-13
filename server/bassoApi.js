@@ -537,11 +537,24 @@ async function getOrderContent({ customerId, dateInventory, phone } = {}) {
   if (config.basso.useMock) {
     return { source: 'mock', ...pick(loadMock().find(matches)) };
   }
-  // key = SĐT -> Basso trả về ít dòng; KHÔNG qua swrFetch nên luôn lấy bản mới nhất.
-  const raw = await apiFetch('/partner/getArrivedVnList', {
-    query: { page: 1, page_size: 100, key: phone || undefined },
-  });
-  const rows = raw.rows || [];
+  // key = SĐT -> Basso trả về ít dòng. CACHE ngắn (SWR) theo SĐT: dashboard tự lấp ND (autoFillContent)
+  // bắn 1 call /order-content cho TỪNG đơn thiếu ND, lặp lại MỖI lần auto-sync (60s) và mỗi tab đang
+  // mở. Nếu gọi thẳng Basso mỗi lần -> dội getArrivedVnList hàng chục–trăm request/chu kỳ, làm nặng
+  // hệ thống Basso. swrFetch gộp các call TRÙNG SĐT (single-flight) + trả ngay trong TTL, giảm mạnh
+  // tải; hết TTL vẫn tự làm mới nền để "Xem nội dung" thấy ND vừa soạn.
+  const runFetch = async () => {
+    const raw = await apiFetch('/partner/getArrivedVnList', {
+      query: { page: 1, page_size: 100, key: phone || undefined },
+    });
+    return raw.rows || [];
+  };
+  let rows;
+  if (config.basso.listCacheTtlMs) {
+    const cacheKey = 'content:' + JSON.stringify({ key: phone || '' });
+    ({ data: rows } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, runFetch));
+  } else {
+    rows = await runFetch();
+  }
   // Khớp chính xác theo (customer_id + date_inventory); nếu lệch kiểu date mà chỉ có đúng 1
   // dòng trả về (đã lọc theo SĐT) thì lấy dòng đó làm fallback.
   const row = rows.find(matches) || (rows.length === 1 ? rows[0] : null);
