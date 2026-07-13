@@ -126,7 +126,10 @@ function connectionStatus(key) {
 }
 
 function decorate(a) {
-  return { ...a, loggedIn: profileExists(a.key), connection: connectionStatus(a.key) };
+  // KHÔNG trả `password` ra API: mật khẩu Facebook chỉ dùng nội bộ để tự điền form login khi mở
+  // Chromium (fbPrefill), không được lộ trong body response /api/accounts (mọi NV đọc được).
+  const { password, ...safe } = a;
+  return { ...safe, loggedIn: profileExists(a.key), connection: connectionStatus(a.key) };
 }
 
 /** GET /api/accounts — liệt kê tài khoản (Zalo + Facebook) + cờ đăng nhập + trạng thái kết nối.

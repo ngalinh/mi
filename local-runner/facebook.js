@@ -172,8 +172,15 @@ async function typeAndSend(page, box, message) {
   for (let i = 0; i < lines.length; i += 1) {
     // eslint-disable-next-line no-await-in-loop
     if (lines[i]) await page.keyboard.type(lines[i], { delay: 15 });
-    // eslint-disable-next-line no-await-in-loop
-    if (i < lines.length - 1) await page.keyboard.down('Shift'), await page.keyboard.press('Enter'), await page.keyboard.up('Shift');
+    if (i < lines.length - 1) {
+      // Xuống dòng trong Messenger = Shift+Enter (Enter đơn = GỬI) -> giữ \n không gửi sớm giữa chừng.
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.down('Shift');
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.press('Enter');
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.up('Shift');
+    }
   }
   await page.waitForTimeout(300);
   await shot(page, '03-typed');

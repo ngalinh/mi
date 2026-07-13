@@ -44,9 +44,20 @@ function getEmailFromPlatformCookie(req) {
 
 // Audit: lấy danh tính nhân viên — thử cookie platform_token trước, rồi mới header gateway.
 // null = không rõ (vd gọi thẳng app, bỏ qua gateway).
+// ⚠️ CHỈ dùng cho GHI LỊCH SỬ (ai gửi tin). KHÔNG dùng cho PHÂN QUYỀN: cookie platform_token
+// tự giải mã, KHÔNG kiểm chữ ký nên client có thể tự sửa email -> giả mạo. Quyết định quyền
+// (Admin) phải dùng getAuthzActor (chỉ tin header do gateway đã xác thực forward).
 function getActor(req) {
   const fromCookie = getEmailFromPlatformCookie(req);
   if (fromCookie) return fromCookie;
+  return getAuthzActor(req);
+}
+
+// Danh tính dùng cho PHÂN QUYỀN: CHỈ lấy từ header do gateway ai.basso.vn forward (gateway đặt
+// header SAU khi xác thực phiên). KHÔNG đọc cookie platform_token — cookie không kiểm chữ ký nên
+// nhân viên tự sửa email trong cookie của mình là leo được lên Admin. Khi bật GATEWAY_SECRET thì
+// đường gọi THẲNG app (tự bịa header) cũng bị chặn -> danh tính này đáng tin cho phân quyền.
+function getAuthzActor(req) {
   for (const h of config.auth.userHeaders) {
     const v = req.get(h);
     if (v && String(v).trim()) return String(v).trim();
@@ -148,18 +159,29 @@ async function proxyAccounts(req, res, method, pathName, useBody) {
   }
 }
 
+// Thêm/sửa/xoá tài khoản + mở đăng nhập -> CHỈ Admin (thao tác nhạy cảm: điều khiển browser,
+// đổi cấu hình gửi). Xem danh sách / lịch sử / kiểm tra kết nối vẫn cho mọi NV (chỉ đọc).
 app.get('/api/accounts', (req, res) => proxyAccounts(req, res, 'GET', '/api/accounts', false));
-app.post('/api/accounts', (req, res) => proxyAccounts(req, res, 'POST', '/api/accounts', true));
-app.put('/api/accounts/:key', (req, res) =>
-  proxyAccounts(req, res, 'PUT', `/api/accounts/${encodeURIComponent(req.params.key)}`, true));
-app.post('/api/accounts/:key/login', (req, res) =>
-  proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/login`, false));
+app.post('/api/accounts', (req, res) => {
+  if (guardAdmin(req, res)) return;
+  proxyAccounts(req, res, 'POST', '/api/accounts', true);
+});
+app.put('/api/accounts/:key', (req, res) => {
+  if (guardAdmin(req, res)) return;
+  proxyAccounts(req, res, 'PUT', `/api/accounts/${encodeURIComponent(req.params.key)}`, true);
+});
+app.post('/api/accounts/:key/login', (req, res) => {
+  if (guardAdmin(req, res)) return;
+  proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/login`, false);
+});
 app.post('/api/accounts/:key/check', (req, res) =>
   proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/check`, false));
 app.get('/api/accounts/:key/history', (req, res) =>
   proxyAccounts(req, res, 'GET', `/api/accounts/${encodeURIComponent(req.params.key)}/history`, false));
-app.delete('/api/accounts/:type/:key', (req, res) =>
-  proxyAccounts(req, res, 'DELETE', `/api/accounts/${encodeURIComponent(req.params.type)}/${encodeURIComponent(req.params.key)}`, false));
+app.delete('/api/accounts/:type/:key', (req, res) => {
+  if (guardAdmin(req, res)) return;
+  proxyAccounts(req, res, 'DELETE', `/api/accounts/${encodeURIComponent(req.params.type)}/${encodeURIComponent(req.params.key)}`, false);
+});
 
 // ---- Chế độ TEST an toàn (whitelist SĐT) — forward xuống runner (nơi thực thi chặn) ----
 // Server cloud không giữ cấu hình này; runner là nơi enforce nên cũng là nơi lưu.
@@ -174,7 +196,11 @@ async function proxyTestMode(req, res, method, useBody) {
   }
 }
 app.get('/api/test-mode', (req, res) => proxyTestMode(req, res, 'GET', false));
-app.put('/api/test-mode', (req, res) => proxyTestMode(req, res, 'PUT', true));
+// TẮT/đổi whitelist an toàn = thao tác rủi ro cao (có thể mở cửa gửi tới KHÁCH THẬT) -> chỉ Admin.
+app.put('/api/test-mode', (req, res) => {
+  if (guardAdmin(req, res)) return;
+  proxyTestMode(req, res, 'PUT', true);
+});
 
 // ---- Nhân viên (tài khoản dashboard Mi) ----
 // Lưu Ở SERVER (SQLite, volume bền) — KHÔNG lưu mật khẩu: login do gateway ai.basso.vn lo,
@@ -207,17 +233,33 @@ app.get('/api/me', async (req, res) => {
 
 
 
-// Chỉ Admin (đang Hoạt động) được sửa danh sách NV. Miễn trừ an toàn để không tự khoá mình:
-//  - chưa có NV nào -> cho tạo (bootstrap admin đầu tiên);
-//  - không có danh tính gateway (actor null, vd chạy local/dev) -> cho qua.
-// Trả null nếu được phép; ngược lại trả object lỗi để route dừng.
-function denyStaffEdit(req) {
-  if (staffCount() === 0) return null;            // bootstrap
-  const actor = getActor(req);
-  if (!actor) return null;                        // không có gateway (dev/standalone)
-  const me = getStaffByEmail(actor);
+// Chặn thao tác QUẢN TRỊ nếu người gọi không phải Admin (đang Hoạt động).
+// Danh tính lấy từ getAuthzActor (CHỈ header do gateway đã xác thực), KHÔNG từ cookie -> nhân
+// viên đi qua gateway không thể tự đặt/đổi header này để leo quyền.
+// Miễn trừ DUY NHẤT: chưa có NV nào (staffCount===0) -> cho qua để bootstrap admin đầu tiên /
+// chạy local chưa cấu hình. ⚠️ KHÔNG còn nhánh "không có actor -> cho qua": một khi đã có NV,
+// request THIẾU danh tính admin hợp lệ (vd chỉ gửi cookie giả, bỏ header) sẽ bị TỪ CHỐI
+// (fail-closed) thay vì lọt. Đường gọi thẳng app tự bịa header vẫn nên chặn thêm bằng GATEWAY_SECRET.
+// Trả null nếu được phép; ngược lại trả { status, error } để route dừng.
+function requireAdmin(req) {
+  if (staffCount() === 0) return null;            // bootstrap / chưa cấu hình NV
+  const actor = getAuthzActor(req);
+  const me = actor ? getStaffByEmail(actor) : null;
   if (me && me.role === 'Admin' && me.status === 'Hoạt động') return null;
+  return { status: 403, error: 'Chỉ Admin (đang hoạt động) mới được thực hiện thao tác này' };
+}
+
+// Chỉ Admin (đang Hoạt động) được sửa danh sách NV — thông điệp riêng cho ngữ cảnh nhân viên.
+function denyStaffEdit(req) {
+  if (!requireAdmin(req)) return null;
   return { status: 403, error: 'Chỉ Admin (đang hoạt động) mới được sửa danh sách nhân viên' };
+}
+
+// Helper cho route: nếu KHÔNG phải Admin thì trả lỗi và báo caller dừng (return true). Ngược lại false.
+function guardAdmin(req, res) {
+  const deny = requireAdmin(req);
+  if (deny) { res.status(deny.status).json({ ok: false, error: deny.error }); return true; }
+  return false;
 }
 
 app.get('/api/staff', (req, res) => res.json({ ok: true, staff: listStaff() }));
@@ -716,7 +758,10 @@ app.listen(config.port, () => {
   console.log(`[server] mock=${config.basso.useMock} | local-runner=${config.playwrightLocalUrl}`);
   console.log(`[server] DB: ${config.dbPath}`);
   if (config.gatewaySecret) console.log('[server] Gateway secret: BẬT (yêu cầu X-Gateway-Secret cho /api/*)');
+  else if (config.requireApiKey) console.warn('[server] ⚠️  GATEWAY_SECRET chưa đặt (production): đường gọi THẲNG app có thể tự bịa header danh tính để giả mạo NV/Admin. Bật GATEWAY_SECRET + cấu hình gateway gắn X-Gateway-Secret.');
   if (config.registerAllowedHosts.length) console.log(`[server] register-local allowlist: ${config.registerAllowedHosts.join(', ')}`);
+  else if (config.requireApiKey) console.warn('[server] ⚠️  REGISTER_ALLOWED_HOSTS RỖNG (production): mọi host biết API_KEY đều đăng ký được URL runner — server sẽ forward x-api-key + dữ liệu khách tới đó (rủi ro SSRF/rò rỉ). Đặt allowlist host tunnel thật.');
+  if (config.requireApiKey && !config.corsOrigins.length) console.warn('[server] ⚠️  CORS đang MỞ cho mọi origin (production). Đặt CORS_ORIGIN để siết nếu app có thể truy cập ngoài gateway.');
   if (config.requireApiKey && !config.autoNotify.webhookSecret) {
     console.warn('[server] ⚠️  Webhook /api/webhook/arrived BỊ KHÓA (production nhưng chưa đặt AUTO_NOTIFY_WEBHOOK_SECRET). Đặt secret để bật, hoặc chỉ dùng poller AUTO_NOTIFY.');
   }
