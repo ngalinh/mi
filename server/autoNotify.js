@@ -499,7 +499,20 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
   // Đặt quét đơn TRONG khóa để thấy trạng thái mới nhất sau khi luồng kia vừa gửi xong.
   await withLock(async () => {
     // Đọc TƯƠI (bỏ cache) cho webhook (thấy ngay đơn mới / ND vừa soạn) và lượt theo lịch.
-    const orders = await fetchAllByStatus(statusFilter, { fresh: trigger === 'webhook' || trigger === 'scheduled' });
+    const fresh = trigger === 'webhook' || trigger === 'scheduled';
+    // statusFilter có thể là 1 mã hoặc MẢNG mã trạng thái. Báo ship quét CẢ 'not_sent' lẫn
+    // 'notified_arrival' để bắt ngay đơn có content_ship dù đã báo hàng hay chưa (khử trùng theo autoKey).
+    const statuses = Array.isArray(statusFilter) ? statusFilter : [statusFilter];
+    const orders = [];
+    const seenKeys = new Set();
+    for (const st of statuses) {
+      // eslint-disable-next-line no-await-in-loop
+      const part = await fetchAllByStatus(st, { fresh });
+      for (const o of part) {
+        const k = autoKey(o);
+        if (!seenKeys.has(k)) { seenKeys.add(k); orders.push(o); }
+      }
+    }
     summary.scanned = orders.length;
     const delayedMap = getDelayedMap();
 
@@ -637,9 +650,10 @@ async function runAutoNotify(opts = {}) {
 }
 
 /**
- * TỰ ĐỘNG BÁO SHIP: quét đơn ĐÃ BÁO HÀNG ('notified_arrival') mà Basso đã soạn "ND báo ship"
- * (content_ship) rồi tự nhắn khách. Khác báo hàng: ship gửi NGAY khi có nội dung (KHÔNG hoãn theo
- * giờ hẹn 17:00) — vì đây là "API nhận được nội dung báo ship thì gửi". Cờ chạy + kết quả riêng
+ * TỰ ĐỘNG BÁO SHIP: hễ Basso đã soạn "ND báo ship" (content_ship) cho đơn là tự nhắn khách NGAY và
+ * chuyển trạng thái đơn sang "Đã báo ship" (notified_ship). Quét CẢ đơn "Chưa báo" (not_sent) lẫn
+ * "Đã báo hàng" (notified_arrival) để bắt content_ship dù đơn đã báo hàng hay chưa. Khác báo hàng:
+ * ship KHÔNG hoãn theo giờ hẹn 17:00 — có nội dung là gửi. Cờ chạy + kết quả riêng
  * (state.runningShip / lastShipResult) để không đụng lượt báo hàng.
  * @param {object} [opts] { trigger?: 'interval'|'webhook'|'manual'|'scheduled' }
  */
@@ -652,7 +666,7 @@ async function runAutoNotifyShip(opts = {}) {
   const summary = { trigger, kind: 'ship', scanned: 0, candidates: 0, sent: 0, failed: 0, results: [] };
   try {
     await executeNotifyPass({
-      trigger, kind: 'ship', statusFilter: 'notified_arrival',
+      trigger, kind: 'ship', statusFilter: ['not_sent', 'notified_arrival'],
       classify: classifyForShip, keyOf: autoKeyShip, logTag: 'auto-ship', summary,
     });
   } catch (err) {
