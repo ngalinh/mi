@@ -132,12 +132,13 @@ chống trùng bằng bảng dedup.
 
 ### 4b. Báo SHIP tự động — `runAutoNotifyShip()`
 
-Song song với báo hàng, bot còn tự **báo ship**: hễ Basso đã soạn "ND báo ship"
-(`content_ship`) cho đơn là tự nhắn khách tin ship NGAY và chuyển trạng thái đơn sang
-"Đã báo ship". Dùng CHUNG lõi gửi (`executeNotifyPass`) với báo hàng, chỉ khác:
+Song song với báo hàng, bot còn tự **báo ship** cho đơn ĐÃ "Đã báo hàng": khi đơn ở trạng
+thái `notified_arrival` mà Basso đã soạn "ND báo ship" (`content_ship`) thì tự nhắn khách tin
+ship NGAY và chuyển trạng thái sang "Đã báo ship". Dùng CHUNG lõi gửi (`executeNotifyPass`)
+với báo hàng, chỉ khác:
 
 ```
-• Quét CẢ 'not_sent' lẫn 'notified_arrival' → bắt content_ship dù đã báo hàng hay chưa
+• PHẢI báo hàng trước: chỉ xét đơn 'notified_arrival' (đơn 'not_sent' dù có content_ship cũng CHỜ)
 • Điều kiện gửi: CÓ noiDungBaoShip (content_ship) — trống thì BỎ QUA
 • kind='ship' → dùng buildBaoShipMessage + cập nhật web 'notified_ship'
 • Dedup theo autoKeyShip (suffix ':ship') — tách khỏi dấu báo hàng để 1 đơn báo
