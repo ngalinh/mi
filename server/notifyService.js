@@ -3,7 +3,7 @@ const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
-const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getFbLink, getZaloName, getContactReportTarget } = require('./db');
+const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, autoKeyShip, getFbLink, getZaloName, getContactReportTarget } = require('./db');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
@@ -270,9 +270,10 @@ async function notifyOrders(orders, opts = {}) {
       // eslint-disable-next-line no-await-in-loop
       const r = await notifyOne(order, { ...opts, keepContext });
       // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không
-      // cập nhật web). Không đè lên 'success' của bot để giữ đúng badge.
+      // cập nhật web). Không đè lên 'success' của bot để giữ đúng badge. Khóa theo LOẠI tin
+      // (báo ship dùng autoKeyShip) để báo ship tay chỉ chặn bot báo ship, không đụng báo hàng.
       if (r.ok) {
-        const dkey = autoKey(order);
+        const dkey = opts.kind === 'ship' ? autoKeyShip(order) : autoKey(order);
         const ex = getAutoRecord(dkey);
         if (!ex || ex.status !== 'success') recordAutoNotified(dkey, 'manual', ex ? ex.attempts : 0);
       }

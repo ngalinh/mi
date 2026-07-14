@@ -286,6 +286,15 @@ function autoKey(order) {
   return `id:${order.id}`;
 }
 
+/**
+ * Khóa chống trùng cho BÁO SHIP — tách riêng khỏi báo hàng để 1 đơn có thể được báo hàng
+ * (autoKey) rồi báo ship (autoKeyShip) mà không đè dấu của nhau trong bảng auto_notified.
+ * Suffix ':ship' để không đụng các khóa báo hàng cũ (giữ nguyên hành vi dedup báo hàng).
+ */
+function autoKeyShip(order) {
+  return `${autoKey(order)}:ship`;
+}
+
 const getAutoStmt = db.prepare('SELECT * FROM auto_notified WHERE order_id = @order_id');
 const upsertAutoStmt = db.prepare(`
   INSERT INTO auto_notified (order_id, status, attempts, updated_at)
@@ -777,7 +786,7 @@ function migrateFbRoutingIntoContacts() {
 migrateFbRoutingIntoContacts();
 
 module.exports = {
-  db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
+  db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, autoKeyShip, getDelayedMap, setDelayed,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,

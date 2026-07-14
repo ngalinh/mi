@@ -130,6 +130,24 @@ runAutoNotify()
 Đặc điểm bot: không người soát → **strict match** (không lấy đại); **không** đụng web Basso;
 chống trùng bằng bảng dedup.
 
+### 4b. Báo SHIP tự động — `runAutoNotifyShip()`
+
+Song song với báo hàng, bot còn tự **báo ship**: khi Basso đã soạn "ND báo ship"
+(`content_ship`) cho đơn thì tự nhắn khách tin ship. Dùng CHUNG lõi gửi
+(`executeNotifyPass`) với báo hàng, chỉ khác:
+
+```
+• Quét trạng thái 'notified_arrival' (đơn ĐÃ báo hàng) thay vì 'not_sent'
+• Điều kiện gửi: CÓ noiDungBaoShip (content_ship) — trống thì BỎ QUA
+• kind='ship' → dùng buildBaoShipMessage + cập nhật web 'notified_ship'
+• Dedup theo autoKeyShip (suffix ':ship') — tách khỏi dấu báo hàng để 1 đơn báo
+  được cả hàng lẫn ship mà không đè nhau
+• GỬI NGAY khi có ND ship (KHÔNG hoãn theo giờ hẹn 17:00 như báo hàng)
+```
+
+**2 cách kích hoạt:** poller (mỗi lượt kiểm tra) và webhook `POST /api/webhook/ship`
+(Basso gọi khi có ND báo ship). Nút chạy tay: `POST /api/auto-notify/run-ship`.
+
 ---
 
 ## 5. FLOW D — Bước gửi qua local-runner (chung cho cả tay & bot)
@@ -215,8 +233,10 @@ kèm thống kê ✅/❌.
 | POST | `/api/update-row` | Sửa trạng thái/ghi chú 1 dòng (sync web) |
 | GET | `/api/auto-notify` | Trạng thái bot |
 | POST | `/api/auto-notify/toggle` | Bật/tắt bot (runtime) |
-| POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt |
+| POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt (báo hàng) |
+| POST | `/api/auto-notify/run-ship` | Quét + gửi ngay 1 lượt báo ship |
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay |
+| POST | `/api/webhook/ship` | Webhook: có ND báo ship → gửi tin ship ngay |
 | GET | `/api/reports` | Lịch sử + thống kê |
 | GET | `/api/health` | Trạng thái server + runner + bot |
 

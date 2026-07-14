@@ -259,8 +259,10 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | POST | `/api/notify-all` `{from?,to?,staff?,q?,kind?}` | Báo hàng loạt: kéo HẾT đơn "Chưa báo" qua mọi trang rồi gửi (bỏ qua đơn Delay/đã báo) |
 | GET | `/api/auto-notify` | Trạng thái tự động báo hàng |
 | POST | `/api/auto-notify/toggle` `{enabled}` | Bật/tắt tự động (runtime) |
-| POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt |
+| POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt (báo hàng) |
+| POST | `/api/auto-notify/run-ship` | Quét + gửi ngay 1 lượt BÁO SHIP (đơn đã có ND báo ship) |
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay (header `x-webhook-secret`) |
+| POST | `/api/webhook/ship` | Webhook: có ND báo ship → gửi tin ship ngay (header `x-webhook-secret`) |
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
 | POST | `/api/register-local` `{url, apiKey}` | Runner tự khai báo URL (Xeko pattern) — server lưu trong RAM + dùng forward |
 | GET | `/api/health` | Trạng thái server + local-runner + auto-notify |
