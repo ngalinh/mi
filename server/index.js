@@ -241,18 +241,30 @@ app.get('/api/me', async (req, res) => {
 // request THIẾU danh tính admin hợp lệ (vd chỉ gửi cookie giả, bỏ header) sẽ bị TỪ CHỐI
 // (fail-closed) thay vì lọt. Đường gọi thẳng app tự bịa header vẫn nên chặn thêm bằng GATEWAY_SECRET.
 // Trả null nếu được phép; ngược lại trả { status, error } để route dừng.
+// Mô tả NGẮN GỌN danh tính mà backend NHÌN THẤY khi phân quyền — chèn vào lỗi 403 để dễ chẩn
+// đoán vì sao bị chặn (thiếu header gateway? email lệch dòng NV? sai vai trò/trạng thái?).
+// Chỉ echo lại email của CHÍNH người gọi (từ header gateway đã xác thực) + vai trò/trạng thái —
+// không lộ dữ liệu người khác.
+function adminDenyDetail(req) {
+  const actor = getAuthzActor(req);
+  if (!actor) return 'server không nhận được danh tính từ gateway (thiếu header nhận diện, vd x-user-email)';
+  const me = getStaffByEmail(actor);
+  if (!me) return `server nhận được email "${actor}" nhưng email này chưa có trong Danh sách nhân viên`;
+  return `server nhận được email "${actor}" với vai trò "${me.role}", trạng thái "${me.status}"`;
+}
+
 function requireAdmin(req) {
   if (staffCount() === 0) return null;            // bootstrap / chưa cấu hình NV
   const actor = getAuthzActor(req);
   const me = actor ? getStaffByEmail(actor) : null;
   if (me && me.role === 'Admin' && me.status === 'Hoạt động') return null;
-  return { status: 403, error: 'Chỉ Admin (đang hoạt động) mới được thực hiện thao tác này' };
+  return { status: 403, error: `Chỉ Admin (đang hoạt động) mới được thực hiện thao tác này — ${adminDenyDetail(req)}` };
 }
 
 // Chỉ Admin (đang Hoạt động) được sửa danh sách NV — thông điệp riêng cho ngữ cảnh nhân viên.
 function denyStaffEdit(req) {
   if (!requireAdmin(req)) return null;
-  return { status: 403, error: 'Chỉ Admin (đang hoạt động) mới được sửa danh sách nhân viên' };
+  return { status: 403, error: `Chỉ Admin (đang hoạt động) mới được sửa danh sách nhân viên — ${adminDenyDetail(req)}` };
 }
 
 // Helper cho route: nếu KHÔNG phải Admin thì trả lỗi và báo caller dừng (return true). Ngược lại false.
