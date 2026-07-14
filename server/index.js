@@ -1,6 +1,7 @@
 'use strict';
 const path = require('path');
 const crypto = require('crypto');
+const fetch = require('node-fetch');
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
@@ -42,27 +43,69 @@ function getEmailFromPlatformCookie(req) {
   } catch (_) { return null; }
 }
 
+// Đọc danh tính từ header do gateway forward (đồng bộ, không xác minh gì thêm).
+// null nếu không header nào có giá trị.
+function getHeaderActor(req) {
+  for (const h of config.auth.userHeaders) {
+    const v = req.get(h);
+    if (v && String(v).trim()) return normEmail(v);
+  }
+  return null;
+}
+
 // Audit: lấy danh tính nhân viên — thử cookie platform_token trước, rồi mới header gateway.
 // null = không rõ (vd gọi thẳng app, bỏ qua gateway).
-// ⚠️ CHỈ dùng cho GHI LỊCH SỬ (ai gửi tin). KHÔNG dùng cho PHÂN QUYỀN: cookie platform_token
-// tự giải mã, KHÔNG kiểm chữ ký nên client có thể tự sửa email -> giả mạo. Quyết định quyền
-// (Admin) phải dùng getAuthzActor (chỉ tin header do gateway đã xác thực forward).
+// ⚠️ CHỈ dùng cho GHI LỊCH SỬ (ai gửi tin), nơi KHÔNG cần chống giả mạo -> đọc cookie nhanh là đủ.
+// Quyết định quyền (Admin) phải dùng getAuthzActor (xác minh phiên với Basso).
 function getActor(req) {
   const fromCookie = getEmailFromPlatformCookie(req);
   if (fromCookie) return fromCookie;
-  return getAuthzActor(req);
+  return getHeaderActor(req);
 }
 
-// Danh tính dùng cho PHÂN QUYỀN: CHỈ lấy từ header do gateway ai.basso.vn forward (gateway đặt
-// header SAU khi xác thực phiên). KHÔNG đọc cookie platform_token — cookie không kiểm chữ ký nên
-// nhân viên tự sửa email trong cookie của mình là leo được lên Admin. Khi bật GATEWAY_SECRET thì
-// đường gọi THẲNG app (tự bịa header) cũng bị chặn -> danh tính này đáng tin cho phân quyền.
-function getAuthzActor(req) {
-  for (const h of config.auth.userHeaders) {
-    const v = req.get(h);
-    if (v && String(v).trim()) return String(v).trim();
+// ---- Xác minh phiên với nền tảng Basso (port pattern Xeko) ----
+// Cookie platform_token là TOKEN MỜ: KHÔNG tự giải mã (client sửa được -> giả mạo), mà gửi nguyên
+// cookie sang Basso hỏi "phiên này là ai". Basso xác thực server-side rồi trả { success, user }.
+// Danh tính này đáng tin cho phân quyền và KHÔNG cần gateway forward header x-user-email.
+// Cache theo hash(cookie) trong 30s để khỏi gọi mạng mỗi request.
+const BASSO_AUTH_URL = process.env.BASSO_AUTH_URL || 'https://ai.basso.vn/platform/api/auth/session';
+const SESSION_TTL_MS = 30 * 1000;
+const _sessionCache = new Map(); // sha256(cookie) -> { email, expiresAt }
+
+async function verifyBassoSession(cookieHeader) {
+  if (!cookieHeader) return null;
+  const key = crypto.createHash('sha256').update(cookieHeader).digest('hex');
+  const cached = _sessionCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.email;
+  let email = null;
+  try {
+    const resp = await fetch(BASSO_AUTH_URL, {
+      method: 'GET',
+      headers: { Cookie: cookieHeader, Accept: 'application/json' },
+      timeout: 5000,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && data && data.success === true && data.user && data.user.username) {
+      email = normEmail(data.user.username);
+    }
+    // Cache cả kết quả null (phiên không hợp lệ) để không dội request khi bị spam cookie rác.
+    _sessionCache.set(key, { email, expiresAt: Date.now() + SESSION_TTL_MS });
+    return email;
+  } catch (_) {
+    // Lỗi mạng/timeout -> coi như CHƯA xác thực (fail-closed). Không cache để thử lại lần sau.
+    return null;
   }
-  return null;
+}
+
+// Danh tính dùng cho PHÂN QUYỀN (bất đồng bộ):
+//  1) Ưu tiên header do gateway đã xác thực forward (nếu có) — nhanh, không cần gọi mạng.
+//  2) Không có header -> XÁC MINH cookie phiên với Basso (không tự giải cookie).
+// Nhờ (2), admin thao tác được ngay cả khi gateway KHÔNG forward header, mà vẫn không giả mạo được
+// (cookie giả sẽ trượt xác thực ở Basso). Đường gọi THẲNG app vẫn nên chặn thêm bằng GATEWAY_SECRET.
+async function getAuthzActor(req) {
+  const fromHeader = getHeaderActor(req);
+  if (fromHeader) return fromHeader;
+  return verifyBassoSession(req.get('cookie') || '');
 }
 
 // So sánh chuỗi bí mật theo thời gian hằng định (chống dò theo timing). Khác độ dài -> false.
@@ -162,24 +205,24 @@ async function proxyAccounts(req, res, method, pathName, useBody) {
 // Thêm/sửa/xoá tài khoản + mở đăng nhập -> CHỈ Admin (thao tác nhạy cảm: điều khiển browser,
 // đổi cấu hình gửi). Xem danh sách / lịch sử / kiểm tra kết nối vẫn cho mọi NV (chỉ đọc).
 app.get('/api/accounts', (req, res) => proxyAccounts(req, res, 'GET', '/api/accounts', false));
-app.post('/api/accounts', (req, res) => {
-  if (guardAdmin(req, res)) return;
+app.post('/api/accounts', async (req, res) => {
+  if (await guardAdmin(req, res)) return;
   proxyAccounts(req, res, 'POST', '/api/accounts', true);
 });
-app.put('/api/accounts/:key', (req, res) => {
-  if (guardAdmin(req, res)) return;
+app.put('/api/accounts/:key', async (req, res) => {
+  if (await guardAdmin(req, res)) return;
   proxyAccounts(req, res, 'PUT', `/api/accounts/${encodeURIComponent(req.params.key)}`, true);
 });
-app.post('/api/accounts/:key/login', (req, res) => {
-  if (guardAdmin(req, res)) return;
+app.post('/api/accounts/:key/login', async (req, res) => {
+  if (await guardAdmin(req, res)) return;
   proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/login`, false);
 });
 app.post('/api/accounts/:key/check', (req, res) =>
   proxyAccounts(req, res, 'POST', `/api/accounts/${encodeURIComponent(req.params.key)}/check`, false));
 app.get('/api/accounts/:key/history', (req, res) =>
   proxyAccounts(req, res, 'GET', `/api/accounts/${encodeURIComponent(req.params.key)}/history`, false));
-app.delete('/api/accounts/:type/:key', (req, res) => {
-  if (guardAdmin(req, res)) return;
+app.delete('/api/accounts/:type/:key', async (req, res) => {
+  if (await guardAdmin(req, res)) return;
   proxyAccounts(req, res, 'DELETE', `/api/accounts/${encodeURIComponent(req.params.type)}/${encodeURIComponent(req.params.key)}`, false);
 });
 
@@ -197,8 +240,8 @@ async function proxyTestMode(req, res, method, useBody) {
 }
 app.get('/api/test-mode', (req, res) => proxyTestMode(req, res, 'GET', false));
 // TẮT/đổi whitelist an toàn = thao tác rủi ro cao (có thể mở cửa gửi tới KHÁCH THẬT) -> chỉ Admin.
-app.put('/api/test-mode', (req, res) => {
-  if (guardAdmin(req, res)) return;
+app.put('/api/test-mode', async (req, res) => {
+  if (await guardAdmin(req, res)) return;
   proxyTestMode(req, res, 'PUT', true);
 });
 
@@ -234,42 +277,42 @@ app.get('/api/me', async (req, res) => {
 
 
 // Chặn thao tác QUẢN TRỊ nếu người gọi không phải Admin (đang Hoạt động).
-// Danh tính lấy từ getAuthzActor (CHỈ header do gateway đã xác thực), KHÔNG từ cookie -> nhân
-// viên đi qua gateway không thể tự đặt/đổi header này để leo quyền.
+// Danh tính lấy từ getAuthzActor: header gateway (nếu có) HOẶC cookie phiên đã XÁC MINH với Basso
+// -> nhân viên không thể tự đặt header/sửa cookie để leo quyền (cookie giả trượt xác thực ở Basso).
 // Miễn trừ DUY NHẤT: chưa có NV nào (staffCount===0) -> cho qua để bootstrap admin đầu tiên /
-// chạy local chưa cấu hình. ⚠️ KHÔNG còn nhánh "không có actor -> cho qua": một khi đã có NV,
-// request THIẾU danh tính admin hợp lệ (vd chỉ gửi cookie giả, bỏ header) sẽ bị TỪ CHỐI
-// (fail-closed) thay vì lọt. Đường gọi thẳng app tự bịa header vẫn nên chặn thêm bằng GATEWAY_SECRET.
+// chạy local chưa cấu hình. ⚠️ KHÔNG có nhánh "không có actor -> cho qua": một khi đã có NV,
+// request THIẾU danh tính admin hợp lệ sẽ bị TỪ CHỐI (fail-closed) thay vì lọt. Đường gọi thẳng app
+// tự bịa header vẫn nên chặn thêm bằng GATEWAY_SECRET.
 // Trả null nếu được phép; ngược lại trả { status, error } để route dừng.
+
 // Mô tả NGẮN GỌN danh tính mà backend NHÌN THẤY khi phân quyền — chèn vào lỗi 403 để dễ chẩn
-// đoán vì sao bị chặn (thiếu header gateway? email lệch dòng NV? sai vai trò/trạng thái?).
-// Chỉ echo lại email của CHÍNH người gọi (từ header gateway đã xác thực) + vai trò/trạng thái —
-// không lộ dữ liệu người khác.
-function adminDenyDetail(req) {
-  const actor = getAuthzActor(req);
-  if (!actor) return 'server không nhận được danh tính từ gateway (thiếu header nhận diện, vd x-user-email)';
+// đoán vì sao bị chặn (không xác định được ai? email lệch dòng NV? sai vai trò/trạng thái?).
+// Chỉ echo lại email của CHÍNH người gọi (đã xác thực) + vai trò/trạng thái — không lộ dữ liệu người khác.
+async function adminDenyDetail(req) {
+  const actor = await getAuthzActor(req);
+  if (!actor) return 'server không xác định được danh tính (không có header gateway và cookie phiên không xác thực được với Basso — thử đăng nhập lại)';
   const me = getStaffByEmail(actor);
   if (!me) return `server nhận được email "${actor}" nhưng email này chưa có trong Danh sách nhân viên`;
   return `server nhận được email "${actor}" với vai trò "${me.role}", trạng thái "${me.status}"`;
 }
 
-function requireAdmin(req) {
+async function requireAdmin(req) {
   if (staffCount() === 0) return null;            // bootstrap / chưa cấu hình NV
-  const actor = getAuthzActor(req);
+  const actor = await getAuthzActor(req);
   const me = actor ? getStaffByEmail(actor) : null;
   if (me && me.role === 'Admin' && me.status === 'Hoạt động') return null;
-  return { status: 403, error: `Chỉ Admin (đang hoạt động) mới được thực hiện thao tác này — ${adminDenyDetail(req)}` };
+  return { status: 403, error: `Chỉ Admin (đang hoạt động) mới được thực hiện thao tác này — ${await adminDenyDetail(req)}` };
 }
 
 // Chỉ Admin (đang Hoạt động) được sửa danh sách NV — thông điệp riêng cho ngữ cảnh nhân viên.
-function denyStaffEdit(req) {
-  if (!requireAdmin(req)) return null;
-  return { status: 403, error: `Chỉ Admin (đang hoạt động) mới được sửa danh sách nhân viên — ${adminDenyDetail(req)}` };
+async function denyStaffEdit(req) {
+  if (!(await requireAdmin(req))) return null;
+  return { status: 403, error: `Chỉ Admin (đang hoạt động) mới được sửa danh sách nhân viên — ${await adminDenyDetail(req)}` };
 }
 
 // Helper cho route: nếu KHÔNG phải Admin thì trả lỗi và báo caller dừng (return true). Ngược lại false.
-function guardAdmin(req, res) {
-  const deny = requireAdmin(req);
+async function guardAdmin(req, res) {
+  const deny = await requireAdmin(req);
   if (deny) { res.status(deny.status).json({ ok: false, error: deny.error }); return true; }
   return false;
 }
@@ -280,8 +323,8 @@ app.get('/api/staff', (req, res) => res.json({ ok: true, staff: listStaff() }));
 app.get('/api/fb-routing', (req, res) => res.json({ ok: true, ...getFbRouting() }));
 
 /** PUT /api/fb-routing — body { customers?: {phone,link}[], staffIds?: string[] } (thiếu field nào giữ nguyên). */
-app.put('/api/fb-routing', (req, res) => {
-  const deny = denyStaffEdit(req); // dùng chung quyền quản trị với danh sách nhân viên
+app.put('/api/fb-routing', async (req, res) => {
+  const deny = await denyStaffEdit(req); // dùng chung quyền quản trị với danh sách nhân viên
   if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
   const body = req.body || {};
   if (body.customers !== undefined && !Array.isArray(body.customers)) return res.status(400).json({ ok: false, error: 'customers phải là mảng' });
@@ -294,8 +337,8 @@ app.put('/api/fb-routing', (req, res) => {
   }
 });
 
-function saveStaff(req, res) {
-  const deny = denyStaffEdit(req);
+async function saveStaff(req, res) {
+  const deny = await denyStaffEdit(req);
   if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
   try {
     const body = req.body || {};
@@ -310,8 +353,8 @@ function saveStaff(req, res) {
 app.post('/api/staff', saveStaff);
 app.put('/api/staff/:email', saveStaff);
 
-app.delete('/api/staff/:email', (req, res) => {
-  const deny = denyStaffEdit(req);
+app.delete('/api/staff/:email', async (req, res) => {
+  const deny = await denyStaffEdit(req);
   if (deny) return res.status(deny.status).json({ ok: false, error: deny.error });
   const target = getStaffByEmail(req.params.email);
   // Chặn xoá Admin hoạt động cuối cùng -> tránh mất quyền quản trị (lockout).
