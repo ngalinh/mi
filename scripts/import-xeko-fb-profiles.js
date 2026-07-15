@@ -216,6 +216,12 @@ function main() {
       email: (m.email || existing?.email || '').toString().trim(),
       // Import mật khẩu để re-login tự điền form (parity với Xeko). Bỏ bằng --no-password.
       password: OPT.noPassword ? '' : (m.password || existing?.password || ''),
+      // Device fingerprint đã lưu bên Xeko (nếu có) -> mi mở browser GIỐNG thiết bị Xeko cho
+      // cùng account. Thiếu thì để trống, browser.js tự suy ra tất định theo key (vẫn khớp Xeko).
+      userAgent: (m.userAgent || existing?.userAgent || '').toString().trim(),
+      viewport: (m.viewport && typeof m.viewport.width === 'number' && typeof m.viewport.height === 'number')
+        ? { width: m.viewport.width, height: m.viewport.height }
+        : (existing?.viewport || undefined),
       phone: (existing?.phone || '').toString().trim(),
       staffId: existing?.staffId != null ? String(existing.staffId).trim() : '',
       brand: existing?.brand != null ? String(existing.brand).trim().toUpperCase() : '',
@@ -229,9 +235,12 @@ function main() {
     if (OPT.enableAuto) record.autoEnabledAt = nowIso;
 
     if (OPT.dryRun) {
+      const fpNote = record.userAgent
+        ? ` fingerprint=meta(${record.viewport ? `${record.viewport.width}x${record.viewport.height}` : 'UA'})`
+        : ' fingerprint=suy-ra-theo-key';
       info(`record: ${existing ? 'sẽ CẬP NHẬT' : 'sẽ THÊM'}  name="${record.name}"`
         + `${record.proxy ? ` proxy=${record.proxy}` : ''}${record.email ? ` email=${record.email}` : ''}`
-        + ` autoEnabled=${record.autoEnabled}`);
+        + ` autoEnabled=${record.autoEnabled}${fpNote}`);
       existing ? (summary.updated += 1) : (summary.added += 1);
       continue;
     }
