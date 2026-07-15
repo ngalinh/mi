@@ -23,6 +23,9 @@
   const GROUP_LABELS = { todo: 'Chưa báo', arrival: 'Đã báo hàng', ship: 'Đã báo ship', failed: 'Lỗi - Báo lại' };
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
+  // Đang có 1 phiên báo loạt chạy trên server hay không. Khi true, nút "Báo hàng loạt" đổi vai thành
+  // nút "Dừng" (bấm -> /api/notify-all/stop) và render KHÔNG đè nhãn/disable của nút đó.
+  let bulkSending = false;
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
   // từ Basso không xoá mất phần đang soạn dở. Xoá khỏi map ngay khi lưu thành công.
   const dirtyNotes = new Map();
@@ -680,7 +683,8 @@
       if (currentGroup !== 'todo') txt += ` · ${counts.todo} chưa báo`;
       ci.textContent = txt;
     }
-    $('bulkBtn').disabled = counts.todo === 0;
+    // Đang gửi loạt: nút đóng vai "Dừng" -> KHÔNG để render đè disable/nhãn của nó.
+    if (!bulkSending) $('bulkBtn').disabled = counts.todo === 0;
   }
 
   // ---------------- Mở rộng dòng ----------------
@@ -983,11 +987,40 @@
       .map(orderPayload);
   }
 
+  // Nhãn/nút mặc định của nút báo loạt (khi rảnh). Dùng lại ở nhiều nơi để khỏi lệch chữ.
+  function resetBulkBtn() {
+    const btn = $('bulkBtn');
+    btn.classList.remove('is-loading');
+    btn.innerHTML = App.icon('megaphone') + ' Báo hàng loạt (chưa báo)';
+    btn.disabled = counts.todo === 0;
+  }
+
+  // Người dùng bấm Dừng giữa chừng. Server dừng ở đơn kế tiếp; đơn đang gửi dở vẫn chạy xong.
+  // Không đợi loạt kết thúc ở đây — bulkSend() vẫn đang await và sẽ tự hiện tổng kết khi xong.
+  async function stopBulk() {
+    const btn = $('bulkBtn');
+    btn.disabled = true; // chặn bấm dừng nhiều lần; bulkSend() sẽ khôi phục nút khi loạt kết thúc
+    btn.innerHTML = '<span class="spinner"></span> Đang dừng...';
+    try {
+      const res = await App.api('/api/notify-all/stop', { method: 'POST' });
+      App.toast(res.stopping
+        ? '⏹️ Đã yêu cầu dừng — sẽ dừng ngay sau khi gửi xong đơn đang chạy.'
+        : 'Không có loạt nào đang chạy để dừng.', 5000);
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
+      // Gọi dừng lỗi (mạng...) -> cho bấm lại; nút vẫn ở chế độ "đang gửi".
+      if (bulkSending) { btn.disabled = false; btn.innerHTML = App.icon('stop') + ' Dừng báo loạt'; }
+    }
+  }
+
   async function bulkSend() {
     if (!counts.todo) return;
     closeBulkModal();
     const btn = $('bulkBtn');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
+    // Giữ nút BẤM ĐƯỢC (không disable) để đóng vai nút Dừng trong lúc gửi.
+    bulkSending = true;
+    btn.disabled = false;
+    btn.innerHTML = App.icon('stop') + ' Dừng báo loạt';
     try {
       const q = $('fQ').value;
       const body = {
@@ -1001,12 +1034,18 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        // Loạt lớn chạy vài phút (mỗi đơn nghỉ 5–10s) -> nới timeout để client không abort giữa chừng
+        // (khiến mất nút Dừng dù server vẫn đang gửi). 30 phút là dư cho các loạt thực tế.
+        timeoutMs: 30 * 60 * 1000,
       });
       // Zalo hiện trang login -> server đã DỪNG loạt ngay. Báo rõ để đăng nhập rồi thử lại,
       // thay vì hiện "Hoàn tất" gây hiểu nhầm là đã gửi hết.
       if (res.aborted) {
         App.toast(`⛔ Zalo chưa đăng nhập — đã dừng báo loạt (còn ${res.skipped || 0} đơn chưa gửi).`
           + ' Hãy đăng nhập Zalo rồi báo lại.', 9000);
+      } else if (res.stopped) {
+        // Người dùng chủ động bấm Dừng -> báo rõ đã gửi bao nhiêu, còn bỏ dở bao nhiêu.
+        App.toast(`⏹️ Đã dừng báo loạt: ✅ ${res.sent} đã gửi · còn ${res.skipped || 0} đơn chưa gửi.`, 8000);
       } else {
         // Đếm riêng số khách KHÔNG tìm thấy cuộc trò chuyện để báo rõ (thay vì chỉ "❌ N" chung chung).
         // Chi tiết từng khách vẫn xem được ở Lịch sử báo.
@@ -1019,7 +1058,8 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
-      btn.innerHTML = App.icon('megaphone') + ' Báo hàng loạt (chưa báo)';
+      bulkSending = false;
+      resetBulkBtn();
     }
   }
 
@@ -1437,7 +1477,8 @@
     clearTimeout(qTimer);
     qTimer = setTimeout(() => { currentPage = 1; applyFilters({ keepPage: true }); }, clientMode ? 120 : 400);
   });
-  $('bulkBtn').addEventListener('click', openBulkModal);
+  // Rảnh -> mở modal báo loạt; đang gửi -> đóng vai nút Dừng.
+  $('bulkBtn').addEventListener('click', () => (bulkSending ? stopBulk() : openBulkModal()));
 
   // (Thanh thẻ trạng thái đã bỏ — lọc trạng thái nằm trong popover "Bộ lọc", xem xử lý ở fApply.)
 
