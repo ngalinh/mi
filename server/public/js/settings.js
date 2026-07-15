@@ -478,11 +478,14 @@
     const el = $('autoBadge');
     const sched = a && a.scheduleTime;
     let mode;
+    // Sau restart: bật nhưng đang chờ admin bấm "Quét & gửi" -> báo rõ để không tưởng nhầm là đang chạy.
+    const paused = autoEnabled && a && a.awaitingResume;
     if (!autoEnabled) mode = 'Tắt';
+    else if (paused) mode = 'Tạm dừng sau khởi động — bấm "Quét & gửi" để tiếp tục';
     else if (sched) mode = `Bật (gửi lúc ${sched})`;
     else mode = `Bật (mỗi ${Math.round(((a && a.intervalMs) || 0) / 1000)}s)`;
     el.textContent = 'Tự động: ' + mode;
-    el.className = 'badge-status badge-clickable ' + (autoEnabled ? 'badge-online' : 'badge-offline');
+    el.className = 'badge-status badge-clickable ' + (paused ? 'badge-pending' : (autoEnabled ? 'badge-online' : 'badge-offline'));
     renderSchedule(a);
     renderAlert(a);
   }

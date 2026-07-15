@@ -133,6 +133,10 @@ function initialAlert() {
 const state = {
   enabled: cfg.enabled,
   running: false,
+  // Sau khi khởi động lại: nếu bật (true), MỌI lượt gửi tự động (interval/scheduled/webhook) bị
+  // hoãn — kể cả "gửi bù" đợt đang dở — tới khi admin bấm "Quét & gửi" hoặc bật lại auto. Đặt ở
+  // startAutoNotify khi resumeOnBoot=false; gỡ khi có hành động chủ động của admin.
+  awaitingResume: false,
   lastRun: null,       // ISO time của lần chạy gần nhất
   lastResult: null,    // tóm tắt lần chạy gần nhất
   startedAt: null,
@@ -420,6 +424,17 @@ async function fetchAllNotSent(opts = {}) {
  */
 async function runAutoNotify(opts = {}) {
   const trigger = opts.trigger || 'manual';
+  // TẠM DỪNG SAU KHỞI ĐỘNG: chặn mọi lượt gửi TỰ ĐỘNG (interval/scheduled/webhook) — kể cả "gửi
+  // bù" đợt đang dở — cho tới khi admin CHỦ ĐỘNG bấm "Quét & gửi" (trigger 'manual'). Cú bấm đó
+  // vừa chạy lượt này vừa GỠ tạm dừng để auto tiếp tục bình thường. Tắt chờ bằng AUTO_NOTIFY_RESUME_ON_BOOT=true.
+  if (state.awaitingResume) {
+    if (trigger !== 'manual') {
+      return { trigger, skipped: true, paused: true, reason: 'Tạm dừng sau khi khởi động lại — chờ admin bấm "Quét & gửi" để tiếp tục.' };
+    }
+    state.awaitingResume = false;
+    if (!timer) startTimer();
+    console.log('[auto-notify] admin bấm "Quét & gửi" — gỡ tạm dừng sau khởi động, auto chạy lại bình thường.');
+  }
   // Chế độ HẸN GIỜ: "có hàng về" (webhook) chỉ để cập nhật — KHÔNG gửi ngay. Cả ngày gom lại,
   // đúng giờ (trigger 'scheduled') mới gửi. Nút "Quét & gửi ngay" (trigger 'manual') vẫn gửi
   // được ngay vì đó là hành động chủ đích của admin.
@@ -571,7 +586,8 @@ function setEnabled(enabled) {
   const on = !!enabled;
   if (on === state.enabled && (!on || timer)) return getStatus();
   state.enabled = on;
-  if (on) startTimer(); else stopTimer();
+  // Admin bật auto = hành động chủ động -> gỡ tạm dừng sau khởi động (nếu đang chờ).
+  if (on) { state.awaitingResume = false; startTimer(); } else stopTimer();
   console.log(`[auto-notify] ${on ? 'BẬT' : 'TẮT'} (mỗi ${Math.round(cfg.intervalMs / 1000)}s)`);
   return getStatus();
 }
@@ -600,6 +616,13 @@ function stopTimer() {
 /** Khởi động cùng server (nếu AUTO_NOTIFY=true). */
 function startAutoNotify() {
   if (state.enabled) {
+    // Sau RESTART: mặc định TẠM DỪNG gửi tự động (gồm "gửi bù" đợt đang dở). KHÔNG dựng timer để
+    // không lượt nào tự nổ; chờ admin bấm "Quét & gửi" hoặc bật lại auto trên dashboard.
+    if (!cfg.resumeOnBoot) {
+      state.awaitingResume = true;
+      console.log('[auto-notify] BẬT — nhưng TẠM DỪNG sau khi khởi động lại: KHÔNG tự gửi bù. Bấm "Quét & gửi" trên dashboard để tiếp tục (đặt AUTO_NOTIFY_RESUME_ON_BOOT=true để tự chạy lại ngay như trước).');
+      return;
+    }
     startTimer();
     if (state.scheduleTime) {
       const pc = state.precheckMinutes > 0 ? `, nhắc soạn ND trước ${state.precheckMinutes} phút` : '';
@@ -743,6 +766,8 @@ function getStatus() {
   return {
     enabled: state.enabled,
     running: state.running,
+    // true = đang tạm dừng sau khi khởi động lại, chờ admin bấm "Quét & gửi" để tiếp tục gửi tự động.
+    awaitingResume: state.awaitingResume,
     intervalMs: cfg.intervalMs,
     profile: cfg.profile,
     maxRetries: cfg.maxRetries,
