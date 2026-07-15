@@ -927,6 +927,11 @@ td.staff-col { white-space: nowrap; }
   border-color: color-mix(in srgb, var(--amber) 22%, transparent);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--amber) 16%, transparent);
 }
+/* Log thao tác & gửi: cột "Nội dung / Lỗi" cắt gọn 1 dòng, xem đầy đủ ở tooltip. */
+.log-detail {
+  max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--muted); font-size: 12.5px;
+}
 /* Cột "Báo qua FB": pill bật/tắt + link gọn xếp dọc, canh giữa cho gọn gàng. */
 .fb-cell {
   display: inline-flex; flex-direction: row; flex-wrap: nowrap;

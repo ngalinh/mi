@@ -12,6 +12,7 @@
     panels.forEach((pl) => pl.classList.toggle('hidden', pl.dataset.panelContent !== p));
     if (p === 'proxy') loadProxy();
     if (p === 'zalo') loadZalo();
+    if (p === 'log') loadLog();
   });
 
   // ---------------- Nhân viên (lưu thật ở server: SQLite /api/staff) ----------------
@@ -790,6 +791,71 @@
   $('testModeBadge').addEventListener('click', toggleTestMode);
   $('testPhonesSave').addEventListener('click', saveTestPhones);
   $('testPhonesInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveTestPhones(); });
+
+  // ---------------- Log thao tác & gửi (dùng lại /api/reports) ----------------
+  const logRows = $('logRows');
+  let logTimer = null; // debounce cho ô tìm
+
+  // Lỗi "không tìm thấy hội thoại Zalo" -> nhãn riêng "Không Zalo" (khớp cột Kết quả gửi ở dashboard).
+  const isNoConvLog = (msg) => /KHONG_THAY_HOI_THOAI/i.test(msg || '');
+  function logStatusPill(r) {
+    if (r.status === 'pending') return `<span class="pill pending">${App.icon('hourglass')} Đang gửi</span>`;
+    if (r.status === 'success') return `<span class="pill success">${App.icon('check')} Đã gửi</span>`;
+    if (isNoConvLog(r.error)) return `<span class="pill noconv">${App.icon('search')} Không Zalo</span>`;
+    return `<span class="pill failed">${App.icon('alert')} Lỗi</span>`;
+  }
+
+  async function loadLog() {
+    const q = $('logSearch').value.trim();
+    const status = $('logStatus').value;
+    const kind = $('logKind').value;
+    const limit = $('logLimit').value || '200';
+    logRows.innerHTML = '<tr><td colspan="8" class="muted" style="padding:16px;">Đang tải…</td></tr>';
+    try {
+      const params = new URLSearchParams({ limit });
+      if (q) params.set('q', q);
+      if (status) params.set('status', status);
+      const res = await App.api(`/api/reports?${params.toString()}`);
+      let items = res.items || [];
+      // Lọc loại tin (hàng/ship) ở client — API không có filter kind riêng.
+      if (kind) items = items.filter((r) => (r.kind === 'ship' ? 'ship' : 'hang') === kind);
+      $('logCount').textContent = `${items.length} lượt`;
+      if (!items.length) {
+        logRows.innerHTML = '<tr><td colspan="8" class="muted" style="padding:16px;">Chưa có lượt báo nào khớp.</td></tr>';
+        return;
+      }
+      logRows.innerHTML = items.map((r) => {
+        const sender = r.sent_by === 'bot'
+          ? `<span class="pill pill-bot">${App.icon('bot')} Bot</span>`
+          : App.esc(r.sent_by || '—');
+        const chan = r.channel === 'facebook' ? 'FB' : 'Zalo';
+        const acct = r.zalo_account
+          ? `${App.esc(r.zalo_account)} <span class="muted" style="font-size:11px;">${chan}</span>`
+          : '<span class="muted">—</span>';
+        // Lỗi -> ưu tiên hiện lý do lỗi; ngược lại hiện nội dung tin đã gửi.
+        const detail = (r.status === 'failed' && r.error) ? r.error : (r.message || '');
+        const detailShort = detail.length > 90 ? detail.slice(0, 90) + '…' : detail;
+        return `<tr>
+          <td class="muted" style="font-size:12px;">${App.esc(App.fmtDateTime(r.created_at))}</td>
+          <td>${App.esc(r.customer_name || '—')}<div class="muted" style="font-size:12px;">${App.esc(r.phone || '')}</div></td>
+          <td>${App.esc(r.staff || '—')}</td>
+          <td>${sender}</td>
+          <td>${acct}</td>
+          <td class="center">${r.kind === 'ship' ? 'Ship' : 'Hàng'}</td>
+          <td class="center">${logStatusPill(r)}</td>
+          <td class="log-detail" title="${App.esc(detail)}">${App.esc(detailShort)}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      logRows.innerHTML = `<tr><td colspan="8" class="muted" style="padding:16px;">Lỗi tải log: ${App.esc(e.message || '')}</td></tr>`;
+    }
+  }
+
+  $('logReload').addEventListener('click', loadLog);
+  $('logStatus').addEventListener('change', loadLog);
+  $('logKind').addEventListener('change', loadLog);
+  $('logLimit').addEventListener('change', loadLog);
+  $('logSearch').addEventListener('input', () => { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 350); });
 
   loadHealth();
   setInterval(loadHealth, 15000);

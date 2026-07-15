@@ -50,6 +50,7 @@
           <button class="tab" data-panel="zalo">Tài khoản</button>
           <button class="tab" data-panel="proxy">Proxy</button>
           <button class="tab" data-panel="mode">Chế độ</button>
+          <button class="tab" data-panel="log">Log</button>
         </div>
 
         <div class="card" data-panel-content="nhanvien" style="margin-top:14px;">
@@ -221,6 +222,57 @@
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>
               Test Basso
             </button>
+          </div>
+        </div>
+
+        <div class="card hidden" data-panel-content="log" style="margin-top:14px;">
+          <div class="card-header">
+            <h1>Log thao tác &amp; gửi</h1>
+            <button class="btn small secondary" id="logReload">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+              Tải lại
+            </button>
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 14px;">Lịch sử mọi lượt báo hàng/ship: ai gửi (nhân viên hay <strong>bot</strong> tự động), gửi bằng tài khoản nào, kết quả và lý do lỗi. Mới nhất ở trên.</div>
+          <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
+            <input class="note-input" id="logSearch" placeholder="Tìm tên / SĐT / mã ĐH…" style="max-width:230px;" />
+            <select class="note-input" id="logStatus" style="max-width:160px;">
+              <option value="">Tất cả kết quả</option>
+              <option value="success">Đã gửi</option>
+              <option value="pending">Đang gửi</option>
+              <option value="failed">Lỗi</option>
+            </select>
+            <select class="note-input" id="logKind" style="max-width:150px;">
+              <option value="">Cả hàng &amp; ship</option>
+              <option value="hang">Báo hàng</option>
+              <option value="ship">Báo ship</option>
+            </select>
+            <select class="note-input" id="logLimit" style="max-width:130px;">
+              <option value="100">100 dòng</option>
+              <option value="200" selected>200 dòng</option>
+              <option value="500">500 dòng</option>
+              <option value="1000">1000 dòng</option>
+            </select>
+            <span class="muted" id="logCount" style="font-size:12px;"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:130px">Thời gian</th>
+                  <th>Khách hàng</th>
+                  <th>NV phụ trách</th>
+                  <th>Người gửi</th>
+                  <th>Tài khoản</th>
+                  <th class="center">Loại</th>
+                  <th class="center">Kết quả</th>
+                  <th>Nội dung / Lỗi</th>
+                </tr>
+              </thead>
+              <tbody id="logRows">
+                <tr><td colspan="8" class="muted" style="padding:16px;">Chọn tab để tải…</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
