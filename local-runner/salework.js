@@ -63,15 +63,28 @@ async function gotoSalework(page) {
 // mỗi tuần. Nếu không có credential (hoặc gặp OTP/captcha) thì báo lỗi rõ để đăng nhập thủ công.
 // ============================================================================
 
+// Form login ZaloCRM (zalo.basso.vn/login): ô Email (type=email, placeholder "Email") + ô
+// Mật khẩu (type=password, placeholder "Mật khẩu") + nút gradient "Đăng nhập".
 // Ô mật khẩu là mỏ neo chắc chắn nhất để nhận biết form đăng nhập.
 const PASSWORD_SELECTOR = 'input[type="password"], input[placeholder*="mật khẩu" i]';
-// Nút submit đăng nhập (thử nhiều biến thể phòng khi DOM/ngôn ngữ đổi).
+// Ô TÀI KHOẢN (email): ưu tiên type=email / placeholder "Email"; fallback ô nhập đầu KHÔNG phải
+// mật khẩu (phòng khi giao diện đổi placeholder/ngôn ngữ).
+const USERNAME_SELECTORS = [
+  'input[type="email"]',
+  'input[placeholder*="email" i]',
+  'input[name="email"]',
+  'input[autocomplete="username"]',
+  'input[type="text"]',
+  'input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])',
+];
+// Nút submit "Đăng nhập" (thử nhiều biến thể phòng khi là <button>/<a>/div gradient).
 const LOGIN_BUTTON_SELECTORS = [
   'button:has-text("Đăng nhập")',
-  'button:has-text("Đăng Nhập")',
-  '.v-btn:has-text("Đăng nhập")',
   'button[type="submit"]',
   '[type="submit"]',
+  'a:has-text("Đăng nhập")',
+  '[role="button"]:has-text("Đăng nhập")',
+  '.v-btn:has-text("Đăng nhập")',
 ];
 
 /** Trang hiện có form đăng nhập không (còn ô mật khẩu / nút Đăng nhập, hoặc URL /login). */
@@ -119,11 +132,14 @@ async function performLogin(page, { username, password }) {
     return false;
   }
 
-  // Ô TÀI KHOẢN = ô nhập đầu tiên KHÔNG phải mật khẩu/ẩn/checkbox (Vuetify thường là input[type=text]).
-  const userInput = page
-    .locator('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])')
-    .first();
-  if (await userInput.isVisible().catch(() => false)) {
+  // Ô TÀI KHOẢN (email): thử lần lượt các selector ưu tiên, lấy cái đầu tiên đang hiển thị.
+  let userInput = null;
+  for (const sel of USERNAME_SELECTORS) {
+    const loc = page.locator(sel).first();
+    // eslint-disable-next-line no-await-in-loop
+    if (await loc.isVisible().catch(() => false)) { userInput = loc; break; }
+  }
+  if (userInput) {
     try { await userInput.click({ timeout: 3000 }); } catch { /* vẫn thử fill */ }
     await userInput.fill('').catch(() => {});
     await userInput.fill(username).catch(() => {});
