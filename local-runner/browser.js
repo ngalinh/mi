@@ -109,6 +109,12 @@ async function safeLaunchPersistentContext(userDataDir, proxy) {
   const opts = {
     headless: config.headless,
     slowMo: config.slowMo,
+    // KHÔNG để Playwright tự bắt tín hiệu: local-runner/index.js đã có gracefulShutdown lo
+    // đóng context có hạn cứng. Nếu bật (mặc định), handler của Playwright cố đóng Chrome khi
+    // nhận SIGINT/SIGTERM; Chrome treo là kẹt luôn tiến trình -> pm2 restart treo.
+    handleSIGINT: false,
+    handleSIGTERM: false,
+    handleSIGHUP: false,
     viewport: { width: 1366, height: 850 },
     args: [
       '--disable-blink-features=AutomationControlled',
