@@ -21,6 +21,17 @@ module.exports = {
   defaultZaloAccount: process.env.DEFAULT_ZALO_ACCOUNT || '',
   // URL trang đăng nhập (có thể khác trang chat). Mặc định dùng luôn saleworkUrl.
   saleworkLoginUrl: process.env.SALEWORK_LOGIN_URL || process.env.SALEWORK_URL || 'https://zalo.basso.vn',
+  // Thông tin ĐĂNG NHẬP TỰ ĐỘNG vào Zalo Basso (fallback cho profile "default" khi account
+  // trong store chưa gán tài khoản/mật khẩu riêng). Zalo Basso chỉ giữ session ~1 tuần nên khi
+  // phát hiện form đăng nhập, runner tự điền tài khoản + mật khẩu này rồi bấm "Đăng nhập".
+  // Để trống = KHÔNG tự đăng nhập (giữ hành vi cũ: chạy `npm run login` thủ công 1 lần).
+  saleworkLoginUser: process.env.SALEWORK_LOGIN_USER || '',
+  saleworkLoginPass: process.env.SALEWORK_LOGIN_PASS || '',
+  // Giữ ấm session (tự đăng nhập lại trước khi hết hạn). Bật để định kỳ mở từng profile Zalo có
+  // lưu tài khoản/mật khẩu, kiểm tra + tự đăng nhập lại nếu session đã hết. Mặc định TẮT (chỉ tự
+  // đăng nhập ngay lúc gửi khi gặp form login). SESSION_KEEPALIVE_MS = chu kỳ quét (mặc định 12h).
+  sessionKeepalive: String(process.env.SESSION_KEEPALIVE || 'false').toLowerCase() === 'true',
+  sessionKeepaliveMs: parseInt(process.env.SESSION_KEEPALIVE_MS || String(12 * 60 * 60 * 1000), 10),
   // --- Facebook (báo hàng qua Messenger khi khách không dùng Zalo) ---
   // Trang mở khi ĐĂNG NHẬP Facebook (giống Xeko: mở facebook.com rồi NV đăng nhập tay, lưu session).
   facebookLoginUrl: process.env.FACEBOOK_LOGIN_URL || 'https://www.facebook.com/',

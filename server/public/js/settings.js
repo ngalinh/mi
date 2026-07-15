@@ -133,6 +133,7 @@
   const zaKey = $('zaKey'), zaName = $('zaName'), zaSalework = $('zaSalework'),
     zaFbName = $('zaFbName'),
     zaEmail = $('zaEmail'), zaPassword = $('zaPassword'), zaPlatform = $('zaPlatform'),
+    zaLoginUser = $('zaLoginUser'), zaLoginPass = $('zaLoginPass'),
     zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
   let zEditing = null;   // key đang sửa, null = thêm mới
@@ -288,6 +289,9 @@
     zaFbName.value = a ? (a.fbName || '') : '';
     zaEmail.value = a ? (a.email || '') : '';
     zaPassword.value = a ? (a.password || '') : '';
+    // Tài khoản/mật khẩu Zalo Basso dùng CHUNG field email/password của account (chỉ khác nhãn UI).
+    zaLoginUser.value = a ? (a.email || '') : '';
+    zaLoginPass.value = a ? (a.password || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
     zaStaffId.value = a ? (a.staffId || '') : (presets.staffId || '');
     zaBrand.value = a ? (a.brand || '') : '';
@@ -314,6 +318,10 @@
       body.saleworkName = zaSalework.value.trim();
       body.brand = zaBrand.value.trim().toUpperCase();
       body.notifyTarget = zaTarget.value === 'personal' ? 'personal' : 'group';
+      // Tài khoản/mật khẩu để TỰ đăng nhập lại Zalo Basso (dùng chung field email/password).
+      body.email = zaLoginUser.value.trim();
+      // Mật khẩu không được API trả về (ẩn) -> chỉ gửi khi NV nhập mới, tránh ghi đè rỗng khi sửa.
+      if (zaLoginPass.value) body.password = zaLoginPass.value;
     }
     if (!key || !body.name) { App.toast('❌ Cần điền: Mã profile và Tên nhân viên', 5000); return; }
     if (platform === 'zalo' && !body.saleworkName) { App.toast('❌ Zalo cần "Tên trong dropdown"', 5000); return; }

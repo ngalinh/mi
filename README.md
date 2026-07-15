@@ -42,6 +42,37 @@ Lần đầu hãy mở `https://zalo.basso.vn` trong cửa sổ browser do bot b
 
 > Tip: profile mặc định là `default`. Mỗi account Salework/Zalo nên dùng 1 profile riêng (truyền `profile` khi gọi `/api/notify`).
 
+### Đăng nhập tự động Zalo Basso (session chỉ giữ ~1 tuần) 🆕
+
+Zalo Basso chỉ lưu session đăng nhập trong mỗi profile **khoảng 1 tuần**, hết hạn là phải đăng
+nhập lại. Để khỏi làm tay mỗi tuần, lưu **tài khoản + mật khẩu** đăng nhập Zalo Basso, runner sẽ
+**tự điền form + bấm "Đăng nhập"** khi phát hiện session đã hết.
+
+**Khai báo tài khoản/mật khẩu** (2 cách, có thể dùng chung):
+
+1. **Theo từng nhân viên** (ưu tiên): dashboard → *Cài đặt → Tài khoản* → mở account Zalo, điền
+   **Tài khoản đăng nhập Zalo Basso** + **Mật khẩu Zalo Basso**. Mật khẩu **không bao giờ** trả
+   ngược ra API (ẩn khỏi `/api/accounts`), khi sửa để trống ô mật khẩu = giữ nguyên mật khẩu cũ.
+2. **Fallback cho profile `default`** qua `.env` của runner:
+   ```
+   SALEWORK_LOGIN_USER=...      # tài khoản/SĐT/email đăng nhập zalo.basso.vn
+   SALEWORK_LOGIN_PASS=...      # mật khẩu
+   ```
+
+**Khi nào tự đăng nhập chạy:**
+- **Ngay lúc gửi**: nếu mở trang chat mà gặp form đăng nhập, runner tự đăng nhập rồi tiếp tục gửi
+  (không mất lượt). Không có credential (hoặc gặp OTP/captcha) → báo lỗi `CHUA_DANG_NHAP` rõ ràng
+  để đăng nhập thủ công (`npm run login`).
+- **Lúc bấm "Kiểm tra"** kết nối account (`/api/accounts/:key/check`): tự đăng nhập lại nếu hết hạn.
+- **Giữ ấm định kỳ** (tuỳ chọn): bật `SESSION_KEEPALIVE=true` để runner tự quét từng profile Zalo
+  có lưu credential mỗi `SESSION_KEEPALIVE_MS` (mặc định 12h) và đăng nhập lại **trước** khi tới
+  lượt gửi. Mặc định tắt.
+- **Nút "Đăng nhập"** trên UI (mở Chromium): tự điền sẵn tài khoản/mật khẩu, NV chỉ cần bấm đăng
+  nhập / xử lý xác minh nếu có.
+
+> Chỉ tự động được khi Zalo Basso đăng nhập bằng **tài khoản + mật khẩu**. Nếu bước đăng nhập có
+> **OTP/captcha**, runner điền sẵn tài khoản/mật khẩu nhưng bước xác minh vẫn cần làm tay 1 lần.
+
 ### 2) Server (dashboard)
 ```powershell
 npm run server
