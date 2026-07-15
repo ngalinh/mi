@@ -21,10 +21,11 @@ module.exports = {
   defaultZaloAccount: process.env.DEFAULT_ZALO_ACCOUNT || '',
   // URL trang đăng nhập (có thể khác trang chat). Mặc định dùng luôn saleworkUrl.
   saleworkLoginUrl: process.env.SALEWORK_LOGIN_URL || process.env.SALEWORK_URL || 'https://zalo.basso.vn',
-  // Thông tin ĐĂNG NHẬP TỰ ĐỘNG vào Zalo Basso (fallback cho profile "default" khi account
-  // trong store chưa gán tài khoản/mật khẩu riêng). Zalo Basso chỉ giữ session ~1 tuần nên khi
-  // phát hiện form đăng nhập, runner tự điền tài khoản + mật khẩu này rồi bấm "Đăng nhập".
-  // Để trống = KHÔNG tự đăng nhập (giữ hành vi cũ: chạy `npm run login` thủ công 1 lần).
+  // Thông tin ĐĂNG NHẬP TỰ ĐỘNG vào Zalo Basso, DÙNG CHUNG cho MỌI profile (tất cả profile Zalo
+  // của nhân viên đăng nhập qua CÙNG 1 tài khoản ZaloCRM). Áp dụng khi account trong store chưa
+  // gán tài khoản/mật khẩu riêng — tức là fallback cho mọi profile, không riêng "default".
+  // Zalo Basso chỉ giữ session ~1 tuần nên khi phát hiện form đăng nhập, runner tự điền tài khoản
+  // + mật khẩu này rồi bấm "Đăng nhập". Để trống = KHÔNG tự đăng nhập (chạy `npm run login` tay).
   saleworkLoginUser: process.env.SALEWORK_LOGIN_USER || '',
   saleworkLoginPass: process.env.SALEWORK_LOGIN_PASS || '',
   // Giữ ấm session (tự đăng nhập lại trước khi hết hạn). Bật để định kỳ mở từng profile Zalo có
