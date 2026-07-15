@@ -16,7 +16,8 @@
     "dev": "node server/index.js",
     "diagram": "node scripts/gen-flow-diagram.js",
     "test:basso": "node scripts/test-basso.js",
-    "check": "node scripts/health-check.js"
+    "check": "node scripts/health-check.js",
+    "import:fb": "node scripts/import-xeko-fb-profiles.js"
   },
   "engines": {
     "node": ">=22.5"
