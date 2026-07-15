@@ -1,6 +1,6 @@
 'use strict';
 const config = require('./config');
-const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
+const { getOrders, updateOrderStatus, getArrivedItems, getOrderContent } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
 const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getFbLink, getZaloName, getContactReportTarget } = require('./db');
@@ -105,6 +105,35 @@ async function resolveOrderMeta(order) {
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
+
+  // LẤY ND TƯƠI NGAY TRƯỚC KHI GỬI (chỉ khi KHÔNG có messageOverride — tức luồng auto-notify &
+  // Báo hàng loạt dùng thẳng ND từ Basso). order.noiDungBaoHang có thể là bản CŨ (list cache 30s
+  // / dashboard cầm bản cũ) -> khách về thêm sản phẩm nhưng tin vẫn báo nội dung cũ (vd 1 sp).
+  // getOrderContent bỏ cache, khớp đúng đơn theo (customerId + dateInventory) nên lấy được nội
+  // dung mới nhất Basso đã soạn lại. Lỗi/không thấy -> giữ nguyên ND đang có, KHÔNG chặn gửi.
+  const noOverride = !(opts.messageOverride && opts.messageOverride.trim());
+  if (noOverride && config.basso.refreshContentBeforeSend
+      && order.customerId != null && order.dateInventory != null) {
+    try {
+      const fresh = await getOrderContent({
+        customerId: order.customerId,
+        dateInventory: order.dateInventory,
+        phone: order.phone,
+      });
+      if (fresh && fresh.found) {
+        const key = kind === 'ship' ? 'noiDungBaoShip' : 'noiDungBaoHang';
+        const next = kind === 'ship' ? fresh.noiDungBaoShip : fresh.noiDungBaoHang;
+        const prev = order[key];
+        if (next && String(next).trim() && String(next).trim() !== String(prev || '').trim()) {
+          console.log(`[notify] ND ${kind} của ${order.customerName || order.phone || order.customerId} đã ĐỔI trên Basso -> dùng bản mới nhất (bản cũ có thể thiếu sản phẩm vừa về).`);
+          order = { ...order, [key]: next };
+        }
+      }
+    } catch (err) {
+      console.warn(`[notify] không lấy được ND tươi cho đơn ${order.customerId}/${order.dateInventory}: ${err.message} — dùng ND đang có.`);
+    }
+  }
+
   const message = opts.messageOverride && opts.messageOverride.trim()
     ? opts.messageOverride.trim()
     : (kind === 'ship' ? buildBaoShipMessage(order) : buildBaoHangMessage(order));

@@ -846,6 +846,7 @@
     const set = (elId, prop, val) => { const el = $(elId); if (el) el[prop] = val; };
     set('modalTitle', 'textContent', `${isShip ? 'Báo ship' : 'Báo hàng'} — ${o.customerName || ''}`);
     set('modalSub', 'textContent', `SĐT: ${o.phone || '—'} · NV: ${o.staff || '—'}`);
+    const warn = $('modalStale'); if (warn) { warn.style.display = 'none'; warn.textContent = ''; } // reset cảnh báo mỗi lần mở
     const current = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
     set('modalMsg', 'value', current);
     set('modalMsg', 'disabled', false); // reset nếu lần trước đóng modal giữa lúc đang tải
@@ -853,9 +854,12 @@
     const bg = $('modalBg');
     if (bg) bg.classList.add('show'); // hiện popup NGAY khi đã có nội dung
     autoGrowMsg();
-    // Chưa có sẵn ND trong danh sách -> lấy RIÊNG nội dung của đơn từ Basso (fresh, trực tiếp).
-    // CHỈ với báo hàng: ND báo ship trống là do chưa tạo đơn ship, không có gì để tải.
-    if (!current.trim() && !isShip) fetchContentIntoModal(o, isShip, id);
+    // LUÔN đối chiếu nội dung MỚI NHẤT trên Basso (bỏ cache) khi mở modal:
+    //   - Chưa có ND -> lấy về đổ vào ô (như trước).
+    //   - ĐÃ có ND  -> so với bản mới; nếu LỆCH (vd khách về thêm sản phẩm, Basso soạn lại) thì
+    //                  cảnh báo + tự cập nhật ô soạn bằng bản mới (nếu người dùng chưa sửa tay).
+    // Bỏ qua đúng 1 trường hợp: báo ship mà đang trống (chưa tạo đơn ship, không có gì để tải).
+    if (!(isShip && !current.trim())) refreshContentIntoModal(o, isShip, id, current);
     try {
       const sendBtn = $('modalSend');
       if (sendBtn) {
@@ -876,12 +880,21 @@
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
   }
-  // Lấy riêng ND của đơn từ Basso rồi đổ vào modal đang mở (nếu người dùng chưa đóng/đổi đơn).
+  // Lấy ND MỚI NHẤT của đơn từ Basso (bỏ cache) rồi đồng bộ vào modal đang mở.
+  //  - `original` = nội dung ĐANG hiển thị lúc mở modal (từ danh sách, có thể là bản cache cũ).
+  //  - Trống -> đổ nội dung lấy về vào ô (như trước).
+  //  - Có sẵn & LỆCH so với bản mới -> hiện cảnh báo "ND lệch" + cập nhật ô (nếu chưa sửa tay).
   // Cập nhật luôn đơn trong bộ nhớ + render lại bảng để bật nút gửi và đổi cell "Tải" -> "Xem".
-  async function fetchContentIntoModal(o, isShip, id) {
+  async function refreshContentIntoModal(o, isShip, id, original = '') {
     const ta = $('modalMsg');
+    const warn = $('modalStale');
     const stillOpen = () => modalId === id && modalKind === (isShip ? 'ship' : 'hang');
-    if (ta) { ta.placeholder = 'Đang lấy nội dung từ Basso…'; ta.disabled = true; }
+    const hadContent = !!(original && original.trim());
+    const showWarn = (cls, text) => { if (warn && stillOpen()) { warn.className = 'stale-warn' + (cls ? ' ' + cls : ''); warn.textContent = text; warn.style.display = ''; } };
+    const hideWarn = () => { if (warn) warn.style.display = 'none'; };
+    // Trống -> chặn ô + báo "đang lấy". Có sẵn -> kiểm tra NGẦM (không khoá ô), hiện dòng "đang kiểm tra".
+    if (!hadContent && ta) { ta.placeholder = 'Đang lấy nội dung từ Basso…'; ta.disabled = true; }
+    else if (hadContent) showWarn('checking', 'Đang kiểm tra nội dung mới nhất trên Basso…');
     try {
       const qs = new URLSearchParams({
         customerId: o.customerId ?? '', dateInventory: o.dateInventory ?? '', phone: o.phone || '',
@@ -891,15 +904,31 @@
       if (res.noiDungBaoHang) o.noiDungBaoHang = res.noiDungBaoHang;
       if (res.noiDungBaoShip) o.noiDungBaoShip = res.noiDungBaoShip;
       const val = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
-      if (stillOpen() && ta) {
-        ta.value = val;
-        ta.placeholder = val ? '' : 'Basso chưa có nội dung cho đơn này.';
-        autoGrowMsg();
+      if (stillOpen()) {
+        if (!hadContent) {
+          // Đổ nội dung mới lấy về vào ô đang trống.
+          if (ta) { ta.value = val; ta.placeholder = val ? '' : 'Basso chưa có nội dung cho đơn này.'; autoGrowMsg(); }
+          hideWarn();
+        } else {
+          const changed = !!(val && val.trim() && val.trim() !== original.trim());
+          const edited = ta && ta.value.trim() !== original.trim(); // người dùng đã sửa tay chưa?
+          if (changed && !edited) {
+            if (ta) { ta.value = val; autoGrowMsg(); }
+            showWarn('', '⚠️ Nội dung trên Basso đã THAY ĐỔI so với bản đang hiển thị (có thể khách vừa về thêm sản phẩm). Đã cập nhật ô soạn bên dưới bằng nội dung MỚI NHẤT — kiểm tra rồi hãy gửi.');
+          } else if (changed && edited) {
+            showWarn('', '⚠️ Nội dung trên Basso đã THAY ĐỔI (có thể khách về thêm sản phẩm), nhưng bạn đã sửa tay nên KHÔNG tự ghi đè. Đối chiếu lại trước khi gửi.');
+          } else {
+            hideWarn(); // trùng khớp -> không cảnh báo
+          }
+        }
       }
       if (res.noiDungBaoHang || res.noiDungBaoShip) render(); // đồng bộ cell + nút gửi trong bảng
     } catch (err) {
-      if (stillOpen() && ta) ta.placeholder = 'Lỗi lấy nội dung: ' + (err && err.message || 'thử lại');
-      App.toast('Không lấy được nội dung đơn: ' + (err && err.message || ''), 4000);
+      if (stillOpen()) {
+        if (!hadContent && ta) ta.placeholder = 'Lỗi lấy nội dung: ' + (err && err.message || 'thử lại');
+        else hideWarn(); // kiểm tra ngầm lỗi -> im lặng, giữ bản đang có
+      }
+      if (!hadContent) App.toast('Không lấy được nội dung đơn: ' + (err && err.message || ''), 4000);
     } finally {
       if (ta) ta.disabled = false; // luôn bật lại (textarea dùng chung, an toàn)
     }

@@ -1105,6 +1105,13 @@ td.staff-col { white-space: nowrap; }
 }
 .modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+/* Cảnh báo "ND lệch": nội dung trên Basso đã đổi so với bản đang hiển thị (khách về thêm SP…). */
+.stale-warn {
+  margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: #fff4e5; border: 1px solid #ffcf8f; color: #8a4b00;
+  font-size: 13.5px; line-height: 1.5;
+}
+.stale-warn.checking { background: #eef3ff; border-color: #b9ccff; color: #274690; }
 
 /* Khung nội dung tin nhắn báo hàng */
 .msg-box {
