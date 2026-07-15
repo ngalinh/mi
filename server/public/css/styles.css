@@ -927,11 +927,28 @@ td.staff-col { white-space: nowrap; }
   border-color: color-mix(in srgb, var(--amber) 22%, transparent);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--amber) 16%, transparent);
 }
-/* Log thao tác & gửi: cột "Nội dung / Lỗi" cắt gọn 1 dòng, xem đầy đủ ở tooltip. */
-.log-detail {
-  max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  color: var(--muted); font-size: 12.5px;
+/* Log thao tác & gửi — khung TERMINAL: nền tối, monospace, mỗi lượt là 1 dòng màu theo trạng thái.
+   Giữ tông tối cố định (như terminal thật) dù giao diện đang sáng hay tối. */
+.log-term {
+  background: #0d1117; color: #c9d1d9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12.5px; line-height: 1.7;
+  padding: 14px 16px; border-radius: var(--radius-sm);
+  border: 1px solid #1f2630;
+  max-height: 65vh; overflow: auto;
 }
+.log-term .ln { white-space: pre; }                 /* mặc định 1 dòng/lượt (cuộn ngang) */
+.log-term.wrap .ln { white-space: pre-wrap; word-break: break-word; }
+.log-term .log-empty { color: #6e7681; padding: 4px 0; }
+.log-term .t-time { color: #6e7681; }
+.log-term .t-kind { color: #79c0ff; }
+.log-term .t-key  { color: #6e7681; }
+.log-term .t-msg  { color: #8b949e; }
+.log-term .t-bot  { color: #d2a8ff; font-weight: 600; }
+.log-term .t-ok      { color: #3fb950; font-weight: 600; }
+.log-term .t-pending { color: #58a6ff; font-weight: 600; }
+.log-term .t-err     { color: #f85149; font-weight: 600; }
+.log-term .t-noconv  { color: #d29922; font-weight: 600; }
 /* Cột "Báo qua FB": pill bật/tắt + link gọn xếp dọc, canh giữa cho gọn gàng. */
 .fb-cell {
   display: inline-flex; flex-direction: row; flex-wrap: nowrap;

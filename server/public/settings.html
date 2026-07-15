@@ -253,27 +253,12 @@
               <option value="500">500 dòng</option>
               <option value="1000">1000 dòng</option>
             </select>
+            <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+              <input type="checkbox" id="logWrap" /> Xuống dòng
+            </label>
             <span class="muted" id="logCount" style="font-size:12px;"></span>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th style="width:130px">Thời gian</th>
-                  <th>Khách hàng</th>
-                  <th>NV phụ trách</th>
-                  <th>Người gửi</th>
-                  <th>Tài khoản</th>
-                  <th class="center">Loại</th>
-                  <th class="center">Kết quả</th>
-                  <th>Nội dung / Lỗi</th>
-                </tr>
-              </thead>
-              <tbody id="logRows">
-                <tr><td colspan="8" class="muted" style="padding:16px;">Chọn tab để tải…</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <div class="log-term" id="logTerm"><div class="log-empty">Chọn tab để tải…</div></div>
         </div>
       </div>
     </div>
