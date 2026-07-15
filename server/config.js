@@ -106,6 +106,12 @@ module.exports = {
     // Bật để in thời gian từng call tới Basso (chẩn đoán chậm: do mạng hay do Basso).
     // BASSO_LOG_TIMING=true -> log "[basso] getArrivedVnList 2380ms". Mặc định tắt.
     logTiming: String(process.env.BASSO_LOG_TIMING || 'false').toLowerCase() === 'true',
+    // LẤY ND BÁO HÀNG TƯƠI NGAY TRƯỚC KHI GỬI: khi build tin từ order.noiDungBaoHang (auto-notify
+    // + Báo hàng loạt, KHÔNG có messageOverride), gọi getOrderContent (bỏ cache) lấy nội dung mới
+    // nhất từ Basso. Chống tình huống "về thêm sản phẩm nhưng tin vẫn báo nội dung cũ (1 sp)" do
+    // list cache 30s / dashboard cầm bản cũ. Tắt bằng BASSO_REFRESH_CONTENT_BEFORE_SEND=false nếu
+    // muốn ưu tiên tốc độ báo loạt hơn (mỗi đơn tốn thêm 1 call Basso).
+    refreshContentBeforeSend: String(process.env.BASSO_REFRESH_CONTENT_BEFORE_SEND || 'true').toLowerCase() === 'true',
   },
   // Tự động báo hàng: cứ có đơn "Chưa báo" (đã về kho) là tự gửi tin, không cần bấm tay.
   autoNotify: {
