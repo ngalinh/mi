@@ -169,8 +169,9 @@ function profileExists(profileName) {
  * @param {string} profileName
  * @param {string} url  trang để mở (vd config.saleworkLoginUrl)
  * @param {(ev:'opened'|'closed')=>void} [onEvent] callback để ghi log lịch sử
- * @param {{email:string,password:string}} [prefill] tự điền form login Facebook (tuỳ chọn — nhân viên
- *        chỉ cần bấm đăng nhập / xử lý xác minh). Bỏ qua an toàn nếu trang không có ô email/mật khẩu.
+ * @param {{email:string,password:string}} [prefill] tự điền tài khoản + mật khẩu vào form login
+ *        (Facebook dùng ô name="email"/name="pass"; Zalo Basso dùng ô text đầu + ô mật khẩu). Nhân
+ *        viên chỉ cần bấm đăng nhập / xử lý xác minh. Bỏ qua an toàn nếu trang không có ô mật khẩu.
  * @returns {Promise<void>} resolve khi cửa sổ đã mở & điều hướng xong
  */
 async function openForLogin(profileName, url, onEvent, prefill) {
@@ -181,15 +182,24 @@ async function openForLogin(profileName, url, onEvent, prefill) {
       const context = await getContext(profileName);
       const page = context.pages()[0] || (await context.newPage());
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-      // Tự điền email + mật khẩu Facebook nếu có (giống Xeko) — nhân viên chỉ cần bấm đăng nhập.
-      if (prefill && prefill.email && prefill.password) {
+      // Tự điền tài khoản + mật khẩu nếu có (giống Xeko) — nhân viên chỉ cần bấm đăng nhập.
+      if (prefill && prefill.password) {
         try {
-          const emailInput = await page.$('input[name="email"]');
-          if (emailInput) {
-            await emailInput.fill(prefill.email);
+          const fbEmail = await page.$('input[name="email"]');
+          if (fbEmail) {
+            // Form login Facebook: ô name="email" + name="pass".
+            if (prefill.email) await fbEmail.fill(prefill.email);
             await page.fill('input[name="pass"]', prefill.password);
+          } else {
+            // Form login Zalo Basso (Vuetify): ô mật khẩu + ô text đầu tiên = tài khoản.
+            const passEl = await page.$('input[type="password"]');
+            if (passEl) {
+              const userEl = await page.$('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])');
+              if (userEl && prefill.email) await userEl.fill(prefill.email);
+              await passEl.fill(prefill.password);
+            }
           }
-        } catch { /* trang không phải form login FB -> bỏ qua, để nhân viên tự đăng nhập */ }
+        } catch { /* trang không phải form login -> bỏ qua, để nhân viên tự đăng nhập */ }
       }
       if (typeof onEvent === 'function') onEvent('opened');
       let done = false;

@@ -12,13 +12,16 @@ const testModeStore = require('./testModeStore');
 const loginHistory = require('./loginHistory');
 const { checkLoggedIn } = require('./salework');
 const { checkLoggedInFb } = require('./facebook');
+const sessionKeeper = require('./sessionKeeper');
 
 // Trang mở khi đăng nhập theo kênh: Facebook -> facebook.com, còn lại -> Zalo Basso.
 const loginUrlFor = (platform) => (platform === 'facebook' ? config.facebookLoginUrl : config.saleworkLoginUrl);
 
-// Thông tin tự điền form login Facebook (nếu có) — chỉ áp dụng cho tài khoản FB có email + mật khẩu.
-const fbPrefill = (a) =>
-  (a && a.platform === 'facebook' && a.email && a.password) ? { email: a.email, password: a.password } : null;
+// Thông tin tự điền form login khi mở Chromium (nếu account có lưu tài khoản + mật khẩu).
+// Facebook: email/SĐT + mật khẩu FB. Zalo Basso: tài khoản (email) + mật khẩu panel Basso.
+// Thiếu mật khẩu -> null (nhân viên tự đăng nhập tay). Zalo còn có fallback .env ở lớp gửi.
+const loginPrefill = (a) =>
+  (a && a.password) ? { email: a.email || '', password: a.password } : null;
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -126,8 +129,8 @@ function connectionStatus(key) {
 }
 
 function decorate(a) {
-  // KHÔNG trả `password` ra API: mật khẩu Facebook chỉ dùng nội bộ để tự điền form login khi mở
-  // Chromium (fbPrefill), không được lộ trong body response /api/accounts (mọi NV đọc được).
+  // KHÔNG trả `password` ra API: mật khẩu chỉ dùng nội bộ để tự điền form login khi mở
+  // Chromium (loginPrefill) / tự đăng nhập lại, không được lộ trong body response /api/accounts.
   const { password, ...safe } = a;
   return { ...safe, loggedIn: profileExists(a.key), connection: connectionStatus(a.key) };
 }
@@ -176,7 +179,7 @@ app.post('/api/accounts', (req, res) => {
     openForLogin(account.key, loginUrlFor(platform), (ev) => {
       if (ev === 'opened') loginHistory.add(account.key, account.name, 'login', `Mở Chromium để đăng nhập ${label}`);
       else loginHistory.add(account.key, account.name, 'login', 'Đã đóng cửa sổ — session đã lưu');
-    }, fbPrefill(account)).catch((e) => console.error(`[accounts] mở Chromium lỗi: ${e.message}`));
+    }, loginPrefill(account)).catch((e) => console.error(`[accounts] mở Chromium lỗi: ${e.message}`));
   }
 });
 
@@ -201,7 +204,7 @@ app.post('/api/accounts/:key/login', (req, res) => {
 
   res.json({ ok: true, message: `Đang mở Chromium cho "${account.name}". Đăng nhập xong thì đóng cửa sổ.` });
   openForLogin(key, loginUrlFor(account.platform), (ev) =>
-    loginHistory.add(key, account.name, 'login', ev === 'opened' ? 'Mở lại để đăng nhập' : 'Đã đóng — session đã lưu'), fbPrefill(account))
+    loginHistory.add(key, account.name, 'login', ev === 'opened' ? 'Mở lại để đăng nhập' : 'Đã đóng — session đã lưu'), loginPrefill(account))
     .catch((e) => console.error(`[accounts] re-login lỗi: ${e.message}`));
 });
 
@@ -273,6 +276,8 @@ const server = app.listen(config.port, () => {
   } else {
     console.warn('[local-runner] ⚠️  TEST_MODE TẮT — sẽ gửi tới TẤT CẢ số được yêu cầu (khách thật).');
   }
+  // Giữ ấm session Zalo (tự đăng nhập lại trước khi hết hạn ~1 tuần) — no-op nếu SESSION_KEEPALIVE tắt.
+  sessionKeeper.start();
 });
 
 // ============================================================================

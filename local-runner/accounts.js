@@ -27,7 +27,7 @@ const { gotoSalework, ensureLoggedIn, listZaloAccounts } = require('./salework')
   try {
     await gotoSalework(page);
     try {
-      await ensureLoggedIn(page);
+      await ensureLoggedIn(page, { profile });
     } catch (e) {
       console.error(`[accounts] ❌ ${e.message}`);
       process.exit(3);
