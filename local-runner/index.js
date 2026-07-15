@@ -6,7 +6,7 @@ const config = require('./config');
 const { createJob, getJob } = require('./jobQueue');
 const { sendBaoHang } = require('./salework');
 const { sendBaoHangFb } = require('./facebook');
-const { profileExists, profilePath, openForLogin } = require('./browser');
+const { profileExists, profilePath, openForLogin, closeAll } = require('./browser');
 const accountsStore = require('./accountsStore');
 const testModeStore = require('./testModeStore');
 const loginHistory = require('./loginHistory');
@@ -263,7 +263,7 @@ if (config.requireApiKey && !config.apiKey) {
   process.exit(1);
 }
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   console.log(`[local-runner] listening on http://localhost:${config.port}`);
   console.log(`[local-runner] Salework URL: ${config.saleworkUrl} | headless=${config.headless}`);
   if (!config.apiKey) console.warn('[local-runner] CẢNH BÁO: chưa đặt API_KEY — endpoint không được bảo vệ.');
@@ -274,3 +274,30 @@ app.listen(config.port, () => {
     console.warn('[local-runner] ⚠️  TEST_MODE TẮT — sẽ gửi tới TẤT CẢ số được yêu cầu (khách thật).');
   }
 });
+
+// ============================================================================
+// TẮT MƯỢT (fix pm2 restart treo).
+// Trước đây file này KHÔNG bắt tín hiệu nào -> khi pm2/start.js gửi SIGINT/SIGTERM,
+// bộ xử lý tín hiệu MẶC ĐỊNH của Playwright cố đóng Chrome; Chrome treo là tiến trình
+// kẹt luôn -> giữ cổng 8090 -> instance mới EADDRINUSE -> pm2 restart loop ("đang chạy" mãi).
+// Nay ta tự đóng server + mọi context Chrome, và có HẠN CỨNG để không bao giờ treo:
+// quá hạn thì thoát hẳn (start.js sẽ SIGKILL cả nhóm để dọn nốt Chrome còn sót).
+// ============================================================================
+let shuttingDown = false;
+async function gracefulShutdown(sig) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[local-runner] nhận ${sig} — đang đóng server + trình duyệt...`);
+  // Hạn cứng: nếu 6s chưa đóng xong (Chrome treo) thì thoát luôn, tuyệt đối không kẹt tiến trình.
+  const hard = setTimeout(() => {
+    console.warn('[local-runner] đóng quá lâu — thoát cưỡng bức.');
+    process.exit(0);
+  }, 6000);
+  if (typeof hard.unref === 'function') hard.unref();
+  try { server.close(); } catch { /* ignore */ }
+  try { await closeAll(); } catch { /* ignore */ }
+  clearTimeout(hard);
+  process.exit(0);
+}
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));

@@ -216,6 +216,8 @@ a { color: var(--primary); text-decoration: none; }
 .badge-online { color: var(--green); }
 .badge-offline { color: var(--red); }
 .badge-mock { color: var(--amber); }
+/* Tự động BẬT nhưng đang tạm dừng sau khởi động (chờ admin bấm "Quét & gửi"). */
+.badge-pending { color: var(--amber); }
 .badge-test { color: var(--violet); font-weight: 700; }
 /* Badge bấm được (bật/tắt tự động báo hàng) */
 .badge-clickable { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }

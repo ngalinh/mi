@@ -36,6 +36,10 @@ module.exports = {
       max_memory_restart: '800M',
       // Crash thì chờ chút rồi mới dựng lại, tránh vòng lặp crash đốt CPU.
       restart_delay: 5000,
+      // pm2 gửi SIGINT rồi chờ kill_timeout mới SIGKILL. Mặc định 1600ms là QUÁ NGẮN để đóng
+      // Chrome cho sạch -> start.js bị giết giữa chừng, Chrome mồ côi giữ cổng 8090, restart treo.
+      // Cho 12s: start.js tự SIGKILL cả nhóm ở giây thứ 8 nên vẫn thoát gọn trước hạn này.
+      kill_timeout: 12000,
       // Nếu crash >15 lần trong <10s thì coi là lỗi cấu hình -> dừng hẳn để báo động.
       min_uptime: 10000,
       max_restarts: 15,

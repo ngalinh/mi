@@ -110,6 +110,11 @@ module.exports = {
   // Tự động báo hàng: cứ có đơn "Chưa báo" (đã về kho) là tự gửi tin, không cần bấm tay.
   autoNotify: {
     enabled: String(process.env.AUTO_NOTIFY || 'false').toLowerCase() === 'true',
+    // Sau khi RESTART server: có TỰ ĐỘNG gửi bù đợt "Chưa báo" còn dở NGAY khi khởi động không?
+    // Mặc định FALSE -> tạm dừng mọi lượt gửi tự động tới khi admin bấm "Quét & gửi" (hoặc bật lại
+    // auto trên dashboard) -> kiểm soát thời điểm, tránh bot vừa dựng lại đã nhắn loạt ngoài ý muốn.
+    // Đặt AUTO_NOTIFY_RESUME_ON_BOOT=true để tự chạy lại ngay khi khởi động như trước.
+    resumeOnBoot: String(process.env.AUTO_NOTIFY_RESUME_ON_BOOT || 'false').toLowerCase() === 'true',
     intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '60000', 10) || 60000, 10000),
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
