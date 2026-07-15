@@ -191,6 +191,12 @@
     if (!s) return '<span class="muted">—</span>';
     if (s === 'pending') return `<span class="pill pending">${App.icon('hourglass')} Đang gửi</span>`;
     if (s === 'success') return `<span class="pill success">${App.icon('check')} Đã gửi</span>`;
+    // Lỗi "không tìm thấy cuộc trò chuyện Zalo" (KHONG_THAY_HOI_THOAI) -> nhãn RIÊNG "Không Zalo"
+    // để phân biệt với lỗi gửi khác (mạng/timeout/…). Khách chưa có hội thoại trên Zalo -> cần
+    // kết bạn / mở chat trước, không phải lỗi hệ thống.
+    if (isNoConversationError(o.lastReport && o.lastReport.error)) {
+      return `<span class="pill noconv" title="Không tìm thấy cuộc trò chuyện của khách trên Zalo — kiểm tra khách đã có hội thoại/kết bạn chưa">${App.icon('search')} Không Zalo</span>`;
+    }
     return `<span class="pill failed">${App.icon('alert')} Lỗi</span>`;
   }
   // Gom trạng thái GỬI TIN của lượt báo đại diện về nhãn để LỌC (khớp sendStatusCell ở trên):

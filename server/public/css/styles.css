@@ -920,6 +920,13 @@ td.staff-col { white-space: nowrap; }
   border-color: color-mix(in srgb, var(--blue) 22%, transparent);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--blue) 16%, transparent);
 }
+/* "Không Zalo": khách chưa có hội thoại trên Zalo — cần kết bạn/mở chat, không phải lỗi hệ
+   thống. Tông cam (amber) để phân biệt rõ với pill "Lỗi" đỏ. */
+.pill.noconv {
+  background: var(--amber-soft); color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 22%, transparent);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--amber) 16%, transparent);
+}
 /* Cột "Báo qua FB": pill bật/tắt + link gọn xếp dọc, canh giữa cho gọn gàng. */
 .fb-cell {
   display: inline-flex; flex-direction: row; flex-wrap: nowrap;
