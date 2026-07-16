@@ -481,6 +481,7 @@ a { color: var(--primary); text-decoration: none; }
 /* Ô lọc trạng thái GỬI TIN (#fSendStatus) đổi màu theo giá trị đang chọn — cùng tông với pill
    "Trạng thái gửi tin" từng dòng: Đã gửi (xanh lá) · Đang gửi (xanh dương) · Lỗi (đỏ). */
 #fSendStatus[data-v="success"] { color: var(--green); background-color: var(--green-soft); border-color: color-mix(in srgb, var(--green) 40%, transparent); }
+#fSendStatus[data-v="sent_check"] { color: var(--amber); background-color: var(--amber-soft); border-color: color-mix(in srgb, var(--amber) 40%, transparent); }
 #fSendStatus[data-v="pending"] { color: var(--blue);  background-color: var(--blue-soft);  border-color: color-mix(in srgb, var(--blue) 40%, transparent); }
 #fSendStatus[data-v="failed"]  { color: var(--red);   background-color: var(--red-soft);   border-color: color-mix(in srgb, var(--red) 40%, transparent); }
 .toolbar-bar .tb-filter .cnt { background: var(--primary-soft); color: var(--primary); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
@@ -920,8 +921,10 @@ td.staff-col { white-space: nowrap; }
   border-color: color-mix(in srgb, var(--blue) 22%, transparent);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--blue) 16%, transparent);
 }
-/* "Không Zalo": khách chưa có hội thoại trên Zalo — cần kết bạn/mở chat, không phải lỗi hệ
-   thống. Tông cam (amber) để phân biệt rõ với pill "Lỗi" đỏ. */
+/* .pill.check  = đã gửi cho khách NHƯNG cập nhật trạng thái web lỗi -> cần kiểm tra lại.
+   .pill.noconv = "Không Zalo": khách chưa có hội thoại trên Zalo — cần kết bạn/mở chat, không phải
+   lỗi hệ thống. Cùng tông hổ phách (amber) để phân biệt rõ với pill "Lỗi" đỏ. */
+.pill.check,
 .pill.noconv {
   background: var(--amber-soft); color: var(--amber);
   border-color: color-mix(in srgb, var(--amber) 22%, transparent);

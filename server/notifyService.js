@@ -3,7 +3,7 @@ const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems, getOrderContent } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
-const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, getFbLink, getZaloName, getContactReportTarget } = require('./db');
+const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, autoKeyShip, getFbLink, getZaloName, getContactReportTarget } = require('./db');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
 
@@ -268,8 +268,13 @@ async function notifyOne(order, opts = {}) {
   }
 
   // Chốt kết quả vào CHÍNH dòng "đang báo" đã ghi ở trên (không tạo dòng mới).
+  //  - Gửi lỗi                     -> 'failed'
+  //  - Gửi OK + cập nhật web OK     -> 'success'
+  //  - Gửi OK nhưng cập nhật web LỖI -> 'sent_check' = ĐÃ GỬI cho khách nhưng trạng thái web chưa
+  //    đổi (vd Basso timeout) -> cần KIỂM TRA/sửa tay. KHÔNG để 'success' (giấu lỗi) cũng KHÔNG để
+  //    'failed' (sai — khách đã nhận tin, gửi lại sẽ trùng).
   const report = updateReport(pending.id, {
-    status: result.ok ? 'success' : 'failed',
+    status: result.ok ? (updateError ? 'sent_check' : 'success') : 'failed',
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
   });
@@ -336,10 +341,11 @@ async function notifyOrders(orders, opts = {}) {
           && ordered[idx + 1].profileKey === profileKey;
         // eslint-disable-next-line no-await-in-loop
         const r = await notifyOne(order, { ...opts, keepContext });
-        // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không
-        // cập nhật web). Không đè lên 'success' của bot để giữ đúng badge.
+        // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không cập nhật
+        // web). Không đè lên 'success' của bot để giữ đúng badge. Khóa theo LOẠI tin (báo ship dùng
+        // autoKeyShip) để báo ship tay chỉ chặn bot báo ship, không đụng báo hàng.
         if (r.ok) {
-          const dkey = autoKey(order);
+          const dkey = opts.kind === 'ship' ? autoKeyShip(order) : autoKey(order);
           const ex = getAutoRecord(dkey);
           if (!ex || ex.status !== 'success') recordAutoNotified(dkey, 'manual', ex ? ex.attempts : 0);
         }

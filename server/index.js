@@ -139,7 +139,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // (gateway ai.basso.vn gắn vào khi forward) -> chặn gọi thẳng app, giả mạo danh tính.
 // MIỄN TRỪ: /api/health (probe), /api/register-local (runner gọi, dùng x-api-key riêng),
 // /api/webhook/arrived (Basso gọi, dùng x-webhook-secret riêng).
-const GATEWAY_EXEMPT = new Set(['/api/health', '/api/register-local', '/api/webhook/arrived']);
+const GATEWAY_EXEMPT = new Set(['/api/health', '/api/register-local', '/api/webhook/arrived', '/api/webhook/ship']);
 app.use((req, res, next) => {
   if (!config.gatewaySecret) return next();
   if (!req.path.startsWith('/api/') || GATEWAY_EXEMPT.has(req.path)) return next();
@@ -654,10 +654,17 @@ app.get('/api/auto-notify', (req, res) => {
   res.json({ ok: true, ...autoNotify.getStatus() });
 });
 
-// Bật/tắt poller tự động lúc runtime. body: { enabled: boolean }
+// Bật/tắt poller tự động BÁO HÀNG lúc runtime. body: { enabled: boolean }
 app.post('/api/auto-notify/toggle', (req, res) => {
   const { enabled } = req.body || {};
   const status = autoNotify.setEnabled(!!enabled);
+  res.json({ ok: true, ...status });
+});
+
+// Bật/tắt tự động BÁO SHIP lúc runtime (công tắc RIÊNG, độc lập báo hàng). body: { enabled: boolean }
+app.post('/api/auto-notify/ship-toggle', (req, res) => {
+  const { enabled } = req.body || {};
+  const status = autoNotify.setShipEnabled(!!enabled);
   res.json({ ok: true, ...status });
 });
 
@@ -665,6 +672,16 @@ app.post('/api/auto-notify/toggle', (req, res) => {
 app.post('/api/auto-notify/run', async (req, res) => {
   try {
     const result = await autoNotify.runAutoNotify({ trigger: 'manual' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Chạy 1 lượt quét + gửi BÁO SHIP ngay (đơn đã có "ND báo ship"). Dùng cho nút "Quét & gửi ship ngay".
+app.post('/api/auto-notify/run-ship', async (req, res) => {
+  try {
+    const result = await autoNotify.runAutoNotifyShip({ trigger: 'manual' });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -733,6 +750,25 @@ app.post('/api/webhook/arrived', async (req, res) => {
   }
   try {
     const result = await autoNotify.runAutoNotify({ trigger: 'webhook' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Webhook: website Basso gọi sang khi CÓ NỘI DUNG BÁO SHIP -> gửi tin ship ngay (real-time) ----
+// Cùng cơ chế bảo vệ với /api/webhook/arrived (header `x-webhook-secret` khớp AUTO_NOTIFY_WEBHOOK_SECRET).
+// Khác báo hàng: báo ship KHÔNG hoãn theo giờ hẹn — có ND ship là gửi ngay cho khách.
+app.post('/api/webhook/ship', async (req, res) => {
+  const secret = config.autoNotify.webhookSecret;
+  if (config.requireApiKey && !secret) {
+    return res.status(503).json({ ok: false, error: 'Webhook chưa cấu hình AUTO_NOTIFY_WEBHOOK_SECRET (bắt buộc ở production)' });
+  }
+  if (secret && !safeEqual(req.get('x-webhook-secret'), secret)) {
+    return res.status(401).json({ ok: false, error: 'Sai webhook secret' });
+  }
+  try {
+    const result = await autoNotify.runAutoNotifyShip({ trigger: 'webhook' });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

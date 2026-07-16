@@ -116,6 +116,15 @@ module.exports = {
   // Tự động báo hàng: cứ có đơn "Chưa báo" (đã về kho) là tự gửi tin, không cần bấm tay.
   autoNotify: {
     enabled: String(process.env.AUTO_NOTIFY || 'false').toLowerCase() === 'true',
+    // Công tắc RIÊNG cho tự động BÁO SHIP (độc lập báo hàng). AUTO_NOTIFY_SHIP ghi đè; không đặt
+    // thì MẶC ĐỊNH theo AUTO_NOTIFY (giữ hành vi cũ: bật auto là chạy cả ship). Giá trị admin đổi
+    // trên trang Cài đặt lưu DB (app_settings) sẽ ghi đè mặc định env này lúc khởi động.
+    shipEnabled: (() => {
+      const v = String(process.env.AUTO_NOTIFY_SHIP ?? '').toLowerCase();
+      if (v === 'true') return true;
+      if (v === 'false') return false;
+      return String(process.env.AUTO_NOTIFY || 'false').toLowerCase() === 'true';
+    })(),
     // Sau khi RESTART server: có TỰ ĐỘNG gửi bù đợt "Chưa báo" còn dở NGAY khi khởi động không?
     // Mặc định FALSE -> tạm dừng mọi lượt gửi tự động tới khi admin bấm "Quét & gửi" (hoặc bật lại
     // auto trên dashboard) -> kiểm soát thời điểm, tránh bot vừa dựng lại đã nhắn loạt ngoài ý muốn.

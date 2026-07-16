@@ -40,7 +40,7 @@ db.exec(`
     phone         TEXT,
     staff         TEXT,
     message       TEXT,
-    status        TEXT NOT NULL,           -- 'pending' | 'success' | 'failed'
+    status        TEXT NOT NULL,           -- 'pending' | 'success' | 'failed' | 'sent_check' (đã gửi nhưng update web lỗi, cần KT)
     error         TEXT,
     job_id        TEXT,
     created_at    TEXT NOT NULL            -- ISO string
@@ -286,6 +286,15 @@ function autoKey(order) {
   return `id:${order.id}`;
 }
 
+/**
+ * Khóa chống trùng cho BÁO SHIP — tách riêng khỏi báo hàng để 1 đơn có thể được báo hàng
+ * (autoKey) rồi báo ship (autoKeyShip) mà không đè dấu của nhau trong bảng auto_notified.
+ * Suffix ':ship' để không đụng các khóa báo hàng cũ (giữ nguyên hành vi dedup báo hàng).
+ */
+function autoKeyShip(order) {
+  return `${autoKey(order)}:ship`;
+}
+
 const getAutoStmt = db.prepare('SELECT * FROM auto_notified WHERE order_id = @order_id');
 const upsertAutoStmt = db.prepare(`
   INSERT INTO auto_notified (order_id, status, attempts, updated_at)
@@ -318,7 +327,7 @@ const getSentTimesStmt = db.prepare(`
          CASE WHEN kind = 'ship' THEN 'ship' ELSE 'hang' END AS k,
          MAX(created_at) AS at
     FROM reports
-   WHERE status = 'success' AND customer_id IS NOT NULL AND date_inventory IS NOT NULL
+   WHERE status IN ('success', 'sent_check') AND customer_id IS NOT NULL AND date_inventory IS NOT NULL
    GROUP BY customer_id, date_inventory, k
 `);
 
@@ -348,7 +357,7 @@ const getLastReportsStmt = db.prepare(`
     FROM reports
    WHERE customer_id IS NOT NULL AND date_inventory IS NOT NULL
    ORDER BY customer_id, date_inventory,
-            CASE WHEN status = 'success' THEN 0 ELSE 1 END,
+            CASE WHEN status IN ('success', 'sent_check') THEN 0 ELSE 1 END,
             created_at DESC
 `);
 
@@ -573,11 +582,13 @@ function stats({ q, from, to, staff, sender, account } = {}) {
       COUNT(*) AS total,
       SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success,
       SUM(CASE WHEN status='failed'  THEN 1 ELSE 0 END) AS failed,
-      SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending
+      SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN status='sent_check' THEN 1 ELSE 0 END) AS sent_check
     FROM reports${whereSql}
   `).get(params);
   return {
     total: row.total || 0, success: row.success || 0, failed: row.failed || 0, pending: row.pending || 0,
+    sentCheck: row.sent_check || 0, // đã gửi nhưng update web lỗi -> cần kiểm tra
   };
 }
 
@@ -780,7 +791,7 @@ function migrateFbRoutingIntoContacts() {
 migrateFbRoutingIntoContacts();
 
 module.exports = {
-  db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, getDelayedMap, setDelayed,
+  db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, autoKeyShip, getDelayedMap, setDelayed,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,

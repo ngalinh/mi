@@ -2,7 +2,7 @@
 const config = require('./config');
 const { getOrders } = require('./bassoApi');
 const { notifyOne, delayBetweenCustomers } = require('./notifyService');
-const { getAutoRecord, recordAutoNotified, autoKey, getSetting, setSetting, getDelayedMap } = require('./db');
+const { getAutoRecord, recordAutoNotified, autoKey, autoKeyShip, getSetting, setSetting, getDelayedMap } = require('./db');
 const { checkLocalHealth, sendBaoHang, getAccountsCached } = require('./playwrightProxy');
 const { withLock } = require('./lock');
 const { resolveForOrder } = require('./accountResolver');
@@ -29,6 +29,11 @@ const cfg = config.autoNotify;
 const SCHEDULE_SETTING_KEY = 'autoNotify.scheduleTime';
 // Khoá lưu "nhắc soạn ND trước bao nhiêu phút" (số nguyên phút; 0 = tắt nhắc).
 const PRECHECK_SETTING_KEY = 'autoNotify.precheckMinutes';
+// Khoá lưu công tắc RIÊNG cho tự động báo ship ('true'/'false').
+const SHIP_ENABLED_KEY = 'autoNotify.shipEnabled';
+// Khoá lưu MỐC ĐÃ SEED lúc bật báo ship (ISO time). Có mốc = đã chốt "ảnh chụp tồn cũ" -> chỉ ND
+// ship phát sinh SAU đó mới gửi. Trống = chưa seed (đang chuẩn bị / seed lỗi) -> chưa gửi để an toàn.
+const SHIP_SEEDED_KEY = 'autoNotify.shipSeededAt';
 // Khoá lưu cấu hình "nhắc ra Zalo (nội bộ)".
 const ALERT_ENABLED_KEY = 'autoNotify.alertEnabled';
 const ALERT_ACCOUNT_KEY = 'autoNotify.alertAccount';
@@ -114,6 +119,13 @@ function initialPrecheckMinutes() {
   return envN == null ? 30 : envN;
 }
 
+// Công tắc báo ship lúc khởi động: giá trị admin đã lưu (DB) ghi đè mặc định env (cfg.shipEnabled).
+function initialShipEnabled() {
+  const saved = safeGet(SHIP_ENABLED_KEY);
+  if (saved != null) return saved === 'true';
+  return !!cfg.shipEnabled;
+}
+
 // Cấu hình "nhắc ra Zalo" lúc khởi động: DB (admin lưu) ghi đè env.
 function initialAlert() {
   const a = cfg.alert || {};
@@ -139,6 +151,15 @@ const state = {
   awaitingResume: false,
   lastRun: null,       // ISO time của lần chạy gần nhất
   lastResult: null,    // tóm tắt lần chạy gần nhất
+  // BÁO SHIP (song song với báo hàng): quét đơn đã có "ND báo ship" và tự gửi. Cờ chạy + kết quả
+  // tách riêng để lượt ship không đụng lượt báo hàng và hiện được trạng thái riêng trên dashboard.
+  // shipEnabled = công tắc RIÊNG (độc lập báo hàng) — bật/tắt trên trang Cài đặt, lưu bền DB.
+  shipEnabled: initialShipEnabled(),
+  shipSeeding: false,   // đang chạy seed "ảnh chụp tồn cũ" lúc bật báo ship
+  lastShipSeed: null,   // kết quả seed gần nhất { at, scanned, seeded }
+  runningShip: false,
+  lastShipRun: null,
+  lastShipResult: null,
   startedAt: null,
   scheduleTime: initialScheduleTime(), // '' = gửi ngay (interval); 'HH:MM' = hẹn giờ
   lastScheduledDay: null,              // YYYY-MM-DD (giờ VN) của lần chạy-theo-lịch gần nhất
@@ -158,40 +179,58 @@ let timer = null;
  * lượt này vẫn nổ để "gửi bù" — an toàn vì dedup (auto_notified) chặn gửi trùng khách.
  */
 function scheduleTick() {
-  if (!state.scheduleTime) return;
-  const { day, minutes } = localParts(new Date());
-  const [h, m] = state.scheduleTime.split(':').map(Number);
-  const target = h * 60 + m;
+  // BÁO HÀNG theo giờ hẹn — chỉ chạy khi báo hàng đang BẬT và có đặt giờ.
+  if (state.enabled && state.scheduleTime) {
+    const { day, minutes } = localParts(new Date());
+    const [h, m] = state.scheduleTime.split(':').map(Number);
+    const target = h * 60 + m;
 
-  // NHẮC SOẠN ND: trước giờ gửi `precheckMinutes` phút, quét (đọc tươi) & cảnh báo đơn thiếu ND.
-  // Chạy 1 lần/ngày trong khung [target-lead, target) — sau giờ gửi thì thôi (lượt gửi tự xử lý).
-  const lead = state.precheckMinutes;
-  if (lead > 0) {
-    const precheckAt = target - lead;
-    if (precheckAt >= 0 && minutes >= precheckAt && minutes < target && state.lastPrecheckDay !== day) {
-      state.lastPrecheckDay = day;
-      runPrecheck(day);
+    // NHẮC SOẠN ND: trước giờ gửi `precheckMinutes` phút, quét (đọc tươi) & cảnh báo đơn thiếu ND.
+    // Chạy 1 lần/ngày trong khung [target-lead, target) — sau giờ gửi thì thôi (lượt gửi tự xử lý).
+    const lead = state.precheckMinutes;
+    if (lead > 0) {
+      const precheckAt = target - lead;
+      if (precheckAt >= 0 && minutes >= precheckAt && minutes < target && state.lastPrecheckDay !== day) {
+        state.lastPrecheckDay = day;
+        runPrecheck(day);
+      }
+    }
+
+    // GỬI đúng giờ (1 lần/ngày). Đặt mốc "đã chạy hôm nay" TRƯỚC để không nổ 2 lần ở 2 tick liền
+    // nhau; nhưng nếu lượt bị BỎ (runner offline / đang chạy lượt khác) thì NHẢ mốc ra để thử lại
+    // ở tick kế -> đúng 17h mà runner offline sẽ TỰ GỬI BÙ khi runner online lại, không mất cả ngày.
+    if (minutes >= target && state.lastScheduledDay !== day) {
+      state.lastScheduledDay = day;
+      console.log(`[auto-notify] tới giờ ${state.scheduleTime} (${cfg.timezone}) — chạy lượt gửi theo lịch cho ngày ${day}.`);
+      Promise.resolve(runAutoNotify({ trigger: 'scheduled' }))
+        .then((r) => {
+          if (r && r.skipped) {
+            state.lastScheduledDay = null;
+            console.warn(`[auto-notify] lượt ${state.scheduleTime} bị bỏ (${r.reason || 'không rõ'}) — sẽ thử lại ở lần kiểm tra kế (${Math.round(cfg.scheduleCheckMs / 1000)}s).`);
+          } else if (r && state.alertEnabled) {
+            // Gửi xong -> nhắn tổng kết ra Zalo cho người trực.
+            dispatchAlert(buildSummaryAlertMessage(r)).catch(() => {});
+          }
+        })
+        .catch(() => { state.lastScheduledDay = null; });
     }
   }
 
-  // GỬI đúng giờ (1 lần/ngày). Đặt mốc "đã chạy hôm nay" TRƯỚC để không nổ 2 lần ở 2 tick liền
-  // nhau; nhưng nếu lượt bị BỎ (runner offline / đang chạy lượt khác) thì NHẢ mốc ra để thử lại
-  // ở tick kế -> đúng 17h mà runner offline sẽ TỰ GỬI BÙ khi runner online lại, không mất cả ngày.
-  if (minutes >= target && state.lastScheduledDay !== day) {
-    state.lastScheduledDay = day;
-    console.log(`[auto-notify] tới giờ ${state.scheduleTime} (${cfg.timezone}) — chạy lượt gửi theo lịch cho ngày ${day}.`);
-    Promise.resolve(runAutoNotify({ trigger: 'scheduled' }))
-      .then((r) => {
-        if (r && r.skipped) {
-          state.lastScheduledDay = null;
-          console.warn(`[auto-notify] lượt ${state.scheduleTime} bị bỏ (${r.reason || 'không rõ'}) — sẽ thử lại ở lần kiểm tra kế (${Math.round(cfg.scheduleCheckMs / 1000)}s).`);
-        } else if (r && state.alertEnabled) {
-          // Gửi xong -> nhắn tổng kết ra Zalo cho người trực.
-          dispatchAlert(buildSummaryAlertMessage(r)).catch(() => {});
-        }
-      })
-      .catch(() => { state.lastScheduledDay = null; });
-  }
+  // BÁO SHIP không theo giờ hẹn: mỗi lần kiểm tra đồng hồ (scheduleCheckMs) cũng quét & gửi ngay
+  // đơn đã có "ND báo ship" -> "API nhận được ND ship thì gửi", không đợi tới 17:00.
+  maybeRunShip('interval');
+}
+
+/** 1 nhịp ở chế độ GỬI NGAY (không hẹn giờ): báo hàng (nếu bật) + báo ship (nếu bật). */
+function intervalTick() {
+  if (state.enabled) runAutoNotify({ trigger: 'interval' });
+  maybeRunShip('interval');
+}
+
+/** Quét & gửi báo ship 1 lượt ở nền (không chặn) — chỉ khi CÔNG TẮC BÁO SHIP đang BẬT. Nuốt lỗi. */
+function maybeRunShip(trigger = 'interval') {
+  if (!state.shipEnabled) return;
+  runAutoNotifyShip({ trigger }).catch(() => {});
 }
 
 /**
@@ -390,18 +429,101 @@ async function classifyForAuto(order, delayedMap) {
 }
 
 /**
- * Lấy TẤT CẢ đơn "Chưa báo" qua mọi trang (vì không cập nhật web nên tập này không tự co lại).
- * @param {object} [opts] { fresh } — fresh=true: đọc tươi từ Basso, bỏ qua cache (dùng cho webhook
- *   để thấy NGAY đơn vừa về, không bị cache 30s che). Poller thường dùng cache cho nhẹ.
+ * Quyết định 1 đơn có được TỰ ĐỘNG BÁO SHIP không (song song với classifyForAuto cho báo hàng).
+ * Điều kiện gửi cốt lõi: Basso ĐÃ soạn "ND báo ship" (raw.content_ship) cho đơn — đó chính là tín
+ * hiệu "API nhận được nội dung báo ship". Các bước chọn account/lọc Delay/tồn đọng dùng chung với
+ * báo hàng để hành vi nhất quán. Chống trùng theo autoKeyShip (tách khỏi dấu báo hàng).
+ * Trả { decision:'send'|'skip', reason?, acct? }.
  */
-async function fetchAllNotSent(opts = {}) {
+async function classifyForShip(order, delayedMap) {
+  // PHẢI "Đã báo hàng" trước: chỉ báo ship cho đơn đang ở trạng thái 'notified_arrival'. Đơn còn
+  // "Chưa báo" (not_sent) — dù đã có content_ship — cũng KHÔNG gửi (chờ báo hàng xong đã).
+  if (order.statusCode !== 'notified_arrival') return { decision: 'skip', reason: 'not_target' };
+  // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo ship" (raw.content_ship). Đơn trống -> bỏ qua.
+  if (!order.noiDungBaoShip || !String(order.noiDungBaoShip).trim()) return { decision: 'skip', reason: 'no_content' };
+  const rec = getAutoRecord(autoKeyShip(order));
+  // Đã xử lý -> không gửi lại:
+  //   'success'/'manual' = đã gửi ship (bot/tay);
+  //   'seeded'           = tồn cũ đã có sẵn ND ship LÚC BẬT (chốt ảnh chụp, KHÔNG gửi).
+  // Nhờ 'seeded', chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có dấu) mới được gửi — không phụ
+  // thuộc ngày về kho, nên "ND ship mới trên đơn cũ hôm qua" vẫn gửi đúng.
+  if (rec && (rec.status === 'success' || rec.status === 'manual' || rec.status === 'seeded')) return { decision: 'skip', reason: 'already' };
+  if (rec && rec.attempts >= cfg.maxRetries) return { decision: 'skip', reason: 'max_retries' };
+  // Cờ Delay/Loại trừ dùng chung khóa đơn (autoKey) -> đơn đang hoãn thì cũng hoãn báo ship.
+  if (delayedMap && delayedMap.has(autoKey(order))) return { decision: 'skip', reason: 'delayed' };
+
+  // Chọn account theo NV phụ trách (giống báo hàng).
+  const acct = await resolveForOrder(order, { defaultAccount: cfg.account, profile: cfg.profile });
+  const fromStore = acct.source === 'store' || acct.source === 'store-fb';
+  if (cfg.requireAccount && !fromStore) return { decision: 'skip', reason: 'no_account', acct };
+  if (acct.skip && acct.skipReason === 'fb_no_account') return { decision: 'skip', reason: 'no_account', acct };
+  if (fromStore && acct.autoEnabled === false) return { decision: 'skip', reason: 'auto_off', acct };
+  if (acct.skip && acct.skipReason === 'brand') return { decision: 'skip', reason: 'brand', acct };
+  // KHÔNG lọc theo ngày về kho nữa: "mới/cũ" của báo ship do cơ chế SEED lúc bật quyết định
+  // (đơn có sẵn ND ship lúc bật -> 'seeded' -> bỏ; ND ship phát sinh sau -> gửi).
+  return { decision: 'send', acct };
+}
+
+/**
+ * SEED lúc bật báo ship: chụp ảnh các đơn ĐANG có sẵn "ND báo ship" tại thời điểm bật rồi đánh dấu
+ * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa
+ * có dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
+ * 'notified_arrival' để bắt mọi đơn đã có ND ship ở thời điểm bật. Ghi mốc SHIP_SEEDED_KEY khi xong.
+ * @returns {Promise<{at:string, scanned:number, seeded:number}>}
+ */
+async function seedShip() {
+  let scanned = 0;
+  let seeded = 0;
+  const seen = new Set();
+  for (const status of ['not_sent', 'notified_arrival']) {
+    // eslint-disable-next-line no-await-in-loop
+    const orders = await fetchAllByStatus(status, { fresh: true }); // fresh: chốt đúng hiện trạng lúc bấm Bật
+    for (const o of orders) {
+      const k = autoKey(o);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      scanned += 1;
+      if (!o.noiDungBaoShip || !String(o.noiDungBaoShip).trim()) continue; // chưa có ND ship -> khỏi seed
+      const key = autoKeyShip(o);
+      if (getAutoRecord(key)) continue;   // đã có dấu (đã gửi/tay/seeded trước) -> giữ nguyên
+      recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi
+      seeded += 1;
+    }
+  }
+  const at = new Date().toISOString();
+  state.lastShipSeed = { at, scanned, seeded };
+  try { setSetting(SHIP_SEEDED_KEY, at); } catch (_) { /* ignore */ }
+  console.log(`[auto-ship] SEED lúc bật: đánh dấu ${seeded} đơn tồn cũ (đã có sẵn ND ship) trong ${scanned} đơn quét — sẽ KHÔNG gửi; chỉ gửi ND ship phát sinh sau lúc bật.`);
+  return { at, scanned, seeded };
+}
+
+/** Chạy seed ở nền (chỉ 1 lần cùng lúc). Seed lỗi -> KHÔNG chốt mốc để lần sau thử lại (an toàn). */
+async function startShipSeed() {
+  if (state.shipSeeding) return;
+  state.shipSeeding = true;
+  try {
+    await seedShip();
+  } catch (e) {
+    console.warn('[auto-ship] SEED lỗi (sẽ thử lại):', e.message);
+  } finally {
+    state.shipSeeding = false;
+  }
+}
+
+/**
+ * Lấy TẤT CẢ đơn theo 1 trạng thái qua mọi trang (vì không cập nhật web nên tập này không tự co lại).
+ * @param {string} status - mã trạng thái Basso ('not_sent' báo hàng | 'notified_arrival' báo ship...)
+ * @param {object} [opts] { fresh } — fresh=true: đọc tươi từ Basso, bỏ qua cache (dùng cho webhook
+ *   để thấy NGAY đơn vừa về/vừa có ND ship, không bị cache 30s che). Poller thường dùng cache cho nhẹ.
+ */
+async function fetchAllByStatus(status, opts = {}) {
   const all = [];
   const seen = new Set();
   const MAX_PAGES = 50;
   let capped = false;
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const { orders, total } = await getOrders({ status: 'not_sent', page, pageSize: 100, fresh: !!opts.fresh });
+    const { orders, total } = await getOrders({ status, page, pageSize: 100, fresh: !!opts.fresh });
     for (const o of orders) {
       const k = autoKey(o);
       if (!seen.has(k)) { seen.add(k); all.push(o); }
@@ -412,16 +534,151 @@ async function fetchAllNotSent(opts = {}) {
   }
   // Chạm trần khi vẫn còn trang đầy: cảnh báo để không tưởng nhầm "đã quét hết" (bỏ sót đơn cuối).
   if (capped) {
-    console.warn(`[auto-notify] ⚠️ CHẠM TRẦN ${MAX_PAGES} trang (${all.length} đơn "Chưa báo") — có thể CÒN đơn chưa quét/gửi. Backlog thực sự lớn thì tăng trần trong fetchAllNotSent.`);
+    console.warn(`[auto-notify] ⚠️ CHẠM TRẦN ${MAX_PAGES} trang (${all.length} đơn trạng thái "${status}") — có thể CÒN đơn chưa quét/gửi. Backlog thực sự lớn thì tăng trần trong fetchAllByStatus.`);
   }
   return all;
 }
+
+/** Lấy TẤT CẢ đơn "Chưa báo" (luồng tự động BÁO HÀNG). */
+const fetchAllNotSent = (opts = {}) => fetchAllByStatus('not_sent', opts);
 
 /**
  * Quét đơn "Chưa báo" và tự gửi. An toàn khi gọi song song (có khóa `running`).
  * @param {object} [opts] { trigger?: 'interval'|'webhook'|'manual' }
  * @returns {Promise<object>} tóm tắt { trigger, scanned, candidates, sent, failed, skipped, results }
  */
+/**
+ * LÕI DÙNG CHUNG cho cả tự động BÁO HÀNG và BÁO SHIP: quét đơn theo trạng thái, phân loại, gom theo
+ * profile rồi gửi tuần tự. Ghi kết quả vào `summary` (mutate). KHÔNG tự đặt/nhả state.running* —
+ * hàm gọi (runAutoNotify / runAutoNotifyShip) lo phần đó để mỗi luồng có cờ chạy riêng.
+ * @param {object} p
+ * @param {string} p.trigger  'interval'|'webhook'|'manual'|'scheduled'
+ * @param {'hang'|'ship'} p.kind  loại tin gửi
+ * @param {string} p.statusFilter  mã trạng thái Basso để quét ('not_sent' | 'notified_arrival')
+ * @param {(order:object, delayedMap:Map)=>Promise<{decision:string,reason?:string,acct?:object}>} p.classify
+ * @param {(order:object)=>string} p.keyOf  hàm tạo khóa dedup (autoKey | autoKeyShip)
+ * @param {string} p.logTag  nhãn log ('auto-notify' | 'auto-ship')
+ * @param {object} p.summary  đối tượng tóm tắt để ghi kết quả vào
+ */
+async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf, logTag, summary }) {
+  // R4: runner offline thì bỏ cả lượt, KHÔNG trừ attempts (tránh "bỏ cuộc" oan).
+  const online = await checkLocalHealth();
+  if (!online) {
+    summary.skipped = true;
+    summary.reason = 'local-runner offline';
+    console.warn(`[${logTag}:${trigger}] bỏ lượt — local-runner offline (không trừ lượt thử).`);
+    return;
+  }
+
+  // R6: bọc quét + gửi trong khóa dùng chung -> không chạy chồng với báo-tay (notifyMany) hay lượt kia.
+  // Đặt quét đơn TRONG khóa để thấy trạng thái mới nhất sau khi luồng kia vừa gửi xong.
+  await withLock(async () => {
+    // Đọc TƯƠI (bỏ cache) cho webhook (thấy ngay đơn mới / ND vừa soạn) và lượt theo lịch.
+    const orders = await fetchAllByStatus(statusFilter, { fresh: trigger === 'webhook' || trigger === 'scheduled' });
+    summary.scanned = orders.length;
+    const delayedMap = getDelayedMap();
+
+    // Phân loại TẤT CẢ đơn 1 lượt -> danh sách SẼ GỬI + đếm lý do bỏ qua.
+    const toSend = [];
+    for (const order of orders) {
+      // eslint-disable-next-line no-await-in-loop
+      const c = await classify(order, delayedMap);
+      // classify đã resolve account -> lấy luôn profile để gom (khỏi resolve lại).
+      if (c.decision === 'send') { toSend.push({ order, profileKey: (c.acct && c.acct.profile) || 'default' }); continue; }
+      const bump = (k) => { summary[k] = (summary[k] || 0) + 1; };
+      if (c.reason === 'no_content') bump('skippedNoContent');
+      else if (c.reason === 'delayed') bump('skippedDelayed');
+      else if (c.reason === 'no_account') bump('skippedNoAccount');
+      else if (c.reason === 'auto_off') bump('skippedAutoOff');
+      else if (c.reason === 'brand') bump('skippedBrand');
+      else if (c.reason === 'backlog') bump('skippedBacklog');
+      // 'already' / 'max_retries' / 'not_target' -> không đếm (không phải "đáng gửi")
+    }
+    // GOM THEO PROFILE (ổn định theo thứ tự tài khoản xuất hiện đầu) -> bot gửi tuần tự HẾT đơn
+    // của 1 tài khoản/NV rồi mới sang cái kế, giữ context tái dùng -> đỡ mở/đóng browser.
+    const rank = new Map();
+    toSend.forEach((t) => { if (!rank.has(t.profileKey)) rank.set(t.profileKey, rank.size); });
+    const ordered = toSend
+      .map((t, i) => ({ ...t, _i: i }))
+      .sort((a, b) => (rank.get(a.profileKey) - rank.get(b.profileKey)) || (a._i - b._i));
+    summary.candidates = ordered.length;
+
+    for (let i = 0; i < ordered.length; i += 1) {
+      const { order, profileKey } = ordered[i];
+      // Giữ context nếu đơn kế cùng profile (đã gom) -> tái dùng browser, đóng ở đơn cuối mỗi profile.
+      const keepContext = i + 1 < ordered.length && ordered[i + 1].profileKey === profileKey;
+      const key = keyOf(order);
+      const prev = getAutoRecord(key);
+
+      // eslint-disable-next-line no-await-in-loop
+      const r = await notifyOne(order, {
+        profile: cfg.profile,
+        defaultAccount: cfg.account,   // fallback khi NV không có trong ZALO_ACCOUNT_MAP
+        kind,
+        skipWebUpdate: !cfg.updateWeb, // mặc định đẩy trạng thái về web Basso (tắt qua AUTO_NOTIFY_UPDATE_WEB=false)
+        strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
+        actor: 'bot',                  // audit: luồng tự động
+        keepContext,                   // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
+      });
+
+      // Phân loại lỗi để quyết định "dừng cả lượt" hay "tính 1 attempt rồi đi tiếp".
+      // CHỈ coi là transient (dừng lượt, KHÔNG trừ lượt) khi runner THỰC SỰ offline — xác
+      // nhận bằng health-check thay vì chỉ dò chữ trong message.
+      // eslint-disable-next-line no-await-in-loop
+      const runnerDown = !r.ok && isTransientError(r.error) && !(await checkLocalHealth());
+      if (r.ok) {
+        recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
+        summary.sent += 1;
+      } else if (r.loginRequired) {
+        // Zalo hiện trang login (chưa đăng nhập): mọi đơn còn lại cũng sẽ fail như nhau -> DỪNG
+        // cả lượt NGAY, KHÔNG trừ lượt thử để thử lại sau khi đã đăng nhập.
+        summary.failed += 1;
+        summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
+        summary.stopped = 'Zalo chưa đăng nhập';
+        console.warn(`[${logTag}:${trigger}] dừng giữa chừng — Zalo chưa đăng nhập: ${r.error}`);
+        break;
+      } else if (runnerDown) {
+        // Runner sập / mạng tới runner đứt giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
+        summary.failed += 1;
+        summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
+        summary.stopped = 'local-runner offline giữa chừng';
+        console.warn(`[${logTag}:${trigger}] dừng giữa chừng — runner offline: ${r.error}`);
+        break;
+      } else {
+        // Lỗi cấp-đơn (runner vẫn sống): tính 1 lượt thử, ĐI TIẾP đơn khác. Hết maxRetries thì thôi.
+        recordAutoNotified(key, 'failed', (prev ? prev.attempts : 0) + 1);
+        summary.failed += 1;
+      }
+      summary.results.push({
+        orderId: key,
+        customerName: order.customerName,
+        ok: r.ok,
+        error: r.error || r.updateError || null,
+      });
+      // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn) để tránh gửi dồn quá nhanh.
+      if (i + 1 < ordered.length) {
+        // eslint-disable-next-line no-await-in-loop
+        await delayBetweenCustomers();
+      }
+    }
+
+    // Log tổng kết. Với báo ship, phần lớn đơn "notified_arrival" chưa có ND ship -> KHÔNG log khi
+    // chỉ toàn thiếu ND (tránh spam console mỗi lượt); chỉ log khi thật sự có đơn để gửi hoặc (báo
+    // hàng) có tồn đọng đáng lưu ý.
+    const worthLog = toSend.length || (kind === 'hang' && (summary.skippedNoContent || summary.skippedBacklog));
+    if (worthLog) {
+      const noun = kind === 'ship' ? 'đơn chờ báo ship' : 'đơn chưa báo';
+      const skipNo = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
+      const skipDelay = summary.skippedDelayed ? `, bỏ qua ${summary.skippedDelayed} đơn đã Delay` : '';
+      const skipOff = summary.skippedAutoOff ? `, bỏ qua ${summary.skippedAutoOff} đơn (account tắt auto)` : '';
+      const skipNoAcc = summary.skippedNoAccount ? `, bỏ qua ${summary.skippedNoAccount} đơn (không khớp account)` : '';
+      const skipBrand = summary.skippedBrand ? `, bỏ qua ${summary.skippedBrand} đơn (NV chưa có Zalo cho brand)` : '';
+      const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
+      console.log(`[${logTag}:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} ${noun}${skipNo}${skipDelay}${skipOff}${skipNoAcc}${skipBrand}${skipBack})`);
+    }
+  });
+}
+
 async function runAutoNotify(opts = {}) {
   const trigger = opts.trigger || 'manual';
   // TẠM DỪNG SAU KHỞI ĐỘNG: chặn mọi lượt gửi TỰ ĐỘNG (interval/scheduled/webhook) — kể cả "gửi
@@ -450,125 +707,9 @@ async function runAutoNotify(opts = {}) {
   state.running = true;
   const summary = { trigger, scanned: 0, candidates: 0, sent: 0, failed: 0, results: [] };
   try {
-    // R4: runner offline thì bỏ cả lượt, KHÔNG trừ attempts (tránh "bỏ cuộc" oan).
-    const online = await checkLocalHealth();
-    if (!online) {
-      summary.skipped = true;
-      summary.reason = 'local-runner offline';
-      console.warn(`[auto-notify:${trigger}] bỏ lượt — local-runner offline (không trừ lượt thử).`);
-      return summary;
-    }
-
-    // R6: bọc quét + gửi trong khóa dùng chung -> không chạy chồng với báo-tay (notifyMany).
-    // Đặt quét đơn TRONG khóa để thấy trạng thái mới nhất sau khi luồng kia vừa gửi xong.
-    await withLock(async () => {
-      // Đọc TƯƠI (bỏ cache) cho:
-      //  - webhook "vừa có hàng về" -> thấy ngay đơn mới;
-      //  - lượt gửi theo lịch (scheduled) -> lấy ND báo hàng MỚI NHẤT do Basso/NV vừa soạn phút
-      //    chót, không dính cache 30s (tránh bỏ sót đơn vừa được soạn nội dung).
-      // Poller định kỳ (interval) vẫn dùng cache cho nhẹ.
-      const orders = await fetchAllNotSent({ fresh: trigger === 'webhook' || trigger === 'scheduled' });
-      summary.scanned = orders.length;
-      const delayedMap = getDelayedMap();
-
-      // Phân loại TẤT CẢ đơn 1 lượt (dùng chung với preview) -> danh sách SẼ GỬI + đếm lý do bỏ qua.
-      const toSend = [];
-      for (const order of orders) {
-        // eslint-disable-next-line no-await-in-loop
-        const c = await classifyForAuto(order, delayedMap);
-        // classifyForAuto đã resolve account -> lấy luôn profile để gom (khỏi resolve lại).
-        if (c.decision === 'send') { toSend.push({ order, profileKey: (c.acct && c.acct.profile) || 'default' }); continue; }
-        const bump = (k) => { summary[k] = (summary[k] || 0) + 1; };
-        if (c.reason === 'no_content') bump('skippedNoContent');
-        else if (c.reason === 'delayed') bump('skippedDelayed');
-        else if (c.reason === 'no_account') bump('skippedNoAccount');
-        else if (c.reason === 'auto_off') bump('skippedAutoOff');
-        else if (c.reason === 'brand') bump('skippedBrand');
-        else if (c.reason === 'backlog') bump('skippedBacklog');
-        // 'already' / 'max_retries' / 'not_target' -> không đếm (không phải "đáng gửi")
-      }
-      // GOM THEO PROFILE (ổn định theo thứ tự tài khoản xuất hiện đầu) -> bot gửi tuần tự HẾT đơn
-      // của 1 tài khoản/NV rồi mới sang cái kế, giữ context tái dùng -> đỡ mở/đóng browser.
-      const rank = new Map();
-      toSend.forEach((t) => { if (!rank.has(t.profileKey)) rank.set(t.profileKey, rank.size); });
-      const ordered = toSend
-        .map((t, i) => ({ ...t, _i: i }))
-        .sort((a, b) => (rank.get(a.profileKey) - rank.get(b.profileKey)) || (a._i - b._i));
-      summary.candidates = ordered.length;
-
-      for (let i = 0; i < ordered.length; i += 1) {
-        const { order, profileKey } = ordered[i];
-        // Giữ context nếu đơn kế cùng profile (đã gom) -> tái dùng browser, đóng ở đơn cuối mỗi profile.
-        const keepContext = i + 1 < ordered.length && ordered[i + 1].profileKey === profileKey;
-        const key = autoKey(order);
-        const prev = getAutoRecord(key);
-
-        // eslint-disable-next-line no-await-in-loop
-        const r = await notifyOne(order, {
-          profile: cfg.profile,
-          defaultAccount: cfg.account,   // fallback khi NV không có trong ZALO_ACCOUNT_MAP
-          kind: 'hang',
-          skipWebUpdate: !cfg.updateWeb, // mặc định đẩy trạng thái về web Basso (tắt qua AUTO_NOTIFY_UPDATE_WEB=false)
-          strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
-          actor: 'bot',                  // audit: luồng tự động
-          keepContext,                   // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
-        });
-
-        // Phân loại lỗi để quyết định "dừng cả lượt" hay "tính 1 attempt rồi đi tiếp".
-        // CHỈ coi là transient (dừng lượt, KHÔNG trừ lượt) khi runner THỰC SỰ offline — xác
-        // nhận bằng health-check thay vì chỉ dò chữ trong message. Lỗi Playwright CẤP-ĐƠN (vd
-        // mở hội thoại 1 khách bị "Timeout ... exceeded") cũng chứa chữ "timeout"; trước đây bị
-        // hiểu nhầm là transient -> break bỏ dở cả lượt + đơn đó retry vô hạn (không tăng attempt).
-        // eslint-disable-next-line no-await-in-loop
-        const runnerDown = !r.ok && isTransientError(r.error) && !(await checkLocalHealth());
-        if (r.ok) {
-          recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
-          summary.sent += 1;
-        } else if (r.loginRequired) {
-          // Zalo hiện trang login (chưa đăng nhập): mọi đơn còn lại cũng sẽ fail như nhau -> DỪNG
-          // cả lượt NGAY, KHÔNG trừ lượt thử (giống runner offline) để thử lại sau khi đã đăng nhập,
-          // tránh đốt hết maxRetries của mọi đơn chỉ vì chưa đăng nhập.
-          summary.failed += 1;
-          summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
-          summary.stopped = 'Zalo chưa đăng nhập';
-          console.warn(`[auto-notify:${trigger}] dừng giữa chừng — Zalo chưa đăng nhập: ${r.error}`);
-          break;
-        } else if (runnerDown) {
-          // Runner sập / mạng tới runner đứt giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
-          summary.failed += 1;
-          summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
-          summary.stopped = 'local-runner offline giữa chừng';
-          console.warn(`[auto-notify:${trigger}] dừng giữa chừng — runner offline: ${r.error}`);
-          break;
-        } else {
-          // Lỗi cấp-đơn (runner vẫn sống, kể cả khi message có chữ "timeout"): tính 1 lượt thử,
-          // ĐI TIẾP đơn khác thay vì bỏ dở cả lượt. Hết maxRetries thì thôi.
-          recordAutoNotified(key, 'failed', (prev ? prev.attempts : 0) + 1);
-          summary.failed += 1;
-        }
-        summary.results.push({
-          orderId: key,
-          customerName: order.customerName,
-          ok: r.ok,
-          error: r.error || r.updateError || null,
-        });
-        // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn) để tránh gửi dồn quá nhanh
-        // -> giảm rủi ro chống spam Zalo/FB. Tắt bằng SEND_DELAY_BETWEEN_MAX_MS=0.
-        if (i + 1 < ordered.length) {
-          // eslint-disable-next-line no-await-in-loop
-          await delayBetweenCustomers();
-        }
-      }
-
-      if (toSend.length || summary.skippedNoContent || summary.skippedBacklog) {
-        const skipNo = summary.skippedNoContent ? `, bỏ qua ${summary.skippedNoContent} đơn trống ND` : '';
-        const skipDelay = summary.skippedDelayed ? `, bỏ qua ${summary.skippedDelayed} đơn đã Delay` : '';
-        const skipOff = summary.skippedAutoOff ? `, bỏ qua ${summary.skippedAutoOff} đơn (account tắt auto)` : '';
-        const skipNoAcc = summary.skippedNoAccount ? `, bỏ qua ${summary.skippedNoAccount} đơn (không khớp account)` : '';
-        const skipBrand = summary.skippedBrand ? `, bỏ qua ${summary.skippedBrand} đơn (NV chưa có Zalo cho brand)` : '';
-        const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
-        console.log(`[auto-notify:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} đơn chưa báo${skipNo}${skipDelay}${skipOff}${skipNoAcc}${skipBrand}${skipBack})`);
-      }
+    await executeNotifyPass({
+      trigger, kind: 'hang', statusFilter: 'not_sent',
+      classify: classifyForAuto, keyOf: autoKey, logTag: 'auto-notify', summary,
     });
   } catch (err) {
     summary.error = err.message;
@@ -581,14 +722,91 @@ async function runAutoNotify(opts = {}) {
   return summary;
 }
 
-/** Bật/tắt poller lúc runtime (không cần restart). */
+/**
+ * TỰ ĐỘNG BÁO SHIP: CHỈ xét đơn ĐÃ "Đã báo hàng" (notified_arrival). Đơn nào ở trạng thái đó mà
+ * Basso đã soạn "ND báo ship" (content_ship) thì tự nhắn khách NGAY và chuyển trạng thái sang
+ * "Đã báo ship" (notified_ship). Tức là PHẢI báo hàng trước, sau đó có ND ship mới báo ship —
+ * đơn còn "Chưa báo" (not_sent) dù có content_ship cũng KHÔNG gửi. Khác báo hàng: ship KHÔNG hoãn
+ * theo giờ hẹn 17:00 — có nội dung là gửi. Cờ chạy + kết quả riêng (state.runningShip /
+ * lastShipResult) để không đụng lượt báo hàng.
+ * @param {object} [opts] { trigger?: 'interval'|'webhook'|'manual'|'scheduled' }
+ */
+async function runAutoNotifyShip(opts = {}) {
+  const trigger = opts.trigger || 'manual';
+  // Tôn trọng công tắc RIÊNG: poller/webhook chỉ gửi khi báo ship đang BẬT. Nút "chạy tay" (manual)
+  // vẫn chạy để admin test dù đang tắt.
+  if (trigger !== 'manual' && !state.shipEnabled) {
+    return { trigger, kind: 'ship', skipped: true, reason: 'Tự động báo ship đang TẮT' };
+  }
+  // CHƯA SEED xong (đang seed / seed lỗi) -> KHÔNG gửi để tránh nhắn LOẠT đơn tồn cũ có sẵn ND ship.
+  // Tự thử seed lại nếu lần trước lỗi (poller tick kế sẽ chạy được khi đã chốt mốc).
+  if (trigger !== 'manual' && state.shipEnabled && !safeGet(SHIP_SEEDED_KEY)) {
+    if (!state.shipSeeding) startShipSeed().catch(() => {});
+    return { trigger, kind: 'ship', skipped: true, reason: state.shipSeeding ? 'Đang seed đơn tồn cũ' : 'Chờ seed đơn tồn cũ' };
+  }
+  if (state.runningShip) {
+    return { trigger, kind: 'ship', skipped: true, reason: 'Đang chạy một lượt báo ship khác' };
+  }
+  state.runningShip = true;
+  const summary = { trigger, kind: 'ship', scanned: 0, candidates: 0, sent: 0, failed: 0, results: [] };
+  try {
+    await executeNotifyPass({
+      trigger, kind: 'ship', statusFilter: 'notified_arrival',
+      classify: classifyForShip, keyOf: autoKeyShip, logTag: 'auto-ship', summary,
+    });
+  } catch (err) {
+    summary.error = err.message;
+    console.error(`[auto-ship:${trigger}] lỗi:`, err.message);
+  } finally {
+    state.runningShip = false;
+    state.lastShipRun = new Date().toISOString();
+    state.lastShipResult = summary;
+  }
+  return summary;
+}
+
+/** Có ít nhất 1 luồng (báo hàng HOẶC báo ship) đang bật -> cần chạy timer nền. */
+function anyEnabled() { return state.enabled || state.shipEnabled; }
+
+/** Đồng bộ timer với trạng thái bật/tắt: có luồng nào bật thì chạy, tắt hết thì dừng. */
+function syncTimer() {
+  if (anyEnabled()) { if (!timer) startTimer(); }
+  else stopTimer();
+}
+
+/** Bật/tắt tự động BÁO HÀNG lúc runtime (không cần restart). */
 function setEnabled(enabled) {
   const on = !!enabled;
-  if (on === state.enabled && (!on || timer)) return getStatus();
+  if (on === state.enabled) return getStatus();
   state.enabled = on;
   // Admin bật auto = hành động chủ động -> gỡ tạm dừng sau khởi động (nếu đang chờ).
-  if (on) { state.awaitingResume = false; startTimer(); } else stopTimer();
-  console.log(`[auto-notify] ${on ? 'BẬT' : 'TẮT'} (mỗi ${Math.round(cfg.intervalMs / 1000)}s)`);
+  if (on) state.awaitingResume = false;
+  syncTimer();
+  console.log(`[auto-notify] báo hàng ${on ? 'BẬT' : 'TẮT'} (mỗi ${Math.round(cfg.intervalMs / 1000)}s)`);
+  return getStatus();
+}
+
+/**
+ * Bật/tắt tự động BÁO SHIP lúc runtime (độc lập báo hàng). Lưu bền vào DB, áp dụng ngay.
+ * Khi BẬT: chốt mốc mới + chạy SEED nền (đánh dấu đơn đang có sẵn ND ship là tồn cũ, không gửi) ->
+ * chỉ ND ship phát sinh SAU khi bật mới được gửi. Xoá mốc seed cũ để buộc seed lại cho lần bật này.
+ */
+function setShipEnabled(enabled) {
+  const on = !!enabled;
+  state.shipEnabled = on;
+  try { setSetting(SHIP_ENABLED_KEY, on ? 'true' : 'false'); } catch (err) {
+    console.warn('[auto-notify] không lưu được công tắc báo ship vào DB:', err.message);
+  }
+  if (on) {
+    // Admin bật báo ship = hành động chủ động -> gỡ tạm dừng sau khởi động (nếu đang chờ).
+    state.awaitingResume = false;
+    // Mỗi lần BẬT = chốt "ảnh chụp tồn cũ" MỚI: xoá mốc cũ rồi seed lại (chặn gửi cho tới khi seed
+    // xong nhờ gate trong runAutoNotifyShip). Đơn có sẵn ND ship lúc này -> đánh dấu 'seeded' (bỏ).
+    try { setSetting(SHIP_SEEDED_KEY, null); } catch (_) { /* ignore */ }
+    startShipSeed().catch(() => {});
+  }
+  syncTimer();
+  console.log(`[auto-notify] báo ship ${on ? 'BẬT (đang seed ảnh chụp tồn cũ…)' : 'TẮT'}`);
   return getStatus();
 }
 
@@ -596,14 +814,15 @@ function startTimer() {
   if (timer) return;
   state.startedAt = new Date().toISOString();
   if (state.scheduleTime) {
-    // HẸN GIỜ: chỉ kiểm tra đồng hồ định kỳ (rẻ), tới giờ mới quét & gửi 1 lượt/ngày.
-    // Kiểm tra sớm sau 5s để "gửi bù" nếu khởi động lại khi đã qua giờ hẹn mà hôm đó chưa chạy.
+    // HẸN GIỜ (báo hàng): chỉ kiểm tra đồng hồ định kỳ (rẻ), tới giờ mới quét & gửi 1 lượt/ngày.
+    // Báo ship vẫn được quét mỗi nhịp (trong scheduleTick). Kiểm tra sớm sau 5s để "gửi bù".
     setTimeout(scheduleTick, 5000);
     timer = setInterval(scheduleTick, cfg.scheduleCheckMs);
   } else {
-    // GỬI NGAY (không hẹn giờ): chạy 1 lượt sau 5s rồi lặp theo interval như trước.
-    setTimeout(() => { runAutoNotify({ trigger: 'interval' }); }, 5000);
-    timer = setInterval(() => { runAutoNotify({ trigger: 'interval' }); }, cfg.intervalMs);
+    // GỬI NGAY (không hẹn giờ): chạy 1 nhịp sau 5s rồi lặp theo interval. Mỗi nhịp gồm báo hàng
+    // (nếu bật) + báo ship (nếu bật) — withLock tự xếp hàng nên không đụng nhau.
+    setTimeout(intervalTick, 5000);
+    timer = setInterval(intervalTick, cfg.intervalMs);
   }
   if (timer.unref) timer.unref();
 }
@@ -613,25 +832,35 @@ function stopTimer() {
   state.startedAt = null;
 }
 
-/** Khởi động cùng server (nếu AUTO_NOTIFY=true). */
+/** Khởi động cùng server (nếu báo hàng HOẶC báo ship được bật). */
 function startAutoNotify() {
+  if (!anyEnabled()) {
+    console.log('[auto-notify] TẮT (đặt AUTO_NOTIFY=true / AUTO_NOTIFY_SHIP=true để bật, hoặc bật trên dashboard)');
+    return;
+  }
+  startTimer();
   if (state.enabled) {
-    // Sau RESTART: mặc định TẠM DỪNG gửi tự động (gồm "gửi bù" đợt đang dở). KHÔNG dựng timer để
-    // không lượt nào tự nổ; chờ admin bấm "Quét & gửi" hoặc bật lại auto trên dashboard.
+    // Sau RESTART: mặc định TẠM DỪNG gửi tự động BÁO HÀNG (gồm "gửi bù" đợt đang dở) tới khi admin
+    // bấm "Quét & gửi" hoặc bật lại auto. Timer VẪN chạy (phục vụ báo ship + để gỡ tạm dừng sau);
+    // runAutoNotify tự bỏ mọi lượt tự động khi awaitingResume=true. AUTO_NOTIFY_RESUME_ON_BOOT=true để chạy lại ngay.
     if (!cfg.resumeOnBoot) {
       state.awaitingResume = true;
-      console.log('[auto-notify] BẬT — nhưng TẠM DỪNG sau khi khởi động lại: KHÔNG tự gửi bù. Bấm "Quét & gửi" trên dashboard để tiếp tục (đặt AUTO_NOTIFY_RESUME_ON_BOOT=true để tự chạy lại ngay như trước).');
-      return;
-    }
-    startTimer();
-    if (state.scheduleTime) {
+      console.log('[auto-notify] BÁO HÀNG BẬT — nhưng TẠM DỪNG sau khởi động lại: KHÔNG tự gửi bù. Bấm "Quét & gửi" trên dashboard (hoặc đặt AUTO_NOTIFY_RESUME_ON_BOOT=true) để tiếp tục.');
+    } else if (state.scheduleTime) {
       const pc = state.precheckMinutes > 0 ? `, nhắc soạn ND trước ${state.precheckMinutes} phút` : '';
-      console.log(`[auto-notify] BẬT — HẸN GIỜ gửi lúc ${state.scheduleTime} (${cfg.timezone}) mỗi ngày${pc}, profile=${cfg.profile}`);
+      console.log(`[auto-notify] BÁO HÀNG BẬT — HẸN GIỜ gửi lúc ${state.scheduleTime} (${cfg.timezone}) mỗi ngày${pc}, profile=${cfg.profile}`);
     } else {
-      console.log(`[auto-notify] BẬT — GỬI NGAY, quét đơn "Chưa báo" mỗi ${Math.round(cfg.intervalMs / 1000)}s, profile=${cfg.profile}`);
+      console.log(`[auto-notify] BÁO HÀNG BẬT — GỬI NGAY, quét đơn "Chưa báo" mỗi ${Math.round(cfg.intervalMs / 1000)}s, profile=${cfg.profile}`);
     }
   } else {
-    console.log('[auto-notify] TẮT (đặt AUTO_NOTIFY=true để bật, hoặc bật trên dashboard)');
+    console.log('[auto-notify] báo hàng TẮT');
+  }
+  console.log(`[auto-notify] BÁO SHIP ${state.shipEnabled ? 'BẬT' : 'TẮT'}${state.shipEnabled ? ` — quét đơn "Đã báo hàng" có ND ship, gửi ngay` : ''}`);
+  // Seed lần đầu nếu bật ship (qua env) mà CHƯA từng seed -> tránh nhắn loạt đơn tồn cũ lần đầu bật.
+  // Đã seed rồi (khởi động lại) thì KHÔNG seed lại: ND ship phát sinh lúc server tắt vẫn là "mới" -> gửi.
+  if (state.shipEnabled && !safeGet(SHIP_SEEDED_KEY)) {
+    console.log('[auto-ship] chưa có mốc seed -> chạy seed lần đầu (chốt ảnh chụp tồn cũ).');
+    startShipSeed().catch(() => {});
   }
 }
 
@@ -656,7 +885,7 @@ function setScheduleTime(value) {
   // Thực tế: chỉ reset khi chuyển giờ để không kẹt trạng thái cũ.
   state.lastScheduledDay = null;
   // Áp dụng ngay: dựng lại timer theo chế độ mới (hẹn giờ <-> interval).
-  if (state.enabled && timer) { stopTimer(); startTimer(); }
+  if (anyEnabled() && timer) { stopTimer(); startTimer(); }
   console.log(`[auto-notify] đặt giờ gửi cố định = ${norm || '(trống → gửi ngay theo interval)'}`);
   return getStatus();
 }
@@ -773,6 +1002,13 @@ function getStatus() {
     maxRetries: cfg.maxRetries,
     lastRun: state.lastRun,
     lastResult: state.lastResult,
+    // Tự động báo ship (công tắc RIÊNG, độc lập báo hàng): bật/tắt + trạng thái + kết quả gần nhất.
+    shipEnabled: state.shipEnabled,
+    shipSeeding: state.shipSeeding,     // đang chốt "ảnh chụp tồn cũ" lúc bật
+    lastShipSeed: state.lastShipSeed,   // { at, scanned, seeded } lần seed gần nhất
+    runningShip: state.runningShip,
+    lastShipRun: state.lastShipRun,
+    lastShipResult: state.lastShipResult,
     scheduleTime: state.scheduleTime,
     timezone: cfg.timezone,
     precheckMinutes: state.precheckMinutes,
@@ -788,6 +1024,6 @@ function getStatus() {
 }
 
 module.exports = {
-  runAutoNotify, startAutoNotify, setEnabled, setScheduleTime, setPrecheckMinutes,
+  runAutoNotify, runAutoNotifyShip, startAutoNotify, setEnabled, setShipEnabled, setScheduleTime, setPrecheckMinutes,
   setAlertConfig, sendAlertTest, previewAutoNotify, getStatus, autoKey,
 };

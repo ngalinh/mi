@@ -146,6 +146,14 @@
             </div>
             <button class="badge-status badge-clickable badge-offline" id="autoBadge" title="Bật/tắt tự động báo hàng">Tự động: ...</button>
           </div>
+          <div class="mode-row">
+            <div class="mode-info" style="flex:1; min-width:0;">
+              <div class="mode-title">Tự động báo ship</div>
+              <div class="mode-desc">Công tắc <strong>riêng</strong> (độc lập báo hàng). Khi bật: đơn đã ở trạng thái <strong>"Đã báo hàng"</strong> mà Basso đã soạn <strong>nội dung báo ship</strong> sẽ được tự nhắn cho khách <strong>ngay</strong> (không đợi giờ hẹn) và chuyển trạng thái sang <strong>"Đã báo ship"</strong>. Lúc bật, các đơn <strong>đang có sẵn ND ship</strong> được đánh dấu "tồn cũ" và <strong>không gửi</strong> — hệ thống <strong>chỉ gửi ND ship phát sinh SAU khi bật</strong> (kể cả trên đơn về từ hôm trước). <strong>Cần local-runner (Chrome) đang mở & đã đăng nhập Zalo</strong> để gửi được.</div>
+              <div class="muted" id="autoShipStatus" style="font-size:12px; margin-top:6px;"></div>
+            </div>
+            <button class="badge-status badge-clickable badge-offline" id="autoShipBadge" title="Bật/tắt tự động báo ship">Ship: ...</button>
+          </div>
           <div class="mode-row" id="scheduleRow">
             <div class="mode-info" style="flex:1; min-width:0;">
               <div class="mode-title">Giờ gửi cố định</div>

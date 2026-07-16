@@ -130,6 +130,35 @@ runAutoNotify()
 Đặc điểm bot: không người soát → **strict match** (không lấy đại); **không** đụng web Basso;
 chống trùng bằng bảng dedup.
 
+### 4b. Báo SHIP tự động — `runAutoNotifyShip()`
+
+Song song với báo hàng, bot còn tự **báo ship** cho đơn ĐÃ "Đã báo hàng": khi đơn ở trạng
+thái `notified_arrival` mà Basso đã soạn "ND báo ship" (`content_ship`) thì tự nhắn khách tin
+ship NGAY và chuyển trạng thái sang "Đã báo ship". Dùng CHUNG lõi gửi (`executeNotifyPass`)
+với báo hàng, chỉ khác:
+
+```
+• PHẢI báo hàng trước: chỉ xét đơn 'notified_arrival' (đơn 'not_sent' dù có content_ship cũng CHỜ)
+• Điều kiện gửi: CÓ noiDungBaoShip (content_ship) — trống thì BỎ QUA
+• kind='ship' → dùng buildBaoShipMessage + cập nhật web 'notified_ship'
+• Dedup theo autoKeyShip (suffix ':ship') — tách khỏi dấu báo hàng để 1 đơn báo
+  được cả hàng lẫn ship mà không đè nhau
+• GỬI NGAY khi có ND ship (KHÔNG hoãn theo giờ hẹn 17:00 như báo hàng)
+• CÔNG TẮC RIÊNG: state.shipEnabled (env AUTO_NOTIFY_SHIP / badge "Ship" trên Cài đặt, lưu DB)
+  — độc lập báo hàng. Poller + webhook chỉ chạy khi BẬT; nút "chạy tay" bỏ qua công tắc để test.
+```
+
+**"Mới/cũ" quyết định bằng SEED lúc bật (KHÔNG theo ngày về kho):** Basso không cho biết ND ship
+được soạn ngày nào, nên khi BẬT báo ship, hệ thống chụp ảnh hiện trạng — đánh dấu mọi đơn ĐANG có
+sẵn `content_ship` là `'seeded'` trong `auto_notified` (KHÔNG gửi). Nhờ vậy chỉ ND ship XUẤT HIỆN
+SAU khi bật (đơn chưa có dấu) mới được gửi — kể cả trên đơn về từ hôm trước. Mốc `shipSeededAt` lưu
+DB: chưa có mốc (đang seed / seed lỗi) → poller CHƯA gửi (chặn nhắn loạt tồn cũ); khởi động lại KHÔNG
+seed lại (ND ship phát sinh lúc server tắt vẫn là "mới" → gửi). Mỗi lần BẬT lại = chốt mốc mới.
+
+**Kích hoạt:** poller (mỗi lượt kiểm tra, khi báo ship BẬT) và webhook `POST /api/webhook/ship`
+(Basso gọi khi có ND báo ship — cũng tôn trọng công tắc). Bật/tắt: `POST /api/auto-notify/ship-toggle`.
+Nút chạy tay (bỏ qua công tắc): `POST /api/auto-notify/run-ship`.
+
 ---
 
 ## 5. FLOW D — Bước gửi qua local-runner (chung cho cả tay & bot)
@@ -202,6 +231,14 @@ TEST_MODE=true / TEST_PHONES=  # chế độ an toàn ở runner
 Mọi lượt gửi (tay + bot, thành công + lỗi) → ghi bảng `reports` → xem ở **`/reports.html`**
 kèm thống kê ✅/❌.
 
+Trạng thái mỗi lượt (`reports.status`):
+- `pending`    — đang gửi (ghi TRƯỚC khi gọi runner).
+- `success`    — gửi cho khách OK **và** cập nhật trạng thái web OK.
+- `sent_check` — **đã gửi cho khách OK nhưng cập nhật trạng thái web LỖI** (vd Basso timeout). Không
+  phải lỗi (khách đã nhận tin, dedup vẫn chốt để không gửi lại) nhưng web còn kẹt trạng thái cũ →
+  hiện pill "Đã gửi · cần KT" (hổ phách) + lọc riêng để soát & sửa trạng thái tay.
+- `failed`     — gửi cho khách lỗi (chưa nhận tin) → có thể "Thử lại".
+
 ---
 
 ## 9. Các API tóm tắt
@@ -214,9 +251,12 @@ kèm thống kê ✅/❌.
 | POST | `/api/notify` | Báo tay 1 hoặc nhiều đơn |
 | POST | `/api/update-row` | Sửa trạng thái/ghi chú 1 dòng (sync web) |
 | GET | `/api/auto-notify` | Trạng thái bot |
-| POST | `/api/auto-notify/toggle` | Bật/tắt bot (runtime) |
-| POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt |
+| POST | `/api/auto-notify/toggle` | Bật/tắt bot báo hàng (runtime) |
+| POST | `/api/auto-notify/ship-toggle` | Bật/tắt bot báo ship (công tắc riêng, runtime) |
+| POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt (báo hàng) |
+| POST | `/api/auto-notify/run-ship` | Quét + gửi ngay 1 lượt báo ship |
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay |
+| POST | `/api/webhook/ship` | Webhook: có ND báo ship → gửi tin ship ngay |
 | GET | `/api/reports` | Lịch sử + thống kê |
 | GET | `/api/health` | Trạng thái server + runner + bot |
 
