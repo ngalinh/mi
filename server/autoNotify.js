@@ -29,6 +29,8 @@ const cfg = config.autoNotify;
 const SCHEDULE_SETTING_KEY = 'autoNotify.scheduleTime';
 // Khoá lưu "nhắc soạn ND trước bao nhiêu phút" (số nguyên phút; 0 = tắt nhắc).
 const PRECHECK_SETTING_KEY = 'autoNotify.precheckMinutes';
+// Khoá lưu công tắc RIÊNG cho tự động báo ship ('true'/'false').
+const SHIP_ENABLED_KEY = 'autoNotify.shipEnabled';
 // Khoá lưu cấu hình "nhắc ra Zalo (nội bộ)".
 const ALERT_ENABLED_KEY = 'autoNotify.alertEnabled';
 const ALERT_ACCOUNT_KEY = 'autoNotify.alertAccount';
@@ -114,6 +116,13 @@ function initialPrecheckMinutes() {
   return envN == null ? 30 : envN;
 }
 
+// Công tắc báo ship lúc khởi động: giá trị admin đã lưu (DB) ghi đè mặc định env (cfg.shipEnabled).
+function initialShipEnabled() {
+  const saved = safeGet(SHIP_ENABLED_KEY);
+  if (saved != null) return saved === 'true';
+  return !!cfg.shipEnabled;
+}
+
 // Cấu hình "nhắc ra Zalo" lúc khởi động: DB (admin lưu) ghi đè env.
 function initialAlert() {
   const a = cfg.alert || {};
@@ -137,6 +146,8 @@ const state = {
   lastResult: null,    // tóm tắt lần chạy gần nhất
   // BÁO SHIP (song song với báo hàng): quét đơn đã có "ND báo ship" và tự gửi. Cờ chạy + kết quả
   // tách riêng để lượt ship không đụng lượt báo hàng và hiện được trạng thái riêng trên dashboard.
+  // shipEnabled = công tắc RIÊNG (độc lập báo hàng) — bật/tắt trên trang Cài đặt, lưu bền DB.
+  shipEnabled: initialShipEnabled(),
   runningShip: false,
   lastShipRun: null,
   lastShipResult: null,
@@ -159,39 +170,41 @@ let timer = null;
  * lượt này vẫn nổ để "gửi bù" — an toàn vì dedup (auto_notified) chặn gửi trùng khách.
  */
 function scheduleTick() {
-  if (!state.scheduleTime) return;
-  const { day, minutes } = localParts(new Date());
-  const [h, m] = state.scheduleTime.split(':').map(Number);
-  const target = h * 60 + m;
+  // BÁO HÀNG theo giờ hẹn — chỉ chạy khi báo hàng đang BẬT và có đặt giờ.
+  if (state.enabled && state.scheduleTime) {
+    const { day, minutes } = localParts(new Date());
+    const [h, m] = state.scheduleTime.split(':').map(Number);
+    const target = h * 60 + m;
 
-  // NHẮC SOẠN ND: trước giờ gửi `precheckMinutes` phút, quét (đọc tươi) & cảnh báo đơn thiếu ND.
-  // Chạy 1 lần/ngày trong khung [target-lead, target) — sau giờ gửi thì thôi (lượt gửi tự xử lý).
-  const lead = state.precheckMinutes;
-  if (lead > 0) {
-    const precheckAt = target - lead;
-    if (precheckAt >= 0 && minutes >= precheckAt && minutes < target && state.lastPrecheckDay !== day) {
-      state.lastPrecheckDay = day;
-      runPrecheck(day);
+    // NHẮC SOẠN ND: trước giờ gửi `precheckMinutes` phút, quét (đọc tươi) & cảnh báo đơn thiếu ND.
+    // Chạy 1 lần/ngày trong khung [target-lead, target) — sau giờ gửi thì thôi (lượt gửi tự xử lý).
+    const lead = state.precheckMinutes;
+    if (lead > 0) {
+      const precheckAt = target - lead;
+      if (precheckAt >= 0 && minutes >= precheckAt && minutes < target && state.lastPrecheckDay !== day) {
+        state.lastPrecheckDay = day;
+        runPrecheck(day);
+      }
     }
-  }
 
-  // GỬI đúng giờ (1 lần/ngày). Đặt mốc "đã chạy hôm nay" TRƯỚC để không nổ 2 lần ở 2 tick liền
-  // nhau; nhưng nếu lượt bị BỎ (runner offline / đang chạy lượt khác) thì NHẢ mốc ra để thử lại
-  // ở tick kế -> đúng 17h mà runner offline sẽ TỰ GỬI BÙ khi runner online lại, không mất cả ngày.
-  if (minutes >= target && state.lastScheduledDay !== day) {
-    state.lastScheduledDay = day;
-    console.log(`[auto-notify] tới giờ ${state.scheduleTime} (${cfg.timezone}) — chạy lượt gửi theo lịch cho ngày ${day}.`);
-    Promise.resolve(runAutoNotify({ trigger: 'scheduled' }))
-      .then((r) => {
-        if (r && r.skipped) {
-          state.lastScheduledDay = null;
-          console.warn(`[auto-notify] lượt ${state.scheduleTime} bị bỏ (${r.reason || 'không rõ'}) — sẽ thử lại ở lần kiểm tra kế (${Math.round(cfg.scheduleCheckMs / 1000)}s).`);
-        } else if (r && state.alertEnabled) {
-          // Gửi xong -> nhắn tổng kết ra Zalo cho người trực.
-          dispatchAlert(buildSummaryAlertMessage(r)).catch(() => {});
-        }
-      })
-      .catch(() => { state.lastScheduledDay = null; });
+    // GỬI đúng giờ (1 lần/ngày). Đặt mốc "đã chạy hôm nay" TRƯỚC để không nổ 2 lần ở 2 tick liền
+    // nhau; nhưng nếu lượt bị BỎ (runner offline / đang chạy lượt khác) thì NHẢ mốc ra để thử lại
+    // ở tick kế -> đúng 17h mà runner offline sẽ TỰ GỬI BÙ khi runner online lại, không mất cả ngày.
+    if (minutes >= target && state.lastScheduledDay !== day) {
+      state.lastScheduledDay = day;
+      console.log(`[auto-notify] tới giờ ${state.scheduleTime} (${cfg.timezone}) — chạy lượt gửi theo lịch cho ngày ${day}.`);
+      Promise.resolve(runAutoNotify({ trigger: 'scheduled' }))
+        .then((r) => {
+          if (r && r.skipped) {
+            state.lastScheduledDay = null;
+            console.warn(`[auto-notify] lượt ${state.scheduleTime} bị bỏ (${r.reason || 'không rõ'}) — sẽ thử lại ở lần kiểm tra kế (${Math.round(cfg.scheduleCheckMs / 1000)}s).`);
+          } else if (r && state.alertEnabled) {
+            // Gửi xong -> nhắn tổng kết ra Zalo cho người trực.
+            dispatchAlert(buildSummaryAlertMessage(r)).catch(() => {});
+          }
+        })
+        .catch(() => { state.lastScheduledDay = null; });
+    }
   }
 
   // BÁO SHIP không theo giờ hẹn: mỗi lần kiểm tra đồng hồ (scheduleCheckMs) cũng quét & gửi ngay
@@ -199,9 +212,15 @@ function scheduleTick() {
   maybeRunShip('interval');
 }
 
-/** Quét & gửi báo ship 1 lượt ở nền (không chặn) — chỉ khi auto đang BẬT. Nuốt lỗi. */
+/** 1 nhịp ở chế độ GỬI NGAY (không hẹn giờ): báo hàng (nếu bật) + báo ship (nếu bật). */
+function intervalTick() {
+  if (state.enabled) runAutoNotify({ trigger: 'interval' });
+  maybeRunShip('interval');
+}
+
+/** Quét & gửi báo ship 1 lượt ở nền (không chặn) — chỉ khi CÔNG TẮC BÁO SHIP đang BẬT. Nuốt lỗi. */
 function maybeRunShip(trigger = 'interval') {
-  if (!state.enabled) return;
+  if (!state.shipEnabled) return;
   runAutoNotifyShip({ trigger }).catch(() => {});
 }
 
@@ -648,6 +667,11 @@ async function runAutoNotify(opts = {}) {
  */
 async function runAutoNotifyShip(opts = {}) {
   const trigger = opts.trigger || 'manual';
+  // Tôn trọng công tắc RIÊNG: poller/webhook chỉ gửi khi báo ship đang BẬT. Nút "chạy tay" (manual)
+  // vẫn chạy để admin test dù đang tắt.
+  if (trigger !== 'manual' && !state.shipEnabled) {
+    return { trigger, kind: 'ship', skipped: true, reason: 'Tự động báo ship đang TẮT' };
+  }
   if (state.runningShip) {
     return { trigger, kind: 'ship', skipped: true, reason: 'Đang chạy một lượt báo ship khác' };
   }
@@ -669,13 +693,34 @@ async function runAutoNotifyShip(opts = {}) {
   return summary;
 }
 
-/** Bật/tắt poller lúc runtime (không cần restart). */
+/** Có ít nhất 1 luồng (báo hàng HOẶC báo ship) đang bật -> cần chạy timer nền. */
+function anyEnabled() { return state.enabled || state.shipEnabled; }
+
+/** Đồng bộ timer với trạng thái bật/tắt: có luồng nào bật thì chạy, tắt hết thì dừng. */
+function syncTimer() {
+  if (anyEnabled()) { if (!timer) startTimer(); }
+  else stopTimer();
+}
+
+/** Bật/tắt tự động BÁO HÀNG lúc runtime (không cần restart). */
 function setEnabled(enabled) {
   const on = !!enabled;
-  if (on === state.enabled && (!on || timer)) return getStatus();
+  if (on === state.enabled) return getStatus();
   state.enabled = on;
-  if (on) startTimer(); else stopTimer();
-  console.log(`[auto-notify] ${on ? 'BẬT' : 'TẮT'} (mỗi ${Math.round(cfg.intervalMs / 1000)}s)`);
+  syncTimer();
+  console.log(`[auto-notify] báo hàng ${on ? 'BẬT' : 'TẮT'} (mỗi ${Math.round(cfg.intervalMs / 1000)}s)`);
+  return getStatus();
+}
+
+/** Bật/tắt tự động BÁO SHIP lúc runtime (độc lập báo hàng). Lưu bền vào DB, áp dụng ngay. */
+function setShipEnabled(enabled) {
+  const on = !!enabled;
+  state.shipEnabled = on;
+  try { setSetting(SHIP_ENABLED_KEY, on ? 'true' : 'false'); } catch (err) {
+    console.warn('[auto-notify] không lưu được công tắc báo ship vào DB:', err.message);
+  }
+  syncTimer();
+  console.log(`[auto-notify] báo ship ${on ? 'BẬT' : 'TẮT'}`);
   return getStatus();
 }
 
@@ -683,15 +728,15 @@ function startTimer() {
   if (timer) return;
   state.startedAt = new Date().toISOString();
   if (state.scheduleTime) {
-    // HẸN GIỜ: chỉ kiểm tra đồng hồ định kỳ (rẻ), tới giờ mới quét & gửi 1 lượt/ngày.
-    // Kiểm tra sớm sau 5s để "gửi bù" nếu khởi động lại khi đã qua giờ hẹn mà hôm đó chưa chạy.
+    // HẸN GIỜ (báo hàng): chỉ kiểm tra đồng hồ định kỳ (rẻ), tới giờ mới quét & gửi 1 lượt/ngày.
+    // Báo ship vẫn được quét mỗi nhịp (trong scheduleTick). Kiểm tra sớm sau 5s để "gửi bù".
     setTimeout(scheduleTick, 5000);
     timer = setInterval(scheduleTick, cfg.scheduleCheckMs);
   } else {
-    // GỬI NGAY (không hẹn giờ): chạy 1 lượt sau 5s rồi lặp theo interval như trước. Kèm quét báo
-    // ship mỗi lượt (withLock tự xếp hàng nên không đụng lượt báo hàng đang chạy).
-    setTimeout(() => { runAutoNotify({ trigger: 'interval' }); maybeRunShip('interval'); }, 5000);
-    timer = setInterval(() => { runAutoNotify({ trigger: 'interval' }); maybeRunShip('interval'); }, cfg.intervalMs);
+    // GỬI NGAY (không hẹn giờ): chạy 1 nhịp sau 5s rồi lặp theo interval. Mỗi nhịp gồm báo hàng
+    // (nếu bật) + báo ship (nếu bật) — withLock tự xếp hàng nên không đụng nhau.
+    setTimeout(intervalTick, 5000);
+    timer = setInterval(intervalTick, cfg.intervalMs);
   }
   if (timer.unref) timer.unref();
 }
@@ -701,19 +746,24 @@ function stopTimer() {
   state.startedAt = null;
 }
 
-/** Khởi động cùng server (nếu AUTO_NOTIFY=true). */
+/** Khởi động cùng server (nếu báo hàng HOẶC báo ship được bật). */
 function startAutoNotify() {
+  if (!anyEnabled()) {
+    console.log('[auto-notify] TẮT (đặt AUTO_NOTIFY=true / AUTO_NOTIFY_SHIP=true để bật, hoặc bật trên dashboard)');
+    return;
+  }
+  startTimer();
   if (state.enabled) {
-    startTimer();
     if (state.scheduleTime) {
       const pc = state.precheckMinutes > 0 ? `, nhắc soạn ND trước ${state.precheckMinutes} phút` : '';
-      console.log(`[auto-notify] BẬT — HẸN GIỜ gửi lúc ${state.scheduleTime} (${cfg.timezone}) mỗi ngày${pc}, profile=${cfg.profile}`);
+      console.log(`[auto-notify] BÁO HÀNG BẬT — HẸN GIỜ gửi lúc ${state.scheduleTime} (${cfg.timezone}) mỗi ngày${pc}, profile=${cfg.profile}`);
     } else {
-      console.log(`[auto-notify] BẬT — GỬI NGAY, quét đơn "Chưa báo" mỗi ${Math.round(cfg.intervalMs / 1000)}s, profile=${cfg.profile}`);
+      console.log(`[auto-notify] BÁO HÀNG BẬT — GỬI NGAY, quét đơn "Chưa báo" mỗi ${Math.round(cfg.intervalMs / 1000)}s, profile=${cfg.profile}`);
     }
   } else {
-    console.log('[auto-notify] TẮT (đặt AUTO_NOTIFY=true để bật, hoặc bật trên dashboard)');
+    console.log('[auto-notify] báo hàng TẮT');
   }
+  console.log(`[auto-notify] BÁO SHIP ${state.shipEnabled ? 'BẬT' : 'TẮT'}${state.shipEnabled ? ` — quét đơn "Đã báo hàng" có ND ship, gửi ngay` : ''}`);
 }
 
 /**
@@ -737,7 +787,7 @@ function setScheduleTime(value) {
   // Thực tế: chỉ reset khi chuyển giờ để không kẹt trạng thái cũ.
   state.lastScheduledDay = null;
   // Áp dụng ngay: dựng lại timer theo chế độ mới (hẹn giờ <-> interval).
-  if (state.enabled && timer) { stopTimer(); startTimer(); }
+  if (anyEnabled() && timer) { stopTimer(); startTimer(); }
   console.log(`[auto-notify] đặt giờ gửi cố định = ${norm || '(trống → gửi ngay theo interval)'}`);
   return getStatus();
 }
@@ -852,7 +902,8 @@ function getStatus() {
     maxRetries: cfg.maxRetries,
     lastRun: state.lastRun,
     lastResult: state.lastResult,
-    // Tự động báo ship (song song báo hàng): trạng thái + kết quả lượt gần nhất.
+    // Tự động báo ship (công tắc RIÊNG, độc lập báo hàng): bật/tắt + trạng thái + kết quả gần nhất.
+    shipEnabled: state.shipEnabled,
     runningShip: state.runningShip,
     lastShipRun: state.lastShipRun,
     lastShipResult: state.lastShipResult,
@@ -871,6 +922,6 @@ function getStatus() {
 }
 
 module.exports = {
-  runAutoNotify, runAutoNotifyShip, startAutoNotify, setEnabled, setScheduleTime, setPrecheckMinutes,
+  runAutoNotify, runAutoNotifyShip, startAutoNotify, setEnabled, setShipEnabled, setScheduleTime, setPrecheckMinutes,
   setAlertConfig, sendAlertTest, previewAutoNotify, getStatus, autoKey,
 };

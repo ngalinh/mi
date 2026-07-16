@@ -144,10 +144,13 @@ với báo hàng, chỉ khác:
 • Dedup theo autoKeyShip (suffix ':ship') — tách khỏi dấu báo hàng để 1 đơn báo
   được cả hàng lẫn ship mà không đè nhau
 • GỬI NGAY khi có ND ship (KHÔNG hoãn theo giờ hẹn 17:00 như báo hàng)
+• CÔNG TẮC RIÊNG: state.shipEnabled (env AUTO_NOTIFY_SHIP / badge "Ship" trên Cài đặt, lưu DB)
+  — độc lập báo hàng. Poller + webhook chỉ chạy khi BẬT; nút "chạy tay" bỏ qua công tắc để test.
 ```
 
-**2 cách kích hoạt:** poller (mỗi lượt kiểm tra) và webhook `POST /api/webhook/ship`
-(Basso gọi khi có ND báo ship). Nút chạy tay: `POST /api/auto-notify/run-ship`.
+**Kích hoạt:** poller (mỗi lượt kiểm tra, khi báo ship BẬT) và webhook `POST /api/webhook/ship`
+(Basso gọi khi có ND báo ship — cũng tôn trọng công tắc). Bật/tắt: `POST /api/auto-notify/ship-toggle`.
+Nút chạy tay (bỏ qua công tắc): `POST /api/auto-notify/run-ship`.
 
 ---
 
@@ -233,7 +236,8 @@ kèm thống kê ✅/❌.
 | POST | `/api/notify` | Báo tay 1 hoặc nhiều đơn |
 | POST | `/api/update-row` | Sửa trạng thái/ghi chú 1 dòng (sync web) |
 | GET | `/api/auto-notify` | Trạng thái bot |
-| POST | `/api/auto-notify/toggle` | Bật/tắt bot (runtime) |
+| POST | `/api/auto-notify/toggle` | Bật/tắt bot báo hàng (runtime) |
+| POST | `/api/auto-notify/ship-toggle` | Bật/tắt bot báo ship (công tắc riêng, runtime) |
 | POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt (báo hàng) |
 | POST | `/api/auto-notify/run-ship` | Quét + gửi ngay 1 lượt báo ship |
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay |

@@ -258,7 +258,8 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | POST | `/api/notify` `{orders[]\|orderIds[], profile?, account?, messageOverride?}` | Báo hàng (danh sách đơn) |
 | POST | `/api/notify-all` `{from?,to?,staff?,q?,kind?}` | Báo hàng loạt: kéo HẾT đơn "Chưa báo" qua mọi trang rồi gửi (bỏ qua đơn Delay/đã báo) |
 | GET | `/api/auto-notify` | Trạng thái tự động báo hàng |
-| POST | `/api/auto-notify/toggle` `{enabled}` | Bật/tắt tự động (runtime) |
+| POST | `/api/auto-notify/toggle` `{enabled}` | Bật/tắt tự động báo hàng (runtime) |
+| POST | `/api/auto-notify/ship-toggle` `{enabled}` | Bật/tắt tự động báo ship (công tắc riêng, runtime) |
 | POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt (báo hàng) |
 | POST | `/api/auto-notify/run-ship` | Quét + gửi ngay 1 lượt BÁO SHIP (đơn đã có ND báo ship) |
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay (header `x-webhook-secret`) |

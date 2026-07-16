@@ -485,6 +485,49 @@
     el.className = 'badge-status badge-clickable ' + (autoEnabled ? 'badge-online' : 'badge-offline');
     renderSchedule(a);
     renderAlert(a);
+    renderAutoShip(a);
+  }
+
+  // ---- Tự động báo ship (công tắc riêng) ----
+  let shipEnabled = false;
+  let runnerOnline = true; // cập nhật từ loadHealth để cảnh báo khi runner offline
+  function renderAutoShip(a) {
+    if (!a) return;
+    shipEnabled = !!a.shipEnabled;
+    const badge = $('autoShipBadge');
+    if (badge) {
+      badge.textContent = 'Ship: ' + (shipEnabled ? 'Bật' : 'Tắt');
+      badge.className = 'badge-status badge-clickable ' + (shipEnabled ? 'badge-online' : 'badge-offline');
+    }
+    const st = $('autoShipStatus');
+    if (!st) return;
+    const parts = [];
+    const r = a.lastShipResult;
+    if (r && (r.sent || r.failed)) {
+      const at = a.lastShipRun ? new Date(a.lastShipRun).toLocaleString('vi-VN') : '';
+      parts.push(`Lần gửi ship gần nhất${at ? ` (${App.esc(at)})` : ''}: ${r.sent || 0} ✅ / ${r.failed || 0} ❌`);
+    } else if (r && r.skipped && r.reason) {
+      parts.push(`Lượt ship gần nhất bỏ qua: ${App.esc(r.reason)}`);
+    }
+    // Cảnh báo: bật báo ship nhưng runner (Chrome) offline -> chưa gửi được, sẽ gửi bù khi runner mở lại.
+    if (shipEnabled && runnerOnline === false) {
+      parts.push('<span style="color:var(--danger,#d33)">⚠️ Local-runner (Chrome) offline — đơn báo ship sẽ tự gửi khi runner mở lại.</span>');
+    }
+    st.innerHTML = parts.join(' · ');
+  }
+
+  async function toggleAutoShip() {
+    const next = !shipEnabled;
+    if (next && !confirm('Bật TỰ ĐỘNG báo ship? Khi đơn đã "Đã báo hàng" và có nội dung báo ship, hệ thống sẽ tự nhắn khách NGAY (cần local-runner mở & đăng nhập Zalo).')) return;
+    try {
+      const a = await App.api('/api/auto-notify/ship-toggle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }),
+      });
+      renderAutoBadge(a); // đồng bộ lại cả badge ship (renderAutoBadge -> renderAutoShip)
+      App.toast(next ? '✅ Đã bật tự động báo ship' : 'Đã tắt tự động báo ship');
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
+    }
   }
 
   // ---- Nhắc ra Zalo (nội bộ) ----
@@ -746,6 +789,7 @@
       lb.className = 'badge-status ' + (h.localRunner.online ? 'badge-online' : 'badge-offline');
       $('modeMockBadge').style.display = h.mock ? '' : 'none';
       $('modeLiveBadge').style.display = h.mock ? 'none' : '';
+      runnerOnline = !!h.localRunner.online; // cho cảnh báo runner-offline ở mục báo ship
       if (h.autoNotify) renderAutoBadge(h.autoNotify);
       renderTestMode(
         { testMode: h.localRunner.testMode, testPhones: h.localRunner.testPhones },
@@ -776,6 +820,7 @@
   }
 
   $('autoBadge').addEventListener('click', toggleAuto);
+  { const sb = $('autoShipBadge'); if (sb) sb.addEventListener('click', toggleAutoShip); }
   $('scheduleSave').addEventListener('click', saveSchedule);
   $('scheduleInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });
   $('precheckInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });

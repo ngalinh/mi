@@ -646,10 +646,17 @@ app.get('/api/auto-notify', (req, res) => {
   res.json({ ok: true, ...autoNotify.getStatus() });
 });
 
-// Bật/tắt poller tự động lúc runtime. body: { enabled: boolean }
+// Bật/tắt poller tự động BÁO HÀNG lúc runtime. body: { enabled: boolean }
 app.post('/api/auto-notify/toggle', (req, res) => {
   const { enabled } = req.body || {};
   const status = autoNotify.setEnabled(!!enabled);
+  res.json({ ok: true, ...status });
+});
+
+// Bật/tắt tự động BÁO SHIP lúc runtime (công tắc RIÊNG, độc lập báo hàng). body: { enabled: boolean }
+app.post('/api/auto-notify/ship-toggle', (req, res) => {
+  const { enabled } = req.body || {};
+  const status = autoNotify.setShipEnabled(!!enabled);
   res.json({ ok: true, ...status });
 });
 
