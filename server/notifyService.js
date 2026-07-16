@@ -208,8 +208,13 @@ async function notifyOne(order, opts = {}) {
   }
 
   // Chốt kết quả vào CHÍNH dòng "đang báo" đã ghi ở trên (không tạo dòng mới).
+  //  - Gửi lỗi                     -> 'failed'
+  //  - Gửi OK + cập nhật web OK     -> 'success'
+  //  - Gửi OK nhưng cập nhật web LỖI -> 'sent_check' = ĐÃ GỬI cho khách nhưng trạng thái web chưa
+  //    đổi (vd Basso timeout) -> cần KIỂM TRA/sửa tay. KHÔNG để 'success' (giấu lỗi) cũng KHÔNG để
+  //    'failed' (sai — khách đã nhận tin, gửi lại sẽ trùng).
   const report = updateReport(pending.id, {
-    status: result.ok ? 'success' : 'failed',
+    status: result.ok ? (updateError ? 'sent_check' : 'success') : 'failed',
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
   });

@@ -231,6 +231,14 @@ TEST_MODE=true / TEST_PHONES=  # chế độ an toàn ở runner
 Mọi lượt gửi (tay + bot, thành công + lỗi) → ghi bảng `reports` → xem ở **`/reports.html`**
 kèm thống kê ✅/❌.
 
+Trạng thái mỗi lượt (`reports.status`):
+- `pending`    — đang gửi (ghi TRƯỚC khi gọi runner).
+- `success`    — gửi cho khách OK **và** cập nhật trạng thái web OK.
+- `sent_check` — **đã gửi cho khách OK nhưng cập nhật trạng thái web LỖI** (vd Basso timeout). Không
+  phải lỗi (khách đã nhận tin, dedup vẫn chốt để không gửi lại) nhưng web còn kẹt trạng thái cũ →
+  hiện pill "Đã gửi · cần KT" (hổ phách) + lọc riêng để soát & sửa trạng thái tay.
+- `failed`     — gửi cho khách lỗi (chưa nhận tin) → có thể "Thử lại".
+
 ---
 
 ## 9. Các API tóm tắt

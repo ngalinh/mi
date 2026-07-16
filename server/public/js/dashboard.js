@@ -188,15 +188,18 @@
     if (!s) return '<span class="muted">—</span>';
     if (s === 'pending') return `<span class="pill pending">${App.icon('hourglass')} Đang gửi</span>`;
     if (s === 'success') return `<span class="pill success">${App.icon('check')} Đã gửi</span>`;
+    // Đã gửi cho khách nhưng cập nhật trạng thái web lỗi -> cần kiểm tra/sửa tay (không phải "Lỗi").
+    if (s === 'sent_check') return `<span class="pill check" title="Đã gửi tin cho khách nhưng cập nhật trạng thái trên web lỗi — hãy kiểm tra và đổi trạng thái tay">${App.icon('alert')} Đã gửi · cần KT</span>`;
     return `<span class="pill failed">${App.icon('alert')} Lỗi</span>`;
   }
   // Gom trạng thái GỬI TIN của lượt báo đại diện về nhãn để LỌC (khớp sendStatusCell ở trên):
-  // none = chưa từng báo · pending = đang gửi · success = đã gửi · failed = lỗi.
+  // none = chưa từng báo · pending = đang gửi · success = đã gửi · sent_check = đã gửi cần KT · failed = lỗi.
   function sendStatusOf(o) {
     const s = o.lastReport && o.lastReport.status;
     if (!s) return 'none';
     if (s === 'pending') return 'pending';
     if (s === 'success') return 'success';
+    if (s === 'sent_check') return 'sent_check';
     return 'failed';
   }
 
@@ -1406,6 +1409,7 @@
     sel.title = 'Lọc theo trạng thái gửi tin';
     sel.innerHTML = '<option value="" selected>Tất cả gửi tin</option>'
       + '<option value="success">Đã gửi</option>'
+      + '<option value="sent_check">Đã gửi · cần kiểm tra</option>'
       + '<option value="pending">Đang gửi</option>'
       + '<option value="failed">Lỗi gửi</option>'
       + '<option value="none">Chưa gửi</option>';
