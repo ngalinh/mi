@@ -31,6 +31,9 @@ const SCHEDULE_SETTING_KEY = 'autoNotify.scheduleTime';
 const PRECHECK_SETTING_KEY = 'autoNotify.precheckMinutes';
 // Khoá lưu công tắc RIÊNG cho tự động báo ship ('true'/'false').
 const SHIP_ENABLED_KEY = 'autoNotify.shipEnabled';
+// Khoá lưu MỐC ĐÃ SEED lúc bật báo ship (ISO time). Có mốc = đã chốt "ảnh chụp tồn cũ" -> chỉ ND
+// ship phát sinh SAU đó mới gửi. Trống = chưa seed (đang chuẩn bị / seed lỗi) -> chưa gửi để an toàn.
+const SHIP_SEEDED_KEY = 'autoNotify.shipSeededAt';
 // Khoá lưu cấu hình "nhắc ra Zalo (nội bộ)".
 const ALERT_ENABLED_KEY = 'autoNotify.alertEnabled';
 const ALERT_ACCOUNT_KEY = 'autoNotify.alertAccount';
@@ -148,6 +151,8 @@ const state = {
   // tách riêng để lượt ship không đụng lượt báo hàng và hiện được trạng thái riêng trên dashboard.
   // shipEnabled = công tắc RIÊNG (độc lập báo hàng) — bật/tắt trên trang Cài đặt, lưu bền DB.
   shipEnabled: initialShipEnabled(),
+  shipSeeding: false,   // đang chạy seed "ảnh chụp tồn cũ" lúc bật báo ship
+  lastShipSeed: null,   // kết quả seed gần nhất { at, scanned, seeded }
   runningShip: false,
   lastShipRun: null,
   lastShipResult: null,
@@ -433,8 +438,12 @@ async function classifyForShip(order, delayedMap) {
   // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo ship" (raw.content_ship). Đơn trống -> bỏ qua.
   if (!order.noiDungBaoShip || !String(order.noiDungBaoShip).trim()) return { decision: 'skip', reason: 'no_content' };
   const rec = getAutoRecord(autoKeyShip(order));
-  // Đã báo ship (bot 'success' hoặc báo tay 'manual') -> không gửi lại. Hết lượt thử -> thôi.
-  if (rec && (rec.status === 'success' || rec.status === 'manual')) return { decision: 'skip', reason: 'already' };
+  // Đã xử lý -> không gửi lại:
+  //   'success'/'manual' = đã gửi ship (bot/tay);
+  //   'seeded'           = tồn cũ đã có sẵn ND ship LÚC BẬT (chốt ảnh chụp, KHÔNG gửi).
+  // Nhờ 'seeded', chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có dấu) mới được gửi — không phụ
+  // thuộc ngày về kho, nên "ND ship mới trên đơn cũ hôm qua" vẫn gửi đúng.
+  if (rec && (rec.status === 'success' || rec.status === 'manual' || rec.status === 'seeded')) return { decision: 'skip', reason: 'already' };
   if (rec && rec.attempts >= cfg.maxRetries) return { decision: 'skip', reason: 'max_retries' };
   // Cờ Delay/Loại trừ dùng chung khóa đơn (autoKey) -> đơn đang hoãn thì cũng hoãn báo ship.
   if (delayedMap && delayedMap.has(autoKey(order))) return { decision: 'skip', reason: 'delayed' };
@@ -446,13 +455,55 @@ async function classifyForShip(order, delayedMap) {
   if (acct.skip && acct.skipReason === 'fb_no_account') return { decision: 'skip', reason: 'no_account', acct };
   if (fromStore && acct.autoEnabled === false) return { decision: 'skip', reason: 'auto_off', acct };
   if (acct.skip && acct.skipReason === 'brand') return { decision: 'skip', reason: 'brand', acct };
-  // Chỉ báo đơn về TỪ KHI bật auto (bỏ tồn đọng cũ) — tránh nhắn ship trùng loạt khách cũ.
-  if (cfg.onlyNewOrders && fromStore && acct.autoEnabledAt) {
-    const orderDay = localDayKey(order.dateInventory);
-    const sinceDay = localDayKey(acct.autoEnabledAt);
-    if (orderDay != null && sinceDay != null && orderDay < sinceDay) return { decision: 'skip', reason: 'backlog', acct };
-  }
+  // KHÔNG lọc theo ngày về kho nữa: "mới/cũ" của báo ship do cơ chế SEED lúc bật quyết định
+  // (đơn có sẵn ND ship lúc bật -> 'seeded' -> bỏ; ND ship phát sinh sau -> gửi).
   return { decision: 'send', acct };
+}
+
+/**
+ * SEED lúc bật báo ship: chụp ảnh các đơn ĐANG có sẵn "ND báo ship" tại thời điểm bật rồi đánh dấu
+ * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa
+ * có dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
+ * 'notified_arrival' để bắt mọi đơn đã có ND ship ở thời điểm bật. Ghi mốc SHIP_SEEDED_KEY khi xong.
+ * @returns {Promise<{at:string, scanned:number, seeded:number}>}
+ */
+async function seedShip() {
+  let scanned = 0;
+  let seeded = 0;
+  const seen = new Set();
+  for (const status of ['not_sent', 'notified_arrival']) {
+    // eslint-disable-next-line no-await-in-loop
+    const orders = await fetchAllByStatus(status, { fresh: true }); // fresh: chốt đúng hiện trạng lúc bấm Bật
+    for (const o of orders) {
+      const k = autoKey(o);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      scanned += 1;
+      if (!o.noiDungBaoShip || !String(o.noiDungBaoShip).trim()) continue; // chưa có ND ship -> khỏi seed
+      const key = autoKeyShip(o);
+      if (getAutoRecord(key)) continue;   // đã có dấu (đã gửi/tay/seeded trước) -> giữ nguyên
+      recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi
+      seeded += 1;
+    }
+  }
+  const at = new Date().toISOString();
+  state.lastShipSeed = { at, scanned, seeded };
+  try { setSetting(SHIP_SEEDED_KEY, at); } catch (_) { /* ignore */ }
+  console.log(`[auto-ship] SEED lúc bật: đánh dấu ${seeded} đơn tồn cũ (đã có sẵn ND ship) trong ${scanned} đơn quét — sẽ KHÔNG gửi; chỉ gửi ND ship phát sinh sau lúc bật.`);
+  return { at, scanned, seeded };
+}
+
+/** Chạy seed ở nền (chỉ 1 lần cùng lúc). Seed lỗi -> KHÔNG chốt mốc để lần sau thử lại (an toàn). */
+async function startShipSeed() {
+  if (state.shipSeeding) return;
+  state.shipSeeding = true;
+  try {
+    await seedShip();
+  } catch (e) {
+    console.warn('[auto-ship] SEED lỗi (sẽ thử lại):', e.message);
+  } finally {
+    state.shipSeeding = false;
+  }
 }
 
 /**
@@ -672,6 +723,12 @@ async function runAutoNotifyShip(opts = {}) {
   if (trigger !== 'manual' && !state.shipEnabled) {
     return { trigger, kind: 'ship', skipped: true, reason: 'Tự động báo ship đang TẮT' };
   }
+  // CHƯA SEED xong (đang seed / seed lỗi) -> KHÔNG gửi để tránh nhắn LOẠT đơn tồn cũ có sẵn ND ship.
+  // Tự thử seed lại nếu lần trước lỗi (poller tick kế sẽ chạy được khi đã chốt mốc).
+  if (trigger !== 'manual' && state.shipEnabled && !safeGet(SHIP_SEEDED_KEY)) {
+    if (!state.shipSeeding) startShipSeed().catch(() => {});
+    return { trigger, kind: 'ship', skipped: true, reason: state.shipSeeding ? 'Đang seed đơn tồn cũ' : 'Chờ seed đơn tồn cũ' };
+  }
   if (state.runningShip) {
     return { trigger, kind: 'ship', skipped: true, reason: 'Đang chạy một lượt báo ship khác' };
   }
@@ -712,15 +769,25 @@ function setEnabled(enabled) {
   return getStatus();
 }
 
-/** Bật/tắt tự động BÁO SHIP lúc runtime (độc lập báo hàng). Lưu bền vào DB, áp dụng ngay. */
+/**
+ * Bật/tắt tự động BÁO SHIP lúc runtime (độc lập báo hàng). Lưu bền vào DB, áp dụng ngay.
+ * Khi BẬT: chốt mốc mới + chạy SEED nền (đánh dấu đơn đang có sẵn ND ship là tồn cũ, không gửi) ->
+ * chỉ ND ship phát sinh SAU khi bật mới được gửi. Xoá mốc seed cũ để buộc seed lại cho lần bật này.
+ */
 function setShipEnabled(enabled) {
   const on = !!enabled;
   state.shipEnabled = on;
   try { setSetting(SHIP_ENABLED_KEY, on ? 'true' : 'false'); } catch (err) {
     console.warn('[auto-notify] không lưu được công tắc báo ship vào DB:', err.message);
   }
+  if (on) {
+    // Mỗi lần BẬT = chốt "ảnh chụp tồn cũ" MỚI: xoá mốc cũ rồi seed lại (chặn gửi cho tới khi seed
+    // xong nhờ gate trong runAutoNotifyShip). Đơn có sẵn ND ship lúc này -> đánh dấu 'seeded' (bỏ).
+    try { setSetting(SHIP_SEEDED_KEY, null); } catch (_) { /* ignore */ }
+    startShipSeed().catch(() => {});
+  }
   syncTimer();
-  console.log(`[auto-notify] báo ship ${on ? 'BẬT' : 'TẮT'}`);
+  console.log(`[auto-notify] báo ship ${on ? 'BẬT (đang seed ảnh chụp tồn cũ…)' : 'TẮT'}`);
   return getStatus();
 }
 
@@ -764,6 +831,12 @@ function startAutoNotify() {
     console.log('[auto-notify] báo hàng TẮT');
   }
   console.log(`[auto-notify] BÁO SHIP ${state.shipEnabled ? 'BẬT' : 'TẮT'}${state.shipEnabled ? ` — quét đơn "Đã báo hàng" có ND ship, gửi ngay` : ''}`);
+  // Seed lần đầu nếu bật ship (qua env) mà CHƯA từng seed -> tránh nhắn loạt đơn tồn cũ lần đầu bật.
+  // Đã seed rồi (khởi động lại) thì KHÔNG seed lại: ND ship phát sinh lúc server tắt vẫn là "mới" -> gửi.
+  if (state.shipEnabled && !safeGet(SHIP_SEEDED_KEY)) {
+    console.log('[auto-ship] chưa có mốc seed -> chạy seed lần đầu (chốt ảnh chụp tồn cũ).');
+    startShipSeed().catch(() => {});
+  }
 }
 
 /**
@@ -904,6 +977,8 @@ function getStatus() {
     lastResult: state.lastResult,
     // Tự động báo ship (công tắc RIÊNG, độc lập báo hàng): bật/tắt + trạng thái + kết quả gần nhất.
     shipEnabled: state.shipEnabled,
+    shipSeeding: state.shipSeeding,     // đang chốt "ảnh chụp tồn cũ" lúc bật
+    lastShipSeed: state.lastShipSeed,   // { at, scanned, seeded } lần seed gần nhất
     runningShip: state.runningShip,
     lastShipRun: state.lastShipRun,
     lastShipResult: state.lastShipResult,

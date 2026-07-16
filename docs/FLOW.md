@@ -148,6 +148,13 @@ với báo hàng, chỉ khác:
   — độc lập báo hàng. Poller + webhook chỉ chạy khi BẬT; nút "chạy tay" bỏ qua công tắc để test.
 ```
 
+**"Mới/cũ" quyết định bằng SEED lúc bật (KHÔNG theo ngày về kho):** Basso không cho biết ND ship
+được soạn ngày nào, nên khi BẬT báo ship, hệ thống chụp ảnh hiện trạng — đánh dấu mọi đơn ĐANG có
+sẵn `content_ship` là `'seeded'` trong `auto_notified` (KHÔNG gửi). Nhờ vậy chỉ ND ship XUẤT HIỆN
+SAU khi bật (đơn chưa có dấu) mới được gửi — kể cả trên đơn về từ hôm trước. Mốc `shipSeededAt` lưu
+DB: chưa có mốc (đang seed / seed lỗi) → poller CHƯA gửi (chặn nhắn loạt tồn cũ); khởi động lại KHÔNG
+seed lại (ND ship phát sinh lúc server tắt vẫn là "mới" → gửi). Mỗi lần BẬT lại = chốt mốc mới.
+
 **Kích hoạt:** poller (mỗi lượt kiểm tra, khi báo ship BẬT) và webhook `POST /api/webhook/ship`
 (Basso gọi khi có ND báo ship — cũng tôn trọng công tắc). Bật/tắt: `POST /api/auto-notify/ship-toggle`.
 Nút chạy tay (bỏ qua công tắc): `POST /api/auto-notify/run-ship`.

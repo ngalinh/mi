@@ -502,6 +502,13 @@
     const st = $('autoShipStatus');
     if (!st) return;
     const parts = [];
+    // Trạng thái SEED (chốt "ảnh chụp tồn cũ" lúc bật): đang chạy / đã xong.
+    if (shipEnabled && a.shipSeeding) {
+      parts.push('<span style="color:var(--accent,#b8860b)">⏳ Đang chuẩn bị: đánh dấu đơn tồn cũ (đã có sẵn ND ship) để không gửi nhầm…</span>');
+    } else if (shipEnabled && a.lastShipSeed) {
+      const sAt = a.lastShipSeed.at ? new Date(a.lastShipSeed.at).toLocaleString('vi-VN') : '';
+      parts.push(`Đã đánh dấu <strong>${a.lastShipSeed.seeded || 0}</strong> đơn tồn cũ lúc bật${sAt ? ` (${App.esc(sAt)})` : ''} — chỉ gửi ND ship phát sinh sau đó.`);
+    }
     const r = a.lastShipResult;
     if (r && (r.sent || r.failed)) {
       const at = a.lastShipRun ? new Date(a.lastShipRun).toLocaleString('vi-VN') : '';
@@ -518,13 +525,13 @@
 
   async function toggleAutoShip() {
     const next = !shipEnabled;
-    if (next && !confirm('Bật TỰ ĐỘNG báo ship? Khi đơn đã "Đã báo hàng" và có nội dung báo ship, hệ thống sẽ tự nhắn khách NGAY (cần local-runner mở & đăng nhập Zalo).')) return;
+    if (next && !confirm('Bật TỰ ĐỘNG báo ship?\n\n• Đơn đã "Đã báo hàng" có nội dung báo ship sẽ được tự nhắn khách NGAY (cần local-runner mở & đăng nhập Zalo).\n• Các đơn ĐANG có sẵn ND ship lúc này sẽ được đánh dấu "tồn cũ" và KHÔNG gửi — chỉ gửi ND ship phát sinh SAU khi bật.')) return;
     try {
       const a = await App.api('/api/auto-notify/ship-toggle', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }),
       });
       renderAutoBadge(a); // đồng bộ lại cả badge ship (renderAutoBadge -> renderAutoShip)
-      App.toast(next ? '✅ Đã bật tự động báo ship' : 'Đã tắt tự động báo ship');
+      App.toast(next ? '✅ Đã bật tự động báo ship (đang đánh dấu đơn tồn cũ…)' : 'Đã tắt tự động báo ship');
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
     }
