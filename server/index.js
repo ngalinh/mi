@@ -10,7 +10,7 @@ const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoM
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
-const { notifyMany, notifyOrders } = require('./notifyService');
+const { notifyMany, notifyOrders, requestStopBulk } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
@@ -560,6 +560,14 @@ app.post('/api/notify-all', async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
+});
+
+// ---- Dừng báo hàng loạt đang chạy giữa chừng ----
+// Đặt cờ dừng để vòng lặp notifyOrders tự thoát ở đơn kế tiếp (đơn đang gửi dở vẫn chạy xong; các
+// đơn còn lại bỏ dở, KHÔNG đánh dấu đã báo). `stopping=false` nghĩa là hiện không có loạt nào chạy.
+app.post('/api/notify-all/stop', (req, res) => {
+  const stopping = requestStopBulk();
+  res.json({ ok: true, stopping });
 });
 
 // ---- Chi tiết sản phẩm đã về của 1 dòng (load lazy khi mở rộng) ----

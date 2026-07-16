@@ -16,6 +16,8 @@ const App = {
     bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
     user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
     hourglass: '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>',
+    stop: '<rect width="16" height="16" x="4" y="4" rx="2"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   },
   icon(name, cls = '') {
     return `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${this.ICONS[name] || ''}</svg>`;
@@ -33,12 +35,15 @@ const App = {
   BASE: window.location.pathname.replace(/\/[^/]*$/, '').replace(/\/$/, ''),
 
   async api(path, opts = {}) {
+    // timeoutMs: cho phép caller nới thời gian chờ (vd báo hàng loạt chạy vài phút) — mặc định
+    // API_TIMEOUT_MS. Tách khỏi opts để không lọt vào fetch init.
+    const { timeoutMs, ...fetchOpts } = opts;
     const url = (this.BASE && typeof path === 'string' && path.startsWith('/')) ? this.BASE + path : path;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), this.API_TIMEOUT_MS);
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs || this.API_TIMEOUT_MS);
     let res;
     try {
-      res = await fetch(url, { ...opts, signal: ctrl.signal });
+      res = await fetch(url, { ...fetchOpts, signal: ctrl.signal });
     } catch (e) {
       if (e.name === 'AbortError') throw new Error('Quá thời gian chờ — kết nối chậm, thử lại sau');
       throw e;

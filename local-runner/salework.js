@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const testModeStore = require('./testModeStore');
+const accountsStore = require('./accountsStore');
 const { getPage, closeContext, withProfileLock } = require('./browser');
 
 /**
@@ -53,19 +54,147 @@ async function gotoSalework(page) {
   await shot(page, '01-loaded');
 }
 
-/**
- * Kiểm tra đã đăng nhập chưa: nếu còn thấy ô đăng nhập / form login => chưa.
- */
-async function ensureLoggedIn(page) {
+// ============================================================================
+// ĐĂNG NHẬP TỰ ĐỘNG vào Zalo Basso (Vuetify).
+// ----------------------------------------------------------------------------
+// Zalo Basso chỉ giữ session đăng nhập ~1 tuần cho mỗi profile trình duyệt. Khi hết hạn,
+// trang bung form đăng nhập (ô tài khoản + ô mật khẩu + nút "Đăng nhập"). Nếu account có lưu
+// tài khoản/mật khẩu (store hoặc .env), runner tự điền + bấm đăng nhập để khỏi phải làm tay
+// mỗi tuần. Nếu không có credential (hoặc gặp OTP/captcha) thì báo lỗi rõ để đăng nhập thủ công.
+// ============================================================================
+
+// Form login ZaloCRM (zalo.basso.vn/login): ô Email (type=email, placeholder "Email") + ô
+// Mật khẩu (type=password, placeholder "Mật khẩu") + nút gradient "Đăng nhập".
+// Ô mật khẩu là mỏ neo chắc chắn nhất để nhận biết form đăng nhập.
+const PASSWORD_SELECTOR = 'input[type="password"], input[placeholder*="mật khẩu" i]';
+// Ô TÀI KHOẢN (email): ưu tiên type=email / placeholder "Email"; fallback ô nhập đầu KHÔNG phải
+// mật khẩu (phòng khi giao diện đổi placeholder/ngôn ngữ).
+const USERNAME_SELECTORS = [
+  'input[type="email"]',
+  'input[placeholder*="email" i]',
+  'input[name="email"]',
+  'input[autocomplete="username"]',
+  'input[type="text"]',
+  'input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])',
+];
+// Nút submit "Đăng nhập" (thử nhiều biến thể phòng khi là <button>/<a>/div gradient).
+const LOGIN_BUTTON_SELECTORS = [
+  'button:has-text("Đăng nhập")',
+  'button[type="submit"]',
+  '[type="submit"]',
+  'a:has-text("Đăng nhập")',
+  '[role="button"]:has-text("Đăng nhập")',
+  '.v-btn:has-text("Đăng nhập")',
+];
+
+/** Trang hiện có form đăng nhập không (còn ô mật khẩu / nút Đăng nhập, hoặc URL /login). */
+async function hasLoginForm(page) {
   const url = page.url();
-  const hasLogin = await page
-    .locator('input[type="password"], input[placeholder*="mật khẩu" i], button:has-text("Đăng nhập")')
+  if (/login|signin/i.test(url)) return true;
+  return page
+    .locator(`${PASSWORD_SELECTOR}, button:has-text("Đăng nhập")`)
     .first()
     .isVisible()
     .catch(() => false);
-  if (hasLogin || /login|signin/i.test(url)) {
-    throw new Error('CHUA_DANG_NHAP: Zalo Basso chưa đăng nhập. Hãy chạy `npm run login`, đăng nhập thủ công 1 lần để lưu session.');
+}
+
+/**
+ * Lấy tài khoản/mật khẩu đăng nhập Zalo Basso cho 1 profile: ưu tiên account trong store
+ * (field email = tài khoản đăng nhập, password), fallback SALEWORK_LOGIN_USER/PASS trong .env.
+ * @returns {{username:string,password:string}|null} null nếu không có đủ credential.
+ */
+function loginCredsFor(profile) {
+  let username = '';
+  let password = '';
+  try {
+    const a = accountsStore.get(profile);
+    if (a && a.platform !== 'facebook') { username = a.email || ''; password = a.password || ''; }
+  } catch { /* store lỗi -> dùng env */ }
+  if (!username) username = config.saleworkLoginUser || '';
+  if (!password) password = config.saleworkLoginPass || '';
+  return username && password ? { username, password } : null;
+}
+
+/**
+ * Điền tài khoản/mật khẩu vào form đăng nhập Zalo Basso rồi bấm "Đăng nhập".
+ * @returns {Promise<boolean>} true nếu sau khi submit form đăng nhập đã biến mất (đăng nhập OK).
+ */
+async function performLogin(page, { username, password }) {
+  // Nếu chưa thấy form (vd đang ở trang chat vừa redirect) thì mở trang đăng nhập.
+  let pass = page.locator(PASSWORD_SELECTOR).first();
+  if (!(await pass.isVisible().catch(() => false))) {
+    await page.goto(config.saleworkLoginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await sleep(page, 2000);
+    pass = page.locator(PASSWORD_SELECTOR).first();
   }
+  if (!(await pass.isVisible().catch(() => false))) {
+    await shot(page, '00b-login-no-password');
+    return false;
+  }
+
+  // Ô TÀI KHOẢN (email): thử lần lượt các selector ưu tiên, lấy cái đầu tiên đang hiển thị.
+  let userInput = null;
+  for (const sel of USERNAME_SELECTORS) {
+    const loc = page.locator(sel).first();
+    // eslint-disable-next-line no-await-in-loop
+    if (await loc.isVisible().catch(() => false)) { userInput = loc; break; }
+  }
+  if (userInput) {
+    try { await userInput.click({ timeout: 3000 }); } catch { /* vẫn thử fill */ }
+    await userInput.fill('').catch(() => {});
+    await userInput.fill(username).catch(() => {});
+  }
+  await pass.fill('').catch(() => {});
+  await pass.fill(password).catch(() => {});
+  await shot(page, '00c-login-filled');
+
+  // Bấm nút "Đăng nhập"; nếu không thấy nút thì thử Enter trong ô mật khẩu.
+  let clicked = false;
+  for (const sel of LOGIN_BUTTON_SELECTORS) {
+    const btn = page.locator(sel).first();
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await btn.isVisible().catch(() => false))) continue;
+    // eslint-disable-next-line no-await-in-loop
+    try { await btn.click({ timeout: 4000 }); clicked = true; break; } catch { /* thử selector kế */ }
+  }
+  if (!clicked) { await pass.press('Enter').catch(() => {}); }
+
+  // Chờ form đăng nhập biến mất (đăng nhập xong app chuyển trang) — tối đa ~15s.
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(page, 800);
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await hasLoginForm(page))) { await shot(page, '00d-login-ok'); return true; }
+  }
+  await shot(page, '00e-login-fail');
+  return false;
+}
+
+/**
+ * Đảm bảo đã đăng nhập Zalo Basso. Nếu còn form đăng nhập:
+ *   - Có credential (store/.env) và autoLogin bật -> TỰ điền + đăng nhập, rồi quay lại trang chat.
+ *   - Không được -> ném CHUA_DANG_NHAP để nhân viên đăng nhập thủ công (`npm run login`).
+ * @param {import('playwright').Page} page
+ * @param {{profile?:string, autoLogin?:boolean}} [opts]
+ * @returns {Promise<{loggedIn:true, autoLoggedIn?:boolean}>}
+ */
+async function ensureLoggedIn(page, opts = {}) {
+  const { profile, autoLogin = true } = opts;
+  if (!(await hasLoginForm(page))) return { loggedIn: true };
+
+  if (autoLogin) {
+    const creds = loginCredsFor(profile);
+    if (creds) {
+      const ok = await performLogin(page, creds);
+      if (ok) {
+        await gotoSalework(page);                 // quay lại trang chat để tiếp tục luồng gửi
+        if (!(await hasLoginForm(page))) return { loggedIn: true, autoLoggedIn: true };
+      }
+      throw new Error('CHUA_DANG_NHAP: đã thử TỰ ĐỘNG đăng nhập Zalo Basso nhưng chưa vào được (sai tài khoản/mật khẩu, hoặc gặp OTP/captcha). Chạy `npm run login` để đăng nhập thủ công 1 lần.');
+    }
+  }
+  throw new Error('CHUA_DANG_NHAP: Zalo Basso chưa đăng nhập và chưa có tài khoản/mật khẩu để tự đăng nhập. Điền tài khoản/mật khẩu cho account (Cài đặt → Tài khoản) hoặc SALEWORK_LOGIN_USER/PASS trong .env, hoặc chạy `npm run login` đăng nhập thủ công 1 lần.');
 }
 
 // ============================================================================
@@ -643,7 +772,7 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
     const page = await getPage(profile);
     try {
       await gotoSalework(page);
-      await ensureLoggedIn(page);
+      await ensureLoggedIn(page, { profile });
 
       // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env.
       // HUỶ gửi nếu không xác minh được đúng tài khoản — thà báo lỗi rõ ràng còn hơn âm thầm gửi
@@ -684,8 +813,8 @@ async function checkLoggedIn(profile = 'default') {
     const page = await getPage(profile);
     try {
       await gotoSalework(page);
-      await ensureLoggedIn(page);
-      return { loggedIn: true };
+      const r = await ensureLoggedIn(page, { profile });
+      return { loggedIn: true, autoLoggedIn: !!(r && r.autoLoggedIn) };
     } catch (e) {
       return { loggedIn: false, error: e.message };
     } finally {
@@ -694,4 +823,4 @@ async function checkLoggedIn(profile = 'default') {
   });
 }
 
-module.exports = { sendBaoHang, gotoSalework, ensureLoggedIn, listZaloAccounts, checkLoggedIn };
+module.exports = { sendBaoHang, gotoSalework, ensureLoggedIn, listZaloAccounts, checkLoggedIn, loginCredsFor };

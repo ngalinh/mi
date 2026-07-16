@@ -12,6 +12,7 @@
     panels.forEach((pl) => pl.classList.toggle('hidden', pl.dataset.panelContent !== p));
     if (p === 'proxy') loadProxy();
     if (p === 'zalo') loadZalo();
+    if (p === 'log') loadLog();
   });
 
   // ---------------- Nhân viên (lưu thật ở server: SQLite /api/staff) ----------------
@@ -133,6 +134,7 @@
   const zaKey = $('zaKey'), zaName = $('zaName'), zaSalework = $('zaSalework'),
     zaFbName = $('zaFbName'),
     zaEmail = $('zaEmail'), zaPassword = $('zaPassword'), zaPlatform = $('zaPlatform'),
+    zaLoginUser = $('zaLoginUser'), zaLoginPass = $('zaLoginPass'),
     zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
   let zEditing = null;   // key đang sửa, null = thêm mới
@@ -288,6 +290,9 @@
     zaFbName.value = a ? (a.fbName || '') : '';
     zaEmail.value = a ? (a.email || '') : '';
     zaPassword.value = a ? (a.password || '') : '';
+    // Tài khoản/mật khẩu Zalo Basso dùng CHUNG field email/password của account (chỉ khác nhãn UI).
+    zaLoginUser.value = a ? (a.email || '') : '';
+    zaLoginPass.value = a ? (a.password || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
     zaStaffId.value = a ? (a.staffId || '') : (presets.staffId || '');
     zaBrand.value = a ? (a.brand || '') : '';
@@ -314,6 +319,10 @@
       body.saleworkName = zaSalework.value.trim();
       body.brand = zaBrand.value.trim().toUpperCase();
       body.notifyTarget = zaTarget.value === 'personal' ? 'personal' : 'group';
+      // Tài khoản/mật khẩu để TỰ đăng nhập lại Zalo Basso (dùng chung field email/password).
+      body.email = zaLoginUser.value.trim();
+      // Mật khẩu không được API trả về (ẩn) -> chỉ gửi khi NV nhập mới, tránh ghi đè rỗng khi sửa.
+      if (zaLoginPass.value) body.password = zaLoginPass.value;
     }
     if (!key || !body.name) { App.toast('❌ Cần điền: Mã profile và Tên nhân viên', 5000); return; }
     if (platform === 'zalo' && !body.saleworkName) { App.toast('❌ Zalo cần "Tên trong dropdown"', 5000); return; }
@@ -478,11 +487,14 @@
     const el = $('autoBadge');
     const sched = a && a.scheduleTime;
     let mode;
+    // Sau restart: bật nhưng đang chờ admin bấm "Quét & gửi" -> báo rõ để không tưởng nhầm là đang chạy.
+    const paused = autoEnabled && a && a.awaitingResume;
     if (!autoEnabled) mode = 'Tắt';
+    else if (paused) mode = 'Tạm dừng sau khởi động — bấm "Quét & gửi" để tiếp tục';
     else if (sched) mode = `Bật (gửi lúc ${sched})`;
     else mode = `Bật (mỗi ${Math.round(((a && a.intervalMs) || 0) / 1000)}s)`;
     el.textContent = 'Tự động: ' + mode;
-    el.className = 'badge-status badge-clickable ' + (autoEnabled ? 'badge-online' : 'badge-offline');
+    el.className = 'badge-status badge-clickable ' + (paused ? 'badge-pending' : (autoEnabled ? 'badge-online' : 'badge-offline'));
     renderSchedule(a);
     renderAlert(a);
     renderAutoShip(a);
@@ -839,6 +851,81 @@
   $('testModeBadge').addEventListener('click', toggleTestMode);
   $('testPhonesSave').addEventListener('click', saveTestPhones);
   $('testPhonesInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveTestPhones(); });
+
+  // ---------------- Log thao tác & gửi — hiển thị kiểu TERMINAL (dùng lại /api/reports) ----------------
+  const logTerm = $('logTerm');
+  let logTimer = null; // debounce cho ô tìm
+
+  const isNoConvLog = (msg) => /KHONG_THAY_HOI_THOAI/i.test(msg || '');
+  // Token trạng thái kiểu terminal: [NHÃN, class màu]. Đệm cho thẳng cột.
+  function statusTok(r) {
+    if (r.status === 'success') return ['OK     ', 't-ok'];
+    if (r.status === 'pending') return ['PENDING', 't-pending'];
+    if (isNoConvLog(r.error)) return ['NOZALO ', 't-noconv'];
+    return ['ERROR  ', 't-err'];
+  }
+  // Mốc thời gian có GIÂY cho cảm giác log terminal: 2026-07-15 09:25:31.
+  function logTs(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return iso || '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+
+  async function loadLog() {
+    const q = $('logSearch').value.trim();
+    const status = $('logStatus').value;
+    const kind = $('logKind').value;
+    const limit = $('logLimit').value || '200';
+    logTerm.innerHTML = '<div class="log-empty">Đang tải…</div>';
+    try {
+      const params = new URLSearchParams({ limit });
+      if (q) params.set('q', q);
+      if (status) params.set('status', status);
+      const res = await App.api(`/api/reports?${params.toString()}`);
+      let items = res.items || [];
+      // Lọc loại tin (hàng/ship) ở client — API không có filter kind riêng.
+      if (kind) items = items.filter((r) => (r.kind === 'ship' ? 'ship' : 'hang') === kind);
+      $('logCount').textContent = `${items.length} lượt`;
+      if (!items.length) {
+        logTerm.innerHTML = '<div class="log-empty">Chưa có lượt báo nào khớp.</div>';
+        return;
+      }
+      const E = App.esc;
+      logTerm.innerHTML = items.map((r) => {
+        const [tok, cls] = statusTok(r);
+        const kindTok = r.kind === 'ship' ? 'ship' : 'hang';
+        const chan = r.channel === 'facebook' ? 'fb' : 'zalo';
+        const by = r.sent_by === 'bot'
+          ? '<span class="t-bot">bot</span>'
+          : E(r.sent_by || '-');
+        const acct = r.zalo_account ? `${E(r.zalo_account)}<span class="t-key">/${chan}</span>` : '-';
+        // Lỗi -> ưu tiên lý do lỗi; ngược lại nội dung tin đã gửi. Gộp về 1 dòng.
+        const detailRaw = (r.status === 'failed' && r.error) ? r.error : (r.message || '');
+        const detail = detailRaw ? String(detailRaw).replace(/\s*\n\s*/g, ' ⏎ ') : '';
+        return '<div class="ln">'
+          + `<span class="t-time">${E(logTs(r.created_at))}</span> `
+          + `<span class="${cls}">${tok}</span> `
+          + `<span class="t-kind">${kindTok}</span>  `
+          + `${E(r.customer_name || '-')} <span class="t-key">${E(r.phone || '')}</span>  `
+          + `<span class="t-key">nv=</span>${E(r.staff || '-')} `
+          + `<span class="t-key">by=</span>${by} `
+          + `<span class="t-key">acct=</span>${acct}`
+          + (detail ? `  <span class="t-msg">· ${E(detail)}</span>` : '')
+          + '</div>';
+      }).join('');
+      logTerm.scrollTop = 0;
+    } catch (e) {
+      logTerm.innerHTML = `<div class="log-empty">Lỗi tải log: ${App.esc(e.message || '')}</div>`;
+    }
+  }
+
+  $('logReload').addEventListener('click', loadLog);
+  $('logStatus').addEventListener('change', loadLog);
+  $('logKind').addEventListener('change', loadLog);
+  $('logLimit').addEventListener('change', loadLog);
+  $('logWrap').addEventListener('change', (e) => logTerm.classList.toggle('wrap', e.target.checked));
+  $('logSearch').addEventListener('input', () => { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 350); });
 
   loadHealth();
   setInterval(loadHealth, 15000);

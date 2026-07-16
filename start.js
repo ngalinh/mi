@@ -82,11 +82,18 @@ async function registerUrl(url, { silent = false } = {}) {
 }
 
 // ---- Spawn local-runner ----
+// detached:true -> local-runner (và Chrome do Playwright đẻ ra) nằm trong 1 NHÓM TIẾN TRÌNH
+// riêng. Nhờ vậy lúc tắt ta kill được CẢ NHÓM bằng process.kill(-pid) — kể cả Chrome "cháu".
+// Nếu không, khi restart Chrome hay bị mồ côi: giữ cổng 8090 + SingletonLock + ống stdio,
+// khiến instance mới EADDRINUSE, pm2 restart treo và tiến trình cứ "đang chạy" mãi.
 const child = spawn('node', [path.join(__dirname, 'local-runner', 'index.js')], {
   stdio: 'inherit',
   env: process.env,
+  detached: true,
 });
+let shuttingDown = false;
 child.on('exit', (code) => {
+  if (shuttingDown) return; // shutdown() đang lo việc thoát -> đừng thoát hai lần
   console.log(`[start] local-runner thoát (code=${code}). Dừng launcher.`);
   process.exit(code == null ? 0 : code);
 });
@@ -103,10 +110,34 @@ const timer = setInterval(async () => {
 }, REGISTER_INTERVAL_MS);
 
 // ---- Tắt mượt ----
+// Gửi tín hiệu cho CẢ NHÓM tiến trình con (local-runner + Chrome). process.kill(-pid) chỉ
+// dùng được khi con là group-leader (spawn detached ở trên). Lỗi (nhóm đã chết) -> bỏ qua.
+function killGroup(signal) {
+  try { process.kill(-child.pid, signal); }
+  catch { try { child.kill(signal); } catch { /* đã chết */ } }
+}
+
 function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   clearInterval(timer);
-  if (!child.killed) child.kill('SIGINT');
-  process.exit(0);
+
+  // 1) Xin local-runner tự đóng Chrome + HTTP server cho sạch (SIGTERM).
+  killGroup('SIGTERM');
+
+  // 2) Con chết hẳn -> mới thoát, nhờ vậy cổng 8090 + ống stdio đã được giải phóng
+  //    trước khi pm2 dựng instance mới (không còn EADDRINUSE / restart loop).
+  const force = setTimeout(() => {
+    console.warn('[start] local-runner không chịu thoát trong 8s — SIGKILL cả nhóm.');
+    killGroup('SIGKILL');
+    process.exit(1);
+  }, 8000);
+  if (typeof force.unref === 'function') force.unref();
+
+  child.once('exit', (code) => {
+    clearTimeout(force);
+    process.exit(code == null ? 0 : code);
+  });
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

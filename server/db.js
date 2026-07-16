@@ -352,7 +352,7 @@ function getSentTimesMap() {
 // lấy lượt mới nhất bất kỳ (để đơn báo lỗi vẫn cho biết ai/định gửi bằng account nào). Order by
 // đẩy success lên trước rồi mới nhất trước -> JS lấy dòng ĐẦU mỗi khoá là đại diện. 1 query.
 const getLastReportsStmt = db.prepare(`
-  SELECT customer_id, date_inventory, sent_by, zalo_account, channel, status,
+  SELECT customer_id, date_inventory, sent_by, zalo_account, channel, status, error,
          CASE WHEN kind = 'ship' THEN 'ship' ELSE 'hang' END AS kind, created_at
     FROM reports
    WHERE customer_id IS NOT NULL AND date_inventory IS NOT NULL
@@ -375,6 +375,9 @@ function getLastReportMap() {
       account: r.zalo_account || null,
       channel: r.channel || null,
       status: r.status || null,
+      // Lý do lỗi (nếu status='failed') -> để dashboard phân biệt "Không tìm thấy Zalo"
+      // (KHONG_THAY_HOI_THOAI) với các lỗi khác, hiện nhãn "Không Zalo" thay vì "Lỗi".
+      error: r.error || null,
       kind: r.kind || null,
       at: r.created_at || null,
     });

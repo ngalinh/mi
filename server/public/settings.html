@@ -50,6 +50,7 @@
           <button class="tab" data-panel="zalo">Tài khoản</button>
           <button class="tab" data-panel="proxy">Proxy</button>
           <button class="tab" data-panel="mode">Chế độ</button>
+          <button class="tab" data-panel="log">Log</button>
         </div>
 
         <div class="card" data-panel-content="nhanvien" style="margin-top:14px;">
@@ -231,6 +232,42 @@
             </button>
           </div>
         </div>
+
+        <div class="card hidden" data-panel-content="log" style="margin-top:14px;">
+          <div class="card-header">
+            <h1>Log thao tác &amp; gửi</h1>
+            <button class="btn small secondary" id="logReload">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+              Tải lại
+            </button>
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 14px;">Lịch sử mọi lượt báo hàng/ship: ai gửi (nhân viên hay <strong>bot</strong> tự động), gửi bằng tài khoản nào, kết quả và lý do lỗi. Mới nhất ở trên.</div>
+          <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
+            <input class="note-input" id="logSearch" placeholder="Tìm tên / SĐT / mã ĐH…" style="max-width:230px;" />
+            <select class="note-input" id="logStatus" style="max-width:160px;">
+              <option value="">Tất cả kết quả</option>
+              <option value="success">Đã gửi</option>
+              <option value="pending">Đang gửi</option>
+              <option value="failed">Lỗi</option>
+            </select>
+            <select class="note-input" id="logKind" style="max-width:150px;">
+              <option value="">Cả hàng &amp; ship</option>
+              <option value="hang">Báo hàng</option>
+              <option value="ship">Báo ship</option>
+            </select>
+            <select class="note-input" id="logLimit" style="max-width:130px;">
+              <option value="100">100 dòng</option>
+              <option value="200" selected>200 dòng</option>
+              <option value="500">500 dòng</option>
+              <option value="1000">1000 dòng</option>
+            </select>
+            <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:5px; cursor:pointer;">
+              <input type="checkbox" id="logWrap" /> Xuống dòng
+            </label>
+            <span class="muted" id="logCount" style="font-size:12px;"></span>
+          </div>
+          <div class="log-term" id="logTerm"><div class="log-empty">Chọn tab để tải…</div></div>
+        </div>
       </div>
     </div>
   </div>
@@ -272,6 +309,8 @@
         <div class="field"><label>Mã profile (key)</label><input id="zaKey" type="text" placeholder="vd: nhan_vien_1_fb" /></div>
         <div class="field"><label>Tên nhân viên</label><input id="zaName" type="text" placeholder="vd: Nguyễn Văn A" /></div>
         <div class="field full pf-zalo"><label>Tên trong dropdown (Zalo)</label><input id="zaSalework" type="text" placeholder="Đúng tên hiện trong dropdown zalo.basso.vn" /></div>
+        <div class="field pf-zalo"><label>Tài khoản đăng nhập Zalo Basso (tuỳ chọn)</label><input id="zaLoginUser" type="text" placeholder="tài khoản / SĐT / email đăng nhập zalo.basso.vn" autocomplete="off" /></div>
+        <div class="field pf-zalo"><label>Mật khẩu Zalo Basso (tuỳ chọn)</label><input id="zaLoginPass" type="password" placeholder="để tự đăng nhập lại khi hết session (~1 tuần)" autocomplete="new-password" /></div>
         <div class="field full pf-fb"><label>Tên tài khoản Facebook</label><input id="zaFbName" type="text" placeholder="Tên/nhãn tài khoản FB để hiển thị" /></div>
         <div class="field pf-fb"><label>Email / SĐT Facebook</label><input id="zaEmail" type="text" placeholder="email hoặc số điện thoại" autocomplete="off" /></div>
         <div class="field pf-fb"><label>Mật khẩu Facebook</label><input id="zaPassword" type="password" placeholder="mật khẩu" autocomplete="new-password" /></div>

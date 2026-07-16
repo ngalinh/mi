@@ -23,6 +23,9 @@
   const GROUP_LABELS = { todo: 'Chưa báo', arrival: 'Đã báo hàng', ship: 'Đã báo ship', failed: 'Lỗi - Báo lại' };
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
+  // Đang có 1 phiên báo loạt chạy trên server hay không. Khi true, nút "Báo hàng loạt" đổi vai thành
+  // nút "Dừng" (bấm -> /api/notify-all/stop) và render KHÔNG đè nhãn/disable của nút đó.
+  let bulkSending = false;
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
   // từ Basso không xoá mất phần đang soạn dở. Xoá khỏi map ngay khi lưu thành công.
   const dirtyNotes = new Map();
@@ -190,6 +193,12 @@
     if (s === 'success') return `<span class="pill success">${App.icon('check')} Đã gửi</span>`;
     // Đã gửi cho khách nhưng cập nhật trạng thái web lỗi -> cần kiểm tra/sửa tay (không phải "Lỗi").
     if (s === 'sent_check') return `<span class="pill check" title="Đã gửi tin cho khách nhưng cập nhật trạng thái trên web lỗi — hãy kiểm tra và đổi trạng thái tay">${App.icon('alert')} Đã gửi · cần KT</span>`;
+    // Lỗi "không tìm thấy cuộc trò chuyện Zalo" (KHONG_THAY_HOI_THOAI) -> nhãn RIÊNG "Không Zalo"
+    // để phân biệt với lỗi gửi khác (mạng/timeout/…). Khách chưa có hội thoại trên Zalo -> cần
+    // kết bạn / mở chat trước, không phải lỗi hệ thống.
+    if (isNoConversationError(o.lastReport && o.lastReport.error)) {
+      return `<span class="pill noconv" title="Không tìm thấy cuộc trò chuyện của khách trên Zalo — kiểm tra khách đã có hội thoại/kết bạn chưa">${App.icon('search')} Không Zalo</span>`;
+    }
     return `<span class="pill failed">${App.icon('alert')} Lỗi</span>`;
   }
   // Gom trạng thái GỬI TIN của lượt báo đại diện về nhãn để LỌC (khớp sendStatusCell ở trên):
@@ -683,7 +692,8 @@
       if (currentGroup !== 'todo') txt += ` · ${counts.todo} chưa báo`;
       ci.textContent = txt;
     }
-    $('bulkBtn').disabled = counts.todo === 0;
+    // Đang gửi loạt: nút đóng vai "Dừng" -> KHÔNG để render đè disable/nhãn của nó.
+    if (!bulkSending) $('bulkBtn').disabled = counts.todo === 0;
   }
 
   // ---------------- Mở rộng dòng ----------------
@@ -845,6 +855,7 @@
     const set = (elId, prop, val) => { const el = $(elId); if (el) el[prop] = val; };
     set('modalTitle', 'textContent', `${isShip ? 'Báo ship' : 'Báo hàng'} — ${o.customerName || ''}`);
     set('modalSub', 'textContent', `SĐT: ${o.phone || '—'} · NV: ${o.staff || '—'}`);
+    const warn = $('modalStale'); if (warn) { warn.style.display = 'none'; warn.textContent = ''; } // reset cảnh báo mỗi lần mở
     const current = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
     set('modalMsg', 'value', current);
     set('modalMsg', 'disabled', false); // reset nếu lần trước đóng modal giữa lúc đang tải
@@ -852,9 +863,12 @@
     const bg = $('modalBg');
     if (bg) bg.classList.add('show'); // hiện popup NGAY khi đã có nội dung
     autoGrowMsg();
-    // Chưa có sẵn ND trong danh sách -> lấy RIÊNG nội dung của đơn từ Basso (fresh, trực tiếp).
-    // CHỈ với báo hàng: ND báo ship trống là do chưa tạo đơn ship, không có gì để tải.
-    if (!current.trim() && !isShip) fetchContentIntoModal(o, isShip, id);
+    // LUÔN đối chiếu nội dung MỚI NHẤT trên Basso (bỏ cache) khi mở modal:
+    //   - Chưa có ND -> lấy về đổ vào ô (như trước).
+    //   - ĐÃ có ND  -> so với bản mới; nếu LỆCH (vd khách về thêm sản phẩm, Basso soạn lại) thì
+    //                  cảnh báo + tự cập nhật ô soạn bằng bản mới (nếu người dùng chưa sửa tay).
+    // Bỏ qua đúng 1 trường hợp: báo ship mà đang trống (chưa tạo đơn ship, không có gì để tải).
+    if (!(isShip && !current.trim())) refreshContentIntoModal(o, isShip, id, current);
     try {
       const sendBtn = $('modalSend');
       if (sendBtn) {
@@ -875,12 +889,21 @@
     ta.style.height = 'auto';
     ta.style.height = ta.scrollHeight + 'px';
   }
-  // Lấy riêng ND của đơn từ Basso rồi đổ vào modal đang mở (nếu người dùng chưa đóng/đổi đơn).
+  // Lấy ND MỚI NHẤT của đơn từ Basso (bỏ cache) rồi đồng bộ vào modal đang mở.
+  //  - `original` = nội dung ĐANG hiển thị lúc mở modal (từ danh sách, có thể là bản cache cũ).
+  //  - Trống -> đổ nội dung lấy về vào ô (như trước).
+  //  - Có sẵn & LỆCH so với bản mới -> hiện cảnh báo "ND lệch" + cập nhật ô (nếu chưa sửa tay).
   // Cập nhật luôn đơn trong bộ nhớ + render lại bảng để bật nút gửi và đổi cell "Tải" -> "Xem".
-  async function fetchContentIntoModal(o, isShip, id) {
+  async function refreshContentIntoModal(o, isShip, id, original = '') {
     const ta = $('modalMsg');
+    const warn = $('modalStale');
     const stillOpen = () => modalId === id && modalKind === (isShip ? 'ship' : 'hang');
-    if (ta) { ta.placeholder = 'Đang lấy nội dung từ Basso…'; ta.disabled = true; }
+    const hadContent = !!(original && original.trim());
+    const showWarn = (cls, text) => { if (warn && stillOpen()) { warn.className = 'stale-warn' + (cls ? ' ' + cls : ''); warn.textContent = text; warn.style.display = ''; } };
+    const hideWarn = () => { if (warn) warn.style.display = 'none'; };
+    // Trống -> chặn ô + báo "đang lấy". Có sẵn -> kiểm tra NGẦM (không khoá ô), hiện dòng "đang kiểm tra".
+    if (!hadContent && ta) { ta.placeholder = 'Đang lấy nội dung từ Basso…'; ta.disabled = true; }
+    else if (hadContent) showWarn('checking', 'Đang kiểm tra nội dung mới nhất trên Basso…');
     try {
       const qs = new URLSearchParams({
         customerId: o.customerId ?? '', dateInventory: o.dateInventory ?? '', phone: o.phone || '',
@@ -890,15 +913,31 @@
       if (res.noiDungBaoHang) o.noiDungBaoHang = res.noiDungBaoHang;
       if (res.noiDungBaoShip) o.noiDungBaoShip = res.noiDungBaoShip;
       const val = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
-      if (stillOpen() && ta) {
-        ta.value = val;
-        ta.placeholder = val ? '' : 'Basso chưa có nội dung cho đơn này.';
-        autoGrowMsg();
+      if (stillOpen()) {
+        if (!hadContent) {
+          // Đổ nội dung mới lấy về vào ô đang trống.
+          if (ta) { ta.value = val; ta.placeholder = val ? '' : 'Basso chưa có nội dung cho đơn này.'; autoGrowMsg(); }
+          hideWarn();
+        } else {
+          const changed = !!(val && val.trim() && val.trim() !== original.trim());
+          const edited = ta && ta.value.trim() !== original.trim(); // người dùng đã sửa tay chưa?
+          if (changed && !edited) {
+            if (ta) { ta.value = val; autoGrowMsg(); }
+            showWarn('', '⚠️ Nội dung trên Basso đã THAY ĐỔI so với bản đang hiển thị (có thể khách vừa về thêm sản phẩm). Đã cập nhật ô soạn bên dưới bằng nội dung MỚI NHẤT — kiểm tra rồi hãy gửi.');
+          } else if (changed && edited) {
+            showWarn('', '⚠️ Nội dung trên Basso đã THAY ĐỔI (có thể khách về thêm sản phẩm), nhưng bạn đã sửa tay nên KHÔNG tự ghi đè. Đối chiếu lại trước khi gửi.');
+          } else {
+            hideWarn(); // trùng khớp -> không cảnh báo
+          }
+        }
       }
       if (res.noiDungBaoHang || res.noiDungBaoShip) render(); // đồng bộ cell + nút gửi trong bảng
     } catch (err) {
-      if (stillOpen() && ta) ta.placeholder = 'Lỗi lấy nội dung: ' + (err && err.message || 'thử lại');
-      App.toast('Không lấy được nội dung đơn: ' + (err && err.message || ''), 4000);
+      if (stillOpen()) {
+        if (!hadContent && ta) ta.placeholder = 'Lỗi lấy nội dung: ' + (err && err.message || 'thử lại');
+        else hideWarn(); // kiểm tra ngầm lỗi -> im lặng, giữ bản đang có
+      }
+      if (!hadContent) App.toast('Không lấy được nội dung đơn: ' + (err && err.message || ''), 4000);
     } finally {
       if (ta) ta.disabled = false; // luôn bật lại (textarea dùng chung, an toàn)
     }
@@ -986,11 +1025,40 @@
       .map(orderPayload);
   }
 
+  // Nhãn/nút mặc định của nút báo loạt (khi rảnh). Dùng lại ở nhiều nơi để khỏi lệch chữ.
+  function resetBulkBtn() {
+    const btn = $('bulkBtn');
+    btn.classList.remove('is-loading');
+    btn.innerHTML = App.icon('megaphone') + ' Báo hàng loạt (chưa báo)';
+    btn.disabled = counts.todo === 0;
+  }
+
+  // Người dùng bấm Dừng giữa chừng. Server dừng ở đơn kế tiếp; đơn đang gửi dở vẫn chạy xong.
+  // Không đợi loạt kết thúc ở đây — bulkSend() vẫn đang await và sẽ tự hiện tổng kết khi xong.
+  async function stopBulk() {
+    const btn = $('bulkBtn');
+    btn.disabled = true; // chặn bấm dừng nhiều lần; bulkSend() sẽ khôi phục nút khi loạt kết thúc
+    btn.innerHTML = '<span class="spinner"></span> Đang dừng...';
+    try {
+      const res = await App.api('/api/notify-all/stop', { method: 'POST' });
+      App.toast(res.stopping
+        ? '⏹️ Đã yêu cầu dừng — sẽ dừng ngay sau khi gửi xong đơn đang chạy.'
+        : 'Không có loạt nào đang chạy để dừng.', 5000);
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
+      // Gọi dừng lỗi (mạng...) -> cho bấm lại; nút vẫn ở chế độ "đang gửi".
+      if (bulkSending) { btn.disabled = false; btn.innerHTML = App.icon('stop') + ' Dừng báo loạt'; }
+    }
+  }
+
   async function bulkSend() {
     if (!counts.todo) return;
     closeBulkModal();
     const btn = $('bulkBtn');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Đang gửi...';
+    // Giữ nút BẤM ĐƯỢC (không disable) để đóng vai nút Dừng trong lúc gửi.
+    bulkSending = true;
+    btn.disabled = false;
+    btn.innerHTML = App.icon('stop') + ' Dừng báo loạt';
     try {
       const q = $('fQ').value;
       const body = {
@@ -1004,12 +1072,18 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        // Loạt lớn chạy vài phút (mỗi đơn nghỉ 5–10s) -> nới timeout để client không abort giữa chừng
+        // (khiến mất nút Dừng dù server vẫn đang gửi). 30 phút là dư cho các loạt thực tế.
+        timeoutMs: 30 * 60 * 1000,
       });
       // Zalo hiện trang login -> server đã DỪNG loạt ngay. Báo rõ để đăng nhập rồi thử lại,
       // thay vì hiện "Hoàn tất" gây hiểu nhầm là đã gửi hết.
       if (res.aborted) {
         App.toast(`⛔ Zalo chưa đăng nhập — đã dừng báo loạt (còn ${res.skipped || 0} đơn chưa gửi).`
           + ' Hãy đăng nhập Zalo rồi báo lại.', 9000);
+      } else if (res.stopped) {
+        // Người dùng chủ động bấm Dừng -> báo rõ đã gửi bao nhiêu, còn bỏ dở bao nhiêu.
+        App.toast(`⏹️ Đã dừng báo loạt: ✅ ${res.sent} đã gửi · còn ${res.skipped || 0} đơn chưa gửi.`, 8000);
       } else {
         // Đếm riêng số khách KHÔNG tìm thấy cuộc trò chuyện để báo rõ (thay vì chỉ "❌ N" chung chung).
         // Chi tiết từng khách vẫn xem được ở Lịch sử báo.
@@ -1022,7 +1096,8 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
-      btn.innerHTML = App.icon('megaphone') + ' Báo hàng loạt (chưa báo)';
+      bulkSending = false;
+      resetBulkBtn();
     }
   }
 
@@ -1441,7 +1516,8 @@
     clearTimeout(qTimer);
     qTimer = setTimeout(() => { currentPage = 1; applyFilters({ keepPage: true }); }, clientMode ? 120 : 400);
   });
-  $('bulkBtn').addEventListener('click', openBulkModal);
+  // Rảnh -> mở modal báo loạt; đang gửi -> đóng vai nút Dừng.
+  $('bulkBtn').addEventListener('click', () => (bulkSending ? stopBulk() : openBulkModal()));
 
   // (Thanh thẻ trạng thái đã bỏ — lọc trạng thái nằm trong popover "Bộ lọc", xem xử lý ở fApply.)
 

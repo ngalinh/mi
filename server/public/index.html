@@ -166,6 +166,9 @@
     <div class="modal">
       <h3 id="modalTitle">Nội dung báo hàng</h3>
       <p class="muted" id="modalSub"></p>
+      <!-- Cảnh báo "ND lệch": nội dung trên Basso đã đổi so với bản đang hiển thị (vd khách về
+           thêm sản phẩm) — hiện khi mở modal phát hiện lệch, đã tự cập nhật ô soạn bên dưới. -->
+      <div id="modalStale" class="stale-warn" style="display:none"></div>
       <textarea id="modalMsg"></textarea>
       <div class="field" style="margin-top:10px">
         <label for="modalAccount">Gửi bằng tài khoản</label>

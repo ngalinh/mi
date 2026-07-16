@@ -1,6 +1,6 @@
 'use strict';
 const config = require('./config');
-const { getOrders, updateOrderStatus, getArrivedItems } = require('./bassoApi');
+const { getOrders, updateOrderStatus, getArrivedItems, getOrderContent } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
 const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, autoKeyShip, getFbLink, getZaloName, getContactReportTarget } = require('./db');
@@ -13,6 +13,26 @@ const LOGIN_REQUIRED_RE = /CHUA_DANG_NHAP/i;
 const isLoginRequiredError = (msg) => LOGIN_REQUIRED_RE.test(msg || '');
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ---- Dừng báo loạt giữa chừng (do người dùng bấm nút "Dừng") ----
+// `bulkRunning` = có 1 phiên notifyOrders đang chạy hay không (chỉ 1 vì đi qua withLock).
+// `stopRequested` = người dùng đã yêu cầu dừng loạt đang chạy; vòng lặp kiểm tra cờ này ở ranh giới
+// giữa các đơn để DỪNG ngay — các đơn còn lại bỏ dở (KHÔNG đánh dấu đã báo, báo lại sau được).
+let bulkRunning = false;
+let stopRequested = false;
+
+/** Có phiên báo loạt đang chạy không (để route/quyết định phản hồi). */
+function isBulkRunning() { return bulkRunning; }
+
+/**
+ * Yêu cầu DỪNG loạt đang chạy. Chỉ có tác dụng khi đang chạy; đặt cờ để vòng lặp tự thoát ở đơn
+ * kế tiếp (đơn đang gửi dở vẫn chạy xong). Trả true nếu có loạt để dừng, false nếu không có gì đang chạy.
+ */
+function requestStopBulk() {
+  if (!bulkRunning) return false;
+  stopRequested = true;
+  return true;
+}
 
 /**
  * Khoảng nghỉ NGẪU NHIÊN (ms) chèn GIỮA 2 khách liên tiếp khi báo loạt — tránh gửi dồn quá nhanh
@@ -27,10 +47,21 @@ function betweenSendDelayMs() {
   return min + Math.floor(Math.random() * (max - min + 1));
 }
 
-/** Nghỉ giữa 2 khách theo cấu hình (no-op nếu delay = 0). */
+/**
+ * Nghỉ giữa 2 khách theo cấu hình (no-op nếu delay = 0). Chia nhỏ giấc ngủ để THOÁT SỚM khi người
+ * dùng bấm Dừng — nếu không, dừng có thể phải chờ tới hết 1 nhịp nghỉ (mặc định 5–10s) mới ăn.
+ * `stopRequested` chỉ bật khi có báo loạt tay đang chạy (requestStopBulk), nên nhánh này không ảnh
+ * hưởng luồng auto (dùng chung hàm này nhưng không đặt cờ dừng).
+ */
 async function delayBetweenCustomers() {
   const ms = betweenSendDelayMs();
-  if (ms > 0) await sleep(ms);
+  if (ms <= 0) return;
+  const STEP_MS = 250;
+  for (let waited = 0; waited < ms; waited += STEP_MS) {
+    if (stopRequested) return;
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(Math.min(STEP_MS, ms - waited));
+  }
 }
 
 /**
@@ -74,6 +105,35 @@ async function resolveOrderMeta(order) {
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
+
+  // LẤY ND TƯƠI NGAY TRƯỚC KHI GỬI (chỉ khi KHÔNG có messageOverride — tức luồng auto-notify &
+  // Báo hàng loạt dùng thẳng ND từ Basso). order.noiDungBaoHang có thể là bản CŨ (list cache 30s
+  // / dashboard cầm bản cũ) -> khách về thêm sản phẩm nhưng tin vẫn báo nội dung cũ (vd 1 sp).
+  // getOrderContent bỏ cache, khớp đúng đơn theo (customerId + dateInventory) nên lấy được nội
+  // dung mới nhất Basso đã soạn lại. Lỗi/không thấy -> giữ nguyên ND đang có, KHÔNG chặn gửi.
+  const noOverride = !(opts.messageOverride && opts.messageOverride.trim());
+  if (noOverride && config.basso.refreshContentBeforeSend
+      && order.customerId != null && order.dateInventory != null) {
+    try {
+      const fresh = await getOrderContent({
+        customerId: order.customerId,
+        dateInventory: order.dateInventory,
+        phone: order.phone,
+      });
+      if (fresh && fresh.found) {
+        const key = kind === 'ship' ? 'noiDungBaoShip' : 'noiDungBaoHang';
+        const next = kind === 'ship' ? fresh.noiDungBaoShip : fresh.noiDungBaoHang;
+        const prev = order[key];
+        if (next && String(next).trim() && String(next).trim() !== String(prev || '').trim()) {
+          console.log(`[notify] ND ${kind} của ${order.customerName || order.phone || order.customerId} đã ĐỔI trên Basso -> dùng bản mới nhất (bản cũ có thể thiếu sản phẩm vừa về).`);
+          order = { ...order, [key]: next };
+        }
+      }
+    } catch (err) {
+      console.warn(`[notify] không lấy được ND tươi cho đơn ${order.customerId}/${order.dateInventory}: ${err.message} — dùng ND đang có.`);
+    }
+  }
+
   const message = opts.messageOverride && opts.messageOverride.trim()
     ? opts.messageOverride.trim()
     : (kind === 'ship' ? buildBaoShipMessage(order) : buildBaoHangMessage(order));
@@ -262,61 +322,74 @@ async function groupOrdersByProfile(orders, opts = {}) {
  */
 async function notifyOrders(orders, opts = {}) {
   return withLock(async () => {
-    // Gom theo profile trước -> gửi tuần tự HẾT đơn của 1 tài khoản rồi mới sang tài khoản kế.
-    const ordered = await groupOrdersByProfile(orders, opts);
-    const results = [];
-    let aborted = false;
-    let abortError = null;
-    for (let idx = 0; idx < ordered.length; idx += 1) {
-      const { order, profileKey } = ordered[idx];
-      // Giữ context nếu đơn KẾ TIẾP cùng profile (đã gom) -> tái dùng browser, đỡ mở/đóng lặp lại.
-      const keepContext = profileKey != null && idx + 1 < ordered.length
-        && ordered[idx + 1].profileKey === profileKey;
-      // eslint-disable-next-line no-await-in-loop
-      const r = await notifyOne(order, { ...opts, keepContext });
-      // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không
-      // cập nhật web). Không đè lên 'success' của bot để giữ đúng badge. Khóa theo LOẠI tin
-      // (báo ship dùng autoKeyShip) để báo ship tay chỉ chặn bot báo ship, không đụng báo hàng.
-      if (r.ok) {
-        const dkey = opts.kind === 'ship' ? autoKeyShip(order) : autoKey(order);
-        const ex = getAutoRecord(dkey);
-        if (!ex || ex.status !== 'success') recordAutoNotified(dkey, 'manual', ex ? ex.attempts : 0);
-      }
-      results.push({
-        orderId: order.id,
-        customerName: order.customerName,
-        ok: r.ok,
-        error: r.error || r.updateError || null,
-        jobId: r.jobId || null,
-      });
-      // Zalo hiện trang login (chưa đăng nhập) -> DỪNG NGAY cả loạt: các đơn còn lại chắc chắn
-      // cũng fail vì cùng chưa đăng nhập. Không gửi tiếp để tránh loạt đơn failed vô ích; trả cờ
-      // aborted để UI hiện cảnh báo đăng nhập thay vì "Hoàn tất".
-      if (r.loginRequired) {
-        aborted = true;
-        abortError = r.error || 'Zalo chưa đăng nhập.';
-        break;
-      }
-      // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn — bỏ qua sau đơn cuối) để tránh
-      // gửi dồn quá nhanh -> giảm rủi ro chống spam Zalo/FB. Tắt bằng SEND_DELAY_BETWEEN_MAX_MS=0.
-      if (idx + 1 < ordered.length) {
+    // Đánh dấu "đang chạy" để nút Dừng có tác dụng; reset cờ dừng của phiên trước cho chắc.
+    bulkRunning = true;
+    stopRequested = false;
+    try {
+      // Gom theo profile trước -> gửi tuần tự HẾT đơn của 1 tài khoản rồi mới sang tài khoản kế.
+      const ordered = await groupOrdersByProfile(orders, opts);
+      const results = [];
+      let aborted = false;
+      let stopped = false;
+      let abortError = null;
+      for (let idx = 0; idx < ordered.length; idx += 1) {
+        // Người dùng bấm Dừng -> thoát TRƯỚC khi gửi đơn kế (đơn đang gửi dở đã xong ở vòng trước).
+        if (stopRequested) { stopped = true; break; }
+        const { order, profileKey } = ordered[idx];
+        // Giữ context nếu đơn KẾ TIẾP cùng profile (đã gom) -> tái dùng browser, đỡ mở/đóng lặp lại.
+        const keepContext = profileKey != null && idx + 1 < ordered.length
+          && ordered[idx + 1].profileKey === profileKey;
         // eslint-disable-next-line no-await-in-loop
-        await delayBetweenCustomers();
+        const r = await notifyOne(order, { ...opts, keepContext });
+        // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không cập nhật
+        // web). Không đè lên 'success' của bot để giữ đúng badge. Khóa theo LOẠI tin (báo ship dùng
+        // autoKeyShip) để báo ship tay chỉ chặn bot báo ship, không đụng báo hàng.
+        if (r.ok) {
+          const dkey = opts.kind === 'ship' ? autoKeyShip(order) : autoKey(order);
+          const ex = getAutoRecord(dkey);
+          if (!ex || ex.status !== 'success') recordAutoNotified(dkey, 'manual', ex ? ex.attempts : 0);
+        }
+        results.push({
+          orderId: order.id,
+          customerName: order.customerName,
+          ok: r.ok,
+          error: r.error || r.updateError || null,
+          jobId: r.jobId || null,
+        });
+        // Zalo hiện trang login (chưa đăng nhập) -> DỪNG NGAY cả loạt: các đơn còn lại chắc chắn
+        // cũng fail vì cùng chưa đăng nhập. Không gửi tiếp để tránh loạt đơn failed vô ích; trả cờ
+        // aborted để UI hiện cảnh báo đăng nhập thay vì "Hoàn tất".
+        if (r.loginRequired) {
+          aborted = true;
+          abortError = r.error || 'Zalo chưa đăng nhập.';
+          break;
+        }
+        // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn — bỏ qua sau đơn cuối) để tránh
+        // gửi dồn quá nhanh -> giảm rủi ro chống spam Zalo/FB. Tắt bằng SEND_DELAY_BETWEEN_MAX_MS=0.
+        if (idx + 1 < ordered.length) {
+          // eslint-disable-next-line no-await-in-loop
+          await delayBetweenCustomers();
+        }
       }
+      const sent = results.filter((r) => r.ok).length;
+      // Số đơn CÒN LẠI chưa gửi khi dừng giữa chừng (login hoặc người dùng bấm Dừng) — để UI báo rõ
+      // đã bỏ dở bao nhiêu.
+      const skipped = (aborted || stopped) ? ordered.length - results.length : 0;
+      return {
+        total: results.length,
+        sent,
+        failed: results.length - sent,
+        results,
+        aborted,
+        stopped,
+        abortReason: aborted ? 'CHUA_DANG_NHAP' : (stopped ? 'STOPPED_BY_USER' : null),
+        abortError,
+        skipped,
+      };
+    } finally {
+      bulkRunning = false;
+      stopRequested = false;
     }
-    const sent = results.filter((r) => r.ok).length;
-    // Số đơn CÒN LẠI chưa gửi khi dừng giữa chừng (để UI báo rõ đã bỏ dở bao nhiêu).
-    const skipped = aborted ? ordered.length - results.length : 0;
-    return {
-      total: results.length,
-      sent,
-      failed: results.length - sent,
-      results,
-      aborted,
-      abortReason: aborted ? 'CHUA_DANG_NHAP' : null,
-      abortError,
-      skipped,
-    };
   });
 }
 
@@ -355,4 +428,6 @@ async function notifyMany(orderIds, opts = {}) {
   return res;
 }
 
-module.exports = { notifyOne, notifyMany, notifyOrders, delayBetweenCustomers };
+module.exports = {
+  notifyOne, notifyMany, notifyOrders, delayBetweenCustomers, requestStopBulk, isBulkRunning,
+};
