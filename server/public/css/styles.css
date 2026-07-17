@@ -697,6 +697,11 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
   width: 30px; opacity: 1; cursor: progress;
   background: var(--ink); background-image: none; color: #fff; border-color: transparent;
 }
+/* Đang gửi tay: nút icon đổi vai "Dừng" — nền đỏ, bấm được (không phải :disabled xám). */
+.action-cell .btn.icon-only.is-stop {
+  width: 30px; opacity: 1; cursor: pointer;
+  background: var(--danger, #d33); background-image: none; color: #fff; border-color: transparent;
+}
 /* Disable = xám rõ ràng (không phải tông nhấn) để phân biệt với nút bật được. */
 .action-cell .btn.icon-only:disabled {
   opacity: 1; background: var(--bg-soft); background-image: none;
@@ -1154,6 +1159,9 @@ td.staff-col { white-space: nowrap; }
 }
 .btn.btn-zalo { background: var(--primary-grad); color: #fff; box-shadow: var(--shadow-primary); }
 .btn.btn-zalo:hover { filter: brightness(1.06); }
+/* Nút gửi (modal) khi ĐANG gửi = đổi vai "Dừng gửi": tông đỏ, ghi đè kiểu btn-zalo. */
+.btn.is-stop { background: var(--danger, #d33); background-image: none; color: #fff; border-color: transparent; box-shadow: none; }
+.btn.is-stop:hover { filter: brightness(1.06); }
 
 /* ============================================================
    Responsive — mobile: sidebar thu thành drawer bấm mới hiện

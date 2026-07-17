@@ -959,22 +959,43 @@
   // Lỗi "không tìm thấy cuộc trò chuyện" do runner ném (KHONG_THAY_HOI_THOAI) khi search SĐT/tên
   // không ra hàng nào trong mục "Trò chuyện". Dùng để hiện thông báo rõ ràng cho người dùng.
   const isNoConversationError = (msg) => /KHONG_THAY_HOI_THOAI/i.test(msg || '');
+  // Xác nhận TRƯỚC khi gửi từng đơn qua nút icon gửi nhanh (hộp/xe) — tránh lỡ tay click gửi nhầm.
+  // KHÔNG áp cho nút "Gửi" trong modal (bản thân modal đã là bước xem lại nội dung). Nếu đơn đã báo
+  // thì hỏi luôn kiểu "vẫn gửi lại?" (gộp với cảnh báo đã-báo để KHÔNG bật 2 popup liên tiếp).
+  function confirmSendRow(sz) {
+    const id = sz.dataset.id;
+    const kind = sz.dataset.kind === 'ship' ? 'ship' : 'hang';
+    const o = byId(id);
+    const who = (o && o.customerName) ? o.customerName : `đơn ${id}`;
+    const kindLabel = kind === 'ship' ? 'báo ship' : 'báo hàng';
+    const reason = o ? notifiedReason(o, kind) : '';
+    const msg = reason
+      ? `Đơn của ${who} ${reason}. Vẫn gửi lại?`
+      : `Gửi ${kindLabel} cho ${who}?`;
+    if (!confirm(msg)) return;
+    return sendZalo(id, undefined, sz, kind, null, { skipConfirm: true });
+  }
+
   // override (tuỳ chọn) = { profile, account } để ép gửi qua 1 tài khoản Zalo cụ thể (gửi thử).
-  async function sendZalo(id, messageOverride, btnEl, kind = 'hang', override = null) {
+  async function sendZalo(id, messageOverride, btnEl, kind = 'hang', override = null, o2 = {}) {
     const o = byId(id); if (!o) return;
     const reason = notifiedReason(o, kind);
-    if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
+    // o2.skipConfirm = caller đã hỏi xác nhận rồi (vd confirmSendRow) -> KHÔNG hỏi lại lần nữa.
+    if (!o2.skipConfirm && reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
     const btn = btnEl || rowsEl.querySelector(`.send-zalo[data-id="${cssEsc(String(id))}"][data-kind="${kind}"]`);
     const label = btn ? btn.innerHTML : '';
+    const origTitle = btn ? btn.title : '';
     if (btn) {
-      btn.disabled = true;
-      // is-loading giữ nút nền tối + spinner trắng (ghi đè kiểu :disabled xám). Nút icon tròn
-      // (gửi từng dòng) chỉ hiện spinner để giữ nguyên kích thước, không phình ra chữ; nút dạng
-      // chữ (modal "Gửi") mới kèm nhãn "Đang gửi..." cho rõ.
-      btn.classList.add('is-loading');
+      // Trong lúc gửi tay, nút ĐỔI VAI thành "Dừng" (vẫn bấm được) để người dùng có thể yêu cầu
+      // dừng giữa chừng — giống nút "Dừng báo loạt". dataset.stop báo cho trình xử lý click gọi
+      // stopManualSend() thay vì gửi lại. Nút dạng chữ (modal "Gửi") kèm nhãn cho rõ; nút icon tròn
+      // (gửi từng dòng) chỉ hiện icon stop để giữ nguyên kích thước, không phình ra chữ.
+      btn.dataset.stop = '1';
+      btn.classList.add('is-stop');
+      btn.title = 'Dừng gửi';
       btn.innerHTML = btn.classList.contains('icon-only')
-        ? '<span class="spinner"></span>'
-        : '<span class="spinner"></span> Đang gửi...';
+        ? App.icon('stop')
+        : App.icon('stop') + ' Dừng gửi';
     }
     try {
       const res = await App.api('/api/notify', {
@@ -988,8 +1009,12 @@
           account: override && override.account ? override.account : undefined,
         }),
       });
+      // Người dùng bấm Dừng trong lúc ân hạn / server đang chuẩn bị -> server hủy trước khi gửi,
+      // results rỗng. Báo rõ tin CHƯA đi (khác với đã gửi).
+      if (res.stopped) { App.toast('⛔ Đã hủy — tin CHƯA được gửi.', 5000); afterMutation(); return; }
       const r = res.results[0];
       if (res.aborted) App.toast('⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi gửi lại.', 8000);
+      else if (!r) App.toast('Không có kết quả trả về — thử lại.', 5000);
       else if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
       else if (isNoConversationError(r.error)) {
         App.toast(`🔍 Không tìm thấy cuộc trò chuyện của ${r.customerName || o.customerName || id}`
@@ -999,7 +1024,35 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
-      if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); btn.innerHTML = label; }
+      if (btn) {
+        delete btn.dataset.stop;
+        btn.disabled = false;
+        btn.classList.remove('is-loading', 'is-stop');
+        btn.innerHTML = label;
+        btn.title = origTitle;
+      }
+    }
+  }
+
+  // Người dùng bấm "Dừng" trên 1 lượt gửi tay (modal hoặc nút từng dòng). Đặt cờ dừng ở server
+  // (dùng chung endpoint với báo loạt) — nếu lượt đang gửi gồm nhiều đơn thì dừng ở đơn kế tiếp;
+  // đơn đang gửi dở vẫn chạy xong. sendZalo() vẫn đang await và sẽ tự khôi phục nút khi xong.
+  async function stopManualSend(btn) {
+    if (btn) {
+      btn.disabled = true; // chặn bấm dừng nhiều lần; sendZalo() khôi phục nút khi lượt gửi kết thúc
+      btn.classList.remove('is-stop');
+      btn.classList.add('is-loading');
+      btn.innerHTML = btn.classList.contains('icon-only')
+        ? '<span class="spinner"></span>'
+        : '<span class="spinner"></span> Đang dừng...';
+    }
+    try {
+      const res = await App.api('/api/notify-all/stop', { method: 'POST' });
+      App.toast(res.stopping
+        ? '⏹️ Đã yêu cầu dừng gửi.'
+        : 'Không có lượt gửi nào đang chạy để dừng.', 4000);
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
     }
   }
 
@@ -1591,7 +1644,7 @@
     const ge = t.closest('.group-expand'); if (ge) return toggleGroup(ge.dataset.groupKey);
     const exp = t.closest('.expand-btn'); if (exp) return toggleDetail(exp.dataset.id);
     const vc = t.closest('.view-content'); if (vc) return openModal(vc.dataset.id, vc.dataset.kind);
-    const sz = t.closest('.send-zalo'); if (sz) return sendZalo(sz.dataset.id, undefined, sz, sz.dataset.kind || 'hang');
+    const sz = t.closest('.send-zalo'); if (sz) return sz.dataset.stop ? stopManualSend(sz) : confirmSendRow(sz);
     const sn = t.closest('.save-note'); if (sn) return saveNote(sn.dataset.id);
   });
   // Theo dõi ghi chú đang gõ: đánh dấu "chưa lưu" để render lại không làm mất,
@@ -1625,7 +1678,10 @@
   });
 
   $('modalCancel').addEventListener('click', closeModal);
-  $('modalSend').addEventListener('click', sendFromModal);
+  $('modalSend').addEventListener('click', () => {
+    const b = $('modalSend');
+    if (b.dataset.stop) stopManualSend(b); else sendFromModal();
+  });
   $('modalMsg').addEventListener('input', autoGrowMsg);
   $('modalBg').addEventListener('click', (e) => { if (e.target.id === 'modalBg') closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeModal(); closeBulkModal(); } });

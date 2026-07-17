@@ -186,6 +186,9 @@ module.exports = {
   notify: {
     delayBetweenMinMs: Math.max(parseInt(process.env.SEND_DELAY_BETWEEN_MIN_MS ?? '5000', 10) || 0, 0),
     delayBetweenMaxMs: Math.max(parseInt(process.env.SEND_DELAY_BETWEEN_MAX_MS ?? '10000', 10) || 0, 0),
+    // Khoảng "ân hạn" (ms) TRƯỚC khi thật sự gửi 1 đơn báo TAY — trong lúc này bấm Dừng sẽ HỦY sạch
+    // (tin chưa đi). Chỉ áp cho gửi tay (route /api/notify), KHÔNG áp cho báo loạt/tự động. 0 = tắt.
+    manualGraceMs: Math.max(parseInt(process.env.SEND_MANUAL_GRACE_MS ?? '3000', 10) || 0, 0),
   },
   dbPath: process.env.DB_PATH
     || path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'doraemi.sqlite'),
