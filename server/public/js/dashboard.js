@@ -966,15 +966,18 @@
     if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
     const btn = btnEl || rowsEl.querySelector(`.send-zalo[data-id="${cssEsc(String(id))}"][data-kind="${kind}"]`);
     const label = btn ? btn.innerHTML : '';
+    const origTitle = btn ? btn.title : '';
     if (btn) {
-      btn.disabled = true;
-      // is-loading giữ nút nền tối + spinner trắng (ghi đè kiểu :disabled xám). Nút icon tròn
-      // (gửi từng dòng) chỉ hiện spinner để giữ nguyên kích thước, không phình ra chữ; nút dạng
-      // chữ (modal "Gửi") mới kèm nhãn "Đang gửi..." cho rõ.
-      btn.classList.add('is-loading');
+      // Trong lúc gửi tay, nút ĐỔI VAI thành "Dừng" (vẫn bấm được) để người dùng có thể yêu cầu
+      // dừng giữa chừng — giống nút "Dừng báo loạt". dataset.stop báo cho trình xử lý click gọi
+      // stopManualSend() thay vì gửi lại. Nút dạng chữ (modal "Gửi") kèm nhãn cho rõ; nút icon tròn
+      // (gửi từng dòng) chỉ hiện icon stop để giữ nguyên kích thước, không phình ra chữ.
+      btn.dataset.stop = '1';
+      btn.classList.add('is-stop');
+      btn.title = 'Dừng gửi';
       btn.innerHTML = btn.classList.contains('icon-only')
-        ? '<span class="spinner"></span>'
-        : '<span class="spinner"></span> Đang gửi...';
+        ? App.icon('stop')
+        : App.icon('stop') + ' Dừng gửi';
     }
     try {
       const res = await App.api('/api/notify', {
@@ -999,7 +1002,35 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     } finally {
-      if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); btn.innerHTML = label; }
+      if (btn) {
+        delete btn.dataset.stop;
+        btn.disabled = false;
+        btn.classList.remove('is-loading', 'is-stop');
+        btn.innerHTML = label;
+        btn.title = origTitle;
+      }
+    }
+  }
+
+  // Người dùng bấm "Dừng" trên 1 lượt gửi tay (modal hoặc nút từng dòng). Đặt cờ dừng ở server
+  // (dùng chung endpoint với báo loạt) — nếu lượt đang gửi gồm nhiều đơn thì dừng ở đơn kế tiếp;
+  // đơn đang gửi dở vẫn chạy xong. sendZalo() vẫn đang await và sẽ tự khôi phục nút khi xong.
+  async function stopManualSend(btn) {
+    if (btn) {
+      btn.disabled = true; // chặn bấm dừng nhiều lần; sendZalo() khôi phục nút khi lượt gửi kết thúc
+      btn.classList.remove('is-stop');
+      btn.classList.add('is-loading');
+      btn.innerHTML = btn.classList.contains('icon-only')
+        ? '<span class="spinner"></span>'
+        : '<span class="spinner"></span> Đang dừng...';
+    }
+    try {
+      const res = await App.api('/api/notify-all/stop', { method: 'POST' });
+      App.toast(res.stopping
+        ? '⏹️ Đã yêu cầu dừng gửi.'
+        : 'Không có lượt gửi nào đang chạy để dừng.', 4000);
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
     }
   }
 
@@ -1591,7 +1622,7 @@
     const ge = t.closest('.group-expand'); if (ge) return toggleGroup(ge.dataset.groupKey);
     const exp = t.closest('.expand-btn'); if (exp) return toggleDetail(exp.dataset.id);
     const vc = t.closest('.view-content'); if (vc) return openModal(vc.dataset.id, vc.dataset.kind);
-    const sz = t.closest('.send-zalo'); if (sz) return sendZalo(sz.dataset.id, undefined, sz, sz.dataset.kind || 'hang');
+    const sz = t.closest('.send-zalo'); if (sz) return sz.dataset.stop ? stopManualSend(sz) : sendZalo(sz.dataset.id, undefined, sz, sz.dataset.kind || 'hang');
     const sn = t.closest('.save-note'); if (sn) return saveNote(sn.dataset.id);
   });
   // Theo dõi ghi chú đang gõ: đánh dấu "chưa lưu" để render lại không làm mất,
@@ -1625,7 +1656,10 @@
   });
 
   $('modalCancel').addEventListener('click', closeModal);
-  $('modalSend').addEventListener('click', sendFromModal);
+  $('modalSend').addEventListener('click', () => {
+    const b = $('modalSend');
+    if (b.dataset.stop) stopManualSend(b); else sendFromModal();
+  });
   $('modalMsg').addEventListener('input', autoGrowMsg);
   $('modalBg').addEventListener('click', (e) => { if (e.target.id === 'modalBg') closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeModal(); closeBulkModal(); } });
