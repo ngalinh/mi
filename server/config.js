@@ -131,6 +131,10 @@ module.exports = {
     // Đặt AUTO_NOTIFY_RESUME_ON_BOOT=true để tự chạy lại ngay khi khởi động như trước.
     resumeOnBoot: String(process.env.AUTO_NOTIFY_RESUME_ON_BOOT || 'false').toLowerCase() === 'true',
     intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '60000', 10) || 60000, 10000),
+    // Chu kỳ quét BÁO SHIP (ms) — RIÊNG với báo hàng để có thể quét NHANH hơn (gần real-time) khi
+    // không dùng webhook. Mặc định 30s; tối thiểu 10s. Đọc TƯƠI từ Basso mỗi lượt để bắt ND ship
+    // mới ngay. Muốn nhanh nhất: cấu hình Basso gọi webhook /api/webhook/ship (gửi trong vài giây).
+    shipIntervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_INTERVAL_MS || '30000', 10) || 30000, 10000),
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
     // Bot gửi xong có đẩy trạng thái "Đã báo hàng" về web Basso không?

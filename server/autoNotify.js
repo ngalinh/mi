@@ -171,7 +171,8 @@ const state = {
   lastAlert: null,                     // kết quả gửi nhắc Zalo gần nhất
 };
 
-let timer = null;
+let timer = null;      // timer BÁO HÀNG (hẹn giờ / interval)
+let shipTimer = null;  // timer BÁO SHIP (cadence RIÊNG, nhanh hơn — cfg.shipIntervalMs)
 
 /**
  * Tới giờ hẹn chưa? (chạy MỖI scheduleCheckMs). Chỉ gọi Basso khi ĐÃ tới giờ và CHƯA chạy hôm
@@ -215,20 +216,17 @@ function scheduleTick() {
         .catch(() => { state.lastScheduledDay = null; });
     }
   }
-
-  // BÁO SHIP không theo giờ hẹn: mỗi lần kiểm tra đồng hồ (scheduleCheckMs) cũng quét & gửi ngay
-  // đơn đã có "ND báo ship" -> "API nhận được ND ship thì gửi", không đợi tới 17:00.
-  maybeRunShip('interval');
+  // Báo ship KHÔNG đi theo nhịp này nữa — nó có timer RIÊNG (shipTimer) quét nhanh hơn.
 }
 
-/** 1 nhịp ở chế độ GỬI NGAY (không hẹn giờ): báo hàng (nếu bật) + báo ship (nếu bật). */
+/** 1 nhịp ở chế độ GỬI NGAY (không hẹn giờ) cho BÁO HÀNG. Báo ship dùng timer riêng. */
 function intervalTick() {
   if (state.enabled) runAutoNotify({ trigger: 'interval' });
-  maybeRunShip('interval');
 }
 
-/** Quét & gửi báo ship 1 lượt ở nền (không chặn) — chỉ khi CÔNG TẮC BÁO SHIP đang BẬT. Nuốt lỗi. */
-function maybeRunShip(trigger = 'interval') {
+/** Quét & gửi báo ship 1 lượt ở nền (không chặn) — chỉ khi CÔNG TẮC BÁO SHIP đang BẬT. Nuốt lỗi.
+ * Trigger mặc định 'ship-poll' -> đọc TƯƠI từ Basso để bắt ND ship mới ngay (gần real-time). */
+function maybeRunShip(trigger = 'ship-poll') {
   if (!state.shipEnabled) return;
   runAutoNotifyShip({ trigger }).catch(() => {});
 }
@@ -573,8 +571,9 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
   // R6: bọc quét + gửi trong khóa dùng chung -> không chạy chồng với báo-tay (notifyMany) hay lượt kia.
   // Đặt quét đơn TRONG khóa để thấy trạng thái mới nhất sau khi luồng kia vừa gửi xong.
   await withLock(async () => {
-    // Đọc TƯƠI (bỏ cache) cho webhook (thấy ngay đơn mới / ND vừa soạn) và lượt theo lịch.
-    const orders = await fetchAllByStatus(statusFilter, { fresh: trigger === 'webhook' || trigger === 'scheduled' });
+    // Đọc TƯƠI (bỏ cache) cho webhook (thấy ngay đơn mới / ND vừa soạn), lượt theo lịch, và
+    // poll báo ship ('ship-poll') — để bắt ND ship MỚI ngay, không dính cache 30s.
+    const orders = await fetchAllByStatus(statusFilter, { fresh: trigger === 'webhook' || trigger === 'scheduled' || trigger === 'ship-poll' });
     summary.scanned = orders.length;
     const delayedMap = getDelayedMap();
 
@@ -723,6 +722,48 @@ async function runAutoNotify(opts = {}) {
 }
 
 /**
+ * CHẨN ĐOÁN (read-only): với TỪNG đơn "Đã báo hàng" (notified_arrival), chạy classifyForShip và
+ * trả lý do CỤ THỂ vì sao gửi/bỏ qua báo ship — để soi "vì sao khách X không được tự gửi". Không
+ * gửi gì, không cần runner. Kèm trạng thái công tắc/seed + tổng hợp theo lý do.
+ */
+async function debugShip() {
+  const runnerOnline = await checkLocalHealth().catch(() => false);
+  const orders = await fetchAllByStatus('notified_arrival', { fresh: true });
+  const delayedMap = getDelayedMap();
+  const rows = [];
+  for (const order of orders) {
+    // eslint-disable-next-line no-await-in-loop
+    const c = await classifyForShip(order, delayedMap);
+    const rec = getAutoRecord(autoKeyShip(order));
+    rows.push({
+      customerName: order.customerName || '',
+      phone: order.phone || '',
+      statusCode: order.statusCode,
+      hasShipContent: !!(order.noiDungBaoShip && String(order.noiDungBaoShip).trim()),
+      shipMark: rec ? rec.status : null, // 'seeded' | 'success' | 'manual' | 'failed' | null
+      decision: c.decision,              // 'send' | 'skip'
+      reason: c.reason || null,          // no_content | already | delayed | no_account | ...
+      account: c.acct ? (c.acct.account || c.acct.profile || null) : null,
+    });
+  }
+  const byReason = {};
+  for (const r of rows) {
+    const k = r.decision === 'send' ? 'WILL_SEND' : (r.reason || 'skip');
+    byReason[k] = (byReason[k] || 0) + 1;
+  }
+  return {
+    shipEnabled: state.shipEnabled,
+    shipSeeding: state.shipSeeding,
+    seededAt: safeGet(SHIP_SEEDED_KEY),
+    runnerOnline,
+    scanned: rows.length,
+    willSend: byReason.WILL_SEND || 0,
+    byReason,
+    orders: rows.slice(0, 300),
+  };
+}
+
+/**
  * TỰ ĐỘNG BÁO SHIP: CHỈ xét đơn ĐÃ "Đã báo hàng" (notified_arrival). Đơn nào ở trạng thái đó mà
  * Basso đã soạn "ND báo ship" (content_ship) thì tự nhắn khách NGAY và chuyển trạng thái sang
  * "Đã báo ship" (notified_ship). Tức là PHẢI báo hàng trước, sau đó có ND ship mới báo ship —
@@ -768,10 +809,29 @@ async function runAutoNotifyShip(opts = {}) {
 /** Có ít nhất 1 luồng (báo hàng HOẶC báo ship) đang bật -> cần chạy timer nền. */
 function anyEnabled() { return state.enabled || state.shipEnabled; }
 
-/** Đồng bộ timer với trạng thái bật/tắt: có luồng nào bật thì chạy, tắt hết thì dừng. */
+/**
+ * Đồng bộ timer với trạng thái bật/tắt. 2 timer ĐỘC LẬP:
+ *   - timer BÁO HÀNG: chạy khi báo hàng bật (hẹn giờ/interval).
+ *   - shipTimer BÁO SHIP: chạy khi báo ship bật (cadence nhanh riêng).
+ */
 function syncTimer() {
-  if (anyEnabled()) { if (!timer) startTimer(); }
+  if (state.enabled) { if (!timer) startTimer(); }
   else stopTimer();
+  if (state.shipEnabled) { if (!shipTimer) startShipTimer(); }
+  else stopShipTimer();
+}
+
+/** Timer RIÊNG cho báo ship — quét nhanh hơn báo hàng (cfg.shipIntervalMs), đọc tươi mỗi lượt. */
+function startShipTimer() {
+  if (shipTimer) return;
+  if (!state.startedAt) state.startedAt = new Date().toISOString();
+  setTimeout(() => maybeRunShip(), 5000);
+  shipTimer = setInterval(() => maybeRunShip(), cfg.shipIntervalMs);
+  if (shipTimer.unref) shipTimer.unref();
+}
+
+function stopShipTimer() {
+  if (shipTimer) { clearInterval(shipTimer); shipTimer = null; }
 }
 
 /** Bật/tắt tự động BÁO HÀNG lúc runtime (không cần restart). */
@@ -829,7 +889,7 @@ function startTimer() {
 
 function stopTimer() {
   if (timer) { clearInterval(timer); timer = null; }
-  state.startedAt = null;
+  if (!shipTimer) state.startedAt = null;
 }
 
 /** Khởi động cùng server (nếu báo hàng HOẶC báo ship được bật). */
@@ -838,10 +898,10 @@ function startAutoNotify() {
     console.log('[auto-notify] TẮT (đặt AUTO_NOTIFY=true / AUTO_NOTIFY_SHIP=true để bật, hoặc bật trên dashboard)');
     return;
   }
-  startTimer();
+  syncTimer(); // dựng timer báo hàng (nếu bật) + timer báo ship RIÊNG (nếu bật)
   if (state.enabled) {
     // Sau RESTART: mặc định TẠM DỪNG gửi tự động BÁO HÀNG (gồm "gửi bù" đợt đang dở) tới khi admin
-    // bấm "Quét & gửi" hoặc bật lại auto. Timer VẪN chạy (phục vụ báo ship + để gỡ tạm dừng sau);
+    // bấm "Quét & gửi" hoặc bật lại auto. Timer VẪN chạy để gỡ tạm dừng sau;
     // runAutoNotify tự bỏ mọi lượt tự động khi awaitingResume=true. AUTO_NOTIFY_RESUME_ON_BOOT=true để chạy lại ngay.
     if (!cfg.resumeOnBoot) {
       state.awaitingResume = true;
@@ -855,7 +915,7 @@ function startAutoNotify() {
   } else {
     console.log('[auto-notify] báo hàng TẮT');
   }
-  console.log(`[auto-notify] BÁO SHIP ${state.shipEnabled ? 'BẬT' : 'TẮT'}${state.shipEnabled ? ` — quét đơn "Đã báo hàng" có ND ship, gửi ngay` : ''}`);
+  console.log(`[auto-notify] BÁO SHIP ${state.shipEnabled ? 'BẬT' : 'TẮT'}${state.shipEnabled ? ` — quét đơn "Đã báo hàng" có ND ship mỗi ${Math.round(cfg.shipIntervalMs / 1000)}s, gửi ngay` : ''}`);
   // Seed lần đầu nếu bật ship (qua env) mà CHƯA từng seed -> tránh nhắn loạt đơn tồn cũ lần đầu bật.
   // Đã seed rồi (khởi động lại) thì KHÔNG seed lại: ND ship phát sinh lúc server tắt vẫn là "mới" -> gửi.
   if (state.shipEnabled && !safeGet(SHIP_SEEDED_KEY)) {
@@ -885,7 +945,7 @@ function setScheduleTime(value) {
   // Thực tế: chỉ reset khi chuyển giờ để không kẹt trạng thái cũ.
   state.lastScheduledDay = null;
   // Áp dụng ngay: dựng lại timer theo chế độ mới (hẹn giờ <-> interval).
-  if (anyEnabled() && timer) { stopTimer(); startTimer(); }
+  if (state.enabled && timer) { stopTimer(); startTimer(); } // chỉ dựng lại timer BÁO HÀNG (ship có timer riêng)
   console.log(`[auto-notify] đặt giờ gửi cố định = ${norm || '(trống → gửi ngay theo interval)'}`);
   return getStatus();
 }
@@ -998,6 +1058,7 @@ function getStatus() {
     // true = đang tạm dừng sau khi khởi động lại, chờ admin bấm "Quét & gửi" để tiếp tục gửi tự động.
     awaitingResume: state.awaitingResume,
     intervalMs: cfg.intervalMs,
+    shipIntervalMs: cfg.shipIntervalMs,
     profile: cfg.profile,
     maxRetries: cfg.maxRetries,
     lastRun: state.lastRun,
@@ -1024,6 +1085,6 @@ function getStatus() {
 }
 
 module.exports = {
-  runAutoNotify, runAutoNotifyShip, startAutoNotify, setEnabled, setShipEnabled, setScheduleTime, setPrecheckMinutes,
+  runAutoNotify, runAutoNotifyShip, debugShip, startAutoNotify, setEnabled, setShipEnabled, setScheduleTime, setPrecheckMinutes,
   setAlertConfig, sendAlertTest, previewAutoNotify, getStatus, autoKey,
 };

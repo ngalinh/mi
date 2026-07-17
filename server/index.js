@@ -690,6 +690,17 @@ app.post('/api/auto-notify/run-ship', async (req, res) => {
   }
 });
 
+// CHẨN ĐOÁN báo ship (read-only): liệt kê từng đơn "Đã báo hàng" + lý do gửi/bỏ qua báo ship.
+// Dùng để soi "vì sao khách X không được tự gửi ship". Không gửi gì.
+app.get('/api/auto-notify/ship-debug', async (req, res) => {
+  try {
+    const result = await autoNotify.debugShip();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Đặt GIỜ GỬI CỐ ĐỊNH + nhắc soạn ND. body: { time?: 'HH:MM' | '', precheckMinutes?: number }.
 // time trống = gửi ngay theo interval; precheckMinutes=0 = tắt nhắc. Chỉ đổi field được gửi lên.
 app.post('/api/auto-notify/schedule', (req, res) => {
