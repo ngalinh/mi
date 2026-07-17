@@ -605,7 +605,9 @@ app.get('/api/order-content', async (req, res) => {
 app.post('/api/notify', async (req, res) => {
   try {
     const { orders, orderIds, profile, account, messageOverride, kind } = req.body || {};
-    const opts = { profile, account, messageOverride, kind, actor: getActor(req) };
+    // graceMs: ân hạn TRƯỚC khi tin thật sự đi (chỉ gửi TAY qua route này) — bấm Dừng trong lúc này
+    // sẽ hủy sạch. Báo loạt (/api/notify-all) & tự động KHÔNG truyền nên chạy ngay như cũ.
+    const opts = { profile, account, messageOverride, kind, actor: getActor(req), graceMs: config.notify.manualGraceMs };
     if (Array.isArray(orders) && orders.length) {
       const result = await notifyOrders(orders, opts);
       return res.json({ ok: true, ...result });

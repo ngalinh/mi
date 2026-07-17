@@ -991,8 +991,12 @@
           account: override && override.account ? override.account : undefined,
         }),
       });
+      // Người dùng bấm Dừng trong lúc ân hạn / server đang chuẩn bị -> server hủy trước khi gửi,
+      // results rỗng. Báo rõ tin CHƯA đi (khác với đã gửi).
+      if (res.stopped) { App.toast('⛔ Đã hủy — tin CHƯA được gửi.', 5000); afterMutation(); return; }
       const r = res.results[0];
       if (res.aborted) App.toast('⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi gửi lại.', 8000);
+      else if (!r) App.toast('Không có kết quả trả về — thử lại.', 5000);
       else if (r.ok) App.toast(`✅ Đã gửi cho ${r.customerName || id}`);
       else if (isNoConversationError(r.error)) {
         App.toast(`🔍 Không tìm thấy cuộc trò chuyện của ${r.customerName || o.customerName || id}`

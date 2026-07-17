@@ -65,6 +65,22 @@ async function delayBetweenCustomers() {
 }
 
 /**
+ * Khoảng "ân hạn" ngắn TRƯỚC khi thật sự gửi 1 đơn báo TAY — cho người dùng kịp bấm Dừng nếu lỡ
+ * click. Chia nhỏ giấc ngủ (200ms) để cờ dừng ăn NGAY. Trả true nếu người dùng đã bấm Dừng trong
+ * lúc chờ (=> hủy gửi), false nếu chờ xong bình thường. ms<=0 -> bỏ qua chờ, chỉ trả trạng thái cờ.
+ */
+async function graceBeforeSend(ms) {
+  if (!ms || ms <= 0) return stopRequested;
+  const STEP_MS = 200;
+  for (let waited = 0; waited < ms; waited += STEP_MS) {
+    if (stopRequested) return true;
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(Math.min(STEP_MS, ms - waited));
+  }
+  return stopRequested;
+}
+
+/**
  * Báo hàng/ship cho 1 đơn: build tin nhắn -> gửi qua local-runner -> (tùy chọn) cập nhật
  * trạng thái về web -> ghi report.
  * @param {object} order - đơn đã chuẩn hóa
@@ -105,6 +121,13 @@ async function resolveOrderMeta(order) {
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
+
+  // ÂN HẠN HỦY (chỉ gửi tay 1 đơn — route /api/notify truyền graceMs): chờ ngắn cho người dùng kịp
+  // bấm Dừng nếu lỡ click. Bấm Dừng trong lúc này -> HỦY SẠCH: chưa gọi Basso, chưa ghi Lịch sử báo,
+  // chưa đẩy job xuống runner nên tin CHẮC CHẮN chưa đi. `stopped` báo cho notifyOrders bỏ qua đơn này.
+  if (await graceBeforeSend(opts.graceMs)) {
+    return { order, ok: false, stopped: true, error: null };
+  }
 
   // LẤY ND TƯƠI NGAY TRƯỚC KHI GỬI (chỉ khi KHÔNG có messageOverride — tức luồng auto-notify &
   // Báo hàng loạt dùng thẳng ND từ Basso). order.noiDungBaoHang có thể là bản CŨ (list cache 30s
@@ -193,6 +216,13 @@ async function notifyOne(order, opts = {}) {
       zaloAccount: null,
     });
     return { order, ok: false, error: err, report };
+  }
+
+  // CHỐT DỪNG LẦN CUỐI trước khi tin thật sự đi: người dùng bấm Dừng trong lúc server đang CHUẨN BỊ
+  // (lấy ND tươi, tra mã ĐH — mất ~1–2s) -> hủy TRƯỚC khi đẩy job xuống runner, KHÔNG ghi Lịch sử báo.
+  // Sau điểm này job đã xuống runner nên không cắt được nữa (runner sắp gõ & bấm gửi trong Zalo).
+  if (stopRequested) {
+    return { order, ok: false, stopped: true, error: null };
   }
 
   // Ghi 1 dòng "đang báo" (pending) NGAY trước khi gửi. Nhờ vậy cả báo tự động lẫn báo tay đều
@@ -341,6 +371,9 @@ async function notifyOrders(orders, opts = {}) {
           && ordered[idx + 1].profileKey === profileKey;
         // eslint-disable-next-line no-await-in-loop
         const r = await notifyOne(order, { ...opts, keepContext });
+        // notifyOne tự hủy trong ân hạn / lúc chuẩn bị (người dùng bấm Dừng trước khi tin đi) ->
+        // KHÔNG tính vào results (không phải gửi lỗi), coi như đơn bỏ dở như khi dừng ở ranh giới.
+        if (r.stopped) { stopped = true; break; }
         // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không cập nhật
         // web). Không đè lên 'success' của bot để giữ đúng badge. Khóa theo LOẠI tin (báo ship dùng
         // autoKeyShip) để báo ship tay chỉ chặn bot báo ship, không đụng báo hàng.
