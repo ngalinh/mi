@@ -59,6 +59,12 @@ function normalize(a) {
     saleworkName: String(a.saleworkName || '').trim(),
     // Nhãn tài khoản Facebook (tuỳ chọn) — chỉ dùng để hiển thị.
     fbName: String(a.fbName || '').trim(),
+    // Device fingerprint (Facebook) — userAgent + viewport để mi mở browser GIỐNG thiết bị
+    // Xeko dùng đăng bài trên cùng account (giảm rủi ro FB checkpoint). Import từ Xeko meta;
+    // để trống thì browser.js suy ra tất định theo key (khớp Xeko). Không set = dùng mặc định.
+    userAgent: String(a.userAgent || '').trim(),
+    viewport: (a.viewport && typeof a.viewport.width === 'number' && typeof a.viewport.height === 'number')
+      ? { width: a.viewport.width, height: a.viewport.height } : undefined,
     // Thông tin đăng nhập Facebook (tuỳ chọn) — chỉ để tự điền form login khi mở Chromium.
     email: String(a.email || '').trim(),
     password: String(a.password || ''),

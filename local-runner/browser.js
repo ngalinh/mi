@@ -4,6 +4,7 @@ const path = require('path');
 const { chromium } = require('playwright');
 const config = require('./config');
 const accountsStore = require('./accountsStore');
+const deviceFingerprint = require('./deviceFingerprint');
 
 /**
  * Quản lý 1 persistent context cho mỗi profile (account Salework/Zalo).
@@ -104,7 +105,22 @@ function proxyForProfile(profileName) {
   } catch { return null; }
 }
 
-async function safeLaunchPersistentContext(userDataDir, proxy) {
+/**
+ * Fingerprint (userAgent + viewport) cho profile — CHỈ áp dụng cho Facebook để mi báo hàng
+ * bằng đúng "thiết bị" Xeko dùng đăng bài trên CÙNG account (giảm rủi ro FB checkpoint).
+ * Zalo giữ nguyên hành vi cũ (viewport mặc định, UA mặc định) để KHÔNG làm lệch session
+ * Salework đang đăng nhập -> tránh bắt đăng nhập lại. Trả null nếu không áp dụng.
+ * Ưu tiên userAgent/viewport đã lưu trên account (import từ meta Xeko); thiếu thì suy ra
+ * tất định theo key (khớp hệt Xeko).
+ */
+function fingerprintForProfile(profileName) {
+  let a = null;
+  try { a = accountsStore.get(profileName); } catch { a = null; }
+  if (!a || a.platform !== 'facebook') return null;
+  return deviceFingerprint.getFingerprint(profileName, { userAgent: a.userAgent, viewport: a.viewport });
+}
+
+async function safeLaunchPersistentContext(userDataDir, proxy, fingerprint) {
   if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
   const opts = {
     headless: config.headless,
@@ -115,13 +131,16 @@ async function safeLaunchPersistentContext(userDataDir, proxy) {
     handleSIGINT: false,
     handleSIGTERM: false,
     handleSIGHUP: false,
-    viewport: { width: 1366, height: 850 },
+    // Viewport theo fingerprint (Facebook) nếu có; mặc định 1366x850 (Zalo / không fingerprint).
+    viewport: (fingerprint && fingerprint.viewport) ? fingerprint.viewport : { width: 1366, height: 850 },
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
       '--disable-dev-shm-usage',
     ],
   };
+  // UA khớp Xeko chỉ khi có fingerprint (Facebook). Không set -> dùng UA mặc định của Chromium.
+  if (fingerprint && fingerprint.userAgent) opts.userAgent = fingerprint.userAgent;
   if (proxy) opts.proxy = proxy;
   return chromium.launchPersistentContext(userDataDir, opts);
 }
@@ -143,7 +162,9 @@ async function getContext(profileName) {
   }
   const proxy = proxyForProfile(profileName);
   if (proxy) console.log(`[browser] profile "${profileName}" dùng proxy ${proxy.server}${proxy.username ? ' (có auth)' : ''}`);
-  const context = await safeLaunchPersistentContext(profilePath(profileName), proxy);
+  const fingerprint = fingerprintForProfile(profileName);
+  if (fingerprint) console.log(`[browser] profile "${profileName}" (FB) fingerprint ${fingerprint.viewport.width}x${fingerprint.viewport.height} UA=...${fingerprint.userAgent.slice(-30)}`);
+  const context = await safeLaunchPersistentContext(profilePath(profileName), proxy, fingerprint);
   context.on('close', () => contexts.delete(profileName));
   entry = { context, lastUsed: Date.now() };
   contexts.set(profileName, entry);
