@@ -590,8 +590,17 @@
 
   // Bộ lọc client-side (Trạng thái gửi tin + Loại trừ/Ghi chú) — tách riêng để dùng được cả khi
   // lọc cả tập (client-mode, trước khi phân trang) lẫn trong phạm vi 1 trang (server-mode).
+  // Khách có ND báo ship nhưng CHƯA gửi báo ship lần nào (kể cả 'sent_check' tính là đã gửi vì tin
+  // đã tới khách). Dùng cho bộ lọc "Có ND ship chưa gửi" -> soi nhanh đơn cần bấm 🚚.
+  function hasUnsentShipContent(o) {
+    const has = o.noiDungBaoShip && String(o.noiDungBaoShip).trim();
+    const shipSent = o.sentAt && o.sentAt.ship;
+    return !!has && !shipSent;
+  }
+
   function applyExcludeNote(list) {
-    if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
+    if (currentSendStatus === 'ship_pending') list = list.filter(hasUnsentShipContent);
+    else if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -1536,6 +1545,7 @@
     sel.className = 'tb-select';
     sel.title = 'Lọc theo trạng thái gửi tin';
     sel.innerHTML = '<option value="" selected>Tất cả gửi tin</option>'
+      + '<option value="ship_pending">Có ND ship chưa gửi</option>'
       + '<option value="success">Đã gửi</option>'
       + '<option value="sent_check">Đã gửi · cần kiểm tra</option>'
       + '<option value="pending">Đang gửi</option>'
