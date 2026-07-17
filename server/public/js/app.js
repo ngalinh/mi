@@ -106,6 +106,19 @@ const App = {
     return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
   },
 
+  // Mốc thời gian GỌN cho ô nhỏ (vd cột trạng thái): bỏ năm nếu cùng năm nay -> "18/07 · 00:17";
+  // khác năm thì rút năm 2 số -> "18/07/25 · 00:17". Đầy đủ vẫn xem ở tooltip (fmtDateTime).
+  fmtShort(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    const p = (n) => String(n).padStart(2, '0');
+    const datePart = d.getFullYear() === new Date().getFullYear()
+      ? `${p(d.getDate())}/${p(d.getMonth() + 1)}`
+      : `${p(d.getDate())}/${p(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`;
+    return `${datePart} · ${p(d.getHours())}:${p(d.getMinutes())}`;
+  },
+
   // Định dạng số tiền VND: 480000 -> "480,000₫"
   fmtVnd(n) {
     if (n == null || n === '' || isNaN(Number(n))) return '';

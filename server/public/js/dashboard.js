@@ -154,13 +154,13 @@
       else if (a.status === 'manual') { icon = 'hand'; cls = 'rpt-manual'; title = `Đã báo thủ công trong mi${when ? ' lúc ' + when : ''}`; }
       else { icon = 'alert'; cls = 'rpt-fail'; title = `Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}`; }
     }
-    const line = (ic, label, at) => at
-      ? `<span class="sent-time" title="${label} lúc ${App.esc(App.fmtDateTime(at))}">${App.icon(ic)} ${App.esc(App.fmtDateTime(at))}</span>`
+    const line = (ic, label, at, kind) => at
+      ? `<span class="sent-time ${kind}" title="${label} lúc ${App.esc(App.fmtDateTime(at))}">${App.icon(ic)} ${App.esc(App.fmtShort(at))}</span>`
       : '';
-    let times = s ? `${line('box', 'Đã gửi báo hàng', s.hang)}${line('truck', 'Đã gửi báo ship', s.ship)}` : '';
+    let times = s ? `${line('box', 'Đã gửi báo hàng', s.hang, 'hang')}${line('truck', 'Đã gửi báo ship', s.ship, 'ship')}` : '';
     // Chưa có mốc từ Lịch sử báo nhưng đã có hành động báo (thủ công/bot) -> vẫn hiện mốc `at`.
     if (!times && a && a.at) {
-      times = `<span class="sent-time" title="${App.esc(title)}">${App.esc(App.fmtDateTime(a.at))}</span>`;
+      times = `<span class="sent-time" title="${App.esc(title)}">${App.esc(App.fmtShort(a.at))}</span>`;
     }
     if (!icon && !times) return '';
     const method = icon ? `<span class="rpt-method ${cls}" title="${App.esc(title)}">${App.icon(icon)}</span>` : '';
