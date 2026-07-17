@@ -296,6 +296,7 @@ Sửa nội dung mặc định trong [`shared/messageTemplate.js`](shared/messag
 | POST | `/api/auto-notify/ship-toggle` `{enabled}` | Bật/tắt tự động báo ship (công tắc riêng, runtime) |
 | POST | `/api/auto-notify/run` | Quét + gửi ngay 1 lượt (báo hàng) |
 | POST | `/api/auto-notify/run-ship` | Quét + gửi ngay 1 lượt BÁO SHIP (đơn đã có ND báo ship) |
+| GET | `/api/auto-notify/ship-debug` | CHẨN ĐOÁN: liệt kê từng đơn "Đã báo hàng" + lý do gửi/bỏ qua báo ship |
 | POST | `/api/webhook/arrived` | Webhook: có hàng về → gửi ngay (header `x-webhook-secret`) |
 | POST | `/api/webhook/ship` | Webhook: có ND báo ship → gửi tin ship ngay (header `x-webhook-secret`) |
 | GET | `/api/reports?status=&q=&limit=` | Lịch sử + thống kê |
