@@ -231,12 +231,14 @@ a { color: var(--primary); text-decoration: none; }
 .sent-time { display: inline-flex; align-items: center; gap: 5px;
   font-size: 11px; line-height: 1.35; font-weight: 600; white-space: nowrap;
   padding: 2px 8px; border-radius: var(--radius-pill);
-  color: var(--muted); background: color-mix(in srgb, var(--muted) 9%, transparent);
+  color: var(--muted); background: color-mix(in srgb, var(--muted) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--muted) 15%, transparent);
   font-variant-numeric: tabular-nums; }
-.sent-time.hang { color: var(--blue); background: var(--blue-soft); border-color: color-mix(in srgb, var(--blue) 20%, transparent); }
-.sent-time.ship { color: var(--green); background: var(--green-soft); border-color: color-mix(in srgb, var(--green) 20%, transparent); }
-.sent-time .icon { width: 12px; height: 12px; flex: none; opacity: .85; }
+.sent-time .icon { width: 12px; height: 12px; flex: none; }
+/* Chip giữ TRUNG TÍNH (xám) cho gọn; chỉ ICON mang màu để phân biệt loại:
+   báo hàng = xanh dương, báo ship = xanh lá. */
+.sent-time.hang .icon { color: var(--blue); }
+.sent-time.ship .icon { color: var(--green); }
 
 /* ============================================================
    Cards
