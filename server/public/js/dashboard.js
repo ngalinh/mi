@@ -138,21 +138,20 @@
       <option value="" ${selVal ? '' : 'selected'}>— Lý do delay —</option>${opts}<option value="${DELAY_OTHER}" ${selVal === DELAY_OTHER ? 'selected' : ''}>${DELAY_OTHER}</option></select>${otherInput}`;
   }
 
-  // Gộp "cách báo" (bot tự động / thủ công / lỗi) + mốc thời gian ĐÃ GỬI vào 1 ô nằm DƯỚI dropdown
-  // trạng thái — bỏ cột "Thời gian gửi" riêng cho gọn. Chỉ còn 1 icon nhỏ (thủ công/tự động/lỗi)
-  // đứng kế mốc thời gian; chi tiết đầy đủ để trong tooltip.
-  //   - Icon cách báo: bot=tự động · hand=thủ công · alert=lỗi (lấy từ `autoNotified`).
-  //   - Mốc thời gian: báo hàng (box) / báo ship (truck) từ Lịch sử báo (server enrich `sentAt`);
-  //     chưa có mốc nào từ lịch sử nhưng đã có hành động báo -> hiện mốc `at` của hành động đó.
+  // Mốc thời gian ĐÃ GỬI nằm DƯỚI dropdown trạng thái — mỗi loại 1 chip có màu:
+  //   báo hàng (box, xanh dương) / báo ship (truck, xanh lá) từ Lịch sử báo (server enrich `sentAt`).
+  // "Cách báo" (bot/thủ công/lỗi) vẫn xem được ở cột NGƯỜI GỬI + KẾT QUẢ GỬI + tooltip — nên bỏ icon
+  // tay/bot ở đây cho gọn. Chưa có mốc nào từ lịch sử nhưng đã có hành động báo -> hiện mốc `at`.
   function reportMetaCell(o) {
     const a = o.autoNotified;
     const s = o.sentAt;
-    let icon = '', cls = '', title = '';
+    // Tooltip cho mốc fallback (khi chỉ có dấu autoNotified, chưa có mốc từ Lịch sử báo).
+    let title = '';
     if (a) {
       const when = a.at ? App.fmtDateTime(a.at) : '';
-      if (a.status === 'success') { icon = 'bot'; cls = 'rpt-auto'; title = `Bot tự động đã gửi${when ? ' lúc ' + when : ''}`; }
-      else if (a.status === 'manual') { icon = 'hand'; cls = 'rpt-manual'; title = `Đã báo thủ công trong mi${when ? ' lúc ' + when : ''}`; }
-      else { icon = 'alert'; cls = 'rpt-fail'; title = `Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}`; }
+      if (a.status === 'success') title = `Bot tự động đã gửi${when ? ' lúc ' + when : ''}`;
+      else if (a.status === 'manual') title = `Đã báo thủ công trong mi${when ? ' lúc ' + when : ''}`;
+      else title = `Bot gửi lỗi ${a.attempts} lần${when ? ' · ' + when : ''}`;
     }
     const line = (ic, label, at, kind) => at
       ? `<span class="sent-time ${kind}" title="${label} lúc ${App.esc(App.fmtDateTime(at))}">${App.icon(ic)} ${App.esc(App.fmtShort(at))}</span>`
@@ -162,9 +161,8 @@
     if (!times && a && a.at) {
       times = `<span class="sent-time" title="${App.esc(title)}">${App.esc(App.fmtShort(a.at))}</span>`;
     }
-    if (!icon && !times) return '';
-    const method = icon ? `<span class="rpt-method ${cls}" title="${App.esc(title)}">${App.icon(icon)}</span>` : '';
-    return `<div class="report-meta">${method}<div class="sent-times">${times}</div></div>`;
+    if (!times) return '';
+    return `<div class="sent-times">${times}</div>`;
   }
 
   // ---- Người gửi / Tài khoản (gộp từ Lịch sử báo) ----

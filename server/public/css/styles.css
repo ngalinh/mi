@@ -224,16 +224,9 @@ a { color: var(--primary); text-decoration: none; }
 .badge-clickable:hover { filter: brightness(0.97); border-color: currentColor; }
 /* Cột trạng thái: dropdown + (icon cách báo · mốc thời gian) xếp dọc cho thoáng */
 .status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
-/* Gộp "cách báo" + "thời gian gửi": 1 icon tròn nhỏ (thủ công/tự động/lỗi) đứng kế mốc thời gian.
-   Mỗi mốc là 1 chip nhỏ có màu theo loại: báo hàng (xanh dương) / báo ship (xanh lá) -> nhìn gọn,
-   phân biệt rõ; ngày rút gọn (bỏ năm nếu cùng năm), đầy đủ ở tooltip. */
-.report-meta { display: inline-flex; align-items: center; gap: 7px; }
-.rpt-method { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
-  flex: none; border-radius: 50%; color: var(--green); background: var(--green-soft);
-  border: 1px solid color-mix(in srgb, var(--green) 24%, transparent); }
-.rpt-method .icon { width: 13px; height: 13px; }
-.rpt-method.rpt-fail { color: var(--red); background: var(--red-soft); border-color: color-mix(in srgb, var(--red) 24%, transparent); }
-.rpt-method.rpt-manual { color: var(--primary); background: var(--primary-soft); border-color: color-mix(in srgb, var(--primary) 26%, transparent); }
+/* Mốc "thời gian gửi" dưới dropdown trạng thái: mỗi mốc là 1 chip nhỏ có màu theo loại — báo hàng
+   (xanh dương) / báo ship (xanh lá) -> nhìn gọn, phân biệt rõ; ngày rút gọn (bỏ năm nếu cùng năm),
+   đầy đủ ở tooltip. (Đã bỏ icon tay/bot cho gọn — "cách báo" xem ở cột Người gửi / Kết quả gửi.) */
 .sent-times { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
 .sent-time { display: inline-flex; align-items: center; gap: 5px;
   font-size: 11px; line-height: 1.35; font-weight: 600; white-space: nowrap;
