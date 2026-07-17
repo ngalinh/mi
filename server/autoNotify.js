@@ -34,6 +34,10 @@ const SHIP_ENABLED_KEY = 'autoNotify.shipEnabled';
 // Khoá lưu MỐC ĐÃ SEED lúc bật báo ship (ISO time). Có mốc = đã chốt "ảnh chụp tồn cũ" -> chỉ ND
 // ship phát sinh SAU đó mới gửi. Trống = chưa seed (đang chuẩn bị / seed lỗi) -> chưa gửi để an toàn.
 const SHIP_SEEDED_KEY = 'autoNotify.shipSeededAt';
+// Khoá lưu THỐNG KÊ seed gần nhất (JSON {at,scanned,seeded}) để dòng "Đã seed N đơn tồn cũ" trên
+// trang Cài đặt KHÔNG mất khi server restart/recycle (trước đây chỉ giữ trong RAM -> reload sau
+// khi cloud recycle là trống).
+const SHIP_SEED_INFO_KEY = 'autoNotify.shipSeedInfo';
 // Khoá lưu cấu hình "nhắc ra Zalo (nội bộ)".
 const ALERT_ENABLED_KEY = 'autoNotify.alertEnabled';
 const ALERT_ACCOUNT_KEY = 'autoNotify.alertAccount';
@@ -126,6 +130,13 @@ function initialShipEnabled() {
   return !!cfg.shipEnabled;
 }
 
+/** Khôi phục thống kê seed gần nhất từ DB (để hiển thị giữ qua restart). null nếu chưa có/hỏng. */
+function initialShipSeed() {
+  const raw = safeGet(SHIP_SEED_INFO_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 // Cấu hình "nhắc ra Zalo" lúc khởi động: DB (admin lưu) ghi đè env.
 function initialAlert() {
   const a = cfg.alert || {};
@@ -156,7 +167,7 @@ const state = {
   // shipEnabled = công tắc RIÊNG (độc lập báo hàng) — bật/tắt trên trang Cài đặt, lưu bền DB.
   shipEnabled: initialShipEnabled(),
   shipSeeding: false,   // đang chạy seed "ảnh chụp tồn cũ" lúc bật báo ship
-  lastShipSeed: null,   // kết quả seed gần nhất { at, scanned, seeded }
+  lastShipSeed: initialShipSeed(),   // kết quả seed gần nhất { at, scanned, seeded } (khôi phục từ DB)
   runningShip: false,
   lastShipRun: null,
   lastShipResult: null,
@@ -491,6 +502,8 @@ async function seedShip() {
   const at = new Date().toISOString();
   state.lastShipSeed = { at, scanned, seeded };
   try { setSetting(SHIP_SEEDED_KEY, at); } catch (_) { /* ignore */ }
+  // Lưu bền thống kê để dòng "Đã seed N đơn tồn cũ" không mất khi server restart/recycle.
+  try { setSetting(SHIP_SEED_INFO_KEY, JSON.stringify(state.lastShipSeed)); } catch (_) { /* ignore */ }
   console.log(`[auto-ship] SEED lúc bật: đánh dấu ${seeded} đơn tồn cũ (đã có sẵn ND ship) trong ${scanned} đơn quét — sẽ KHÔNG gửi; chỉ gửi ND ship phát sinh sau lúc bật.`);
   return { at, scanned, seeded };
 }
