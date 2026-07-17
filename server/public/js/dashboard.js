@@ -959,11 +959,29 @@
   // Lỗi "không tìm thấy cuộc trò chuyện" do runner ném (KHONG_THAY_HOI_THOAI) khi search SĐT/tên
   // không ra hàng nào trong mục "Trò chuyện". Dùng để hiện thông báo rõ ràng cho người dùng.
   const isNoConversationError = (msg) => /KHONG_THAY_HOI_THOAI/i.test(msg || '');
+  // Xác nhận TRƯỚC khi gửi từng đơn qua nút icon gửi nhanh (hộp/xe) — tránh lỡ tay click gửi nhầm.
+  // KHÔNG áp cho nút "Gửi" trong modal (bản thân modal đã là bước xem lại nội dung). Nếu đơn đã báo
+  // thì hỏi luôn kiểu "vẫn gửi lại?" (gộp với cảnh báo đã-báo để KHÔNG bật 2 popup liên tiếp).
+  function confirmSendRow(sz) {
+    const id = sz.dataset.id;
+    const kind = sz.dataset.kind === 'ship' ? 'ship' : 'hang';
+    const o = byId(id);
+    const who = (o && o.customerName) ? o.customerName : `đơn ${id}`;
+    const kindLabel = kind === 'ship' ? 'báo ship' : 'báo hàng';
+    const reason = o ? notifiedReason(o, kind) : '';
+    const msg = reason
+      ? `Đơn của ${who} ${reason}. Vẫn gửi lại?`
+      : `Gửi ${kindLabel} cho ${who}?`;
+    if (!confirm(msg)) return;
+    return sendZalo(id, undefined, sz, kind, null, { skipConfirm: true });
+  }
+
   // override (tuỳ chọn) = { profile, account } để ép gửi qua 1 tài khoản Zalo cụ thể (gửi thử).
-  async function sendZalo(id, messageOverride, btnEl, kind = 'hang', override = null) {
+  async function sendZalo(id, messageOverride, btnEl, kind = 'hang', override = null, o2 = {}) {
     const o = byId(id); if (!o) return;
     const reason = notifiedReason(o, kind);
-    if (reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
+    // o2.skipConfirm = caller đã hỏi xác nhận rồi (vd confirmSendRow) -> KHÔNG hỏi lại lần nữa.
+    if (!o2.skipConfirm && reason && !confirm(`Đơn của ${o.customerName || id} ${reason}. Vẫn gửi lại?`)) return;
     const btn = btnEl || rowsEl.querySelector(`.send-zalo[data-id="${cssEsc(String(id))}"][data-kind="${kind}"]`);
     const label = btn ? btn.innerHTML : '';
     const origTitle = btn ? btn.title : '';
@@ -1626,7 +1644,7 @@
     const ge = t.closest('.group-expand'); if (ge) return toggleGroup(ge.dataset.groupKey);
     const exp = t.closest('.expand-btn'); if (exp) return toggleDetail(exp.dataset.id);
     const vc = t.closest('.view-content'); if (vc) return openModal(vc.dataset.id, vc.dataset.kind);
-    const sz = t.closest('.send-zalo'); if (sz) return sz.dataset.stop ? stopManualSend(sz) : sendZalo(sz.dataset.id, undefined, sz, sz.dataset.kind || 'hang');
+    const sz = t.closest('.send-zalo'); if (sz) return sz.dataset.stop ? stopManualSend(sz) : confirmSendRow(sz);
     const sn = t.closest('.save-note'); if (sn) return saveNote(sn.dataset.id);
   });
   // Theo dõi ghi chú đang gõ: đánh dấu "chưa lưu" để render lại không làm mất,
