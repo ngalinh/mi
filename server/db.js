@@ -112,6 +112,17 @@ db.exec(`  -- Cờ "Delay / Loại trừ": đánh dấu đơn tạm hoãn để 
 // Migration: thêm lý do delay (vd "Đợi bank", "Đợi hàng về thêm"). Chạy lại không sao.
 try { db.exec('ALTER TABLE delayed_orders ADD COLUMN reason TEXT'); } catch (_) { /* đã có cột */ }
 
+db.exec(`  -- Lần ĐẦU TIÊN Mi quan sát thấy 1 đơn CÓ "nội dung ship" (content_ship). Basso KHÔNG trả
+  -- về giờ nhân viên nhập ND ship, nên Mi tự ghi mốc lúc lần đầu THẤY đơn có ND ship (qua enrich
+  -- danh sách / backfill lúc khởi động). Dùng cho bộ lọc "ND ship mới hôm nay" trên dashboard:
+  -- đơn có first_seen_at rơi vào hôm nay = ND ship vừa mới nhập (cần đi báo ship).
+  -- Khoá = autoKey(order) (customer_id + date_inventory) để ổn định qua các lần tải lại.
+  CREATE TABLE IF NOT EXISTS ship_seen (
+    order_key     TEXT PRIMARY KEY,
+    first_seen_at TEXT NOT NULL            -- ISO string: lần đầu Mi thấy đơn có ND ship
+  );
+`);
+
 db.exec(`  -- Danh sách NHÂN VIÊN được phép vào dashboard Mi. KHÔNG lưu mật khẩu: việc đăng
   -- nhập do gateway ai.basso.vn lo (xem config.auth.userHeaders) — bảng này chỉ map
   -- EMAIL đăng nhập -> vai trò + trạng thái để Mi quản lý phân quyền/hiển thị.
@@ -417,6 +428,41 @@ function setDelayed(orderKey, delayed, reason) {
   else delDelayedStmt.run({ order_key });
   return !!delayed;
 }
+
+// ---- Mốc "lần đầu thấy ND ship" (cho bộ lọc "ND ship mới hôm nay") ----
+const getShipSeenStmt = db.prepare('SELECT order_key, first_seen_at FROM ship_seen');
+const insShipSeenStmt = db.prepare(
+  'INSERT OR IGNORE INTO ship_seen (order_key, first_seen_at) VALUES (@order_key, @first_seen_at)',
+);
+const countShipSeenStmt = db.prepare('SELECT COUNT(*) AS n FROM ship_seen');
+
+/** Map autoKey(order) -> ISO time lần đầu Mi thấy đơn có ND ship. Nạp 1 query cho cả tập. */
+function getShipSeenMap() {
+  const m = new Map();
+  for (const r of getShipSeenStmt.all()) m.set(r.order_key, r.first_seen_at);
+  return m;
+}
+
+/**
+ * Ghi mốc "lần đầu thấy ND ship" cho danh sách khoá đơn (autoKey). INSERT OR IGNORE -> khoá đã có
+ * mốc thì GIỮ NGUYÊN (không dời ngày) để "mới/cũ" ổn định. Trả về số khoá thực sự mới ghi.
+ * @param {string[]} keys  danh sách autoKey(order)
+ * @param {string} [atISO] mốc muốn ghi (mặc định now) — truyền quá khứ khi backfill để đơn tồn cũ
+ *                          KHÔNG bị tính là "mới hôm nay" lúc mới bật tính năng.
+ */
+function recordShipSeen(keys, atISO) {
+  if (!Array.isArray(keys) || !keys.length) return 0;
+  const first_seen_at = atISO || new Date().toISOString();
+  let n = 0;
+  for (const key of keys) {
+    const info = insShipSeenStmt.run({ order_key: String(key), first_seen_at });
+    if (info && info.changes) n += 1;
+  }
+  return n;
+}
+
+/** Số đơn đã có mốc ship_seen — dùng để biết đã backfill lần đầu hay chưa (0 = chưa). */
+function countShipSeen() { return countShipSeenStmt.get().n || 0; }
 
 // ---- Cấu hình hệ thống (key-value, chỉnh trên web) ----
 const getSettingStmt = db.prepare('SELECT value FROM app_settings WHERE key = @key');
@@ -792,6 +838,7 @@ migrateFbRoutingIntoContacts();
 
 module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, autoKeyShip, getDelayedMap, setDelayed,
+  getShipSeenMap, recordShipSeen, countShipSeen,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,

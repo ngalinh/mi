@@ -601,8 +601,26 @@
     return !!has && !shipSent;
   }
 
+  // ISO time có rơi vào HÔM NAY (giờ máy người xem) không? Dùng cho lọc "ND ship mới hôm nay".
+  function isSameDayToday(iso) {
+    if (!iso) return false;
+    const d = new Date(iso);
+    if (isNaN(d)) return false;
+    const now = new Date();
+    return d.getFullYear() === now.getFullYear()
+      && d.getMonth() === now.getMonth()
+      && d.getDate() === now.getDate();
+  }
+
+  // Đơn có ND ship VỪA MỚI NHẬP HÔM NAY & chưa gửi báo ship -> danh sách cần đi báo ship trong ngày.
+  // `shipFirstSeen` do server ghi lần đầu Mi thấy đơn có ND ship (Basso không có mốc giờ nhập ND ship).
+  function isShipNewToday(o) {
+    return hasUnsentShipContent(o) && isSameDayToday(o.shipFirstSeen);
+  }
+
   function applyExcludeNote(list) {
     if (currentSendStatus === 'ship_pending') list = list.filter(hasUnsentShipContent);
+    else if (currentSendStatus === 'ship_new_today') list = list.filter(isShipNewToday);
     else if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
@@ -1591,6 +1609,7 @@
     sel.className = 'tb-select';
     sel.title = 'Lọc theo trạng thái gửi tin';
     sel.innerHTML = '<option value="" selected>Tất cả gửi tin</option>'
+      + '<option value="ship_new_today">🚚 ND ship mới hôm nay</option>'
       + '<option value="ship_pending">Có ND ship chưa gửi</option>'
       + '<option value="success">Đã gửi</option>'
       + '<option value="sent_check">Đã gửi · cần kiểm tra</option>'
@@ -1614,6 +1633,14 @@
     currentSendStatus = e.target.value || '';
     currentPage = 1;
     paintSendStatusFilter();
+    // ND ship chỉ nằm trên đơn ĐÃ báo hàng (arrival/ship). Nếu đang ở tab "Chưa báo" (todo) thì
+    // lọc ship chắc chắn RỖNG -> tự chuyển trạng thái đơn về "Tất cả" cho lọc ship có tác dụng.
+    // Chỉ đổi khi đang mắc ở 'todo'; nếu người dùng đã chọn arrival/ship/all thì tôn trọng.
+    const shipFilter = currentSendStatus === 'ship_new_today' || currentSendStatus === 'ship_pending';
+    if (shipFilter && currentGroup === 'todo') {
+      currentGroup = '';
+      const st = $('fStatus'); if (st) { st.value = ''; st.dataset.v = ''; }
+    }
     // Lọc trên TOÀN tập: bật -> kéo cả tập (client-mode); tắt & không còn lọc client-side nào ->
     // quay lại server-mode. Dùng chung helper để không "rơi" nhầm mode khi Loại trừ/Ghi chú còn bật.
     syncClientFilterMode();

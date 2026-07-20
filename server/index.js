@@ -7,6 +7,7 @@ const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
+  getShipSeenMap, recordShipSeen, countShipSeen,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
@@ -469,7 +470,12 @@ function enrichOrders(orders) {
   // Danh bạ Zalo (SĐT-chuẩn-hoá -> tên group) để hiện cột "Tên Zalo/FB" + cho biết đơn nào
   // sẽ gửi theo tên group. Nạp 1 lần cho cả tập.
   const zaloMap = getZaloMap();
-  return orders.map((o) => {
+  // Mốc "lần đầu Mi thấy ND ship" -> cho bộ lọc "ND ship mới hôm nay". Đơn CÓ ND ship mà chưa có
+  // mốc thì ghi mốc = BÂY GIỜ (Mi vừa thấy lần đầu) rồi gom lại ghi 1 lượt cuối vòng lặp.
+  const shipSeenMap = getShipSeenMap();
+  const nowIso = new Date().toISOString();
+  const newShipKeys = [];
+  const enriched = orders.map((o) => {
     const key = autoNotify.autoKey(o);
     const a = autoMap.get(String(key));
     const withAuto = a ? { ...o, autoNotified: { status: a.status, attempts: a.attempts, at: a.updated_at } } : o;
@@ -481,8 +487,39 @@ function enrichOrders(orders) {
       ? { ...withLast, delayed: true, delayReason: delayedMap.get(key) }
       : withLast;
     const zaloName = o.phone ? zaloMap.get(normPhone(o.phone)) : '';
-    return zaloName ? { ...withDelay, zaloName } : withDelay;
+    const withZalo = zaloName ? { ...withDelay, zaloName } : withDelay;
+    // Mốc "mới hôm nay": chỉ áp cho đơn ĐANG có ND ship. Chưa có mốc -> lần đầu thấy = now.
+    const hasShip = o.noiDungBaoShip && String(o.noiDungBaoShip).trim();
+    if (!hasShip) return withZalo;
+    let firstSeen = shipSeenMap.get(String(key));
+    if (!firstSeen) { firstSeen = nowIso; newShipKeys.push(String(key)); }
+    return { ...withZalo, shipFirstSeen: firstSeen };
   });
+  if (newShipKeys.length) { try { recordShipSeen(newShipKeys, nowIso); } catch (_) { /* ghi mốc lỗi -> bỏ qua, lần sau ghi lại */ } }
+  return enriched;
+}
+
+/**
+ * BACKFILL 1 LẦN mốc ship_seen lúc BẬT tính năng: các đơn ĐANG có sẵn ND ship khi mới deploy được
+ * đánh dấu first_seen = "hôm qua" (đầu hôm nay - 1s) để KHÔNG bị tính nhầm là "mới hôm nay" ngày
+ * đầu. Từ đó về sau chỉ ND ship XUẤT HIỆN sau mới rơi vào "hôm nay". Chỉ chạy khi bảng còn RỖNG
+ * (chưa từng ghi mốc). Chạy ở nền, nuốt lỗi để không cản khởi động.
+ */
+async function backfillShipSeenOnce() {
+  try {
+    if (countShipSeen() > 0) return;                 // đã có mốc -> đã backfill/đã chạy, khỏi làm lại
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const backdate = new Date(startOfToday.getTime() - 1000).toISOString(); // 23:59:59 hôm qua
+    const orders = await fetchAllOrders({});          // tất cả đơn all-time (mọi trạng thái)
+    const keys = [];
+    for (const o of orders) {
+      if (o && o.noiDungBaoShip && String(o.noiDungBaoShip).trim()) keys.push(autoNotify.autoKey(o));
+    }
+    const n = recordShipSeen(keys, backdate);
+    console.log(`[ship-seen] backfill lần đầu: đánh dấu ${n} đơn có sẵn ND ship là "tồn cũ" (không tính là mới hôm nay).`);
+  } catch (e) {
+    console.warn('[ship-seen] backfill lỗi (sẽ tự ghi mốc dần khi enrich danh sách):', e.message);
+  }
 }
 
 // ---- Dashboard: danh sách hàng về (phân trang server-side) ----
@@ -881,5 +918,8 @@ app.listen(config.port, () => {
     console.warn('[server] ⚠️  Webhook /api/webhook/arrived BỊ KHÓA (production nhưng chưa đặt AUTO_NOTIFY_WEBHOOK_SECRET). Đặt secret để bật, hoặc chỉ dùng poller AUTO_NOTIFY.');
   }
   autoNotify.startAutoNotify();
-  cacheWarmer.start();
+  // Backfill mốc "lần đầu thấy ND ship" TRƯỚC khi warm cache: cacheWarmer nạp tab "Chưa báo" có thể
+  // enrich & ghi mốc "now" cho đơn tồn cũ, nên phải backdate xong mới cho warm chạy (chỉ chạy 1 lần
+  // khi bảng còn rỗng; finally để cacheWarmer vẫn bật kể cả backfill lỗi/không có gì để làm).
+  backfillShipSeenOnce().finally(() => cacheWarmer.start());
 });
