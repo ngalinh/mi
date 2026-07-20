@@ -26,6 +26,11 @@
   // Đang có 1 phiên báo loạt chạy trên server hay không. Khi true, nút "Báo hàng loạt" đổi vai thành
   // nút "Dừng" (bấm -> /api/notify-all/stop) và render KHÔNG đè nhãn/disable của nút đó.
   let bulkSending = false;
+  // Tab này "nhận" một phiên báo loạt đang chạy trên server mà KHÔNG phải do chính nó khởi động
+  // (vd: vừa reload trang trong lúc loạt đang gửi). Khác `bulkSending` ở chỗ không có promise
+  // bulkSend() đang await để tự khôi phục nút -> việc reset nút do health poll đảm nhiệm khi server
+  // báo loạt đã xong. Khi bulkSending HOẶC bulkAdopted, nút "Báo hàng loạt" đóng vai nút "Dừng".
+  let bulkAdopted = false;
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
   // từ Basso không xoá mất phần đang soạn dở. Xoá khỏi map ngay khi lưu thành công.
   const dirtyNotes = new Map();
@@ -699,8 +704,9 @@
       if (currentGroup !== 'todo') txt += ` · ${counts.todo} chưa báo`;
       ci.textContent = txt;
     }
-    // Đang gửi loạt: nút đóng vai "Dừng" -> KHÔNG để render đè disable/nhãn của nó.
-    if (!bulkSending) $('bulkBtn').disabled = counts.todo === 0;
+    // Đang gửi loạt (tab này chạy HOẶC vừa reload nhận từ server): nút đóng vai "Dừng" -> KHÔNG để
+    // render đè disable/nhãn của nó.
+    if (!bulkSending && !bulkAdopted) $('bulkBtn').disabled = counts.todo === 0;
   }
 
   // ---------------- Mở rộng dòng ----------------
@@ -1099,6 +1105,11 @@
     const btn = $('bulkBtn');
     btn.disabled = true; // chặn bấm dừng nhiều lần; bulkSend() sẽ khôi phục nút khi loạt kết thúc
     btn.innerHTML = '<span class="spinner"></span> Đang dừng...';
+    // Banner cũng phản ánh "đang dừng" để rõ ràng (bấm từ nút chính hoặc từ banner đều tới đây).
+    const bBtn = $('bulkBannerStop');
+    const bTxt = $('bulkBanner') && $('bulkBanner').querySelector('.bulk-banner-text');
+    if (bBtn) bBtn.disabled = true;
+    if (bTxt) bTxt.textContent = 'Đang dừng báo hàng loạt…';
     try {
       const res = await App.api('/api/notify-all/stop', { method: 'POST' });
       App.toast(res.stopping
@@ -1107,7 +1118,9 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
       // Gọi dừng lỗi (mạng...) -> cho bấm lại; nút vẫn ở chế độ "đang gửi".
-      if (bulkSending) { btn.disabled = false; btn.innerHTML = App.icon('stop') + ' Dừng báo loạt'; }
+      if (bulkSending || bulkAdopted) { btn.disabled = false; btn.innerHTML = App.icon('stop') + ' Dừng báo loạt'; }
+      if (bBtn) bBtn.disabled = false;
+      if (bTxt) bTxt.textContent = 'Đang báo hàng loạt…';
     }
   }
 
@@ -1450,7 +1463,42 @@
       } else {
         tb.style.display = 'none';
       }
+      syncBulkButton(h.bulkRunning === true);
     } catch { /* ignore */ }
+  }
+
+  // Đồng bộ nút "Báo hàng loạt" với trạng thái server. Nhờ vậy sau khi RELOAD trang (state client bị
+  // mất) mà server VẪN đang gửi loạt, nút tự khôi phục về vai "Dừng" để bấm dừng được — và tự trở lại
+  // mặc định khi loạt kết thúc. Không đụng tới tab đang tự chạy bulkSend() (bulkSend/stopBulk tự quản).
+  function syncBulkButton(running) {
+    // Banner luôn phản ánh trạng thái server (kể cả tab đang tự chạy bulkSend()).
+    setBulkBanner(running);
+    if (bulkSending) return;
+    const btn = $('bulkBtn');
+    if (running && !bulkAdopted) {
+      bulkAdopted = true;
+      btn.disabled = false;
+      btn.classList.remove('is-loading');
+      btn.innerHTML = App.icon('stop') + ' Dừng báo loạt';
+    } else if (!running && bulkAdopted) {
+      // Server báo loạt đã xong (tự hết hoặc do bấm Dừng) -> trả nút về mặc định.
+      bulkAdopted = false;
+      resetBulkBtn();
+    }
+  }
+
+  // Hiện/ẩn banner "Đang báo hàng loạt…" ở đầu bảng. Khi ẩn (loạt đã xong) thì trả nút/nhãn banner về
+  // mặc định để lần chạy sau hiện lại sạch sẽ.
+  function setBulkBanner(running) {
+    const banner = $('bulkBanner');
+    if (!banner) return;
+    banner.hidden = !running;
+    if (!running) {
+      const bBtn = $('bulkBannerStop');
+      const bTxt = banner.querySelector('.bulk-banner-text');
+      if (bBtn) bBtn.disabled = false;
+      if (bTxt) bTxt.textContent = 'Đang báo hàng loạt…';
+    }
   }
 
   // ---------------- Bộ lọc nâng cao (popover) ----------------
@@ -1577,8 +1625,11 @@
     clearTimeout(qTimer);
     qTimer = setTimeout(() => { currentPage = 1; applyFilters({ keepPage: true }); }, clientMode ? 120 : 400);
   });
-  // Rảnh -> mở modal báo loạt; đang gửi -> đóng vai nút Dừng.
-  $('bulkBtn').addEventListener('click', () => (bulkSending ? stopBulk() : openBulkModal()));
+  // Rảnh -> mở modal báo loạt; đang gửi (tab này chạy HOẶC vừa reload nhận từ server) -> đóng vai nút Dừng.
+  $('bulkBtn').addEventListener('click', () => ((bulkSending || bulkAdopted) ? stopBulk() : openBulkModal()));
+  // Nút "Dừng ngay" trên banner: dừng loạt đang chạy (dùng chung stopBulk).
+  const bulkBannerStop = $('bulkBannerStop');
+  if (bulkBannerStop) bulkBannerStop.addEventListener('click', stopBulk);
 
   // (Thanh thẻ trạng thái đã bỏ — lọc trạng thái nằm trong popover "Bộ lọc", xem xử lý ở fApply.)
 

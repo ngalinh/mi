@@ -127,6 +127,15 @@
             </button>
           </div>
 
+          <!-- Banner "đang báo loạt": hiện khi server đang chạy 1 phiên báo hàng loạt. Giữ hiển thị cả
+               sau khi reload trang (đọc từ /api/health) để người dùng luôn thấy loạt còn chạy và bấm
+               "Dừng ngay" được. Ẩn khi không có loạt nào chạy. -->
+          <div id="bulkBanner" class="bulk-banner" hidden>
+            <span class="spinner"></span>
+            <span class="bulk-banner-text">Đang báo hàng loạt…</span>
+            <button type="button" class="btn small" id="bulkBannerStop">Dừng ngay</button>
+          </div>
+
           <!-- Dòng thông tin gọn (thay thanh thẻ đếm đã bỏ): trạng thái đang lọc + số chưa báo -->
           <div id="countInfo" class="count-info muted"></div>
 

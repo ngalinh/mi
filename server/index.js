@@ -10,7 +10,7 @@ const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoM
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
-const { notifyMany, notifyOrders, requestStopBulk } = require('./notifyService');
+const { notifyMany, notifyOrders, requestStopBulk, isBulkRunning } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
 const autoNotify = require('./autoNotify');
@@ -166,6 +166,9 @@ app.get('/api/health', async (req, res) => {
     },
     autoNotify: autoNotify.getStatus(),
     preload: cacheWarmer.getStatus(),
+    // Có phiên báo loạt (tay) đang chạy trên server không. Dashboard dùng cờ này để KHÔI PHỤC nút
+    // "Dừng báo loạt" sau khi reload trang (state client bị mất nhưng server vẫn đang gửi).
+    bulkRunning: isBulkRunning(),
     // Số nhân viên đã ánh xạ sang tài khoản Zalo (ZALO_ACCOUNT_MAP) — để kiểm tra cấu hình.
     zaloAccountMapped: Object.keys(config.zaloAccountMap).length,
   });
