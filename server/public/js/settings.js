@@ -482,19 +482,33 @@
   let autoEnabled = false;
   let scheduleTime = '';
 
+  // Điều khiển 1 công tắc (switch): trạng thái on/off, nhãn, và trạng thái "cần chú ý" (muted = hổ phách).
+  function setSwitch(el, on, label, opts) {
+    if (!el) return;
+    opts = opts || {};
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+    el.classList.toggle('switch-muted', !!opts.muted);
+    if (opts.disabled) el.setAttribute('aria-disabled', 'true');
+    else el.removeAttribute('aria-disabled');
+    const t = el.querySelector('.switch-text');
+    if (t) t.textContent = label;
+  }
+
   function renderAutoBadge(a) {
     autoEnabled = !!(a && a.enabled);
     const el = $('autoBadge');
     const sched = a && a.scheduleTime;
-    let mode;
     // Sau restart: bật nhưng đang chờ admin bấm "Quét & gửi" -> báo rõ để không tưởng nhầm là đang chạy.
     const paused = autoEnabled && a && a.awaitingResume;
-    if (!autoEnabled) mode = 'Tắt';
-    else if (paused) mode = 'Tạm dừng sau khởi động — bấm "Quét & gửi" để tiếp tục';
-    else if (sched) mode = `Bật (gửi lúc ${sched})`;
-    else mode = `Bật (mỗi ${Math.round(((a && a.intervalMs) || 0) / 1000)}s)`;
-    el.textContent = 'Tự động: ' + mode;
-    el.className = 'badge-status badge-clickable ' + (paused ? 'badge-pending' : (autoEnabled ? 'badge-online' : 'badge-offline'));
+    const label = !autoEnabled ? 'Tắt' : (paused ? 'Tạm dừng' : 'Bật');
+    setSwitch(el, autoEnabled, label, { muted: paused });
+    const detail = $('autoDetail');
+    if (detail) {
+      if (paused) detail.textContent = 'Tạm dừng sau khởi động — bấm "Quét & gửi" ở trang Hàng về để tiếp tục.';
+      else if (autoEnabled && sched) detail.textContent = `Đang bật · gửi lúc ${sched} mỗi ngày.`;
+      else if (autoEnabled) detail.textContent = `Đang bật · gửi mỗi ${Math.round(((a && a.intervalMs) || 0) / 1000)}s.`;
+      else detail.textContent = '';
+    }
     renderSchedule(a);
     renderAlert(a);
     renderAutoShip(a);
@@ -506,11 +520,7 @@
   function renderAutoShip(a) {
     if (!a) return;
     shipEnabled = !!a.shipEnabled;
-    const badge = $('autoShipBadge');
-    if (badge) {
-      badge.textContent = 'Ship: ' + (shipEnabled ? 'Bật' : 'Tắt');
-      badge.className = 'badge-status badge-clickable ' + (shipEnabled ? 'badge-online' : 'badge-offline');
-    }
+    setSwitch($('autoShipBadge'), shipEnabled, shipEnabled ? 'Bật' : 'Tắt');
     const st = $('autoShipStatus');
     if (!st) return;
     const parts = [];
@@ -554,11 +564,7 @@
   function renderAlert(a) {
     if (!a) return;
     alertEnabled = !!a.alertEnabled;
-    const badge = $('alertBadge');
-    if (badge) {
-      badge.textContent = 'Nhắc Zalo: ' + (alertEnabled ? 'Bật' : 'Tắt');
-      badge.className = 'badge-status badge-clickable ' + (alertEnabled ? 'badge-online' : 'badge-offline');
-    }
+    setSwitch($('alertBadge'), alertEnabled, alertEnabled ? 'Bật' : 'Tắt');
     const setIf = (id, val) => { const el = $(id); if (el && document.activeElement !== el) el.value = val || ''; };
     setIf('alertAccount', a.alertAccount);
     setIf('alertPhone', a.alertPhone);
@@ -760,15 +766,13 @@
     const input = $('testPhonesInput');
     if (!online || !t) {
       testKnown = false;
-      badge.textContent = 'TEST: (local-runner offline)';
-      badge.className = 'badge-status badge-offline';
+      setSwitch(badge, false, 'Local-runner offline', { muted: true, disabled: true });
       saveBtn.disabled = true;
       return;
     }
     testKnown = true;
     testMode = !!t.testMode;
-    badge.textContent = 'TEST: ' + (testMode ? 'Bật (chỉ gửi số whitelist)' : 'Tắt (gửi khách thật)');
-    badge.className = 'badge-status badge-clickable ' + (testMode ? 'badge-online' : 'badge-offline');
+    setSwitch(badge, testMode, testMode ? 'Bật' : 'Tắt');
     saveBtn.disabled = false;
     // Không đè khi người dùng đang gõ (loadHealth chạy nền mỗi 15s).
     if (document.activeElement !== input) input.value = (t.testPhones || []).join(', ');
