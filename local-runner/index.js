@@ -1,4 +1,8 @@
 'use strict';
+// Bắt log hệ thống của runner (nơi Chrome/Playwright hay crash) vào ring buffer — server sẽ
+// kéo về hiển thị trên dashboard qua /api/system-logs. Gọi sớm nhất có thể. Xem shared/logBuffer.js.
+const logBuffer = require('../shared/logBuffer');
+logBuffer.install();
 const fs = require('fs');
 const crypto = require('crypto');
 const express = require('express');
@@ -57,6 +61,16 @@ app.get('/health', (req, res) => {
 /** GET /api/test-mode — trạng thái chặn an toàn hiện tại (testMode + testPhones). */
 app.get('/api/test-mode', (req, res) => {
   res.json({ ok: true, ...testModeStore.get() });
+});
+
+/**
+ * GET /api/system-logs — log hệ thống của RUNNER (crash Chrome/Playwright, lỗi gửi…) từ ring
+ * buffer trong RAM. Server dashboard gọi vào đây (kèm x-api-key) rồi gộp với log của chính nó.
+ * Query: level (error|warn), q (tìm chuỗi), limit (số dòng).
+ */
+app.get('/api/system-logs', (req, res) => {
+  const { level, q, limit } = req.query;
+  res.json({ ok: true, source: 'runner', entries: logBuffer.getEntries({ level, q, limit }) });
 });
 
 /**

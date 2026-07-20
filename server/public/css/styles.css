@@ -978,6 +978,10 @@ td.staff-col { white-space: nowrap; }
 .log-term .t-pending { color: #58a6ff; font-weight: 600; }
 .log-term .t-err     { color: #f85149; font-weight: 600; }
 .log-term .t-noconv  { color: #d29922; font-weight: 600; }
+/* Log hệ thống: mức độ + nguồn (server/runner) */
+.log-term .t-warn    { color: #d29922; font-weight: 600; }
+.log-term .t-info    { color: #6e7681; font-weight: 600; }
+.log-term .t-src     { color: #79c0ff; }
 /* Cột "Báo qua FB": pill bật/tắt + link gọn xếp dọc, canh giữa cho gọn gàng. */
 .fb-cell {
   display: inline-flex; flex-direction: row; flex-wrap: nowrap;
