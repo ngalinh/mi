@@ -426,6 +426,20 @@ a { color: var(--primary); text-decoration: none; }
 .sync-info { font-size: 12px; color: var(--text-soft); white-space: nowrap; }
 .count-info { font-size: 13px; margin: 2px 2px 8px; }
 
+/* Banner "đang báo hàng loạt" — hiện khi server đang chạy 1 phiên báo loạt (đọc từ /api/health),
+   giữ cả sau khi reload trang để người dùng luôn thấy loạt còn chạy và dừng được. */
+.bulk-banner {
+  display: flex; align-items: center; gap: 10px;
+  margin: 4px 2px 8px; padding: 8px 12px;
+  background: var(--primary-soft); border: 1px solid var(--primary);
+  border-radius: 10px; color: var(--primary-dark); font-size: 13px; font-weight: 600;
+}
+.bulk-banner[hidden] { display: none; }
+.bulk-banner .spinner { color: var(--primary); }
+.bulk-banner-text { flex: 1; }
+.bulk-banner .btn { background: var(--red); background-image: none; color: #fff; border-color: transparent; }
+.bulk-banner .btn:disabled { opacity: .6; cursor: default; }
+
 /* ============================================================
    Chế độ (settings) — hàng cấu hình
    ============================================================ */
