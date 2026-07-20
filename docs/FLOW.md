@@ -132,13 +132,17 @@ chống trùng bằng bảng dedup.
 
 ### 4b. Báo SHIP tự động — `runAutoNotifyShip()`
 
-Song song với báo hàng, bot còn tự **báo ship** cho đơn ĐÃ "Đã báo hàng": khi đơn ở trạng
-thái `notified_arrival` mà Basso đã soạn "ND báo ship" (`content_ship`) thì tự nhắn khách tin
-ship NGAY và chuyển trạng thái sang "Đã báo ship". Dùng CHUNG lõi gửi (`executeNotifyPass`)
-với báo hàng, chỉ khác:
+Song song với báo hàng, bot còn tự **báo ship**: hễ đơn có "ND báo ship" (`content_ship`) là tự
+nhắn khách tin ship NGAY và chuyển trạng thái sang "Đã báo ship". Dùng CHUNG lõi gửi
+(`executeNotifyPass`) với báo hàng, chỉ khác:
 
 ```
-• PHẢI báo hàng trước: chỉ xét đơn 'notified_arrival' (đơn 'not_sent' dù có content_ship cũng CHỜ)
+• KHÔNG bắt buộc "Đã báo hàng" trước: quét CẢ 'not_sent' lẫn 'notified_arrival' (NV hay quên tick
+  trạng thái -> đơn kẹt "Chưa báo" vẫn được báo ship). Chỉ bỏ đơn ĐÃ báo ship (notified_ship).
+• KHÔNG gửi ship TRƯỚC báo hàng (reason 'wait_arrival'): khi TỰ ĐỘNG BÁO HÀNG đang BẬT, đơn còn
+  "Chưa báo" (not_sent) mà CÒN ND báo hàng chưa gửi -> ship CHỜ báo hàng gửi trước rồi lượt sau mới
+  gửi ship (tránh khách nhận "đang giao" trước "hàng đã về"). Báo hàng TẮT hoặc đơn không có ND báo
+  hàng -> KHÔNG chờ (mi không tự báo hàng nên chờ = kẹt ship mãi).
 • Điều kiện gửi: CÓ noiDungBaoShip (content_ship) — trống thì BỎ QUA
 • kind='ship' → dùng buildBaoShipMessage + cập nhật web 'notified_ship'
 • Dedup theo autoKeyShip (suffix ':ship') — tách khỏi dấu báo hàng để 1 đơn báo
@@ -149,9 +153,12 @@ với báo hàng, chỉ khác:
 ```
 
 **"Mới/cũ" quyết định bằng SEED lúc bật (KHÔNG theo ngày về kho):** Basso không cho biết ND ship
-được soạn ngày nào, nên khi BẬT báo ship, hệ thống chụp ảnh hiện trạng — đánh dấu mọi đơn ĐANG có
-sẵn `content_ship` là `'seeded'` trong `auto_notified` (KHÔNG gửi). Nhờ vậy chỉ ND ship XUẤT HIỆN
-SAU khi bật (đơn chưa có dấu) mới được gửi — kể cả trên đơn về từ hôm trước. Mốc `shipSeededAt` lưu
+được soạn ngày nào, nên khi BẬT báo ship, hệ thống chụp ảnh hiện trạng — đánh dấu MỌI đơn ĐANG có
+sẵn `content_ship` là `'seeded'` trong `auto_notified` (KHÔNG gửi). MỐC TUYỆT ĐỐI: seed bất kể đơn
+đang bị chặn hay không (account tắt "Tự động" / brand / chưa báo hàng) -> "đơn cũ" có ND ship trước
+lúc bật KHÔNG bao giờ bị nhắn, kể cả sau này khi gỡ chặn account. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU
+khi bật (đơn chưa có dấu) mới được gửi — kể cả trên đơn về từ hôm trước. Muốn nhắn lại nhóm cũ -> BẬT
+lại (chốt mốc mới). Mốc `shipSeededAt` lưu
 DB: chưa có mốc (đang seed / seed lỗi) → poller CHƯA gửi (chặn nhắn loạt tồn cũ); khởi động lại KHÔNG
 seed lại (ND ship phát sinh lúc server tắt vẫn là "mới" → gửi). Mỗi lần BẬT lại = chốt mốc mới.
 

@@ -445,9 +445,10 @@ async function classifyForAuto(order, delayedMap) {
  * Trả { decision:'send'|'skip', reason?, acct? }.
  */
 async function classifyForShip(order, delayedMap) {
-  // PHẢI "Đã báo hàng" trước: chỉ báo ship cho đơn đang ở trạng thái 'notified_arrival'. Đơn còn
-  // "Chưa báo" (not_sent) — dù đã có content_ship — cũng KHÔNG gửi (chờ báo hàng xong đã).
-  if (order.statusCode !== 'notified_arrival') return { decision: 'skip', reason: 'not_target' };
+  // KHÔNG bắt buộc "Đã báo hàng" trước: nhân viên hay QUÊN tick trạng thái -> đơn kẹt "Chưa báo" dù
+  // đang giao. Nên hễ đơn CÓ "ND báo ship" là gửi, dù trạng thái là "Chưa báo" (not_sent) hay "Đã
+  // báo hàng" (notified_arrival). Chỉ bỏ đơn ĐÃ báo ship rồi (notified_ship).
+  if (order.statusCode === 'notified_ship') return { decision: 'skip', reason: 'already' };
   // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo ship" (raw.content_ship). Đơn trống -> bỏ qua.
   if (!order.noiDungBaoShip || !String(order.noiDungBaoShip).trim()) return { decision: 'skip', reason: 'no_content' };
   const rec = getAutoRecord(autoKeyShip(order));
@@ -460,6 +461,19 @@ async function classifyForShip(order, delayedMap) {
   if (rec && rec.attempts >= cfg.maxRetries) return { decision: 'skip', reason: 'max_retries' };
   // Cờ Delay/Loại trừ dùng chung khóa đơn (autoKey) -> đơn đang hoãn thì cũng hoãn báo ship.
   if (delayedMap && delayedMap.has(autoKey(order))) return { decision: 'skip', reason: 'delayed' };
+  // ĐỪNG GỬI SHIP TRƯỚC BÁO HÀNG: khi TỰ ĐỘNG BÁO HÀNG đang BẬT (state.enabled) mà đơn còn "Chưa
+  // báo" (not_sent) VÀ vẫn còn ND báo hàng CHƯA gửi (autoKey chưa có dấu success/manual) -> để lượt
+  // BÁO HÀNG gửi trước, ship CHỜ lượt sau. Tránh khách nhận "đang giao" trước cả "hàng đã về".
+  //   • Chỉ chờ khi báo hàng BẬT: nếu tắt, mi KHÔNG bao giờ tự gửi báo hàng -> chờ = kẹt ship mãi.
+  //   • Chỉ chờ khi có ND báo hàng: đơn không có ND báo hàng thì mi cũng không gửi báo hàng -> gửi
+  //     ship luôn (NV đã báo hàng tay ngoài mi, chỉ quên tick trạng thái).
+  // Khi báo hàng gửi xong (autoKey -> success) thì lượt ship kế đơn này sẽ qua được cửa này.
+  if (state.enabled && order.statusCode === 'not_sent'
+      && order.noiDungBaoHang && String(order.noiDungBaoHang).trim()) {
+    const hangRec = getAutoRecord(autoKey(order));
+    const hangSent = hangRec && (hangRec.status === 'success' || hangRec.status === 'manual');
+    if (!hangSent) return { decision: 'skip', reason: 'wait_arrival' };
+  }
 
   // Chọn account theo NV phụ trách (giống báo hàng).
   const acct = await resolveForOrder(order, { defaultAccount: cfg.account, profile: cfg.profile });
@@ -474,10 +488,12 @@ async function classifyForShip(order, delayedMap) {
 }
 
 /**
- * SEED lúc bật báo ship: chụp ảnh các đơn ĐANG có sẵn "ND báo ship" tại thời điểm bật rồi đánh dấu
- * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa
- * có dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
- * 'notified_arrival' để bắt mọi đơn đã có ND ship ở thời điểm bật. Ghi mốc SHIP_SEEDED_KEY khi xong.
+ * SEED lúc bật báo ship: chụp ảnh MỌI đơn ĐANG có sẵn "ND báo ship" tại thời điểm bật rồi đánh dấu
+ * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. MỐC TUYỆT ĐỐI: seed bất kể đơn đang bị chặn hay
+ * không (account tắt auto / brand / chưa báo hàng) -> "đơn cũ" có ND ship trước lúc bật KHÔNG bao giờ
+ * bị nhắn, kể cả khi sau này gỡ chặn account. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có
+ * dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
+ * 'notified_arrival'. Ghi mốc SHIP_SEEDED_KEY khi xong. Muốn nhắn lại nhóm cũ -> BẬT lại (chốt mốc mới).
  * @returns {Promise<{at:string, scanned:number, seeded:number}>}
  */
 async function seedShip() {
@@ -492,6 +508,12 @@ async function seedShip() {
       if (seen.has(k)) continue;
       seen.add(k);
       scanned += 1;
+      // MỐC TUYỆT ĐỐI: đánh dấu 'seeded' MỌI đơn đang có sẵn ND ship lúc bật (BẤT KỂ account đang
+      // bật/tắt "Tự động", brand, đã báo hàng hay chưa) -> KHÔNG gửi. Chỉ ND ship XUẤT HIỆN SAU khi
+      // bật (đơn chưa có dấu) mới được gửi. Chủ đích: "đơn cũ" (đã có ND ship trước lúc bật) KHÔNG
+      // bao giờ bị nhắn, kể cả sau này khi gỡ chặn account. Muốn nhắn lại nhóm cũ -> BẬT lại để chốt
+      // mốc mới. (Đánh đổi: đơn đã 'seeded' mà về sau có ND ship MỚI cũng bị bỏ tới lần BẬT kế — hiếm,
+      // vì ND ship 1 đơn thường chỉ soạn 1 lần; và đúng ý "chỉ nhắn đơn mới sau khi bật".)
       if (!o.noiDungBaoShip || !String(o.noiDungBaoShip).trim()) continue; // chưa có ND ship -> khỏi seed
       const key = autoKeyShip(o);
       if (getAutoRecord(key)) continue;   // đã có dấu (đã gửi/tay/seeded trước) -> giữ nguyên
@@ -586,7 +608,19 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
   await withLock(async () => {
     // Đọc TƯƠI (bỏ cache) cho webhook (thấy ngay đơn mới / ND vừa soạn), lượt theo lịch, và
     // poll báo ship ('ship-poll') — để bắt ND ship MỚI ngay, không dính cache 30s.
-    const orders = await fetchAllByStatus(statusFilter, { fresh: trigger === 'webhook' || trigger === 'scheduled' || trigger === 'ship-poll' });
+    const fresh = trigger === 'webhook' || trigger === 'scheduled' || trigger === 'ship-poll';
+    // statusFilter có thể là 1 mã hoặc MẢNG mã (báo ship quét cả 'not_sent' lẫn 'notified_arrival').
+    const statuses = Array.isArray(statusFilter) ? statusFilter : [statusFilter];
+    const orders = [];
+    const seenKeys = new Set();
+    for (const st of statuses) {
+      // eslint-disable-next-line no-await-in-loop
+      const part = await fetchAllByStatus(st, { fresh });
+      for (const o of part) {
+        const k = autoKey(o);
+        if (!seenKeys.has(k)) { seenKeys.add(k); orders.push(o); }
+      }
+    }
     summary.scanned = orders.length;
     const delayedMap = getDelayedMap();
 
@@ -604,6 +638,7 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
       else if (c.reason === 'auto_off') bump('skippedAutoOff');
       else if (c.reason === 'brand') bump('skippedBrand');
       else if (c.reason === 'backlog') bump('skippedBacklog');
+      else if (c.reason === 'wait_arrival') bump('skippedWaitArrival');
       // 'already' / 'max_retries' / 'not_target' -> không đếm (không phải "đáng gửi")
     }
     // GOM THEO PROFILE (ổn định theo thứ tự tài khoản xuất hiện đầu) -> bot gửi tuần tự HẾT đơn
@@ -686,7 +721,8 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
       const skipNoAcc = summary.skippedNoAccount ? `, bỏ qua ${summary.skippedNoAccount} đơn (không khớp account)` : '';
       const skipBrand = summary.skippedBrand ? `, bỏ qua ${summary.skippedBrand} đơn (NV chưa có Zalo cho brand)` : '';
       const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
-      console.log(`[${logTag}:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} ${noun}${skipNo}${skipDelay}${skipOff}${skipNoAcc}${skipBrand}${skipBack})`);
+      const skipWait = summary.skippedWaitArrival ? `, hoãn ${summary.skippedWaitArrival} đơn (chờ báo hàng gửi trước)` : '';
+      console.log(`[${logTag}:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} ${noun}${skipNo}${skipDelay}${skipOff}${skipNoAcc}${skipBrand}${skipBack}${skipWait})`);
     }
   });
 }
@@ -741,13 +777,21 @@ async function runAutoNotify(opts = {}) {
  */
 async function debugShip() {
   const runnerOnline = await checkLocalHealth().catch(() => false);
-  const orders = await fetchAllByStatus('notified_arrival', { fresh: true });
+  // Quét CẢ "Chưa báo" lẫn "Đã báo hàng" — khớp đúng phạm vi luồng gửi ship thật (khử trùng theo autoKey).
+  const orders = [];
+  const seen = new Set();
+  for (const st of ['not_sent', 'notified_arrival']) {
+    // eslint-disable-next-line no-await-in-loop
+    const part = await fetchAllByStatus(st, { fresh: true });
+    for (const o of part) { const k = autoKey(o); if (!seen.has(k)) { seen.add(k); orders.push(o); } }
+  }
   const delayedMap = getDelayedMap();
   const rows = [];
   for (const order of orders) {
     // eslint-disable-next-line no-await-in-loop
     const c = await classifyForShip(order, delayedMap);
     const rec = getAutoRecord(autoKeyShip(order));
+    const acct = c.acct || {};
     rows.push({
       customerName: order.customerName || '',
       phone: order.phone || '',
@@ -755,8 +799,14 @@ async function debugShip() {
       hasShipContent: !!(order.noiDungBaoShip && String(order.noiDungBaoShip).trim()),
       shipMark: rec ? rec.status : null, // 'seeded' | 'success' | 'manual' | 'failed' | null
       decision: c.decision,              // 'send' | 'skip'
-      reason: c.reason || null,          // no_content | already | delayed | no_account | ...
-      account: c.acct ? (c.acct.account || c.acct.profile || null) : null,
+      reason: c.reason || null,          // no_content | already | delayed | no_account | auto_off | brand | backlog | wait_arrival
+      // Chi tiết chọn account -> soi vì sao brand/Danh bạ không gửi:
+      account: acct.account || acct.profile || null,
+      channel: acct.channel || null,       // 'zalo' | 'facebook' (Danh bạ có link FB -> facebook)
+      source: acct.source || null,         // 'store' | 'store-fb' | 'default' | 'legacy'
+      autoEnabled: acct.autoEnabled,       // false = account đang TẮT "Tự động"
+      orderBrand: acct.orderBrand || null, // brand đọc từ mã đơn (BS/SU…)
+      acctSkip: acct.skipReason || null,   // 'brand' (NV chưa có Zalo cho brand) | 'fb_no_account'
     });
   }
   const byReason = {};
@@ -777,11 +827,10 @@ async function debugShip() {
 }
 
 /**
- * TỰ ĐỘNG BÁO SHIP: CHỈ xét đơn ĐÃ "Đã báo hàng" (notified_arrival). Đơn nào ở trạng thái đó mà
- * Basso đã soạn "ND báo ship" (content_ship) thì tự nhắn khách NGAY và chuyển trạng thái sang
- * "Đã báo ship" (notified_ship). Tức là PHẢI báo hàng trước, sau đó có ND ship mới báo ship —
- * đơn còn "Chưa báo" (not_sent) dù có content_ship cũng KHÔNG gửi. Khác báo hàng: ship KHÔNG hoãn
- * theo giờ hẹn 17:00 — có nội dung là gửi. Cờ chạy + kết quả riêng (state.runningShip /
+ * TỰ ĐỘNG BÁO SHIP: hễ đơn có "ND báo ship" (content_ship) là tự nhắn khách NGAY và chuyển trạng
+ * thái sang "Đã báo ship" (notified_ship) — KHÔNG bắt buộc "Đã báo hàng" trước (NV hay quên tick
+ * trạng thái nên quét cả "Chưa báo" lẫn "Đã báo hàng"). Chỉ bỏ đơn ĐÃ báo ship. Khác báo hàng: ship
+ * KHÔNG hoãn theo giờ hẹn 17:00 — có nội dung là gửi. Cờ chạy + kết quả riêng (state.runningShip /
  * lastShipResult) để không đụng lượt báo hàng.
  * @param {object} [opts] { trigger?: 'interval'|'webhook'|'manual'|'scheduled' }
  */
@@ -805,7 +854,8 @@ async function runAutoNotifyShip(opts = {}) {
   const summary = { trigger, kind: 'ship', scanned: 0, candidates: 0, sent: 0, failed: 0, results: [] };
   try {
     await executeNotifyPass({
-      trigger, kind: 'ship', statusFilter: 'notified_arrival',
+      // Quét CẢ "Chưa báo" lẫn "Đã báo hàng" -> bắt đơn có ND ship dù NV quên tick trạng thái.
+      trigger, kind: 'ship', statusFilter: ['not_sent', 'notified_arrival'],
       classify: classifyForShip, keyOf: autoKeyShip, logTag: 'auto-ship', summary,
     });
   } catch (err) {
