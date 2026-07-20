@@ -445,9 +445,10 @@ async function classifyForAuto(order, delayedMap) {
  * Trả { decision:'send'|'skip', reason?, acct? }.
  */
 async function classifyForShip(order, delayedMap) {
-  // PHẢI "Đã báo hàng" trước: chỉ báo ship cho đơn đang ở trạng thái 'notified_arrival'. Đơn còn
-  // "Chưa báo" (not_sent) — dù đã có content_ship — cũng KHÔNG gửi (chờ báo hàng xong đã).
-  if (order.statusCode !== 'notified_arrival') return { decision: 'skip', reason: 'not_target' };
+  // KHÔNG bắt buộc "Đã báo hàng" trước: nhân viên hay QUÊN tick trạng thái -> đơn kẹt "Chưa báo" dù
+  // đang giao. Nên hễ đơn CÓ "ND báo ship" là gửi, dù trạng thái là "Chưa báo" (not_sent) hay "Đã
+  // báo hàng" (notified_arrival). Chỉ bỏ đơn ĐÃ báo ship rồi (notified_ship).
+  if (order.statusCode === 'notified_ship') return { decision: 'skip', reason: 'already' };
   // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo ship" (raw.content_ship). Đơn trống -> bỏ qua.
   if (!order.noiDungBaoShip || !String(order.noiDungBaoShip).trim()) return { decision: 'skip', reason: 'no_content' };
   const rec = getAutoRecord(autoKeyShip(order));
@@ -586,7 +587,19 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
   await withLock(async () => {
     // Đọc TƯƠI (bỏ cache) cho webhook (thấy ngay đơn mới / ND vừa soạn), lượt theo lịch, và
     // poll báo ship ('ship-poll') — để bắt ND ship MỚI ngay, không dính cache 30s.
-    const orders = await fetchAllByStatus(statusFilter, { fresh: trigger === 'webhook' || trigger === 'scheduled' || trigger === 'ship-poll' });
+    const fresh = trigger === 'webhook' || trigger === 'scheduled' || trigger === 'ship-poll';
+    // statusFilter có thể là 1 mã hoặc MẢNG mã (báo ship quét cả 'not_sent' lẫn 'notified_arrival').
+    const statuses = Array.isArray(statusFilter) ? statusFilter : [statusFilter];
+    const orders = [];
+    const seenKeys = new Set();
+    for (const st of statuses) {
+      // eslint-disable-next-line no-await-in-loop
+      const part = await fetchAllByStatus(st, { fresh });
+      for (const o of part) {
+        const k = autoKey(o);
+        if (!seenKeys.has(k)) { seenKeys.add(k); orders.push(o); }
+      }
+    }
     summary.scanned = orders.length;
     const delayedMap = getDelayedMap();
 
@@ -741,7 +754,14 @@ async function runAutoNotify(opts = {}) {
  */
 async function debugShip() {
   const runnerOnline = await checkLocalHealth().catch(() => false);
-  const orders = await fetchAllByStatus('notified_arrival', { fresh: true });
+  // Quét CẢ "Chưa báo" lẫn "Đã báo hàng" — khớp đúng phạm vi luồng gửi ship thật (khử trùng theo autoKey).
+  const orders = [];
+  const seen = new Set();
+  for (const st of ['not_sent', 'notified_arrival']) {
+    // eslint-disable-next-line no-await-in-loop
+    const part = await fetchAllByStatus(st, { fresh: true });
+    for (const o of part) { const k = autoKey(o); if (!seen.has(k)) { seen.add(k); orders.push(o); } }
+  }
   const delayedMap = getDelayedMap();
   const rows = [];
   for (const order of orders) {
@@ -784,11 +804,10 @@ async function debugShip() {
 }
 
 /**
- * TỰ ĐỘNG BÁO SHIP: CHỈ xét đơn ĐÃ "Đã báo hàng" (notified_arrival). Đơn nào ở trạng thái đó mà
- * Basso đã soạn "ND báo ship" (content_ship) thì tự nhắn khách NGAY và chuyển trạng thái sang
- * "Đã báo ship" (notified_ship). Tức là PHẢI báo hàng trước, sau đó có ND ship mới báo ship —
- * đơn còn "Chưa báo" (not_sent) dù có content_ship cũng KHÔNG gửi. Khác báo hàng: ship KHÔNG hoãn
- * theo giờ hẹn 17:00 — có nội dung là gửi. Cờ chạy + kết quả riêng (state.runningShip /
+ * TỰ ĐỘNG BÁO SHIP: hễ đơn có "ND báo ship" (content_ship) là tự nhắn khách NGAY và chuyển trạng
+ * thái sang "Đã báo ship" (notified_ship) — KHÔNG bắt buộc "Đã báo hàng" trước (NV hay quên tick
+ * trạng thái nên quét cả "Chưa báo" lẫn "Đã báo hàng"). Chỉ bỏ đơn ĐÃ báo ship. Khác báo hàng: ship
+ * KHÔNG hoãn theo giờ hẹn 17:00 — có nội dung là gửi. Cờ chạy + kết quả riêng (state.runningShip /
  * lastShipResult) để không đụng lượt báo hàng.
  * @param {object} [opts] { trigger?: 'interval'|'webhook'|'manual'|'scheduled' }
  */
@@ -812,7 +831,8 @@ async function runAutoNotifyShip(opts = {}) {
   const summary = { trigger, kind: 'ship', scanned: 0, candidates: 0, sent: 0, failed: 0, results: [] };
   try {
     await executeNotifyPass({
-      trigger, kind: 'ship', statusFilter: 'notified_arrival',
+      // Quét CẢ "Chưa báo" lẫn "Đã báo hàng" -> bắt đơn có ND ship dù NV quên tick trạng thái.
+      trigger, kind: 'ship', statusFilter: ['not_sent', 'notified_arrival'],
       classify: classifyForShip, keyOf: autoKeyShip, logTag: 'auto-ship', summary,
     });
   } catch (err) {
