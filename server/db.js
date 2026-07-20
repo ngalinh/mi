@@ -77,6 +77,15 @@ try { db.exec('ALTER TABLE reports ADD COLUMN kind TEXT'); } catch (_) { /* đã
 // Report cũ thiếu cột (null) -> coi như 'zalo' (kênh mặc định, FB là ngoại lệ mới).
 try { db.exec('ALTER TABLE reports ADD COLUMN channel TEXT'); } catch (_) { /* đã có cột */ }
 
+// Index gộp-theo-đơn cho getSentTimesMap / getLastReportMap — 2 hàm chạy trên MỌI request
+// /api/orders* (qua enrichOrders). Không có index này, SQLite phải FULL-SCAN + SORT toàn bộ bảng
+// `reports` mỗi lần (ORDER BY / GROUP BY theo customer_id, date_inventory) -> chậm dần khi bảng
+// phình to và CHẶN event loop (driver SQLite đồng bộ). Tạo SAU migration vì customer_id/
+// date_inventory là cột thêm bằng ALTER ở trên (bảng CREATE gốc chưa có).
+try {
+  db.exec('CREATE INDEX IF NOT EXISTS idx_reports_order ON reports(customer_id, date_inventory)');
+} catch (_) { /* index đã có hoặc cột chưa sẵn (bản DB rất cũ) — bỏ qua */ }
+
 // Dọn dòng "đang báo" MỒ CÔI lúc khởi động. notifyOne ghi 1 dòng status='pending' TRƯỚC khi
 // gửi rồi poll local-runner tới khi xong; nếu server restart/crash giữa chừng thì KHÔNG còn
 // ai poll tiếp -> dòng pending kẹt mãi. mi-server chạy 1 instance (ecosystem.config.js:
@@ -204,6 +213,9 @@ function addReport(row) {
     created_at: new Date().toISOString(),
   };
   const info = insertStmt.run(data);
+  // Bảng reports vừa đổi -> làm mới cache map dẫn xuất (thời gian gửi + lượt báo đại diện).
+  getSentTimesMap.invalidate();
+  getLastReportMap.invalidate();
   return { id: info.lastInsertRowid, ...data };
 }
 
@@ -233,6 +245,9 @@ function updateReport(id, fields = {}) {
     order_id: fields.orderId !== undefined ? fields.orderId : cur.order_id,
   };
   updateStmt.run(next);
+  // Trạng thái/nội dung report đổi (pending -> success/failed) -> làm mới cache map dẫn xuất.
+  getSentTimesMap.invalidate();
+  getLastReportMap.invalidate();
   return parseImages(getReportStmt.get({ id }));
 }
 
@@ -247,6 +262,27 @@ function parseImages(row) {
   let images = [];
   if (row.images) { try { images = JSON.parse(row.images) || []; } catch (_) { images = []; } }
   return { ...row, images };
+}
+
+// ---- Cache RAM cho các "map" đọc-nhiều trong enrichOrders ----
+// enrichOrders (server/index.js) chạy MỖI request /api/orders* (dashboard auto-sync mỗi 60s,
+// mỗi tab đang mở) và gọi 5 hàm getXxxMap. Trước đây mỗi hàm dựng lại Map từ 1 truy vấn ĐỒNG BỘ
+// (có cái full-scan cả bảng reports / nạp tới 100k dòng danh bạ) -> chặn event loop, khiến toàn
+// server khựng theo. Nay memo hoá: đọc từ cache nếu còn trong TTL, GHI vào bảng tương ứng thì gọi
+// .invalidate() để lần đọc kế dựng lại. TTL là lưới an toàn; invalidation giữ đúng-tức-thì khi
+// người dùng vừa đổi (Delay/gửi/sửa danh bạ). Map trả về CHỈ ĐƯỢC ĐỌC (mọi caller hiện tại chỉ
+// .get/.has) nên chia sẻ 1 instance an toàn.
+const MAP_CACHE_TTL_MS = 30000;
+function makeCachedMap(build) {
+  let cache = null; // { at:number, data:Map }
+  const fn = () => {
+    if (cache && Date.now() - cache.at < MAP_CACHE_TTL_MS) return cache.data;
+    const data = build();
+    cache = { at: Date.now(), data };
+    return data;
+  };
+  fn.invalidate = () => { cache = null; };
+  return fn;
 }
 
 // Gom điều kiện WHERE dùng chung cho listReports + stats để 2 nơi lọc y hệt nhau.
@@ -324,11 +360,11 @@ const getAllAutoStmt = db.prepare('SELECT order_id, status, attempts, updated_at
  * Nạp TẤT CẢ bản ghi tự-động-đã-gửi vào 1 Map (order_id -> record) trong MỘT truy vấn.
  * Dùng cho enrichOrders khi gắn dấu cho cả tập all-time: 1 query thay vì N query/đơn.
  */
-function getAutoMap() {
+const getAutoMap = makeCachedMap(() => {
   const m = new Map();
   for (const r of getAllAutoStmt.all()) m.set(String(r.order_id), r);
   return m;
-}
+});
 
 // Thời điểm ĐÃ GỬI THÀNH CÔNG gần nhất cho từng đơn, tách theo loại tin (hàng/ship).
 // Nguồn chuẩn là bảng reports (mỗi lượt gửi 1 dòng) — khớp đơn qua customer_id+date_inventory
@@ -346,7 +382,7 @@ const getSentTimesStmt = db.prepare(`
  * Map khoá đơn (autoKey) -> { hang?: ISO, ship?: ISO } = lần gửi THÀNH CÔNG gần nhất mỗi loại.
  * Dùng cho enrichOrders để dashboard hiện "thời gian đã gửi báo hàng / báo ship". 1 query.
  */
-function getSentTimesMap() {
+const getSentTimesMap = makeCachedMap(() => {
   const m = new Map();
   for (const r of getSentTimesStmt.all()) {
     const key = `c${r.customer_id}:d${r.date_inventory}`;
@@ -355,7 +391,7 @@ function getSentTimesMap() {
     m.set(key, entry);
   }
   return m;
-}
+});
 
 // Lượt báo ĐẠI DIỆN của từng đơn — để danh sách hàng về hiện cột "Người gửi" + "Tài khoản"
 // inline (gộp Lịch sử báo vào danh sách, khỏi mở trang riêng cho thông tin thường soi nhất).
@@ -376,7 +412,7 @@ const getLastReportsStmt = db.prepare(`
  * Map khoá đơn (autoKey) -> { sender, account, channel, status, kind, at } của lượt báo đại diện.
  * Dùng cho enrichOrders để dashboard hiện Người gửi/Tài khoản ngay trên dòng đơn.
  */
-function getLastReportMap() {
+const getLastReportMap = makeCachedMap(() => {
   const m = new Map();
   for (const r of getLastReportsStmt.all()) {
     const key = `c${r.customer_id}:d${r.date_inventory}`;
@@ -394,7 +430,7 @@ function getLastReportMap() {
     });
   }
   return m;
-}
+});
 
 /** Ghi/cập nhật trạng thái tự động báo của 1 đơn. */
 function recordAutoNotified(orderId, status, attempts) {
@@ -404,6 +440,7 @@ function recordAutoNotified(orderId, status, attempts) {
     attempts: attempts ?? 0,
     updated_at: new Date().toISOString(),
   });
+  getAutoMap.invalidate(); // dấu "bot/tay đã gửi" đổi -> enrichOrders lần sau đọc bản mới
 }
 
 // ---- Cờ Delay / Loại trừ (lưu cục bộ ở mi) ----
@@ -415,17 +452,18 @@ const setDelayedStmt = db.prepare(`
 const delDelayedStmt = db.prepare('DELETE FROM delayed_orders WHERE order_key = @order_key');
 
 /** Map khoá đơn -> lý do delay (chuỗi, có thể rỗng) cho các đơn đang bị Delay. */
-function getDelayedMap() {
+const getDelayedMap = makeCachedMap(() => {
   const m = new Map();
   for (const r of getDelayedStmt.all()) m.set(r.order_key, r.reason || '');
   return m;
-}
+});
 
 /** Bật/tắt cờ Delay cho 1 đơn (key = autoKey(order)), kèm lý do tuỳ chọn. */
 function setDelayed(orderKey, delayed, reason) {
   const order_key = String(orderKey);
   if (delayed) setDelayedStmt.run({ order_key, reason: reason || null, updated_at: new Date().toISOString() });
   else delDelayedStmt.run({ order_key });
+  getDelayedMap.invalidate(); // cờ Delay đổi -> enrichOrders lần sau phản ánh ngay
   return !!delayed;
 }
 
@@ -685,11 +723,11 @@ function zaloContactsCount() { return countZaloContactsStmt.get().n || 0; }
  * Map SĐT-đã-chuẩn-hoá -> tên Zalo/FB cho toàn bộ danh bạ (1 truy vấn). Dùng khi cần tra hàng
  * loạt (vd gắn tên group vào danh sách đơn) thay vì query từng đơn.
  */
-function getZaloMap() {
+const getZaloMap = makeCachedMap(() => {
   const m = new Map();
   for (const r of listZaloContactsStmt.all()) m.set(r.phone, r.zalo_name);
   return m;
-}
+});
 
 /** Lấy TÊN Zalo/FB đã lưu cho 1 SĐT (khớp sau chuẩn hoá). '' nếu chưa có. */
 function getZaloName(phone) {
@@ -741,6 +779,7 @@ function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, 
     report_target: reportTarget,
     now: new Date().toISOString(),
   });
+  getZaloMap.invalidate(); // danh bạ đổi -> cache tên Zalo/FB dựng lại ở lần enrich kế
   return getZaloContactStmt.get({ phone: p });
 }
 
@@ -781,6 +820,7 @@ function importZaloContacts(rows = [], mode = 'merge') {
       if (existed) updated += 1; else added += 1;
     }
     db.exec('COMMIT');
+    getZaloMap.invalidate(); // nạp hàng loạt -> làm mới cache tên Zalo/FB
     return { added, updated, skipped, total: list.length };
   } catch (e) {
     try { db.exec('ROLLBACK'); } catch (_) { /* ignore */ }
@@ -793,6 +833,7 @@ function deleteZaloContact(phone) {
   const p = normPhone(phone);
   if (!p) return false;
   const info = delZaloContactStmt.run({ phone: p });
+  getZaloMap.invalidate(); // xoá liên hệ -> làm mới cache tên Zalo/FB
   return (info.changes || 0) > 0;
 }
 
