@@ -50,7 +50,17 @@ const App = {
     } finally {
       clearTimeout(timer);
     }
-    const data = await res.json().catch(() => ({ ok: false, error: 'Response không hợp lệ' }));
+    // Đọc raw text trước rồi mới parse JSON: nếu server trả về HTML (trang lỗi
+    // 5xx của proxy, trang login, "Cannot GET /...") thì res.json() sẽ ném lỗi.
+    // Giữ lại status + một đoạn nội dung gốc để dễ chẩn đoán thay vì báo chung chung.
+    const raw = await res.text().catch(() => '');
+    let data;
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch (_e) {
+      const snippet = raw.trim().replace(/\s+/g, ' ').slice(0, 120);
+      throw new Error(`Response không hợp lệ (HTTP ${res.status})` + (snippet ? ` — ${snippet}` : ''));
+    }
     if (!res.ok || data.ok === false) {
       throw new Error(data.error || `HTTP ${res.status}`);
     }
