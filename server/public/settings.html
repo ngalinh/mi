@@ -57,7 +57,7 @@
 
         <div class="card" data-panel-content="nhanvien" style="margin-top:14px;">
           <div class="card-header">
-            <h1>Danh sách nhân viên</h1>
+            <h2>Danh sách nhân viên</h2>
             <button class="btn small" id="addEmpBtn">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
               Thêm nhân viên
@@ -84,7 +84,7 @@
 
         <div class="card hidden" data-panel-content="zalo" style="margin-top:14px;">
           <div class="card-header">
-            <h1>Tài khoản nhân viên</h1>
+            <h2>Tài khoản nhân viên</h2>
             <button class="btn small" id="addZaloBtn">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
               Thêm tài khoản
@@ -113,7 +113,7 @@
 
         <div class="card hidden" data-panel-content="proxy" style="margin-top:14px;">
           <div class="card-header">
-            <h1>Proxy theo tài khoản Zalo &amp; Facebook</h1>
+            <h2>Proxy theo tài khoản Zalo &amp; Facebook</h2>
             <button class="btn small secondary" id="proxyReload">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
               Tải lại
@@ -139,105 +139,137 @@
         </div>
 
         <div class="card hidden" data-panel-content="mode" style="margin-top:14px;">
-          <div class="card-header"><h1>Chế độ hệ thống</h1></div>
-          <div class="muted" style="font-size:13px; margin:-10px 0 6px;">Cấu hình tự động hoá và kết nối hệ thống.</div>
-          <div class="mode-row">
-            <div class="mode-info">
-              <div class="mode-title">Tự động báo hàng</div>
-              <div class="mode-desc">Bot tự động gửi báo hàng cho đơn "Chưa báo". Khi đặt <strong>giờ gửi cố định</strong> bên dưới, bot KHÔNG gửi ngay lúc hàng về — cả ngày gom lại, tới đúng giờ mới gửi lần lượt cho các khách.</div>
-            </div>
-            <button class="badge-status badge-clickable badge-offline" id="autoBadge" title="Bật/tắt tự động báo hàng">Tự động: ...</button>
-          </div>
-          <div class="mode-row">
-            <div class="mode-info" style="flex:1; min-width:0;">
-              <div class="mode-title">Tự động báo ship</div>
-              <div class="mode-desc">Công tắc <strong>riêng</strong> (độc lập báo hàng). Khi bật: đơn đã ở trạng thái <strong>"Đã báo hàng"</strong> mà Basso đã soạn <strong>nội dung báo ship</strong> sẽ được tự nhắn cho khách <strong>ngay</strong> (không đợi giờ hẹn) và chuyển trạng thái sang <strong>"Đã báo ship"</strong>. Lúc bật, các đơn <strong>đang có sẵn ND ship</strong> được đánh dấu "tồn cũ" và <strong>không gửi</strong> — hệ thống <strong>chỉ gửi ND ship phát sinh SAU khi bật</strong> (kể cả trên đơn về từ hôm trước). <strong>Cần local-runner (Chrome) đang mở & đã đăng nhập Zalo</strong> để gửi được.</div>
-              <div class="muted" id="autoShipStatus" style="font-size:12px; margin-top:6px;"></div>
-            </div>
-            <button class="badge-status badge-clickable badge-offline" id="autoShipBadge" title="Bật/tắt tự động báo ship">Ship: ...</button>
-          </div>
-          <div class="mode-row" id="scheduleRow">
-            <div class="mode-info" style="flex:1; min-width:0;">
-              <div class="mode-title">Giờ gửi cố định</div>
-              <div class="mode-desc">Đúng giờ này mỗi ngày, bot quét mọi đơn "Chưa báo" đã có nội dung và gửi lần lượt cho khách (giờ Việt Nam). Để <strong>trống</strong> = gửi ngay khi có hàng về (như cũ). Đổi giờ áp dụng ngay, không cần khởi động lại.</div>
-              <div style="display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap;">
-                <input class="note-input" id="scheduleInput" type="time" style="max-width:150px;" />
-                <button class="btn accent" id="scheduleSave">Lưu giờ</button>
-                <button class="btn secondary" id="previewBtn" title="Xem trước: đơn nào đã đủ nội dung, đơn nào còn thiếu">Kiểm tra đơn</button>
-                <span class="muted" id="scheduleNext" style="font-size:12px;"></span>
+          <div class="card-header"><h2>Chế độ hệ thống</h2></div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 14px;">Cấu hình tự động hoá và kết nối hệ thống.</div>
+
+          <!-- Nhóm 1: Báo hàng & ship -->
+          <div class="mode-group">
+            <div class="mode-group-title">Báo hàng &amp; ship</div>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Tự động báo hàng</div>
+                <div class="mode-desc">Bot tự gửi báo hàng cho đơn "Chưa báo". Nếu đặt <strong>giờ gửi cố định</strong> bên dưới, bot gom cả ngày và chỉ gửi khi tới giờ (không gửi ngay lúc hàng về).</div>
+                <div class="mode-detail" id="autoDetail"></div>
               </div>
-              <div style="display:flex; align-items:center; gap:6px; margin-top:8px; flex-wrap:wrap;">
-                <span class="muted" style="font-size:13px;">Nhắc soạn nội dung trước</span>
-                <input class="note-input" id="precheckInput" type="number" min="0" max="1439" step="5" style="max-width:80px;" />
-                <span class="muted" style="font-size:13px;">phút (0 = tắt) — trước giờ gửi, bot tự quét và cảnh báo đơn còn thiếu nội dung.</span>
-                <span class="muted" id="precheckNext" style="font-size:12px;"></span>
+              <button class="switch" id="autoBadge" role="switch" aria-checked="false" title="Bật/tắt tự động báo hàng">
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                <span class="switch-text">…</span>
+              </button>
+            </div>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Tự động báo ship</div>
+                <div class="mode-desc">Công tắc <strong>riêng</strong>, độc lập báo hàng. Khi bật, đơn đã "Đã báo hàng" mà Basso đã soạn nội dung ship sẽ tự nhắn khách <strong>ngay</strong> và chuyển sang "Đã báo ship".</div>
+                <details class="mode-more">
+                  <summary>Chi tiết cách hoạt động</summary>
+                  <div class="mode-more-body">Các đơn <strong>đang có sẵn ND ship</strong> lúc bật được đánh dấu "tồn cũ" và <strong>không gửi</strong> — hệ thống chỉ gửi ND ship phát sinh <strong>sau khi bật</strong> (kể cả đơn về từ hôm trước). Cần <strong>local-runner (Chrome) đang mở &amp; đã đăng nhập Zalo</strong> để gửi được.</div>
+                </details>
+                <div class="mode-detail" id="autoShipStatus" style="font-weight:400; color:var(--muted);"></div>
               </div>
-              <div class="muted" id="precheckResult" style="font-size:13px; margin-top:8px; display:none;"></div>
-              <div class="muted" id="previewResult" style="font-size:13px; margin-top:10px; display:none;"></div>
+              <button class="switch" id="autoShipBadge" role="switch" aria-checked="false" title="Bật/tắt tự động báo ship">
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                <span class="switch-text">…</span>
+              </button>
             </div>
-          </div>
-          <div class="mode-row" id="alertRow">
-            <div class="mode-info" style="flex:1; min-width:0;">
-              <div class="mode-title">Nhắc ra Zalo (nội bộ)</div>
-              <div class="mode-desc">Tới giờ nhắc và sau khi gửi xong, bot tự nhắn 1 tin Zalo cho người trực để biết mà <strong>không cần mở mi</strong>. Gửi bằng 1 tài khoản Zalo đã đăng nhập (vd <strong>Bụt Ai</strong>) tới SĐT của bạn.</div>
-              <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center;">
-                <input class="note-input" id="alertAccount" placeholder="Tài khoản gửi (vd Bụt Ai)" style="max-width:190px;" />
-                <input class="note-input" id="alertPhone" placeholder="SĐT nhận (của bạn)" style="max-width:170px;" />
-                <input class="note-input" id="alertName" placeholder="Tên người nhận (tuỳ chọn)" style="max-width:170px;" />
-                <button class="btn accent" id="alertSave">Lưu</button>
-                <button class="btn secondary" id="alertTest">Gửi thử</button>
-              </div>
-              <div class="muted" id="alertStatus" style="font-size:12px; margin-top:6px;"></div>
-            </div>
-            <button class="badge-status badge-clickable badge-offline" id="alertBadge" title="Bật/tắt nhắc ra Zalo">Nhắc Zalo: ...</button>
-          </div>
-          <div class="mode-row">
-            <div class="mode-info">
-              <div class="mode-title">Chặn an toàn khi test (TEST_MODE)</div>
-              <div class="mode-desc">Khi <strong>Bật</strong>: bot chỉ gửi thật tới các số trong danh sách bên dưới, mọi số khách khác bị chặn. Khi <strong>Tắt</strong>: gửi tới SĐT thật của mọi khách. Áp dụng ngay, không cần khởi động lại.</div>
-            </div>
-            <button class="badge-status badge-clickable badge-offline" id="testModeBadge" title="Bật/tắt chặn an toàn">TEST: ...</button>
-          </div>
-          <div class="mode-row" id="testPhonesRow">
-            <div class="mode-info" style="flex:1; min-width:0;">
-              <div class="mode-title">Số điện thoại được gửi khi test</div>
-              <div class="mode-desc">Chỉ các số này được nhận tin khi TEST_MODE bật. Cách nhau bằng dấu phẩy.</div>
-              <div class="note-cell" style="margin-top:8px; max-width:560px;">
-                <input class="note-input" id="testPhonesInput" placeholder="Vd: 0764523837, 0912345678" />
+            <div class="mode-row" id="scheduleRow">
+              <div class="mode-info">
+                <div class="mode-title">Giờ gửi cố định</div>
+                <div class="mode-desc">Đúng giờ này mỗi ngày (giờ Việt Nam), bot quét mọi đơn "Chưa báo" đã có nội dung và gửi lần lượt. Để <strong>trống</strong> = gửi ngay khi có hàng về. Đổi giờ áp dụng ngay.</div>
+                <div class="mode-controls">
+                  <input class="note-input" id="scheduleInput" type="time" style="max-width:150px;" />
+                  <button class="btn accent" id="scheduleSave">Lưu giờ</button>
+                  <button class="btn secondary" id="previewBtn" title="Xem trước: đơn nào đã đủ nội dung, đơn nào còn thiếu">Kiểm tra đơn</button>
+                  <span class="mode-hint" id="scheduleNext"></span>
+                </div>
+                <div class="mode-controls">
+                  <span class="mode-field-label">Nhắc soạn nội dung trước</span>
+                  <span class="mode-field"><input class="note-input" id="precheckInput" type="number" min="0" max="1439" step="5" style="max-width:80px;" /><span class="mode-hint">phút</span></span>
+                  <span class="mode-hint">(0 = tắt) — bot tự quét và cảnh báo đơn còn thiếu nội dung.</span>
+                  <span class="mode-hint" id="precheckNext"></span>
+                </div>
+                <div class="mode-hint" id="precheckResult" style="margin-top:8px; display:none;"></div>
+                <div class="mode-hint" id="previewResult" style="margin-top:10px; display:none;"></div>
               </div>
             </div>
-            <button class="btn accent" id="testPhonesSave">Lưu số test</button>
           </div>
-          <div class="mode-row">
-            <div class="mode-info">
-              <div class="mode-title">Local-runner</div>
-              <div class="mode-desc">Tiến trình chạy bot trên máy local.</div>
+
+          <!-- Nhóm 2: Nhắc & an toàn -->
+          <div class="mode-group">
+            <div class="mode-group-title">Nhắc &amp; an toàn</div>
+            <div class="mode-row" id="alertRow">
+              <div class="mode-info">
+                <div class="mode-title">Nhắc ra Zalo (nội bộ)</div>
+                <div class="mode-desc">Tới giờ nhắc và sau khi gửi xong, bot nhắn 1 tin Zalo cho người trực để biết mà <strong>không cần mở Mi</strong>. Gửi từ 1 tài khoản Zalo đã đăng nhập (vd Bụt Ai) tới SĐT của bạn.</div>
+                <div class="mode-controls">
+                  <input class="note-input" id="alertAccount" placeholder="Tài khoản gửi (vd Bụt Ai)" style="max-width:190px;" />
+                  <input class="note-input" id="alertPhone" placeholder="SĐT nhận (của bạn)" style="max-width:170px;" />
+                  <input class="note-input" id="alertName" placeholder="Tên người nhận (tuỳ chọn)" style="max-width:170px;" />
+                  <button class="btn accent" id="alertSave">Lưu</button>
+                  <button class="btn secondary" id="alertTest">Gửi thử</button>
+                </div>
+                <div class="mode-detail" id="alertStatus" style="font-weight:400; color:var(--muted);"></div>
+              </div>
+              <button class="switch" id="alertBadge" role="switch" aria-checked="false" title="Bật/tắt nhắc ra Zalo">
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                <span class="switch-text">…</span>
+              </button>
             </div>
-            <span class="badge-status badge-offline" id="localBadge">Local-runner: ...</span>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Chặn an toàn khi test (TEST_MODE)</div>
+                <div class="mode-desc">Khi <strong>bật</strong>: bot chỉ gửi thật tới các số trong danh sách bên dưới, mọi số khách khác bị chặn. Khi <strong>tắt</strong>: gửi tới SĐT thật của mọi khách. Áp dụng ngay.</div>
+              </div>
+              <button class="switch" id="testModeBadge" role="switch" aria-checked="false" title="Bật/tắt chặn an toàn">
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                <span class="switch-text">…</span>
+              </button>
+            </div>
+            <div class="mode-row" id="testPhonesRow">
+              <div class="mode-info">
+                <div class="mode-title">Số điện thoại được gửi khi test</div>
+                <div class="mode-desc">Chỉ các số này được nhận tin khi chặn an toàn đang bật. Cách nhau bằng dấu phẩy.</div>
+                <div class="mode-controls" style="max-width:560px;">
+                  <input class="note-input" id="testPhonesInput" placeholder="Vd: 0764523837, 0912345678" style="flex:1; min-width:220px;" />
+                </div>
+              </div>
+              <button class="btn accent" id="testPhonesSave">Lưu số test</button>
+            </div>
           </div>
-          <div class="mode-row">
-            <div class="mode-info">
-              <div class="mode-title">Chế độ dữ liệu</div>
-              <div class="mode-desc">Nguồn dữ liệu đơn hàng đang dùng.</div>
+
+          <!-- Nhóm 3: Kết nối hệ thống -->
+          <div class="mode-group">
+            <div class="mode-group-title">Kết nối hệ thống</div>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Local-runner</div>
+                <div class="mode-desc">Tiến trình chạy bot trên máy local.</div>
+              </div>
+              <span class="badge-status badge-offline" id="localBadge">Local-runner: ...</span>
             </div>
-            <span class="badge-status badge-mock" id="modeMockBadge" style="display:none;">MOCK DATA</span>
-            <span class="badge-status badge-online" id="modeLiveBadge" style="display:none;">Basso (live)</span>
-          </div>
-          <div class="mode-row">
-            <div class="mode-info">
-              <div class="mode-title">Kết nối Basso API</div>
-              <div class="mode-desc">Kiểm tra kết nối tới hệ thống Basso.</div>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Chế độ dữ liệu</div>
+                <div class="mode-desc">Nguồn dữ liệu đơn hàng đang dùng.</div>
+              </div>
+              <span class="badge-status badge-mock" id="modeMockBadge" style="display:none;">MOCK DATA</span>
+              <span class="badge-status badge-online" id="modeLiveBadge" style="display:none;">Basso (live)</span>
             </div>
-            <button class="btn secondary" id="bassoBtn" title="Kiểm tra kết nối tới Basso API">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>
-              Test Basso
-            </button>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Kết nối Basso API</div>
+                <div class="mode-desc">Kiểm tra kết nối tới hệ thống Basso.</div>
+              </div>
+              <button class="btn secondary" id="bassoBtn" title="Kiểm tra kết nối tới Basso API">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>
+                Test Basso
+              </button>
+            </div>
           </div>
         </div>
 
         <div class="card hidden" data-panel-content="log" style="margin-top:14px;">
           <div class="card-header">
-            <h1>Log thao tác &amp; gửi</h1>
+            <h2>Log thao tác &amp; gửi</h2>
             <button class="btn small secondary" id="logReload">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
               Tải lại

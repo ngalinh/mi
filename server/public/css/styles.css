@@ -218,6 +218,9 @@ a { color: var(--primary); text-decoration: none; }
 }
 .badge-online { color: var(--green); }
 .badge-offline { color: var(--red); }
+/* Trạng thái "tắt" của một công tắc là bình thường, KHÔNG phải lỗi -> xám trung tính,
+   để dành màu đỏ (badge-offline) cho sự cố thật (vd local-runner offline). */
+.badge-neutral { color: var(--muted); }
 .badge-mock { color: var(--amber); }
 /* Tự động BẬT nhưng đang tạm dừng sau khởi động (chờ admin bấm "Quét & gửi"). */
 .badge-pending { color: var(--amber); }
@@ -225,6 +228,37 @@ a { color: var(--primary); text-decoration: none; }
 /* Badge bấm được (bật/tắt tự động báo hàng) */
 .badge-clickable { border: 1px solid transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
 .badge-clickable:hover { filter: brightness(0.97); border-color: currentColor; }
+
+/* ---- Toggle switch (công tắc bật/tắt kiểu iOS) ----
+   Thay cho badge-clickable ở tab "Chế độ": thể hiện rõ on/off và "bấm được". */
+.switch {
+  display: inline-flex; align-items: center; gap: 9px;
+  background: none; border: none; padding: 2px; margin: 0; cursor: pointer;
+  font: inherit; color: var(--text-soft); flex: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: var(--radius-pill); }
+.switch-track {
+  position: relative; flex: none;
+  width: 42px; height: 24px; border-radius: var(--radius-pill);
+  background: var(--border-strong);
+  transition: background .18s var(--ease);
+}
+.switch-knob {
+  position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(31, 44, 102, .28);
+  transition: transform .18s var(--ease);
+}
+.switch[aria-checked="true"] .switch-track { background: var(--green); }
+.switch[aria-checked="true"] .switch-knob { transform: translateX(18px); }
+/* Trạng thái "cần chú ý" (tạm dừng / runner offline): track hổ phách */
+.switch.switch-muted .switch-track { background: var(--amber); }
+.switch-text { font-size: 12.5px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.switch[aria-checked="true"] .switch-text { color: var(--green); }
+.switch.switch-muted .switch-text { color: var(--amber); }
+.switch:hover .switch-knob { box-shadow: 0 2px 5px rgba(31, 44, 102, .34); }
+.switch[aria-disabled="true"] { opacity: .6; cursor: default; }
 /* Cột trạng thái: dropdown + (icon cách báo · mốc thời gian) xếp dọc cho thoáng */
 .status-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 /* Mốc "thời gian gửi" dưới dropdown trạng thái: mỗi mốc là 1 chip nhỏ có màu theo loại — báo hàng
@@ -253,7 +287,7 @@ a { color: var(--primary); text-decoration: none; }
   padding: 24px;
   box-shadow: var(--shadow-sm);
 }
-.card h1 { font-family: var(--font-head); font-size: 23px; margin: 0; font-weight: 800; letter-spacing: -.2px; line-height: 1.05; }
+.card h1, .card h2 { font-family: var(--font-head); font-size: 23px; margin: 0; font-weight: 800; letter-spacing: -.2px; line-height: 1.05; }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 
 /* ============================================================
@@ -447,12 +481,43 @@ a { color: var(--primary); text-decoration: none; }
    Chế độ (settings) — hàng cấu hình
    ============================================================ */
 .mode-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;
   padding: 16px 2px; border-bottom: 1px solid var(--border);
 }
 .mode-row:last-child { border-bottom: none; }
+/* Công tắc / nút bên phải thẳng hàng với TIÊU ĐỀ, không trôi giữa đoạn mô tả dài. */
+.mode-row > .switch, .mode-row > .badge-status, .mode-row > .btn { margin-top: 1px; }
+.mode-info { flex: 1; min-width: 0; }
 .mode-info .mode-title { font-size: 14px; font-weight: 700; color: var(--text); }
-.mode-info .mode-desc { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.mode-info .mode-desc { font-size: 12.5px; color: var(--muted); margin-top: 3px; line-height: 1.5; max-width: 74ch; }
+
+/* Gom các mục cấu hình theo NHÓM có tiêu đề nhỏ, thay cho danh sách phẳng. */
+.mode-group + .mode-group { margin-top: 24px; }
+.mode-group-title {
+  font-size: 11.5px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase;
+  color: var(--muted); margin: 0 0 2px; padding-top: 2px;
+}
+.mode-group .mode-row:last-child { border-bottom: none; }
+
+/* "Xem chi tiết" gấp gọn phần giải thích dài (giữ đủ thông tin, đỡ rối mắt). */
+.mode-more { margin-top: 6px; }
+.mode-more > summary {
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 700; color: var(--primary);
+}
+.mode-more > summary::-webkit-details-marker { display: none; }
+.mode-more > summary::before { content: "▸"; font-size: 10px; transition: transform .15s var(--ease); }
+.mode-more[open] > summary::before { transform: rotate(90deg); }
+.mode-more > .mode-more-body {
+  font-size: 12.5px; color: var(--muted); line-height: 1.55; margin-top: 6px; max-width: 74ch;
+}
+/* Dòng trạng thái động (vd "gửi lúc 17:00 mỗi ngày"). */
+.mode-detail { font-size: 12px; color: var(--text-soft); margin-top: 5px; font-weight: 600; }
+/* Cụm điều khiển inline (input + nút) trong 1 mục. */
+.mode-controls { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.mode-field { display: flex; align-items: center; gap: 6px; }
+.mode-field-label { font-size: 12.5px; color: var(--text-soft); font-weight: 600; }
+.mode-hint { font-size: 12px; color: var(--muted); }
 
 /* Form grid trong popup */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0 4px; }
@@ -1313,7 +1378,8 @@ td.staff-col { white-space: nowrap; }
 
   /* Cài đặt: hàng cấu hình xếp dọc, badge/nút xuống dưới cho dễ bấm. */
   .mode-row { flex-direction: column; align-items: stretch; gap: 12px; }
-  .mode-row .badge-status, .mode-row > .btn { align-self: flex-start; }
+  .mode-row .badge-status, .mode-row > .btn, .mode-row > .switch { align-self: flex-start; }
+  .mode-row > .switch { margin-top: 0; }
   .form-grid { grid-template-columns: 1fr; }
   .card-header { flex-wrap: wrap; }
 }
