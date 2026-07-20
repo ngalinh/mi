@@ -748,6 +748,7 @@ async function debugShip() {
     // eslint-disable-next-line no-await-in-loop
     const c = await classifyForShip(order, delayedMap);
     const rec = getAutoRecord(autoKeyShip(order));
+    const acct = c.acct || {};
     rows.push({
       customerName: order.customerName || '',
       phone: order.phone || '',
@@ -755,8 +756,14 @@ async function debugShip() {
       hasShipContent: !!(order.noiDungBaoShip && String(order.noiDungBaoShip).trim()),
       shipMark: rec ? rec.status : null, // 'seeded' | 'success' | 'manual' | 'failed' | null
       decision: c.decision,              // 'send' | 'skip'
-      reason: c.reason || null,          // no_content | already | delayed | no_account | ...
-      account: c.acct ? (c.acct.account || c.acct.profile || null) : null,
+      reason: c.reason || null,          // no_content | already | delayed | no_account | auto_off | brand | backlog
+      // Chi tiết chọn account -> soi vì sao brand/Danh bạ không gửi:
+      account: acct.account || acct.profile || null,
+      channel: acct.channel || null,       // 'zalo' | 'facebook' (Danh bạ có link FB -> facebook)
+      source: acct.source || null,         // 'store' | 'store-fb' | 'default' | 'legacy'
+      autoEnabled: acct.autoEnabled,       // false = account đang TẮT "Tự động"
+      orderBrand: acct.orderBrand || null, // brand đọc từ mã đơn (BS/SU…)
+      acctSkip: acct.skipReason || null,   // 'brand' (NV chưa có Zalo cho brand) | 'fb_no_account'
     });
   }
   const byReason = {};
