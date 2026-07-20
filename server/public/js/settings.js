@@ -13,6 +13,7 @@
     if (p === 'proxy') loadProxy();
     if (p === 'zalo') loadZalo();
     if (p === 'log') loadLog();
+    if (p === 'syslog') loadSystemLog();
   });
 
   // ---------------- Nhân viên (lưu thật ở server: SQLite /api/staff) ----------------
@@ -926,6 +927,82 @@
   $('logLimit').addEventListener('change', loadLog);
   $('logWrap').addEventListener('change', (e) => logTerm.classList.toggle('wrap', e.target.checked));
   $('logSearch').addEventListener('input', () => { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 350); });
+
+  // ---------------- Log HỆ THỐNG (runtime/crash) — dùng /api/system-logs, kiểu TERMINAL ----------------
+  const sysTerm = $('sysTerm');
+  let sysTimer = null;
+
+  // Token mức độ, đệm thẳng cột giống tab Log.
+  function sysLevelTok(lv) {
+    if (lv === 'error') return ['ERROR', 't-err'];
+    if (lv === 'warn') return ['WARN ', 't-warn'];
+    if (lv === 'info') return ['INFO ', 't-info'];
+    return ['DEBUG', 't-info'];
+  }
+  function sysTs(ms) {
+    const d = new Date(ms);
+    if (isNaN(d)) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+
+  async function loadSystemLog() {
+    const q = $('sysSearch').value.trim();
+    const source = $('sysSource').value;
+    const level = $('sysLevel').value;
+    const limit = $('sysLimit').value || '500';
+    sysTerm.innerHTML = '<div class="log-empty">Đang tải…</div>';
+    try {
+      const params = new URLSearchParams({ source, limit });
+      if (q) params.set('q', q);
+      if (level) params.set('level', level);
+      const res = await App.api(`/api/system-logs?${params.toString()}`);
+      // Gộp 2 nguồn, gắn nhãn src, rồi sắp xếp mới nhất trước theo thời gian.
+      const rows = [];
+      if (res.server && Array.isArray(res.server.entries)) {
+        res.server.entries.forEach((e) => rows.push({ ...e, src: 'server' }));
+      }
+      let runnerOffline = null;
+      if (res.runner) {
+        if (res.runner.online && Array.isArray(res.runner.entries)) {
+          res.runner.entries.forEach((e) => rows.push({ ...e, src: 'runner' }));
+        } else {
+          runnerOffline = res.runner.error || 'offline';
+        }
+      }
+      rows.sort((a, b) => (b.t || 0) - (a.t || 0));
+
+      const parts = [`${rows.length} dòng`];
+      if (runnerOffline) parts.push(`runner: ${runnerOffline}`);
+      $('sysCount').textContent = parts.join(' · ');
+
+      if (!rows.length) {
+        sysTerm.innerHTML = `<div class="log-empty">Chưa có log nào khớp${runnerOffline ? ` (runner: ${App.esc(runnerOffline)})` : ''}.</div>`;
+        return;
+      }
+      const E = App.esc;
+      sysTerm.innerHTML = rows.map((r) => {
+        const [tok, cls] = sysLevelTok(r.level);
+        const msg = String(r.msg || '').replace(/\s*\n\s*/g, ' ⏎ ');
+        return '<div class="ln">'
+          + `<span class="t-time">${E(sysTs(r.t))}</span> `
+          + `<span class="${cls}">${tok}</span> `
+          + `<span class="t-src">[${E(r.src)}]</span> `
+          + `<span class="t-msg">${E(msg)}</span>`
+          + '</div>';
+      }).join('');
+      sysTerm.scrollTop = 0;
+    } catch (e) {
+      sysTerm.innerHTML = `<div class="log-empty">Lỗi tải log: ${App.esc(e.message || '')}</div>`;
+    }
+  }
+
+  $('sysReload').addEventListener('click', loadSystemLog);
+  $('sysSource').addEventListener('change', loadSystemLog);
+  $('sysLevel').addEventListener('change', loadSystemLog);
+  $('sysLimit').addEventListener('change', loadSystemLog);
+  $('sysWrap').addEventListener('change', (e) => sysTerm.classList.toggle('wrap', e.target.checked));
+  $('sysSearch').addEventListener('input', () => { clearTimeout(sysTimer); sysTimer = setTimeout(loadSystemLog, 350); });
 
   loadHealth();
   setInterval(loadHealth, 15000);

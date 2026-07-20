@@ -1,4 +1,8 @@
 'use strict';
+// Bắt log hệ thống vào ring buffer NGAY từ đầu (trước mọi require khác) để không bỏ sót log
+// phát sinh lúc nạp module (vd config cảnh báo ENV). Xem shared/logBuffer.js.
+const logBuffer = require('../shared/logBuffer');
+logBuffer.install();
 const path = require('path');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
@@ -247,6 +251,32 @@ app.get('/api/test-mode', (req, res) => proxyTestMode(req, res, 'GET', false));
 app.put('/api/test-mode', async (req, res) => {
   if (await guardAdmin(req, res)) return;
   proxyTestMode(req, res, 'PUT', true);
+});
+
+// ---- Log hệ thống (exception/crash/lỗi runtime) — KHÁC "Log thao tác & gửi" (/api/reports) ----
+// Gộp 2 nguồn: log của CHÍNH server (ring buffer trong RAM) + log của RUNNER (kéo về qua proxy,
+// vì runner thường chạy máy khác — nơi Chrome/Playwright hay crash). Query: source (server|runner|all),
+// level (error|warn), q (tìm chuỗi), limit (số dòng). Không lưu vĩnh viễn — chỉ giữ N dòng gần nhất.
+app.get('/api/system-logs', async (req, res) => {
+  const { source = 'all', level, q, limit } = req.query;
+  const out = { ok: true };
+
+  if (source === 'server' || source === 'all') {
+    out.server = { entries: logBuffer.getEntries({ level, q, limit }) };
+  }
+  if (source === 'runner' || source === 'all') {
+    try {
+      const { status, data } = await forwardAccounts('GET', '/api/system-logs', {
+        query: { level, q, limit },
+      });
+      out.runner = (status >= 200 && status < 300 && data && Array.isArray(data.entries))
+        ? { online: true, entries: data.entries }
+        : { online: false, error: (data && data.error) || `HTTP ${status}` };
+    } catch (e) {
+      out.runner = { online: false, error: e.message };
+    }
+  }
+  res.json(out);
 });
 
 // ---- Nhân viên (tài khoản dashboard Mi) ----
