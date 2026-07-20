@@ -163,23 +163,41 @@ async function openConversationByLink(page, link) {
 }
 
 /**
- * Gõ nội dung vào ô soạn tin rồi GỬI. Messenger gửi bằng phím Enter; xuống dòng dùng Shift+Enter
- * nên phải gõ từng dòng để \n trong nội dung không gửi sớm giữa chừng.
+ * DÁN (copy-paste) nội dung vào ô soạn tin rồi GỬI — thay vì gõ từng ký tự.
+ * Bắn thẳng sự kiện `paste` với nguyên nội dung nên nhanh, ít bị gián đoạn giữa chừng; Messenger
+ * (Lexical) hiểu \n trong nội dung dán là XUỐNG DÒNG trong CÙNG tin (không gửi sớm), rồi Enter = GỬI.
  */
 async function typeAndSend(page, box, message) {
   await box.click();
-  const lines = String(message == null ? '' : message).split('\n');
-  for (let i = 0; i < lines.length; i += 1) {
-    // eslint-disable-next-line no-await-in-loop
-    if (lines[i]) await page.keyboard.type(lines[i], { delay: 15 });
-    if (i < lines.length - 1) {
-      // Xuống dòng trong Messenger = Shift+Enter (Enter đơn = GỬI) -> giữ \n không gửi sớm giữa chừng.
+  const text = String(message == null ? '' : message);
+  // Dán nguyên nội dung trong 1 lần qua ClipboardEvent('paste') — giống thao tác copy-paste của
+  // người dùng, giữ nguyên \n (Lexical chuyển thành xuống dòng, KHÔNG gửi sớm giữa chừng).
+  const pasted = await box.evaluate((el, value) => {
+    try {
+      el.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/plain', value);
+      const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
+      return el.dispatchEvent(ev);
+    } catch {
+      return false;
+    }
+  }, text);
+  // Fallback an toàn: nếu vì lý do nào đó ô soạn không nhận paste (rỗng), quay lại gõ từng dòng.
+  if (!pasted || !(await box.innerText().catch(() => '')).trim()) {
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i += 1) {
       // eslint-disable-next-line no-await-in-loop
-      await page.keyboard.down('Shift');
-      // eslint-disable-next-line no-await-in-loop
-      await page.keyboard.press('Enter');
-      // eslint-disable-next-line no-await-in-loop
-      await page.keyboard.up('Shift');
+      if (lines[i]) await page.keyboard.type(lines[i], { delay: 15 });
+      if (i < lines.length - 1) {
+        // Xuống dòng trong Messenger = Shift+Enter (Enter đơn = GỬI) -> giữ \n không gửi sớm giữa chừng.
+        // eslint-disable-next-line no-await-in-loop
+        await page.keyboard.down('Shift');
+        // eslint-disable-next-line no-await-in-loop
+        await page.keyboard.press('Enter');
+        // eslint-disable-next-line no-await-in-loop
+        await page.keyboard.up('Shift');
+      }
     }
   }
   await page.waitForTimeout(300);
