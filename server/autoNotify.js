@@ -461,6 +461,19 @@ async function classifyForShip(order, delayedMap) {
   if (rec && rec.attempts >= cfg.maxRetries) return { decision: 'skip', reason: 'max_retries' };
   // Cờ Delay/Loại trừ dùng chung khóa đơn (autoKey) -> đơn đang hoãn thì cũng hoãn báo ship.
   if (delayedMap && delayedMap.has(autoKey(order))) return { decision: 'skip', reason: 'delayed' };
+  // ĐỪNG GỬI SHIP TRƯỚC BÁO HÀNG: khi TỰ ĐỘNG BÁO HÀNG đang BẬT (state.enabled) mà đơn còn "Chưa
+  // báo" (not_sent) VÀ vẫn còn ND báo hàng CHƯA gửi (autoKey chưa có dấu success/manual) -> để lượt
+  // BÁO HÀNG gửi trước, ship CHỜ lượt sau. Tránh khách nhận "đang giao" trước cả "hàng đã về".
+  //   • Chỉ chờ khi báo hàng BẬT: nếu tắt, mi KHÔNG bao giờ tự gửi báo hàng -> chờ = kẹt ship mãi.
+  //   • Chỉ chờ khi có ND báo hàng: đơn không có ND báo hàng thì mi cũng không gửi báo hàng -> gửi
+  //     ship luôn (NV đã báo hàng tay ngoài mi, chỉ quên tick trạng thái).
+  // Khi báo hàng gửi xong (autoKey -> success) thì lượt ship kế đơn này sẽ qua được cửa này.
+  if (state.enabled && order.statusCode === 'not_sent'
+      && order.noiDungBaoHang && String(order.noiDungBaoHang).trim()) {
+    const hangRec = getAutoRecord(autoKey(order));
+    const hangSent = hangRec && (hangRec.status === 'success' || hangRec.status === 'manual');
+    if (!hangSent) return { decision: 'skip', reason: 'wait_arrival' };
+  }
 
   // Chọn account theo NV phụ trách (giống báo hàng).
   const acct = await resolveForOrder(order, { defaultAccount: cfg.account, profile: cfg.profile });
@@ -475,10 +488,12 @@ async function classifyForShip(order, delayedMap) {
 }
 
 /**
- * SEED lúc bật báo ship: chụp ảnh các đơn ĐANG có sẵn "ND báo ship" tại thời điểm bật rồi đánh dấu
- * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa
- * có dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
- * 'notified_arrival' để bắt mọi đơn đã có ND ship ở thời điểm bật. Ghi mốc SHIP_SEEDED_KEY khi xong.
+ * SEED lúc bật báo ship: chụp ảnh MỌI đơn ĐANG có sẵn "ND báo ship" tại thời điểm bật rồi đánh dấu
+ * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. MỐC TUYỆT ĐỐI: seed bất kể đơn đang bị chặn hay
+ * không (account tắt auto / brand / chưa báo hàng) -> "đơn cũ" có ND ship trước lúc bật KHÔNG bao giờ
+ * bị nhắn, kể cả khi sau này gỡ chặn account. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có
+ * dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
+ * 'notified_arrival'. Ghi mốc SHIP_SEEDED_KEY khi xong. Muốn nhắn lại nhóm cũ -> BẬT lại (chốt mốc mới).
  * @returns {Promise<{at:string, scanned:number, seeded:number}>}
  */
 async function seedShip() {
@@ -493,6 +508,12 @@ async function seedShip() {
       if (seen.has(k)) continue;
       seen.add(k);
       scanned += 1;
+      // MỐC TUYỆT ĐỐI: đánh dấu 'seeded' MỌI đơn đang có sẵn ND ship lúc bật (BẤT KỂ account đang
+      // bật/tắt "Tự động", brand, đã báo hàng hay chưa) -> KHÔNG gửi. Chỉ ND ship XUẤT HIỆN SAU khi
+      // bật (đơn chưa có dấu) mới được gửi. Chủ đích: "đơn cũ" (đã có ND ship trước lúc bật) KHÔNG
+      // bao giờ bị nhắn, kể cả sau này khi gỡ chặn account. Muốn nhắn lại nhóm cũ -> BẬT lại để chốt
+      // mốc mới. (Đánh đổi: đơn đã 'seeded' mà về sau có ND ship MỚI cũng bị bỏ tới lần BẬT kế — hiếm,
+      // vì ND ship 1 đơn thường chỉ soạn 1 lần; và đúng ý "chỉ nhắn đơn mới sau khi bật".)
       if (!o.noiDungBaoShip || !String(o.noiDungBaoShip).trim()) continue; // chưa có ND ship -> khỏi seed
       const key = autoKeyShip(o);
       if (getAutoRecord(key)) continue;   // đã có dấu (đã gửi/tay/seeded trước) -> giữ nguyên
@@ -617,6 +638,7 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
       else if (c.reason === 'auto_off') bump('skippedAutoOff');
       else if (c.reason === 'brand') bump('skippedBrand');
       else if (c.reason === 'backlog') bump('skippedBacklog');
+      else if (c.reason === 'wait_arrival') bump('skippedWaitArrival');
       // 'already' / 'max_retries' / 'not_target' -> không đếm (không phải "đáng gửi")
     }
     // GOM THEO PROFILE (ổn định theo thứ tự tài khoản xuất hiện đầu) -> bot gửi tuần tự HẾT đơn
@@ -699,7 +721,8 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
       const skipNoAcc = summary.skippedNoAccount ? `, bỏ qua ${summary.skippedNoAccount} đơn (không khớp account)` : '';
       const skipBrand = summary.skippedBrand ? `, bỏ qua ${summary.skippedBrand} đơn (NV chưa có Zalo cho brand)` : '';
       const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
-      console.log(`[${logTag}:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} ${noun}${skipNo}${skipDelay}${skipOff}${skipNoAcc}${skipBrand}${skipBack})`);
+      const skipWait = summary.skippedWaitArrival ? `, hoãn ${summary.skippedWaitArrival} đơn (chờ báo hàng gửi trước)` : '';
+      console.log(`[${logTag}:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} ${noun}${skipNo}${skipDelay}${skipOff}${skipNoAcc}${skipBrand}${skipBack}${skipWait})`);
     }
   });
 }
@@ -776,7 +799,7 @@ async function debugShip() {
       hasShipContent: !!(order.noiDungBaoShip && String(order.noiDungBaoShip).trim()),
       shipMark: rec ? rec.status : null, // 'seeded' | 'success' | 'manual' | 'failed' | null
       decision: c.decision,              // 'send' | 'skip'
-      reason: c.reason || null,          // no_content | already | delayed | no_account | auto_off | brand | backlog
+      reason: c.reason || null,          // no_content | already | delayed | no_account | auto_off | brand | backlog | wait_arrival
       // Chi tiết chọn account -> soi vì sao brand/Danh bạ không gửi:
       account: acct.account || acct.profile || null,
       channel: acct.channel || null,       // 'zalo' | 'facebook' (Danh bạ có link FB -> facebook)
