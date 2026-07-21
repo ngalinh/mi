@@ -21,10 +21,15 @@
     searchBox: $('searchBox'), addBtn: $('addContactBtn'),
     fbFilter: $('fbFilter'), rtFilter: $('rtFilter'),
     nvToggle: $('nvToggle'), nvLabel: $('nvLabel'), nvPanel: $('nvPanel'),
+    pager: $('contactPager'),
   };
 
   // NV phụ trách được chọn để lọc (rỗng = tất cả nhân viên)
   const nvSelected = new Set();
+
+  // ---------------- Phân trang danh bạ (client-side) ----------------
+  const PAGE_SIZE = 20;   // số liên hệ mỗi trang (giống dashboard: ~20/trang)
+  let contactPage = 1;    // trang danh bạ đang xem
 
   const staffName = (uid) => {
     if (uid == null || uid === '') return '';
@@ -267,9 +272,15 @@
     els.contactCount.textContent = contacts.length;
     if (!list.length) {
       els.contactRows.innerHTML = `<tr><td colspan="9" class="muted" style="padding:16px;">${contacts.length ? 'Không có liên hệ khớp bộ lọc.' : 'Chưa có liên hệ nào — nhập từ file hoặc thêm thủ công.'}</td></tr>`;
+      renderContactPager(0);
       return;
     }
-    els.contactRows.innerHTML = list.map((c) => `
+    // Kẹp trang hiện tại vào [1, số trang] (phòng khi bộ lọc làm ngắn danh sách).
+    const pageCount = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+    if (contactPage > pageCount) contactPage = pageCount;
+    const startIdx = (contactPage - 1) * PAGE_SIZE;
+    const pageList = list.slice(startIdx, startIdx + PAGE_SIZE);
+    els.contactRows.innerHTML = pageList.map((c) => `
       <tr data-phone="${App.esc(c.phone)}">
         <td>${App.esc(c.raw_phone || c.phone)}</td>
         <td class="cust">${c.zalo_name ? `<span class="cust-text" title="${App.esc(c.zalo_name)}">${App.esc(c.zalo_name)}</span>` : '—'}</td>
@@ -284,11 +295,72 @@
           <button class="link-btn act-del" title="Xoá" style="color:var(--danger,#d33)">Xoá</button>
         </td>
       </tr>`).join('');
+    renderContactPager(list.length);
   }
 
-  els.searchBox.addEventListener('input', renderContacts);
-  els.fbFilter.addEventListener('change', renderContacts);
-  els.rtFilter.addEventListener('change', renderContacts);
+  // Danh sách nút trang dạng cửa sổ: 1 … (cur-1) cur (cur+1) … N.
+  function pageItems(total, cur) {
+    const out = [];
+    for (let p = 1; p <= total; p += 1) {
+      if (p === 1 || p === total || (p >= cur - 1 && p <= cur + 1)) out.push(p);
+      else if (out[out.length - 1] !== '…') out.push('…');
+    }
+    return out;
+  }
+
+  // Vẽ thanh phân trang danh bạ (giống dashboard). total = số liên hệ sau khi lọc.
+  function renderContactPager(total) {
+    const el = els.pager;
+    if (!el) return;
+    const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (total <= PAGE_SIZE) { el.innerHTML = ''; el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const cur = Math.min(contactPage, pageCount);
+    const from = (cur - 1) * PAGE_SIZE + 1;
+    const to = Math.min(cur * PAGE_SIZE, total);
+    const info = `<span class="pg-info">Hiện <b>${from}–${to}</b> / <b>${total}</b> liên hệ — Trang <b>${cur}</b> / <b>${pageCount}</b></span>`;
+    const parts = [`<button class="pg-btn" data-page="${cur - 1}" ${cur === 1 ? 'disabled' : ''}>Trước</button>`];
+    for (const p of pageItems(pageCount, cur)) {
+      parts.push(p === '…'
+        ? '<span class="pg-ellip">…</span>'
+        : `<button class="pg-btn ${p === cur ? 'active' : ''}" data-page="${p}">${p}</button>`);
+    }
+    parts.push(`<button class="pg-btn" data-page="${cur + 1}" ${cur === pageCount ? 'disabled' : ''}>Sau</button>`);
+    const pages = `<span class="pg-pages">${parts.join('')}</span>`;
+    const jump = `<span class="pg-jump">Đến trang <input class="pg-jump-input" type="number" min="1" max="${pageCount}" value="${cur}" aria-label="Đến trang" /> <button class="pg-btn pg-go" id="ctGo">Đi</button></span>`;
+    el.innerHTML = info + pages + jump;
+  }
+
+  // Nhảy tới 1 trang danh bạ + cuộn bảng lên đầu tầm mắt.
+  function goToContactPage(p) {
+    contactPage = Math.max(1, parseInt(p, 10) || 1);
+    renderContacts();
+    const tw = document.querySelector('.contact-table');
+    const wrap = tw && tw.closest('.table-wrap');
+    if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  els.pager.addEventListener('click', (e) => {
+    const b = e.target.closest('.pg-btn');
+    if (!b || b.disabled) return;
+    if (b.classList.contains('pg-go')) {
+      const inp = els.pager.querySelector('.pg-jump-input');
+      return goToContactPage(inp ? inp.value : contactPage);
+    }
+    goToContactPage(b.dataset.page);
+  });
+  els.pager.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.classList.contains('pg-jump-input')) {
+      e.preventDefault();
+      goToContactPage(e.target.value);
+    }
+  });
+
+  // Đổi bộ lọc/tìm kiếm -> về trang 1 rồi render lại.
+  function resetPageAndRender() { contactPage = 1; renderContacts(); }
+  els.searchBox.addEventListener('input', resetPageAndRender);
+  els.fbFilter.addEventListener('change', resetPageAndRender);
+  els.rtFilter.addEventListener('change', resetPageAndRender);
 
   // Mở/đóng panel chọn nhiều NV
   const nvBox = $('nvFilter');
@@ -310,6 +382,7 @@
       nvSelected.delete(cb.value);
     }
     renderNvPanel();
+    contactPage = 1;
     renderContacts();
   });
   document.addEventListener('click', (e) => {
