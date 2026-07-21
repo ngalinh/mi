@@ -172,19 +172,23 @@ async function typeAndSend(page, box, message) {
   const text = String(message == null ? '' : message);
   // Dán nguyên nội dung trong 1 lần qua ClipboardEvent('paste') — giống thao tác copy-paste của
   // người dùng, giữ nguyên \n (Lexical chuyển thành xuống dòng, KHÔNG gửi sớm giữa chừng).
-  const pasted = await box.evaluate((el, value) => {
-    try {
-      el.focus();
-      const dt = new DataTransfer();
-      dt.setData('text/plain', value);
-      const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
-      return el.dispatchEvent(ev);
-    } catch {
-      return false;
-    }
+  // LƯU Ý: Lexical gọi preventDefault trên paste nên dispatchEvent LUÔN trả false — KHÔNG dùng giá
+  // trị đó để đoán paste có ăn hay không (trước đây làm vậy khiến fallback luôn chạy -> gõ ĐÚP).
+  await box.evaluate((el, value) => {
+    el.focus();
+    const dt = new DataTransfer();
+    dt.setData('text/plain', value);
+    el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt }));
   }, text);
-  // Fallback an toàn: nếu vì lý do nào đó ô soạn không nhận paste (rỗng), quay lại gõ từng dòng.
-  if (!pasted || !(await box.innerText().catch(() => '')).trim()) {
+  // Chờ Lexical render xong RỒI mới kiểm tra ô có nội dung chưa (paste cập nhật DOM không đồng bộ).
+  await page.waitForTimeout(400);
+
+  // Fallback CHỈ khi ô VẪN rỗng (paste không ăn thật sự): xoá sạch trước rồi gõ từng dòng, tránh
+  // nối thêm vào phần đã dán. Nếu paste đã ăn thì bỏ qua hẳn nhánh này -> không bị nhập nhiều lần.
+  if (!(await box.innerText().catch(() => '')).trim()) {
+    await box.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Delete');
     const lines = text.split('\n');
     for (let i = 0; i < lines.length; i += 1) {
       // eslint-disable-next-line no-await-in-loop
