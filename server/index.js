@@ -883,7 +883,10 @@ app.get('/api/reports', async (req, res) => {
       const s = new Set();
       for (const a of (accts || [])) {
         if (a && a.platform === 'facebook') {
-          [a.fbName, a.key, a.name].forEach((v) => { if (v) s.add(String(v).trim()); });
+          // Chỉ gom định danh THỰC SỰ được lưu vào report.zalo_account khi gửi FB: fbName (hoặc
+          // key khi thiếu fbName). KHÔNG gom a.name (tên NV) — nó trùng với tên account Zalo của
+          // cùng một người nên sẽ khiến report gửi bằng Zalo bị nhận nhầm thành Facebook.
+          [a.fbName, a.key].forEach((v) => { if (v) s.add(String(v).trim()); });
         }
       }
       fbIds = s;
@@ -891,7 +894,10 @@ app.get('/api/reports', async (req, res) => {
     const items2 = fbIds
       ? items.map((r) => ({
         ...r,
-        channel: (r.zalo_account && fbIds.has(String(r.zalo_account).trim())) ? 'facebook' : (r.channel || 'zalo'),
+        // Ưu tiên channel ĐÃ LƯU (report mới luôn có, khớp đúng kênh đã gửi — như dashboard). Chỉ
+        // suy luận theo nền tảng account cho report CŨ chưa có channel, tránh lật nhầm 'zalo' thành
+        // 'facebook' khi tên account Zalo trùng tên/nick một account Facebook của cùng người.
+        channel: r.channel || ((r.zalo_account && fbIds.has(String(r.zalo_account).trim())) ? 'facebook' : 'zalo'),
       }))
       : items;
     res.json({ ok: true, stats: stats(filters), items: items2, facets: reportFacets() });
