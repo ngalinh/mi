@@ -39,9 +39,12 @@
   const F = { from: '', to: '', exclude: 'all', note: 'all' };
 
   // Phạm vi thời gian chọn qua selector #fScope trên toolbar (đầu ô tìm kiếm).
-  // scopeDays = số ngày gần đây; 0 = "Tất cả" (mặc định). Khoảng ngày tường minh (F.from/F.to)
+  // scopeDays = số ngày gần đây; 0 = "Tất cả". Khoảng ngày tường minh (F.from/F.to)
   // trong Bộ lọc nâng cao sẽ ghi đè scope.
-  let scopeDays = 0; // mặc định: Tất cả (mọi ngày)
+  // Mặc định 7 ngày (không phải "Tất cả"): tải all-time bắt Basso quét cả kho lịch sử ->
+  // chậm và hay bung 500. Cửa sổ 7 ngày nhẹ hơn nhiều -> mở dashboard nhanh & ổn định hơn.
+  // Cần xem cũ hơn thì chọn 30/90 ngày hoặc "Tất cả" trên selector #fScope.
+  let scopeDays = 7; // mặc định: 7 ngày gần đây
 
   // Gắn phạm vi ngày vào query gửi server: ưu tiên khoảng ngày tường minh (F.from/F.to);
   // nếu không có thì gửi ?days=scopeDays (bỏ qua khi =0 -> all-time).
@@ -55,7 +58,11 @@
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
 
-  const AUTO_SYNC_MS = 60000; // tự động đồng bộ danh sách mỗi 60 giây
+  // Tự động đồng bộ danh sách mỗi 120s (giãn từ 60s): mỗi tab dashboard đang mở tự kéo lại tập
+  // theo scope -> nhiều tab/nhiều người nhân tải lên Basso. Giãn ra giảm nửa số lượt kéo nền.
+  // KHÔNG ảnh hưởng bot tự báo hàng/ship (chạy nền riêng phía server); chỉ là danh sách người
+  // xem làm mới chậm hơn ~1 phút. Đơn "Chưa báo" mới vẫn được bot xử lý đúng hạn.
+  const AUTO_SYNC_MS = 120000;
 
   const DONE = new Set(['notified_arrival', 'notified_ship']);
   // "Đã báo" = web đã đánh dấu, HOẶC mi đã gửi (bot 'success' / đã báo tay 'manual').

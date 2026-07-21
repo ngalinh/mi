@@ -82,15 +82,19 @@ module.exports = {
     requestTimeoutMs: Math.max(parseInt(process.env.BASSO_TIMEOUT_MS || '20000', 10) || 0, 0),
     // TTL (ms) cache danh sách hàng về trong RAM — auto-sync/đổi tab/gõ tìm kiếm lặp lại
     // không phải gọi lại Basso mỗi lần. 0 = tắt cache.
-    listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '30000', 10) || 0, 0),
+    // Mặc định 60s (nâng từ 30s): giảm nửa số lần làm mới nền -> nhẹ Basso hơn. AN TOÀN cho
+    // báo ship vì webhook /api/webhook/ship đọc TƯƠI (bỏ cache) nên vẫn thấy ND mới tức thời.
+    listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '60000', 10) || 0, 0),
     // Cửa sổ ngày MẶC ĐỊNH cho dashboard (giảm cold-load: chỉ kéo N ngày gần đây thay vì
-    // all-time). 0 = mặc định all-time. Phải KHỚP hằng DEFAULT_DAYS ở public/js/dashboard.js
-    // (client gửi kèm ?days=) để preload warm đúng cache key. Dùng cho preload + số đếm.
-    defaultDays: Math.max(parseInt(process.env.BASSO_DEFAULT_DAYS || '30', 10) || 0, 0),
+    // all-time). 0 = all-time. PHẢI KHỚP `scopeDays` mặc định ở public/js/dashboard.js (client
+    // gửi kèm ?days=) để cacheWarmer warm ĐÚNG cache key -> mở dashboard ăn cache ấm. Cả hai = 7.
+    defaultDays: Math.max(parseInt(process.env.BASSO_DEFAULT_DAYS || '7', 10) || 0, 0),
     // Chu kỳ (ms) NẠP SẴN khung nhìn mặc định của dashboard vào cache RAM (xem cacheWarmer.js)
     // -> người mở dashboard không phải đợi Basso. 0 = tắt; nếu >0 thì tối thiểu 15000ms.
+    // Mặc định 120s (giãn từ 60s): warm nền thưa hơn -> nhẹ Basso. Cache TTL 60s nên trong
+    // khoảng giữa 2 lượt warm, cache có thể stale -> SWR vẫn trả ngay rồi tự làm mới, không kẹt.
     preloadIntervalMs: (() => {
-      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '60000', 10);
+      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '120000', 10);
       return Number.isFinite(v) && v > 0 ? Math.max(v, 15000) : 0;
     })(),
     // Ngưỡng số đơn để dashboard lọc client-side (kéo hết 1 lần rồi lọc NV/trạng thái/trang
@@ -101,8 +105,10 @@ module.exports = {
     // load nặng hơn được bù bằng concurrency cao hơn (pageConcurrency) + gzip + cache ấm.
     clientMaxOrders: Math.max(parseInt(process.env.BASSO_CLIENT_MAX_ORDERS || '6000', 10) || 0, 0),
     // Số trang Basso kéo SONG SONG khi gom toàn bộ đơn 1 khoảng ngày (getAllOrders). Cao hơn =
-    // cold load / auto-sync nhanh hơn, nhưng tải lên Basso nặng hơn. Dial về 4 nếu Basso than phiền.
-    pageConcurrency: Math.min(Math.max(parseInt(process.env.BASSO_PAGE_CONCURRENCY || '8', 10) || 8, 1), 16),
+    // cold load / auto-sync nhanh hơn, nhưng tải lên Basso NẶNG hơn (đỉnh request cùng lúc cao).
+    // Mặc định 4 (hạ từ 8): giảm nửa đỉnh tải lên Basso -> nhẹ hệ thống. Cold-load 7 ngày ít trang
+    // nên gần như không chậm thêm. Cần kéo nhanh hơn (tập lớn) thì nâng qua BASSO_PAGE_CONCURRENCY.
+    pageConcurrency: Math.min(Math.max(parseInt(process.env.BASSO_PAGE_CONCURRENCY || '4', 10) || 4, 1), 16),
     // Bật để in thời gian từng call tới Basso (chẩn đoán chậm: do mạng hay do Basso).
     // BASSO_LOG_TIMING=true -> log "[basso] getArrivedVnList 2380ms". Mặc định tắt.
     logTiming: String(process.env.BASSO_LOG_TIMING || 'false').toLowerCase() === 'true',
@@ -130,13 +136,15 @@ module.exports = {
     // auto trên dashboard) -> kiểm soát thời điểm, tránh bot vừa dựng lại đã nhắn loạt ngoài ý muốn.
     // Đặt AUTO_NOTIFY_RESUME_ON_BOOT=true để tự chạy lại ngay khi khởi động như trước.
     resumeOnBoot: String(process.env.AUTO_NOTIFY_RESUME_ON_BOOT || 'false').toLowerCase() === 'true',
-    intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '60000', 10) || 60000, 10000),
-    // Chu kỳ quét BÁO SHIP (ms) — RIÊNG với báo hàng để có thể quét NHANH hơn (gần real-time) khi
-    // không dùng webhook. Mặc định 60s; tối thiểu 10s. Mỗi lượt đọc TƯƠI (bỏ cache) + quét cả
-    // 'not_sent' lẫn 'notified_arrival' nên khá NẶNG cho Basso — 60s cân bằng độ trễ vs tải. Cần
-    // gần tức thời thì cấu hình Basso gọi webhook /api/webhook/ship (gửi trong vài giây), rồi có thể
-    // hạ interval hoặc để nguyên vì webhook đã lo phần "ngay".
-    shipIntervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_INTERVAL_MS || '60000', 10) || 60000, 10000),
+    // Chu kỳ quét BÁO HÀNG (ms). Giãn 60s -> 120s: mỗi lượt quét đơn "Chưa báo" -> ít dội Basso
+    // hơn. Đơn về mới trễ báo tối đa ~2 phút (webhook /api/webhook/arrived vẫn báo ngay nếu Basso gọi).
+    intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '120000', 10) || 120000, 10000),
+    // Chu kỳ quét BÁO SHIP (ms) — RIÊNG với báo hàng. Mỗi lượt đọc TƯƠI (bỏ cache) + quét cả
+    // 'not_sent' lẫn 'notified_arrival' ALL-TIME nên là lượt NẶNG NHẤT dội Basso liên tục.
+    // Giãn 60s -> 180s: giảm ~2/3 tải poller ship lên Basso (nguyên nhân chính làm Basso lag).
+    // Đánh đổi: không có webhook thì ship mới trễ báo tối đa ~3 phút. Có webhook /api/webhook/ship
+    // (Basso gọi khi có ND ship) thì báo trong vài giây -> lúc đó có thể giãn tiếp lên 300000+.
+    shipIntervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_INTERVAL_MS || '180000', 10) || 180000, 10000),
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
     // Bot gửi xong có đẩy trạng thái "Đã báo hàng" về web Basso không?
