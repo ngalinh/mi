@@ -91,8 +91,10 @@ module.exports = {
     defaultDays: Math.max(parseInt(process.env.BASSO_DEFAULT_DAYS || '30', 10) || 0, 0),
     // Chu kỳ (ms) NẠP SẴN khung nhìn mặc định của dashboard vào cache RAM (xem cacheWarmer.js)
     // -> người mở dashboard không phải đợi Basso. 0 = tắt; nếu >0 thì tối thiểu 15000ms.
+    // Mặc định 120s (giãn từ 60s): warm nền thưa hơn -> nhẹ Basso. Cache TTL 60s nên trong
+    // khoảng giữa 2 lượt warm, cache có thể stale -> SWR vẫn trả ngay rồi tự làm mới, không kẹt.
     preloadIntervalMs: (() => {
-      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '60000', 10);
+      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '120000', 10);
       return Number.isFinite(v) && v > 0 ? Math.max(v, 15000) : 0;
     })(),
     // Ngưỡng số đơn để dashboard lọc client-side (kéo hết 1 lần rồi lọc NV/trạng thái/trang
@@ -134,13 +136,15 @@ module.exports = {
     // auto trên dashboard) -> kiểm soát thời điểm, tránh bot vừa dựng lại đã nhắn loạt ngoài ý muốn.
     // Đặt AUTO_NOTIFY_RESUME_ON_BOOT=true để tự chạy lại ngay khi khởi động như trước.
     resumeOnBoot: String(process.env.AUTO_NOTIFY_RESUME_ON_BOOT || 'false').toLowerCase() === 'true',
-    intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '60000', 10) || 60000, 10000),
-    // Chu kỳ quét BÁO SHIP (ms) — RIÊNG với báo hàng để có thể quét NHANH hơn (gần real-time) khi
-    // không dùng webhook. Mặc định 60s; tối thiểu 10s. Mỗi lượt đọc TƯƠI (bỏ cache) + quét cả
-    // 'not_sent' lẫn 'notified_arrival' nên khá NẶNG cho Basso — 60s cân bằng độ trễ vs tải. Cần
-    // gần tức thời thì cấu hình Basso gọi webhook /api/webhook/ship (gửi trong vài giây), rồi có thể
-    // hạ interval hoặc để nguyên vì webhook đã lo phần "ngay".
-    shipIntervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_INTERVAL_MS || '60000', 10) || 60000, 10000),
+    // Chu kỳ quét BÁO HÀNG (ms). Giãn 60s -> 120s: mỗi lượt quét đơn "Chưa báo" -> ít dội Basso
+    // hơn. Đơn về mới trễ báo tối đa ~2 phút (webhook /api/webhook/arrived vẫn báo ngay nếu Basso gọi).
+    intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '120000', 10) || 120000, 10000),
+    // Chu kỳ quét BÁO SHIP (ms) — RIÊNG với báo hàng. Mỗi lượt đọc TƯƠI (bỏ cache) + quét cả
+    // 'not_sent' lẫn 'notified_arrival' ALL-TIME nên là lượt NẶNG NHẤT dội Basso liên tục.
+    // Giãn 60s -> 180s: giảm ~2/3 tải poller ship lên Basso (nguyên nhân chính làm Basso lag).
+    // Đánh đổi: không có webhook thì ship mới trễ báo tối đa ~3 phút. Có webhook /api/webhook/ship
+    // (Basso gọi khi có ND ship) thì báo trong vài giây -> lúc đó có thể giãn tiếp lên 300000+.
+    shipIntervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_INTERVAL_MS || '180000', 10) || 180000, 10000),
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
     // Bot gửi xong có đẩy trạng thái "Đã báo hàng" về web Basso không?

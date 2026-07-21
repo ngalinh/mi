@@ -831,6 +831,9 @@ app.post('/api/webhook/arrived', async (req, res) => {
   if (secret && !safeEqual(req.get('x-webhook-secret'), secret)) {
     return res.status(401).json({ ok: false, error: 'Sai webhook secret' });
   }
+  // Log mỗi lần Basso gọi webhook -> tra log biết webhook có hoạt động không (để quyết định
+  // giãn poller nền). Có webhook = poller chỉ là lưới an toàn -> giãn interval mạnh được.
+  console.log(`[webhook] arrived nhận lúc ${new Date().toISOString()}`);
   try {
     const result = await autoNotify.runAutoNotify({ trigger: 'webhook' });
     res.json({ ok: true, ...result });
@@ -850,6 +853,9 @@ app.post('/api/webhook/ship', async (req, res) => {
   if (secret && !safeEqual(req.get('x-webhook-secret'), secret)) {
     return res.status(401).json({ ok: false, error: 'Sai webhook secret' });
   }
+  // Log mỗi lần Basso gọi webhook ship -> tra log biết webhook có hoạt động không. Nếu THẤY dòng
+  // này đều đặn khi có ship mới => webhook chạy tốt => giãn AUTO_NOTIFY_SHIP_INTERVAL_MS lên 300000+.
+  console.log(`[webhook] ship nhận lúc ${new Date().toISOString()}`);
   try {
     const result = await autoNotify.runAutoNotifyShip({ trigger: 'webhook' });
     res.json({ ok: true, ...result });
