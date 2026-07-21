@@ -289,6 +289,12 @@
               <option value="hang">Báo hàng</option>
               <option value="ship">Báo ship</option>
             </select>
+            <select class="note-input" id="logSender" style="max-width:180px;" title="Lọc theo người gửi: bot tự động hay nhân viên thật">
+              <option value="">Mọi người gửi</option>
+              <option value="bot">Bot tự động</option>
+              <option value="__human__">Người thật (nhân viên)</option>
+              <optgroup id="logSenderList" label="Người gửi cụ thể"></optgroup>
+            </select>
             <select class="note-input" id="logLimit" style="max-width:130px;">
               <option value="100">100 dòng</option>
               <option value="200" selected>200 dòng</option>
