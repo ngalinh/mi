@@ -183,7 +183,8 @@ const state = {
 };
 
 let timer = null;      // timer BÁO HÀNG (hẹn giờ / interval)
-let shipTimer = null;  // timer BÁO SHIP (cadence RIÊNG, nhanh hơn — cfg.shipIntervalMs)
+let shipTimer = null;  // timer BÁO SHIP lượt FULL (cả not_sent + notified_arrival — cfg.shipIntervalMs)
+let shipCatchTimer = null; // timer BÁO SHIP lượt CATCH NHẸ (chỉ notified_arrival — cfg.shipCatchIntervalMs)
 
 /**
  * Tới giờ hẹn chưa? (chạy MỖI scheduleCheckMs). Chỉ gọi Basso khi ĐÃ tới giờ và CHƯA chạy hôm
@@ -240,6 +241,18 @@ function intervalTick() {
 function maybeRunShip(trigger = 'ship-poll') {
   if (!state.shipEnabled) return;
   runAutoNotifyShip({ trigger }).catch(() => {});
+}
+
+/**
+ * Lượt CATCH NHẸ báo ship (nhịp cfg.shipCatchIntervalMs, nhanh hơn lượt full): CHỈ quét
+ * 'notified_arrival' (đơn "Đã báo hàng" đang chờ ship — nhóm sát bước giao nhất). Mục đích: bắt ND
+ * ship KỊP trong khoảng ân hạn ngắn TRƯỚC khi kho tick "đã giao hàng" làm đơn RỚT hẳn khỏi danh
+ * sách (đơn đã giao chỉ còn ở list vài phút; lượt full 180s dễ lệch pha mà lọt). Nhẹ hơn lượt full
+ * (1 status thay vì 2) nên chạy dày mà dội Basso ít. Dùng chung cờ state.runningShip -> không chồng
+ * lượt full. Nuốt lỗi. */
+function maybeRunShipCatch() {
+  if (!state.shipEnabled) return;
+  runAutoNotifyShip({ trigger: 'ship-catch', statusFilter: ['notified_arrival'] }).catch(() => {});
 }
 
 /**
@@ -596,8 +609,8 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
   // Đặt quét đơn TRONG khóa để thấy trạng thái mới nhất sau khi luồng kia vừa gửi xong.
   await withLock(async () => {
     // Đọc TƯƠI (bỏ cache) cho webhook (thấy ngay đơn mới / ND vừa soạn), lượt theo lịch, và
-    // poll báo ship ('ship-poll') — để bắt ND ship MỚI ngay, không dính cache 30s.
-    const fresh = trigger === 'webhook' || trigger === 'scheduled' || trigger === 'ship-poll';
+    // poll báo ship ('ship-poll'/'ship-catch') — để bắt ND ship MỚI ngay, không dính cache 30s.
+    const fresh = trigger === 'webhook' || trigger === 'scheduled' || trigger === 'ship-poll' || trigger === 'ship-catch';
     // statusFilter có thể là 1 mã hoặc MẢNG mã (báo ship quét cả 'not_sent' lẫn 'notified_arrival').
     const statuses = Array.isArray(statusFilter) ? statusFilter : [statusFilter];
     const orders = [];
@@ -842,7 +855,8 @@ async function runAutoNotifyShip(opts = {}) {
   try {
     await executeNotifyPass({
       // Quét CẢ "Chưa báo" lẫn "Đã báo hàng" -> bắt đơn có ND ship dù NV quên tick trạng thái.
-      trigger, kind: 'ship', statusFilter: ['not_sent', 'notified_arrival'],
+      // Lượt CATCH truyền statusFilter hẹp (['notified_arrival']) -> quét nhẹ & nhanh hơn.
+      trigger, kind: 'ship', statusFilter: opts.statusFilter || ['not_sent', 'notified_arrival'],
       classify: classifyForShip, keyOf: autoKeyShip, logTag: 'auto-ship', summary,
     });
   } catch (err) {
@@ -878,10 +892,18 @@ function startShipTimer() {
   setTimeout(() => maybeRunShip(), 5000);
   shipTimer = setInterval(() => maybeRunShip(), cfg.shipIntervalMs);
   if (shipTimer.unref) shipTimer.unref();
+  // Lượt CATCH nhẹ (nhịp nhanh hơn) — bắt kịp đơn sắp bị tick "đã giao hàng". Lệch pha khởi động
+  // (12s) so với lượt full (5s) để không nổ chồng ngay lúc bật. Đặt AUTO_NOTIFY_SHIP_CATCH_INTERVAL_MS=0 để tắt.
+  if (!shipCatchTimer && cfg.shipCatchIntervalMs > 0) {
+    setTimeout(() => maybeRunShipCatch(), 12000);
+    shipCatchTimer = setInterval(() => maybeRunShipCatch(), cfg.shipCatchIntervalMs);
+    if (shipCatchTimer.unref) shipCatchTimer.unref();
+  }
 }
 
 function stopShipTimer() {
   if (shipTimer) { clearInterval(shipTimer); shipTimer = null; }
+  if (shipCatchTimer) { clearInterval(shipCatchTimer); shipCatchTimer = null; }
 }
 
 /** Bật/tắt tự động BÁO HÀNG lúc runtime (không cần restart). */
@@ -965,7 +987,7 @@ function startAutoNotify() {
   } else {
     console.log('[auto-notify] báo hàng TẮT');
   }
-  console.log(`[auto-notify] BÁO SHIP ${state.shipEnabled ? 'BẬT' : 'TẮT'}${state.shipEnabled ? ` — quét đơn "Đã báo hàng" có ND ship mỗi ${Math.round(cfg.shipIntervalMs / 1000)}s, gửi ngay` : ''}`);
+  console.log(`[auto-notify] BÁO SHIP ${state.shipEnabled ? 'BẬT' : 'TẮT'}${state.shipEnabled ? ` — quét full mỗi ${Math.round(cfg.shipIntervalMs / 1000)}s${cfg.shipCatchIntervalMs > 0 ? ` + catch nhẹ "Đã báo hàng" mỗi ${Math.round(cfg.shipCatchIntervalMs / 1000)}s` : ''}, gửi ngay` : ''}`);
   // Seed lần đầu nếu bật ship (qua env) mà CHƯA từng seed -> tránh nhắn loạt đơn tồn cũ lần đầu bật.
   // Đã seed rồi (khởi động lại) thì KHÔNG seed lại: ND ship phát sinh lúc server tắt vẫn là "mới" -> gửi.
   if (state.shipEnabled && !safeGet(SHIP_SEEDED_KEY)) {
@@ -1109,6 +1131,7 @@ function getStatus() {
     awaitingResume: state.awaitingResume,
     intervalMs: cfg.intervalMs,
     shipIntervalMs: cfg.shipIntervalMs,
+    shipCatchIntervalMs: cfg.shipCatchIntervalMs, // 0 = tắt lượt catch nhẹ
     profile: cfg.profile,
     maxRetries: cfg.maxRetries,
     lastRun: state.lastRun,

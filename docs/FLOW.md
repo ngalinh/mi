@@ -160,9 +160,26 @@ lại (chốt mốc mới). Mốc `shipSeededAt` lưu
 DB: chưa có mốc (đang seed / seed lỗi) → poller CHƯA gửi (chặn nhắn loạt tồn cũ); khởi động lại KHÔNG
 seed lại (ND ship phát sinh lúc server tắt vẫn là "mới" → gửi). Mỗi lần BẬT lại = chốt mốc mới.
 
-**Kích hoạt:** poller (mỗi lượt kiểm tra, khi báo ship BẬT) và webhook `POST /api/webhook/ship`
-(Basso gọi khi có ND báo ship — cũng tôn trọng công tắc). Bật/tắt: `POST /api/auto-notify/ship-toggle`.
-Nút chạy tay (bỏ qua công tắc): `POST /api/auto-notify/run-ship`.
+**Kích hoạt:** 2 poller nền (khi báo ship BẬT) + webhook `POST /api/webhook/ship` (Basso gọi khi có
+ND báo ship — cũng tôn trọng công tắc). Bật/tắt: `POST /api/auto-notify/ship-toggle`. Nút chạy tay
+(bỏ qua công tắc): `POST /api/auto-notify/run-ship`.
+
+**2 nhịp quét ship (full + catch nhẹ) — vì đơn "đã giao hàng" biến mất nhanh:** Khi kho tick "đã
+giao hàng", Basso BỎ đơn khỏi danh sách hàng về (mi không còn thấy để lấy ND ship). ND ship lại chỉ
+sinh ra ở bước "đã giao shipper" NGAY TRƯỚC đó -> có 1 khoảng ân hạn ngắn (vài phút) để mi bắt kịp.
+Lượt full 180s dễ lệch pha mà lọt, nên có thêm:
+
+```
+• Lượt FULL  (AUTO_NOTIFY_SHIP_INTERVAL_MS, mặc định 180s): quét CẢ 'not_sent' + 'notified_arrival'
+  ALL-TIME — lưới an toàn, bắt cả ca "NV quên tick báo hàng" (ND ship nằm trên đơn 'not_sent').
+• Lượt CATCH (AUTO_NOTIFY_SHIP_CATCH_INTERVAL_MS, mặc định 45s, 0=tắt): CHỈ quét 'notified_arrival'
+  (đơn "Đã báo hàng" đang chờ ship — nhóm sát bước giao nhất). Nhẹ hơn full (1 status thay vì 2) nên
+  chạy dày mà dội Basso ít -> trong khoảng ân hạn có 2–3 lượt quét, gần như luôn kịp gửi trước khi
+  đơn rớt list. Dùng chung cờ state.runningShip -> không chồng lượt full.
+```
+
+Không có webhook thì lượt CATCH là tuyến chính bắt ship kịp; có webhook `/api/webhook/ship` (gửi
+trong vài giây) thì có thể giãn/tắt catch để nhẹ Basso.
 
 ---
 
