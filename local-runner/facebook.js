@@ -162,44 +162,57 @@ async function openConversationByLink(page, link) {
   return box;
 }
 
+/** Gõ nội dung từng dòng (fallback khi Ctrl+V không dùng được). Xuống dòng = Shift+Enter. */
+async function typeLines(page, text) {
+  const lines = String(text).split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    if (lines[i]) await page.keyboard.type(lines[i], { delay: 15 });
+    if (i < lines.length - 1) {
+      // Xuống dòng trong Messenger = Shift+Enter (Enter đơn = GỬI) -> giữ \n không gửi sớm giữa chừng.
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.down('Shift');
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.press('Enter');
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.up('Shift');
+    }
+  }
+}
+
 /**
  * DÁN (copy-paste) nội dung vào ô soạn tin rồi GỬI — thay vì gõ từng ký tự.
- * Bắn thẳng sự kiện `paste` với nguyên nội dung nên nhanh, ít bị gián đoạn giữa chừng; Messenger
- * (Lexical) hiểu \n trong nội dung dán là XUỐNG DÒNG trong CÙNG tin (không gửi sớm), rồi Enter = GỬI.
+ * Làm ĐÚNG như người dùng bấm Ctrl+V: ghi nội dung vào clipboard rồi nhấn Ctrl+V (paste THẬT).
+ * Paste thật chỉ chèn ĐÚNG 1 LẦN (không như tự bắn sự kiện paste — dễ bị Messenger xử lý 2 lần ->
+ * nội dung vào đôi). Messenger (Lexical) hiểu \n là XUỐNG DÒNG trong CÙNG tin, rồi Enter = GỬI.
  */
 async function typeAndSend(page, box, message) {
   await box.click();
   const text = String(message == null ? '' : message);
-  // Dán nguyên nội dung trong 1 lần qua ClipboardEvent('paste') — giống thao tác copy-paste của
-  // người dùng, giữ nguyên \n (Lexical chuyển thành xuống dòng, KHÔNG gửi sớm giữa chừng).
-  const pasted = await box.evaluate((el, value) => {
-    try {
-      el.focus();
-      const dt = new DataTransfer();
-      dt.setData('text/plain', value);
-      const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
-      return el.dispatchEvent(ev);
-    } catch {
-      return false;
-    }
-  }, text);
-  // Fallback an toàn: nếu vì lý do nào đó ô soạn không nhận paste (rỗng), quay lại gõ từng dòng.
-  if (!pasted || !(await box.innerText().catch(() => '')).trim()) {
-    const lines = text.split('\n');
-    for (let i = 0; i < lines.length; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
-      if (lines[i]) await page.keyboard.type(lines[i], { delay: 15 });
-      if (i < lines.length - 1) {
-        // Xuống dòng trong Messenger = Shift+Enter (Enter đơn = GỬI) -> giữ \n không gửi sớm giữa chừng.
-        // eslint-disable-next-line no-await-in-loop
-        await page.keyboard.down('Shift');
-        // eslint-disable-next-line no-await-in-loop
-        await page.keyboard.press('Enter');
-        // eslint-disable-next-line no-await-in-loop
-        await page.keyboard.up('Shift');
-      }
-    }
+
+  // Xoá sạch ô soạn (phòng nội dung nháp còn sót) để không bị nối thêm.
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Delete');
+
+  // Ghi nội dung vào clipboard rồi Ctrl+V. Cần quyền clipboard-write (đã cấp ở browser.getContext).
+  // Lỗi (trình duyệt chặn / không có quyền) -> pasted=false để rơi xuống fallback gõ tay.
+  let pasted = false;
+  try {
+    await page.evaluate((value) => navigator.clipboard.writeText(value), text);
+    await box.click();
+    await page.keyboard.press('Control+V');
+    await page.waitForTimeout(400);
+    pasted = !!(await box.innerText().catch(() => '')).trim();
+  } catch { pasted = false; }
+
+  // Fallback: Ctrl+V không ăn -> xoá sạch (tránh nhập đôi nếu paste vào được một phần) rồi gõ tay.
+  if (!pasted) {
+    await box.click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.press('Delete');
+    await typeLines(page, text);
   }
+
   await page.waitForTimeout(300);
   await shot(page, '03-typed');
   await page.keyboard.press('Enter'); // gửi

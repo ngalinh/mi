@@ -144,6 +144,9 @@ async function getContext(profileName) {
   const proxy = proxyForProfile(profileName);
   if (proxy) console.log(`[browser] profile "${profileName}" dùng proxy ${proxy.server}${proxy.username ? ' (có auth)' : ''}`);
   const context = await safeLaunchPersistentContext(profilePath(profileName), proxy);
+  // Cấp quyền clipboard để dán nội dung bằng Ctrl+V thật (Facebook Messenger) — dùng cho báo FB.
+  // Bỏ qua an toàn nếu trình duyệt không hỗ trợ cấp quyền (không ảnh hưởng luồng Zalo).
+  try { await context.grantPermissions(['clipboard-read', 'clipboard-write']); } catch { /* ignore */ }
   context.on('close', () => contexts.delete(profileName));
   entry = { context, lastUsed: Date.now() };
   contexts.set(profileName, entry);
