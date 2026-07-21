@@ -106,6 +106,7 @@ a { color: var(--primary); text-decoration: none; }
   display: grid;
   grid-template-columns: 92px 1fr;
   min-height: 100vh;
+  min-height: 100dvh; /* FB/IG in-app WebView: dvh trừ đi thanh URL + thanh công cụ, tránh bị cắt đáy */
 }
 
 /* ---- Sidebar = icon rail (trắng, viền kem) ---- */
@@ -113,7 +114,7 @@ a { color: var(--primary); text-decoration: none; }
   background: var(--rail);
   display: flex; flex-direction: column; align-items: center;
   gap: 16px; padding: 20px 0;
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; height: 100vh; height: 100dvh;
   border-right: 1px solid var(--border);
 }
 .sidebar .brand {
@@ -1197,7 +1198,7 @@ td.staff-col { white-space: nowrap; }
    Toast
    ============================================================ */
 .toast {
-  position: fixed; bottom: 26px; right: 26px;
+  position: fixed; bottom: calc(26px + env(safe-area-inset-bottom)); right: 26px;
   background: var(--ink); color: #fff;
   padding: 14px 22px; border-radius: var(--radius-sm);
   opacity: 0; transform: translateY(12px); transition: .28s var(--ease);
@@ -1213,12 +1214,14 @@ td.staff-col { white-space: nowrap; }
   position: fixed; inset: 0; background: rgba(22, 22, 22, .42);
   backdrop-filter: blur(4px);
   display: none; align-items: center; justify-content: center; z-index: 80;
+  /* Chừa chỗ cho thanh URL/công cụ của WebView FB để nút trong modal không bị che */
+  padding: calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));
 }
 .modal-bg.show { display: flex; animation: fade .2s var(--ease); }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 .modal {
   background: #fff; border-radius: var(--radius); padding: 28px;
-  width: 600px; max-width: 92vw; max-height: 90vh; overflow: auto;
+  width: 600px; max-width: 92vw; max-height: 90vh; max-height: 90dvh; overflow: auto;
   box-shadow: var(--shadow-lg);
   animation: pop .22s var(--ease);
 }
@@ -1321,9 +1324,12 @@ td.staff-col { white-space: nowrap; }
   .nav-toggle { display: inline-flex; }
   .topbar {
     position: sticky; top: 0; z-index: 30;
-    flex-wrap: wrap; gap: 12px; padding: 14px 16px 10px;
+    flex-wrap: wrap; gap: 12px;
+    /* Bù notch/thanh URL của WebView FB để tiêu đề + nút menu không bị khuất trên */
+    padding: calc(14px + env(safe-area-inset-top)) 16px 10px;
     background: var(--bg); border-bottom: 1px solid var(--border);
   }
+  .container { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
   .topbar h1 { font-size: 24px; }
   /* Khối tiêu đề nở rộng để đẩy nút (đồng bộ/tải lại) sang phải cùng hàng nút menu. */
   .topbar > div:first-of-type { flex: 1 1 auto; min-width: 0; }
@@ -1374,7 +1380,7 @@ td.staff-col { white-space: nowrap; }
   .modal textarea { min-height: 240px; }
   .modal .row { flex-direction: column-reverse; }
   .modal .row .btn { width: 100%; }
-  .toast { left: 14px; right: 14px; bottom: 16px; max-width: none; text-align: center; }
+  .toast { left: 14px; right: 14px; bottom: calc(16px + env(safe-area-inset-bottom)); max-width: none; text-align: center; }
 
   /* Cài đặt: hàng cấu hình xếp dọc, badge/nút xuống dưới cho dễ bấm. */
   .mode-row { flex-direction: column; align-items: stretch; gap: 12px; }
