@@ -58,7 +58,11 @@
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
 
-  const AUTO_SYNC_MS = 60000; // tự động đồng bộ danh sách mỗi 60 giây
+  // Tự động đồng bộ danh sách mỗi 120s (giãn từ 60s): mỗi tab dashboard đang mở tự kéo lại tập
+  // theo scope -> nhiều tab/nhiều người nhân tải lên Basso. Giãn ra giảm nửa số lượt kéo nền.
+  // KHÔNG ảnh hưởng bot tự báo hàng/ship (chạy nền riêng phía server); chỉ là danh sách người
+  // xem làm mới chậm hơn ~1 phút. Đơn "Chưa báo" mới vẫn được bot xử lý đúng hạn.
+  const AUTO_SYNC_MS = 120000;
 
   const DONE = new Set(['notified_arrival', 'notified_ship']);
   // "Đã báo" = web đã đánh dấu, HOẶC mi đã gửi (bot 'success' / đã báo tay 'manual').

@@ -82,7 +82,9 @@ module.exports = {
     requestTimeoutMs: Math.max(parseInt(process.env.BASSO_TIMEOUT_MS || '20000', 10) || 0, 0),
     // TTL (ms) cache danh sách hàng về trong RAM — auto-sync/đổi tab/gõ tìm kiếm lặp lại
     // không phải gọi lại Basso mỗi lần. 0 = tắt cache.
-    listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '30000', 10) || 0, 0),
+    // Mặc định 60s (nâng từ 30s): giảm nửa số lần làm mới nền -> nhẹ Basso hơn. AN TOÀN cho
+    // báo ship vì webhook /api/webhook/ship đọc TƯƠI (bỏ cache) nên vẫn thấy ND mới tức thời.
+    listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '60000', 10) || 0, 0),
     // Cửa sổ ngày MẶC ĐỊNH cho dashboard (giảm cold-load: chỉ kéo N ngày gần đây thay vì
     // all-time). 0 = mặc định all-time. Phải KHỚP hằng DEFAULT_DAYS ở public/js/dashboard.js
     // (client gửi kèm ?days=) để preload warm đúng cache key. Dùng cho preload + số đếm.
@@ -101,8 +103,10 @@ module.exports = {
     // load nặng hơn được bù bằng concurrency cao hơn (pageConcurrency) + gzip + cache ấm.
     clientMaxOrders: Math.max(parseInt(process.env.BASSO_CLIENT_MAX_ORDERS || '6000', 10) || 0, 0),
     // Số trang Basso kéo SONG SONG khi gom toàn bộ đơn 1 khoảng ngày (getAllOrders). Cao hơn =
-    // cold load / auto-sync nhanh hơn, nhưng tải lên Basso nặng hơn. Dial về 4 nếu Basso than phiền.
-    pageConcurrency: Math.min(Math.max(parseInt(process.env.BASSO_PAGE_CONCURRENCY || '8', 10) || 8, 1), 16),
+    // cold load / auto-sync nhanh hơn, nhưng tải lên Basso NẶNG hơn (đỉnh request cùng lúc cao).
+    // Mặc định 4 (hạ từ 8): giảm nửa đỉnh tải lên Basso -> nhẹ hệ thống. Cold-load 7 ngày ít trang
+    // nên gần như không chậm thêm. Cần kéo nhanh hơn (tập lớn) thì nâng qua BASSO_PAGE_CONCURRENCY.
+    pageConcurrency: Math.min(Math.max(parseInt(process.env.BASSO_PAGE_CONCURRENCY || '4', 10) || 4, 1), 16),
     // Bật để in thời gian từng call tới Basso (chẩn đoán chậm: do mạng hay do Basso).
     // BASSO_LOG_TIMING=true -> log "[basso] getArrivedVnList 2380ms". Mặc định tắt.
     logTiming: String(process.env.BASSO_LOG_TIMING || 'false').toLowerCase() === 'true',
