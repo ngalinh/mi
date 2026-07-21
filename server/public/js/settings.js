@@ -877,20 +877,42 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   }
 
+  // Đổ danh sách người gửi cụ thể vào dropdown từ facets (bot đã có mục riêng nên bỏ),
+  // giữ nguyên lựa chọn hiện tại để không reset khi tải lại.
+  function fillSenderFacets(senders) {
+    const grp = $('logSenderList');
+    if (!grp) return;
+    const sel = $('logSender');
+    const cur = sel.value;
+    const list = (senders || []).filter((s) => s && s !== 'bot');
+    const opts = list.map((s) => `<option value="${App.esc(s)}">${App.esc(s)}</option>`).join('');
+    if (grp.innerHTML === opts) return; // không đổi -> khỏi vẽ lại (giữ focus/chọn)
+    grp.innerHTML = opts;
+    grp.style.display = list.length ? '' : 'none';
+    // Giá trị đã chọn vẫn còn trong danh sách -> khôi phục, ngược lại về "Mọi người gửi".
+    sel.value = (cur === 'bot' || cur === '__human__' || cur === '' || list.includes(cur)) ? cur : '';
+  }
+
   async function loadLog() {
     const q = $('logSearch').value.trim();
     const status = $('logStatus').value;
     const kind = $('logKind').value;
+    const sender = $('logSender').value;
     const limit = $('logLimit').value || '200';
     logTerm.innerHTML = '<div class="log-empty">Đang tải…</div>';
     try {
       const params = new URLSearchParams({ limit });
       if (q) params.set('q', q);
       if (status) params.set('status', status);
+      // 'bot' hoặc 1 người cụ thể -> lọc CHÍNH XÁC ở server. '__human__' (người thật) lọc ở client.
+      if (sender && sender !== '__human__') params.set('sender', sender);
       const res = await App.api(`/api/reports?${params.toString()}`);
+      fillSenderFacets(res.facets && res.facets.senders);
       let items = res.items || [];
       // Lọc loại tin (hàng/ship) ở client — API không có filter kind riêng.
       if (kind) items = items.filter((r) => (r.kind === 'ship' ? 'ship' : 'hang') === kind);
+      // "Người thật" = mọi người gửi trừ bot (khớp quy ước sent_by==='bot' là bot).
+      if (sender === '__human__') items = items.filter((r) => r.sent_by && r.sent_by !== 'bot');
       $('logCount').textContent = `${items.length} lượt`;
       if (!items.length) {
         logTerm.innerHTML = '<div class="log-empty">Chưa có lượt báo nào khớp.</div>';
@@ -928,6 +950,7 @@
   $('logReload').addEventListener('click', loadLog);
   $('logStatus').addEventListener('change', loadLog);
   $('logKind').addEventListener('change', loadLog);
+  $('logSender').addEventListener('change', loadLog);
   $('logLimit').addEventListener('change', loadLog);
   $('logWrap').addEventListener('change', (e) => logTerm.classList.toggle('wrap', e.target.checked));
   $('logSearch').addEventListener('input', () => { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 350); });
