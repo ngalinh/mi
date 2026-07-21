@@ -35,16 +35,22 @@
   // từ Basso không xoá mất phần đang soạn dở. Xoá khỏi map ngay khi lưu thành công.
   const dirtyNotes = new Map();
 
+  // Ngày HÔM NAY dạng YYYY-MM-DD (giờ máy người dùng). Dùng cho scope mặc định "Hôm nay".
+  function todayIso() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   // Bộ lọc nâng cao (popover): khoảng ngày + loại trừ/ghi chú (client-side).
   const F = { from: '', to: '', exclude: 'all', note: 'all' };
 
   // Phạm vi thời gian chọn qua selector #fScope trên toolbar (đầu ô tìm kiếm).
-  // scopeDays = số ngày gần đây; 0 = "Tất cả". Khoảng ngày tường minh (F.from/F.to)
-  // trong Bộ lọc nâng cao sẽ ghi đè scope.
-  // Mặc định 7 ngày (không phải "Tất cả"): tải all-time bắt Basso quét cả kho lịch sử ->
-  // chậm và hay bung 500. Cửa sổ 7 ngày nhẹ hơn nhiều -> mở dashboard nhanh & ổn định hơn.
-  // Cần xem cũ hơn thì chọn 30/90 ngày hoặc "Tất cả" trên selector #fScope.
-  let scopeDays = 7; // mặc định: 7 ngày gần đây
+  // scopeDays = số ngày gần đây; 0 = "Tất cả". Khoảng ngày tường minh (F.from/F.to) ghi đè scope.
+  // MẶC ĐỊNH: "Hôm nay" — chỉ đơn về trong ngày (from=to=hôm nay), kết hợp tab "Chưa báo"
+  // (currentGroup='todo') -> mở lên là thấy đúng việc cần làm hôm nay, tải NHẸ NHẤT cho Basso.
+  // Cần xem cũ hơn thì chọn 7/30/90 ngày hoặc "Tất cả" trên selector #fScope.
+  let scopeDays = 0;
+  F.from = F.to = todayIso(); // scope mặc định = hôm nay
 
   // Gắn phạm vi ngày vào query gửi server: ưu tiên khoảng ngày tường minh (F.from/F.to);
   // nếu không có thì gửi ?days=scopeDays (bỏ qua khi =0 -> all-time).
@@ -1574,6 +1580,15 @@
       $('fFrom').focus();
       return;
     }
+    if (e.target.value === 'today') {
+      // "Hôm nay" -> khoảng ngày = từ hôm nay đến hôm nay (chỉ đơn về trong ngày).
+      scopeDays = 0;
+      F.from = F.to = todayIso();
+      showCustomRange(false);
+      currentPage = 1;
+      reloadScope();
+      return;
+    }
     F.from = ''; F.to = '';               // bỏ khoảng ngày tuỳ chỉnh để preset có hiệu lực
     scopeDays = parseInt(e.target.value, 10) || 0;
     showCustomRange(false);
@@ -1798,8 +1813,10 @@
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
     const st = $('fStatus'); if (st) { st.value = currentGroup || ''; st.dataset.v = st.value; }
-    const custom = !!(F.from || F.to);
-    const sc = $('fScope'); if (sc) sc.value = custom ? 'custom' : String(scopeDays);
+    // from=to=hôm nay -> preset "Hôm nay" (không phải "Tuỳ chỉnh"); khoảng ngày khác -> custom.
+    const isToday = !!F.from && F.from === F.to && F.from === todayIso();
+    const custom = !isToday && !!(F.from || F.to);
+    const sc = $('fScope'); if (sc) sc.value = isToday ? 'today' : (custom ? 'custom' : String(scopeDays));
     showCustomRange(custom);
     updateFilterBadge();
   }
@@ -1828,9 +1845,9 @@
   }
   renderHeader();
 
-  // Khởi tạo: mặc định tab "Chưa báo" (all-time) nên không set from; lần đầu load
-  // currentGroup = 'todo' -> không giới hạn ngày. Sync input để popover hiện đúng.
-  if (currentGroup !== 'todo') syncDateInputs();
+  // Khởi tạo: mặc định tab "Chưa báo" (currentGroup='todo') + scope "Hôm nay" (F.from=F.to=hôm nay).
+  // Sync toolbar/popover để selector hiện "Hôm nay" và ô ngày khớp ngay từ lần mở đầu.
+  syncDateInputs();
 
   // Tải danh sách nhân viên không lọc status ngay khi khởi tạo -> tab staff luôn đầy đủ.
   App.api('/api/tab-users').then((r) => {

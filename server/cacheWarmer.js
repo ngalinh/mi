@@ -1,6 +1,6 @@
 'use strict';
 const config = require('./config');
-const { getOrders, getAllOrders, getTabUsers } = require('./bassoApi');
+const { getOrders, getTabUsers } = require('./bassoApi');
 
 /**
  * NẠP SẴN (preload / cache-warm) DANH SÁCH HÀNG VỀ.
@@ -40,19 +40,20 @@ async function warmOnce(trigger = 'interval') {
   state.running = true;
   const t0 = Date.now();
   try {
-    // Warm ĐÚNG call thật mà dashboard gọi lúc mở (scope mặc định = defaultDays ngày). Phải TRÙNG
-    // cache key thì client mới ăn cache ấm -> mở dashboard tức thì VÀ nhiều người/nhiều tab DÙNG
-    // CHUNG 1 lượt kéo (SWR) thay vì mỗi người tự dội Basso:
-    //   1) getAllOrders({days}) — call CHÍNH của dashboard (client-mode, /api/orders/all?days=).
-    //   2) Đếm "chưa báo" cùng scope (page_size=1) — đúng call loadCounts dùng cho nút Báo loạt.
+    // Warm ĐÚNG call thật dashboard gọi lúc mở (mặc định: tab "Chưa báo" + scope "Hôm nay",
+    // SERVER-MODE). Cache key gồm cả page_size -> phải warm ĐÚNG page_size client dùng:
+    //   1) List trang 1 not_sent, page_size=20 (PAGE_SIZE) — đúng call load() lúc boot.
+    //   2) Đếm not_sent, page_size=1 — đúng call loadCounts() cho nút Báo loạt + dòng thông tin.
     //   3) Danh sách nhân viên.
-    // LƯU Ý: dùng defaultDays để TRÙNG scopeDays mặc định của client (public/js/dashboard.js).
-    // Đổi 1 trong 2 mà quên đổi cái kia -> warm sai key -> mất tác dụng nạp sẵn.
-    const days = config.basso.defaultDays || undefined;
-    await getAllOrders({ days });
+    // Nhờ TRÙNG key: nhiều người/tab mở DÙNG CHUNG 1 lượt kéo (SWR) thay vì mỗi người tự dội Basso.
+    // "Hôm nay" tính theo giờ MÁY CHỦ — khớp resolveDateWindow (bassoApi cũng dùng new Date() giờ máy
+    // chủ); ai.basso.vn chạy giờ VN nên trùng giờ người dùng. Đổi mặc định client thì sửa cả đây.
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    await getOrders({ status: 'not_sent', page: 1, pageSize: 20, from: today, to: today });
     await Promise.all([
       getTabUsers(),
-      getOrders({ status: 'not_sent', page: 1, pageSize: 1, days }),
+      getOrders({ status: 'not_sent', page: 1, pageSize: 1, from: today, to: today }),
     ]);
     state.lastOk = true;
     state.lastError = null;

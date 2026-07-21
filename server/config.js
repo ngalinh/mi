@@ -85,9 +85,9 @@ module.exports = {
     // Mặc định 60s (nâng từ 30s): giảm nửa số lần làm mới nền -> nhẹ Basso hơn. AN TOÀN cho
     // báo ship vì webhook /api/webhook/ship đọc TƯƠI (bỏ cache) nên vẫn thấy ND mới tức thời.
     listCacheTtlMs: Math.max(parseInt(process.env.BASSO_LIST_CACHE_TTL_MS || '60000', 10) || 0, 0),
-    // Cửa sổ ngày MẶC ĐỊNH cho dashboard (giảm cold-load: chỉ kéo N ngày gần đây thay vì
-    // all-time). 0 = all-time. PHẢI KHỚP `scopeDays` mặc định ở public/js/dashboard.js (client
-    // gửi kèm ?days=) để cacheWarmer warm ĐÚNG cache key -> mở dashboard ăn cache ấm. Cả hai = 7.
+    // Cửa sổ ngày cho các luồng CÓ truyền `days` (giảm tải: chỉ kéo N ngày gần đây). 0 = all-time.
+    // LƯU Ý: scope MẶC ĐỊNH của dashboard giờ là "Hôm nay" (from=to, KHÔNG dùng days) — cacheWarmer
+    // warm theo "hôm nay" trực tiếp, không đọc biến này. Giữ lại cho preset ?days= (7/30/90) & tương lai.
     defaultDays: Math.max(parseInt(process.env.BASSO_DEFAULT_DAYS || '7', 10) || 0, 0),
     // Chu kỳ (ms) NẠP SẴN khung nhìn mặc định của dashboard vào cache RAM (xem cacheWarmer.js)
     // -> người mở dashboard không phải đợi Basso. 0 = tắt; nếu >0 thì tối thiểu 15000ms.
