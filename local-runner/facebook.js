@@ -84,82 +84,100 @@ const MESSAGE_BUTTON_SELECTORS = [
   'a[aria-label="Nhắn tin"]',
 ];
 
-/** URL trang hồ sơ khách từ link (để fallback bấm "Nhắn tin"). '' nếu link là m.me / messages/t. */
-function toProfileUrl(link) {
+/**
+ * Phân loại link FB của khách thành 2 loại để mở đúng cách:
+ *  - 'message': link trỏ THẲNG vào 1 hội thoại Messenger có sẵn
+ *      .../messages/t/<id>  |  m.me/<slug>  |  messenger.com/t/<id>
+ *      -> mở thẳng vào hội thoại.
+ *  - 'profile': link HỒ SƠ khách
+ *      facebook.com/<username>  |  facebook.com/profile.php?id=123
+ *      -> mở trang hồ sơ rồi bấm nút "Nhắn tin"/"Message" (KHÔNG đoán messages/t nữa).
+ *  - 'unknown': không parse được / không phải link FB.
+ * @returns {{type:'message'|'profile'|'unknown', messengerUrl?:string, profileUrl?:string}}
+ */
+function classifyFbLink(link) {
   const raw = String(link || '').trim();
-  if (!raw) return '';
+  if (!raw) return { type: 'unknown' };
   let u;
   try { u = new URL(raw.startsWith('http') ? raw : `https://${raw}`); }
-  catch { return ''; }
+  catch { return { type: 'unknown' }; }
   const host = u.hostname.replace(/^www\./, '').toLowerCase();
-  if (host === 'm.me' || host.endsWith('messenger.com')) return '';
   const path = u.pathname.replace(/\/+$/, '');
-  if (/\/messages\/t\//i.test(path)) return '';
-  if (!host.endsWith('facebook.com')) return '';
-  return `https://www.facebook.com${path}${u.search || ''}`;
+
+  // --- Link dạng MESSAGE: mở thẳng hội thoại ---
+  if (/\/messages\/t\//i.test(path)) {
+    return { type: 'message', messengerUrl: `https://www.facebook.com${path}` };
+  }
+  if (host === 'm.me') {
+    const slug = path.replace(/^\//, '');
+    if (slug) return { type: 'message', messengerUrl: `https://www.facebook.com/messages/t/${slug}` };
+  }
+  if (host.endsWith('messenger.com') && /\/t\//i.test(path)) {
+    return { type: 'message', messengerUrl: `https://www.facebook.com/messages/t/${path.split('/t/')[1]}` };
+  }
+
+  // --- Link dạng HỒ SƠ: mở profile rồi bấm "Nhắn tin" ---
+  if (host.endsWith('facebook.com')) {
+    if (path === '/profile.php') {
+      const id = u.searchParams.get('id');
+      if (id) return { type: 'profile', profileUrl: `https://www.facebook.com/profile.php?id=${id}` };
+    }
+    const slug = path.replace(/^\//, '').split('/')[0];
+    if (slug && slug !== 'messages') {
+      return { type: 'profile', profileUrl: `https://www.facebook.com${path}` };
+    }
+  }
+  return { type: 'unknown' };
 }
 
 /**
- * Chuẩn hoá link FB khách thành URL mở THẲNG hội thoại Messenger.
- *  - .../messages/t/<x>  -> giữ nguyên
- *  - m.me/<slug>         -> facebook.com/messages/t/<slug>
- *  - facebook.com/profile.php?id=123 -> messages/t/123
- *  - facebook.com/<username>          -> messages/t/<username>
- * Không parse được -> trả nguyên link để vẫn thử mở.
+ * (Giữ tương thích) Chuẩn hoá link FB thành URL hội thoại Messenger nếu là link message,
+ * ngược lại trả nguyên link. Dùng classifyFbLink cho luồng mở thực tế.
  */
 function normalizeMessengerUrl(link) {
-  const raw = String(link || '').trim();
-  if (!raw) return '';
-  let u;
-  try { u = new URL(raw.startsWith('http') ? raw : `https://${raw}`); }
-  catch { return raw; }
-  const host = u.hostname.replace(/^www\./, '').toLowerCase();
-  const path = u.pathname.replace(/\/+$/, '');
-  if (/\/messages\/t\//i.test(path)) return `https://www.facebook.com${path}`;
-  if (host === 'm.me') {
-    const slug = path.replace(/^\//, '');
-    if (slug) return `https://www.facebook.com/messages/t/${slug}`;
-  }
-  if (host.endsWith('messenger.com') && /\/t\//i.test(path)) {
-    return `https://www.facebook.com/messages/t/${path.split('/t/')[1]}`;
-  }
-  // Link hồ sơ facebook.com
-  if (path === '/profile.php') {
-    const id = u.searchParams.get('id');
-    if (id) return `https://www.facebook.com/messages/t/${id}`;
-  }
-  const slug = path.replace(/^\//, '').split('/')[0];
-  if (slug && slug !== 'messages') return `https://www.facebook.com/messages/t/${slug}`;
-  return raw;
+  const info = classifyFbLink(link);
+  return info.messengerUrl || String(link || '').trim();
 }
 
-/** Mở THẲNG hội thoại của khách theo link đã lưu, chờ ô soạn tin xuất hiện. */
-async function openConversationByLink(page, link) {
-  const url = normalizeMessengerUrl(link);
-  if (!url) throw new Error('Thiếu/không hợp lệ link Facebook của khách.');
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-  await page.waitForTimeout(2500);
-  await ensureLoggedIn(page);
-  let box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
-
-  // Fallback: mở thẳng messages/t/<username> đôi khi không ra thread -> mở trang hồ sơ khách
-  // rồi bấm "Nhắn tin"/"Message" để bật cửa sổ chat (đúng như thao tác tay).
+/** Mở hội thoại rồi chờ ô soạn tin xuất hiện, ném lỗi rõ ràng nếu không thấy. */
+async function waitComposeBox(page, label) {
+  const box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
   if (!box) {
-    const profileUrl = toProfileUrl(link);
-    if (profileUrl && profileUrl !== url) {
-      await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
-      await page.waitForTimeout(2500);
-      await ensureLoggedIn(page);
-      const btn = await findVisible(page, MESSAGE_BUTTON_SELECTORS, 8000);
-      if (btn) { await btn.click().catch(() => {}); await page.waitForTimeout(2500); }
-      box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
-    }
-  }
-  if (!box) {
-    throw new Error('FB: không mở được khung soạn tin (link sai, khách chặn/không nhắn được, hoặc Messenger đổi giao diện).');
+    throw new Error(`FB: không mở được khung soạn tin (${label}). Kiểm tra link, khách có thể đã chặn/không nhắn được, hoặc Messenger đổi giao diện.`);
   }
   await shot(page, '02-conversation');
   return box;
+}
+
+/**
+ * Mở hội thoại của khách theo link đã lưu, chờ ô soạn tin xuất hiện.
+ *  - Link message (messages/t, m.me, messenger.com/t): mở THẲNG vào hội thoại.
+ *  - Link hồ sơ (facebook.com/<user>, profile.php?id=): mở trang hồ sơ rồi bấm "Nhắn tin".
+ */
+async function openConversationByLink(page, link) {
+  const info = classifyFbLink(link);
+  if (info.type === 'unknown') throw new Error('Thiếu/không hợp lệ link Facebook của khách.');
+
+  if (info.type === 'message') {
+    // Link message -> mở thẳng hội thoại đã có.
+    await page.goto(info.messengerUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForTimeout(2500);
+    await ensureLoggedIn(page);
+    return waitComposeBox(page, 'link message');
+  }
+
+  // Link hồ sơ -> mở trang hồ sơ khách rồi bấm "Nhắn tin"/"Message" (đúng như thao tác tay),
+  // KHÔNG đoán messages/t/<username> để tránh mở nhầm hội thoại khác.
+  await page.goto(info.profileUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.waitForTimeout(2500);
+  await ensureLoggedIn(page);
+  const btn = await findVisible(page, MESSAGE_BUTTON_SELECTORS, 10000);
+  if (!btn) {
+    throw new Error('FB: không thấy nút "Nhắn tin"/"Message" trên trang hồ sơ khách (có thể bị ẩn sau menu "...", khách chặn, hoặc FB đổi giao diện).');
+  }
+  await btn.click().catch(() => {});
+  await page.waitForTimeout(2500);
+  return waitComposeBox(page, 'sau khi bấm nút Nhắn tin trên hồ sơ');
 }
 
 /** Gõ nội dung từng dòng (fallback khi Ctrl+V không dùng được). Xuống dòng = Shift+Enter. */
@@ -266,4 +284,4 @@ async function checkLoggedInFb(profile = 'default') {
   });
 }
 
-module.exports = { sendBaoHangFb, checkLoggedInFb, gotoFacebook, ensureLoggedIn, normalizeMessengerUrl };
+module.exports = { sendBaoHangFb, checkLoggedInFb, gotoFacebook, ensureLoggedIn, normalizeMessengerUrl, classifyFbLink };
