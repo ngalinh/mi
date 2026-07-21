@@ -115,7 +115,9 @@ async function safeLaunchPersistentContext(userDataDir, proxy) {
     handleSIGINT: false,
     handleSIGTERM: false,
     handleSIGHUP: false,
-    viewport: { width: 1366, height: 850 },
+    // Cao hơn (1000) để popup chat góc phải của Messenger đủ chỗ hiện ô nhập tin khi buộc phải
+    // dùng popup (khách không lấy được id số). Full-page /messages/t/ thì không phụ thuộc chiều cao.
+    viewport: { width: 1366, height: 1000 },
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',

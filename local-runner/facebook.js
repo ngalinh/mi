@@ -84,6 +84,27 @@ const MESSAGE_BUTTON_SELECTORS = [
   'a[aria-label="Nhắn tin"]',
 ];
 
+/**
+ * Lấy USER ID SỐ của khách từ trang hồ sơ đang mở, để mở hội thoại FULL-PAGE thay vì popup.
+ * Chỉ lấy id của HỒ SƠ ĐANG XEM (khách) — dùng meta al:android/ios:url = fb://profile|page/<id>
+ * và vài khoá bền trong HTML; TRÁNH "userID"/"actorID" vì thường là id của tài khoản đang đăng nhập.
+ * '' nếu không tìm được (khi đó quay lại fallback bấm "Nhắn tin").
+ */
+async function extractFbUserId(page) {
+  try {
+    return await page.evaluate(() => {
+      const meta = document.querySelector('meta[property="al:android:url"], meta[property="al:ios:url"]');
+      const c = meta && meta.getAttribute('content');
+      const mm = c && c.match(/(?:profile|page|user)\/(\d{5,})/);
+      if (mm) return mm[1];
+      const html = document.documentElement.innerHTML;
+      const pats = [/fb:\/\/(?:profile|page)\/(\d{5,})/, /"profile_id":"(\d{5,})"/, /"pageID":"(\d{5,})"/];
+      for (const re of pats) { const m = html.match(re); if (m) return m[1]; }
+      return '';
+    });
+  } catch { return ''; }
+}
+
 /** URL trang hồ sơ khách từ link (để fallback bấm "Nhắn tin"). '' nếu link là m.me / messages/t. */
 function toProfileUrl(link) {
   const raw = String(link || '').trim();
@@ -142,17 +163,32 @@ async function openConversationByLink(page, link) {
   await ensureLoggedIn(page);
   let box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
 
-  // Fallback: mở thẳng messages/t/<username> đôi khi không ra thread -> mở trang hồ sơ khách
-  // rồi bấm "Nhắn tin"/"Message" để bật cửa sổ chat (đúng như thao tác tay).
+  // Fallback: mở thẳng messages/t/<username> đôi khi không ra thread (link tên vanity) -> mở
+  // trang hồ sơ khách để lấy user id số, rồi mở hội thoại theo id.
   if (!box) {
     const profileUrl = toProfileUrl(link);
     if (profileUrl && profileUrl !== url) {
       await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
       await page.waitForTimeout(2500);
       await ensureLoggedIn(page);
-      const btn = await findVisible(page, MESSAGE_BUTTON_SELECTORS, 8000);
-      if (btn) { await btn.click().catch(() => {}); await page.waitForTimeout(2500); }
-      box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
+
+      // ƯU TIÊN: lấy id số -> mở hội thoại FULL-PAGE /messages/t/<id>. Trang full-page dock ô
+      // soạn tin ở đáy cột co giãn nên KHÔNG bị cắt như popup chat góc phải (popup có chiều cao
+      // tối thiểu, tràn khỏi cửa sổ thấp -> mất ô nhập tin, đúng lỗi "ko có chỗ nhập tin nhắn").
+      const fbId = await extractFbUserId(page);
+      if (fbId) {
+        await page.goto(`https://www.facebook.com/messages/t/${fbId}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await page.waitForTimeout(2500);
+        await ensureLoggedIn(page);
+        box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
+      }
+
+      // FALLBACK CUỐI: không lấy được id -> bấm "Nhắn tin" mở popup (giữ hành vi cũ, không phá luồng).
+      if (!box) {
+        const btn = await findVisible(page, MESSAGE_BUTTON_SELECTORS, 8000);
+        if (btn) { await btn.click().catch(() => {}); await page.waitForTimeout(2500); }
+        box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
+      }
     }
   }
   if (!box) {
