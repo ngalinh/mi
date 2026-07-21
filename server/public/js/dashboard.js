@@ -39,9 +39,12 @@
   const F = { from: '', to: '', exclude: 'all', note: 'all' };
 
   // Phạm vi thời gian chọn qua selector #fScope trên toolbar (đầu ô tìm kiếm).
-  // scopeDays = số ngày gần đây; 0 = "Tất cả" (mặc định). Khoảng ngày tường minh (F.from/F.to)
+  // scopeDays = số ngày gần đây; 0 = "Tất cả". Khoảng ngày tường minh (F.from/F.to)
   // trong Bộ lọc nâng cao sẽ ghi đè scope.
-  let scopeDays = 0; // mặc định: Tất cả (mọi ngày)
+  // Mặc định 7 ngày (không phải "Tất cả"): tải all-time bắt Basso quét cả kho lịch sử ->
+  // chậm và hay bung 500. Cửa sổ 7 ngày nhẹ hơn nhiều -> mở dashboard nhanh & ổn định hơn.
+  // Cần xem cũ hơn thì chọn 30/90 ngày hoặc "Tất cả" trên selector #fScope.
+  let scopeDays = 7; // mặc định: 7 ngày gần đây
 
   // Gắn phạm vi ngày vào query gửi server: ưu tiên khoảng ngày tường minh (F.from/F.to);
   // nếu không có thì gửi ?days=scopeDays (bỏ qua khi =0 -> all-time).
