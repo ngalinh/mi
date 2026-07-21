@@ -126,15 +126,20 @@ function safeEqual(a, b) {
 // nếu không, chúng cache trang gốc và giữ header bảng cũ trong khi js/ vẫn được tải mới, làm
 // các cột mới không có tiêu đề.
 app.use(express.static(path.join(__dirname, 'public'), {
-  etag: false,
-  lastModified: false,
+  // Bật ETag + Last-Modified để trình duyệt REVALIDATE rẻ (304 rỗng) thay vì tải lại full asset.
+  etag: true,
+  lastModified: true,
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
+      // HTML luôn lấy mới (nó trỏ tới URL các asset) -> không cache.
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
     } else {
-      res.setHeader('Cache-Control', 'no-store');
+      // JS/CSS/ảnh: 'no-cache' = ĐƯỢC dùng bản đã tải nhưng PHẢI hỏi lại server mỗi lần. Kèm ETag,
+      // file chưa đổi -> server trả 304 (không body) -> tiết kiệm ~195KB tải lại/lần mở. Đổi file
+      // (deploy) -> ETag đổi -> tải bản mới, KHÔNG bao giờ kẹt bản cũ. Không dội Basso.
+      res.setHeader('Cache-Control', 'no-cache');
     }
   },
 }));
