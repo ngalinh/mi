@@ -490,7 +490,8 @@ async function classifyForShip(order, delayedMap) {
  * nhắn loạt khi bật lại. Chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có dấu) mới được luồng quét gửi.
  * Nhờ vậy off -> deploy -> bật lại KHÔNG blast đơn tồn; đơn "đã báo ship tay mà Mi chưa gửi" đang tồn
  * tại đúng lúc bật sẽ bị loại trừ (gửi tay 1 lần), còn ca phát sinh SAU vẫn được bắt real-time.
- * Đơn 'failed' (thử hụt, khách CHƯA nhận) KHÔNG bị đè 'seeded' -> vẫn được thử lại (giữ dấu cũ).
+ * Đơn 'failed' (thử hụt trước) đang có ND ship lúc bật CŨNG bị đè 'seeded' -> KHÔNG thử lại sau khi
+ * bật (đúng "vạch mốc mới: loại trừ mọi đơn có ND ship lúc bật"). Muốn thử lại -> gửi tay.
  * @returns {Promise<{at:string, scanned:number, seeded:number}>}
  */
 async function seedShip() {
@@ -518,8 +519,13 @@ async function seedShip() {
       // vì ND ship 1 đơn thường chỉ soạn 1 lần; và đúng ý "chỉ nhắn đơn mới sau khi bật".)
       if (!o.noiDungBaoShip || !String(o.noiDungBaoShip).trim()) continue; // chưa có ND ship -> khỏi seed
       const key = autoKeyShip(o);
-      if (getAutoRecord(key)) continue;   // đã có dấu (đã gửi/tay/seeded/thử-hụt trước) -> giữ nguyên
-      recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi
+      const rec = getAutoRecord(key);
+      // Giữ nguyên đơn Mi ĐÃ chốt: 'success' (bot đã gửi), 'manual' (báo tay qua Mi), 'seeded' (đã
+      // chốt lần bật trước) — các dấu này vốn đã bị bỏ qua khi gửi.
+      if (rec && (rec.status === 'success' || rec.status === 'manual' || rec.status === 'seeded')) continue;
+      // Còn lại: CHƯA có dấu HOẶC dấu 'failed' (thử hụt trước) -> đè 'seeded' để KHÔNG gửi/thử lại sau
+      // khi bật. Vạch mốc mới = loại trừ MỌI đơn có ND ship lúc bật (kể cả đơn từng gửi hụt).
+      recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi/thử lại
       seeded += 1;
     }
   }
