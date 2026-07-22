@@ -145,6 +145,12 @@ module.exports = {
     // Đánh đổi: không có webhook thì ship mới trễ báo tối đa ~3 phút. Có webhook /api/webhook/ship
     // (Basso gọi khi có ND ship) thì báo trong vài giây -> lúc đó có thể giãn tiếp lên 300000+.
     shipIntervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_INTERVAL_MS || '180000', 10) || 180000, 10000),
+    // BÁO SHIP quét thêm đơn ĐÃ ở trạng thái "Đã báo ship" (notified_ship) để bắt ca "NV tick trạng
+    // thái tay TRƯỚC, ND ship hiện SAU, Mi chưa từng gửi" -> vẫn báo cho khách. Vì tập notified_ship
+    // TÍCH LŨY vô hạn, GIỚI HẠN theo N ngày gần đây (lọc theo ngày đơn về kho) để không kéo cả kho
+    // lịch sử mỗi lượt quét. Mặc định 7 ngày. Đặt AUTO_NOTIFY_SHIP_RECENT_DAYS=0 để TẮT quét
+    // notified_ship (chỉ quét not_sent/notified_arrival như trước).
+    shipRecentDays: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_RECENT_DAYS ?? '7', 10) || 0, 0),
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
     // Bot gửi xong có đẩy trạng thái "Đã báo hàng" về web Basso không?
