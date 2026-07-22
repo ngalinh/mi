@@ -481,15 +481,18 @@ async function classifyForShip(order, delayedMap) {
  * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. MỐC TUYỆT ĐỐI: seed bất kể đơn đang bị chặn hay
  * không (account tắt auto / brand / chưa báo hàng) -> "đơn cũ" có ND ship trước lúc bật KHÔNG bao giờ
  * bị nhắn, kể cả khi sau này gỡ chặn account. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có
- * dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
- * 'notified_arrival'. Ghi mốc SHIP_SEEDED_KEY khi xong. Muốn nhắn lại nhóm cũ -> BẬT lại (chốt mốc mới).
+ * dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent',
+ * 'notified_arrival' LẪN 'notified_ship' (đơn đã/đang báo ship, tránh sót đơn NV tự đổi trạng thái
+ * trên web mà Mi chưa có dấu). Ghi mốc SHIP_SEEDED_KEY khi xong. Muốn nhắn lại nhóm cũ -> BẬT lại (chốt mốc mới).
  * @returns {Promise<{at:string, scanned:number, seeded:number}>}
  */
 async function seedShip() {
   let scanned = 0;
   let seeded = 0;
   const seen = new Set();
-  for (const status of ['not_sent', 'notified_arrival']) {
+  // Quét thêm 'notified_ship': đơn đã ở trạng thái báo ship (kể cả do NV đổi tay trên web, Mi chưa
+  // có dấu) cũng phải chốt vào ảnh chụp tồn cũ -> KHÔNG bị gửi lại sau khi bật.
+  for (const status of ['not_sent', 'notified_arrival', 'notified_ship']) {
     // eslint-disable-next-line no-await-in-loop
     const orders = await fetchAllByStatus(status, { fresh: true }); // fresh: chốt đúng hiện trạng lúc bấm Bật
     for (const o of orders) {
@@ -505,7 +508,12 @@ async function seedShip() {
       // vì ND ship 1 đơn thường chỉ soạn 1 lần; và đúng ý "chỉ nhắn đơn mới sau khi bật".)
       if (!o.noiDungBaoShip || !String(o.noiDungBaoShip).trim()) continue; // chưa có ND ship -> khỏi seed
       const key = autoKeyShip(o);
-      if (getAutoRecord(key)) continue;   // đã có dấu (đã gửi/tay/seeded trước) -> giữ nguyên
+      const rec = getAutoRecord(key);
+      // Đơn ĐÃ xử lý xong (bot 'success' / báo tay 'manual') hoặc đã 'seeded' trước -> GIỮ NGUYÊN dấu.
+      if (rec && (rec.status === 'success' || rec.status === 'manual' || rec.status === 'seeded')) continue;
+      // Còn lại (chưa có dấu, HOẶC dấu 'failed' của lần thử hụt trước) -> ĐÈ thành 'seeded'. Nếu chỉ
+      // "bỏ qua khi đã có dấu" thì đơn 'failed' (chưa hết lượt) sẽ bị GỬI LẠI ngay khi bật -> đúng lỗi
+      // "bật lại là gửi lại". Ghi đè 'seeded' để mọi đơn đang tồn tại lúc bật đều bị loại trừ.
       recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi
       seeded += 1;
     }
