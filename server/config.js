@@ -157,8 +157,13 @@ module.exports = {
     // Mặc định true: đồng bộ trạng thái về Basso như luồng báo tay. Đặt
     // AUTO_NOTIFY_UPDATE_WEB=false nếu muốn bot chỉ đánh dấu trong mi.
     updateWeb: String(process.env.AUTO_NOTIFY_UPDATE_WEB || 'true').toLowerCase() === 'true',
-    // Số lần thử lại tối đa cho 1 đơn nếu gửi lỗi (tránh spam khi local-runner offline)
-    maxRetries: Math.max(parseInt(process.env.AUTO_NOTIFY_MAX_RETRIES || '3', 10) || 3, 1),
+    // Số lần THỬ tối đa cho 1 đơn nếu gặp LỖI CẤP-ĐƠN (runner còn sống nhưng gửi lỗi, vd
+    // KHONG_THAY_HOI_THOAI — không tìm thấy hội thoại). Mặc định 1 = KHÔNG thử lại: gửi hụt là chốt
+    // 'failed', để người trực tự kiểm tra & gửi tay (thử lại thường vô ích — hội thoại không tự hiện
+    // ra, brand/khách sai không tự đúng). Muốn thử lại N lần thì đặt AUTO_NOTIFY_MAX_RETRIES=N.
+    // LƯU Ý: lỗi TẠM THỜI (runner offline / chưa đăng nhập Zalo) KHÔNG tính vào đây — luồng bỏ cả
+    // lượt và thử lại nguyên vẹn khi runner online / đã đăng nhập (vì tin CHƯA hề tới khách).
+    maxRetries: Math.max(parseInt(process.env.AUTO_NOTIFY_MAX_RETRIES || '1', 10) || 1, 1),
     // Bí mật bảo vệ webhook /api/webhook/arrived (so khớp header x-webhook-secret). Trống = không kiểm tra.
     webhookSecret: process.env.AUTO_NOTIFY_WEBHOOK_SECRET || '',
     // CHỈ tự báo đơn về TỪ ngày account được bật "Tự động báo" trở đi (bỏ qua đơn tồn đọng

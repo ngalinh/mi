@@ -482,21 +482,30 @@ async function classifyForShip(order, delayedMap) {
  * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. MỐC TUYỆT ĐỐI: seed bất kể đơn đang bị chặn hay
  * không (account tắt auto / brand / chưa báo hàng) -> "đơn cũ" có ND ship trước lúc bật KHÔNG bao giờ
  * bị nhắn, kể cả khi sau này gỡ chặn account. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có
- * dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
- * 'notified_arrival'. Ghi mốc SHIP_SEEDED_KEY khi xong. Muốn nhắn lại nhóm cũ -> BẬT lại (chốt mốc mới).
+ * dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Ghi mốc SHIP_SEEDED_KEY khi
+ * xong. Muốn nhắn lại nhóm cũ -> BẬT lại (chốt mốc mới).
  *
- * KHÔNG seed 'notified_ship': đơn đã ở trạng thái "Đã báo ship" nhưng Mi CHƯA gửi (NV tick tay,
- * ND ship hiện sau) PHẢI được gửi, không được chốt 'seeded' -> để classifyForShip + luồng quét
- * notified_ship (giới hạn N ngày) bắt lại. Chống trùng dựa vào DẤU auto_notified (success/manual).
+ * Quét CẢ 'not_sent', 'notified_arrival' LẪN 'notified_ship': mỗi lần BẬT = "vạch mốc mới", loại trừ
+ * MỌI đơn đang có sẵn ND ship lúc đó (kể cả đơn đã ở trạng thái "Đã báo ship" mà Mi chưa gửi) -> KHÔNG
+ * nhắn loạt khi bật lại. Chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có dấu) mới được luồng quét gửi.
+ * Nhờ vậy off -> deploy -> bật lại KHÔNG blast đơn tồn; đơn "đã báo ship tay mà Mi chưa gửi" đang tồn
+ * tại đúng lúc bật sẽ bị loại trừ (gửi tay 1 lần), còn ca phát sinh SAU vẫn được bắt real-time.
+ * Đơn 'failed' (thử hụt trước) đang có ND ship lúc bật CŨNG bị đè 'seeded' -> KHÔNG thử lại sau khi
+ * bật (đúng "vạch mốc mới: loại trừ mọi đơn có ND ship lúc bật"). Muốn thử lại -> gửi tay.
  * @returns {Promise<{at:string, scanned:number, seeded:number}>}
  */
 async function seedShip() {
   let scanned = 0;
   let seeded = 0;
   const seen = new Set();
-  for (const status of ['not_sent', 'notified_arrival']) {
+  // Seed ĐỒNG BỘ phạm vi với luồng gửi: 'notified_ship' chỉ seed trong N ngày gần đây (và bỏ hẳn nếu
+  // shipRecentDays=0) -> không seed đơn nằm ngoài tầm quét gửi, tránh quét notified_ship all-time nặng.
+  const seedStatuses = ['not_sent', 'notified_arrival'];
+  if (cfg.shipRecentDays > 0) seedStatuses.push('notified_ship');
+  for (const status of seedStatuses) {
+    const days = status === 'notified_ship' ? cfg.shipRecentDays : undefined;
     // eslint-disable-next-line no-await-in-loop
-    const orders = await fetchAllByStatus(status, { fresh: true }); // fresh: chốt đúng hiện trạng lúc bấm Bật
+    const orders = await fetchAllByStatus(status, { fresh: true, days }); // fresh: chốt đúng hiện trạng lúc bấm Bật
     for (const o of orders) {
       const k = autoKey(o);
       if (seen.has(k)) continue;
@@ -510,8 +519,13 @@ async function seedShip() {
       // vì ND ship 1 đơn thường chỉ soạn 1 lần; và đúng ý "chỉ nhắn đơn mới sau khi bật".)
       if (!o.noiDungBaoShip || !String(o.noiDungBaoShip).trim()) continue; // chưa có ND ship -> khỏi seed
       const key = autoKeyShip(o);
-      if (getAutoRecord(key)) continue;   // đã có dấu (đã gửi/tay/seeded/thử-hụt trước) -> giữ nguyên
-      recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi
+      const rec = getAutoRecord(key);
+      // Giữ nguyên đơn Mi ĐÃ chốt: 'success' (bot đã gửi), 'manual' (báo tay qua Mi), 'seeded' (đã
+      // chốt lần bật trước) — các dấu này vốn đã bị bỏ qua khi gửi.
+      if (rec && (rec.status === 'success' || rec.status === 'manual' || rec.status === 'seeded')) continue;
+      // Còn lại: CHƯA có dấu HOẶC dấu 'failed' (thử hụt trước) -> đè 'seeded' để KHÔNG gửi/thử lại sau
+      // khi bật. Vạch mốc mới = loại trừ MỌI đơn có ND ship lúc bật (kể cả đơn từng gửi hụt).
+      recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi/thử lại
       seeded += 1;
     }
   }
