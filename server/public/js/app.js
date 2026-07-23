@@ -186,6 +186,26 @@ const App = {
     toggle.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>';
     topbar.insertBefore(toggle, topbar.firstChild);
 
+    // Nút "Quay lại" cho PWA (display: standalone) — trên mobile không có nút back
+    // của trình duyệt, nên các trang con (Cài đặt/Danh bạ) sẽ kẹt không quay về được.
+    // Chỉ chèn khi KHÔNG ở trang chủ (index). Bấm: lùi trong lịch sử nếu điều hướng
+    // nội bộ, ngược lại về thẳng index.html để không rời khỏi app.
+    const curPath = location.pathname.replace(/\/+$/, '');
+    const isHome = curPath === '' || /\/index\.html?$/i.test(curPath);
+    if (!isHome) {
+      const back = document.createElement('button');
+      back.className = 'nav-back';
+      back.type = 'button';
+      back.setAttribute('aria-label', 'Quay lại');
+      back.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>';
+      back.addEventListener('click', () => {
+        const sameOrigin = document.referrer && document.referrer.indexOf(location.origin) === 0;
+        if (window.history.length > 1 && sameOrigin) window.history.back();
+        else window.location.href = 'index.html';
+      });
+      topbar.insertBefore(back, topbar.firstChild);
+    }
+
     // Lớp phủ nền mờ khi mở drawer.
     const backdrop = document.createElement('div');
     backdrop.className = 'nav-backdrop';
