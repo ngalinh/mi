@@ -139,18 +139,25 @@ module.exports = {
     // Chu kỳ quét BÁO HÀNG (ms). Giãn 60s -> 120s: mỗi lượt quét đơn "Chưa báo" -> ít dội Basso
     // hơn. Đơn về mới trễ báo tối đa ~2 phút (webhook /api/webhook/arrived vẫn báo ngay nếu Basso gọi).
     intervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_INTERVAL_MS || '120000', 10) || 120000, 10000),
-    // Chu kỳ quét BÁO SHIP (ms) — RIÊNG với báo hàng. Mỗi lượt đọc TƯƠI (bỏ cache) + quét cả
-    // 'not_sent' lẫn 'notified_arrival' ALL-TIME nên là lượt NẶNG NHẤT dội Basso liên tục.
-    // Giãn 60s -> 180s: giảm ~2/3 tải poller ship lên Basso (nguyên nhân chính làm Basso lag).
-    // Đánh đổi: không có webhook thì ship mới trễ báo tối đa ~3 phút. Có webhook /api/webhook/ship
-    // (Basso gọi khi có ND ship) thì báo trong vài giây -> lúc đó có thể giãn tiếp lên 300000+.
-    shipIntervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_INTERVAL_MS || '180000', 10) || 180000, 10000),
+    // Chu kỳ quét BÁO SHIP (ms) — RIÊNG với báo hàng. Basso CHỈ có API (không đẩy webhook ra) nên
+    // tốc độ báo ship phụ thuộc HOÀN TOÀN vào chu kỳ quét này. Hạ 180s -> 60s để bắt kịp cả đơn
+    // giao rất nhanh (vd AhaMove nội thành xong trong ~1h) — trước đây 3 phút/lượt dễ khiến đơn rời
+    // khỏi vùng quét trước khi bắt được. Để mỗi lượt quét dày mà KHÔNG dội sập Basso, cửa sổ quét
+    // được giới hạn theo N ngày gần đây (shipActiveDays) thay vì all-time. Tối thiểu 10s.
+    shipIntervalMs: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_INTERVAL_MS || '60000', 10) || 60000, 10000),
     // BÁO SHIP quét thêm đơn ĐÃ ở trạng thái "Đã báo ship" (notified_ship) để bắt ca "NV tick trạng
     // thái tay TRƯỚC, ND ship hiện SAU, Mi chưa từng gửi" -> vẫn báo cho khách. Vì tập notified_ship
     // TÍCH LŨY vô hạn, GIỚI HẠN theo N ngày gần đây (lọc theo ngày đơn về kho) để không kéo cả kho
     // lịch sử mỗi lượt quét. Mặc định 7 ngày. Đặt AUTO_NOTIFY_SHIP_RECENT_DAYS=0 để TẮT quét
     // notified_ship (chỉ quét not_sent/notified_arrival như trước).
     shipRecentDays: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_RECENT_DAYS ?? '7', 10) || 0, 0),
+    // Cửa sổ quét (N ngày gần đây, theo ngày đơn về kho) cho 'not_sent' + 'notified_arrival' TRONG
+    // LƯỢT BÁO SHIP. Trước đây quét ALL-TIME 2 trạng thái này -> lượt NẶNG NHẤT dội Basso, không thể
+    // quét dày. Giới hạn N ngày -> mỗi lượt nhẹ hơn nhiều nên hạ interval xuống 60s vẫn an toàn.
+    // Đánh đổi: đơn về kho quá N ngày mà giờ mới có ND ship sẽ không được tự báo (hiếm — ND ship
+    // thường phát sinh sát ngày về). Mặc định 14 ngày. Đặt AUTO_NOTIFY_SHIP_ACTIVE_DAYS=0 để quay
+    // lại quét ALL-TIME như trước. CHỈ áp dụng lượt BÁO SHIP — lượt báo hàng vẫn quét như cũ.
+    shipActiveDays: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_ACTIVE_DAYS ?? '14', 10) || 0, 0),
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
     // Bot gửi xong có đẩy trạng thái "Đã báo hàng" về web Basso không?

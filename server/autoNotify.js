@@ -790,15 +790,20 @@ async function runAutoNotify(opts = {}) {
  */
 async function debugShip() {
   const runnerOnline = await checkLocalHealth().catch(() => false);
-  // Quét "Chưa báo" + "Đã báo hàng" (all-time) + "Đã báo ship" (N ngày gần đây) — khớp đúng phạm vi
-  // luồng gửi ship thật (khử trùng theo autoKey) để soi được cả ca "đã báo ship tay mà Mi chưa gửi".
+  // Quét "Chưa báo" + "Đã báo hàng" (N ngày gần đây theo shipActiveDays) + "Đã báo ship" (N ngày
+  // gần đây theo shipRecentDays) — khớp ĐÚNG phạm vi luồng gửi ship thật (khử trùng theo autoKey) để
+  // số "sẽ gửi" trên chẩn đoán luôn khớp lượt gửi, soi được cả ca "đã báo ship tay mà Mi chưa gửi".
   const orders = [];
   const seen = new Set();
-  const debugStatuses = ['not_sent', 'notified_arrival'];
-  if (cfg.shipRecentDays > 0) debugStatuses.push('notified_ship');
+  const activeDays = cfg.shipActiveDays > 0 ? cfg.shipActiveDays : undefined;
+  const debugStatuses = [
+    { status: 'not_sent', days: activeDays },
+    { status: 'notified_arrival', days: activeDays },
+  ];
+  if (cfg.shipRecentDays > 0) debugStatuses.push({ status: 'notified_ship', days: cfg.shipRecentDays });
   for (const st of debugStatuses) {
     // eslint-disable-next-line no-await-in-loop
-    const part = await fetchAllByStatus(st, { fresh: true, days: st === 'notified_ship' ? cfg.shipRecentDays : undefined });
+    const part = await fetchAllByStatus(st.status, { fresh: true, days: st.days });
     for (const o of part) { const k = autoKey(o); if (!seen.has(k)) { seen.add(k); orders.push(o); } }
   }
   const delayedMap = getDelayedMap();
@@ -869,11 +874,14 @@ async function runAutoNotifyShip(opts = {}) {
   state.runningShip = true;
   const summary = { trigger, kind: 'ship', scanned: 0, candidates: 0, sent: 0, failed: 0, results: [] };
   try {
-    // Quét "Chưa báo" + "Đã báo hàng" (all-time, tập sống nhỏ) -> bắt đơn có ND ship dù NV quên tick.
+    // Quét "Chưa báo" + "Đã báo hàng" -> bắt đơn có ND ship dù NV quên tick. GIỚI HẠN N ngày gần đây
+    // (cfg.shipActiveDays) thay vì all-time để mỗi lượt NHẸ -> hạ interval xuống 60s vẫn không dội
+    // sập Basso. shipActiveDays=0 -> quay lại all-time như trước.
     // + "Đã báo ship" GIỚI HẠN N ngày gần đây (cfg.shipRecentDays) -> bắt ca "NV tick 'Đã báo ship'
     // tay nhưng Mi chưa gửi, ND ship hiện sau" (Hải Hà) mà không kéo cả kho notified_ship tích lũy.
     // shipRecentDays=0 -> bỏ notified_ship (chỉ 2 trạng thái đầu như trước). Chống trùng bằng dấu.
-    const statusFilter = ['not_sent', 'notified_arrival'];
+    const activeDays = cfg.shipActiveDays > 0 ? cfg.shipActiveDays : undefined;
+    const statusFilter = [{ status: 'not_sent', days: activeDays }, { status: 'notified_arrival', days: activeDays }];
     if (cfg.shipRecentDays > 0) statusFilter.push({ status: 'notified_ship', days: cfg.shipRecentDays });
     await executeNotifyPass({
       trigger, kind: 'ship', statusFilter,
