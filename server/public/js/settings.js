@@ -877,10 +877,26 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   }
 
+  // Đổ danh sách nhân viên vào ô lọc từ dữ liệu vừa tải, giữ nguyên lựa chọn hiện tại.
+  function fillStaffFilter(items) {
+    const sel = $('logStaff');
+    const cur = sel.value;
+    const names = Array.from(new Set(
+      items.map((r) => (r.staff || '').trim()).filter(Boolean),
+    )).sort((a, b) => a.localeCompare(b, 'vi'));
+    // Nếu lựa chọn cũ không còn trong danh sách mới thì vẫn giữ lại để không mất bộ lọc.
+    if (cur && !names.includes(cur)) names.push(cur);
+    const E = App.esc;
+    sel.innerHTML = '<option value="">Tất cả nhân viên</option>'
+      + names.map((n) => `<option value="${E(n)}">${E(n)}</option>`).join('');
+    sel.value = cur;
+  }
+
   async function loadLog() {
     const q = $('logSearch').value.trim();
     const status = $('logStatus').value;
     const kind = $('logKind').value;
+    const staff = $('logStaff').value;
     const limit = $('logLimit').value || '200';
     logTerm.innerHTML = '<div class="log-empty">Đang tải…</div>';
     try {
@@ -889,8 +905,12 @@
       if (status) params.set('status', status);
       const res = await App.api(`/api/reports?${params.toString()}`);
       let items = res.items || [];
+      // Danh sách nhân viên lấy từ toàn bộ dữ liệu (trước khi lọc theo nhân viên).
+      fillStaffFilter(items);
       // Lọc loại tin (hàng/ship) ở client — API không có filter kind riêng.
       if (kind) items = items.filter((r) => (r.kind === 'ship' ? 'ship' : 'hang') === kind);
+      // Lọc theo nhân viên ở client.
+      if (staff) items = items.filter((r) => (r.staff || '').trim() === staff);
       $('logCount').textContent = `${items.length} lượt`;
       if (!items.length) {
         logTerm.innerHTML = '<div class="log-empty">Chưa có lượt báo nào khớp.</div>';
@@ -928,6 +948,7 @@
   $('logReload').addEventListener('click', loadLog);
   $('logStatus').addEventListener('change', loadLog);
   $('logKind').addEventListener('change', loadLog);
+  $('logStaff').addEventListener('change', loadLog);
   $('logLimit').addEventListener('change', loadLog);
   $('logWrap').addEventListener('change', (e) => logTerm.classList.toggle('wrap', e.target.checked));
   $('logSearch').addEventListener('input', () => { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 350); });
