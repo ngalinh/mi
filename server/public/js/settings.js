@@ -897,12 +897,17 @@
     const status = $('logStatus').value;
     const kind = $('logKind').value;
     const staff = $('logStaff').value;
+    const from = $('logFrom').value; // YYYY-MM-DD (giờ local)
+    const to = $('logTo').value;
     const limit = $('logLimit').value || '200';
     logTerm.innerHTML = '<div class="log-empty">Đang tải…</div>';
     try {
       const params = new URLSearchParams({ limit });
       if (q) params.set('q', q);
       if (status) params.set('status', status);
+      // Ngày local -> mốc ISO: from = đầu ngày, to = đầu ngày kế tiếp (API so sánh created_at < to).
+      if (from) { const d = new Date(`${from}T00:00:00`); if (!isNaN(d)) params.set('from', d.toISOString()); }
+      if (to) { const d = new Date(`${to}T00:00:00`); if (!isNaN(d)) { d.setDate(d.getDate() + 1); params.set('to', d.toISOString()); } }
       const res = await App.api(`/api/reports?${params.toString()}`);
       let items = res.items || [];
       // Danh sách nhân viên lấy từ toàn bộ dữ liệu (trước khi lọc theo nhân viên).
@@ -949,6 +954,8 @@
   $('logStatus').addEventListener('change', loadLog);
   $('logKind').addEventListener('change', loadLog);
   $('logStaff').addEventListener('change', loadLog);
+  $('logFrom').addEventListener('change', loadLog);
+  $('logTo').addEventListener('change', loadLog);
   $('logLimit').addEventListener('change', loadLog);
   $('logWrap').addEventListener('change', (e) => logTerm.classList.toggle('wrap', e.target.checked));
   $('logSearch').addEventListener('input', () => { clearTimeout(logTimer); logTimer = setTimeout(loadLog, 350); });
