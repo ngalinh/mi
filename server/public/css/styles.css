@@ -196,6 +196,19 @@ a { color: var(--primary); text-decoration: none; }
 .nav-toggle:hover { border-color: var(--border-strong); }
 .nav-toggle:active { transform: scale(.94); }
 
+/* Nút quay lại (PWA) — ẩn trên desktop, chỉ hiện ở mobile qua @media. */
+.nav-back {
+  display: none;
+  width: 42px; height: 42px; flex: none;
+  border: 1px solid var(--border); background: #fff; cursor: pointer;
+  border-radius: 13px; color: var(--text);
+  align-items: center; justify-content: center;
+  box-shadow: var(--shadow-sm); transition: .15s var(--ease);
+}
+.nav-back .icon { width: 22px; height: 22px; }
+.nav-back:hover { border-color: var(--border-strong); }
+.nav-back:active { transform: scale(.94); }
+
 /* Lớp phủ nền khi mở drawer — chỉ dùng ở mobile. */
 .nav-backdrop { display: none; }
 
@@ -1322,6 +1335,7 @@ td.staff-col { white-space: nowrap; }
 
   /* Topbar dính trên cùng để nút menu luôn với tới; nút menu ở đầu. */
   .nav-toggle { display: inline-flex; }
+  .nav-back { display: inline-flex; }
   .topbar {
     position: sticky; top: 0; z-index: 30;
     flex-wrap: wrap; gap: 12px;
