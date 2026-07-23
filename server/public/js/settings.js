@@ -910,13 +910,17 @@
       if (to) { const d = new Date(`${to}T00:00:00`); if (!isNaN(d)) { d.setDate(d.getDate() + 1); params.set('to', d.toISOString()); } }
       const res = await App.api(`/api/reports?${params.toString()}`);
       let items = res.items || [];
+      const total = items.length; // số lượt sau lọc phía server (q/kết quả/ngày)
       // Danh sách nhân viên lấy từ toàn bộ dữ liệu (trước khi lọc theo nhân viên).
       fillStaffFilter(items);
       // Lọc loại tin (hàng/ship) ở client — API không có filter kind riêng.
       if (kind) items = items.filter((r) => (r.kind === 'ship' ? 'ship' : 'hang') === kind);
       // Lọc theo nhân viên ở client.
       if (staff) items = items.filter((r) => (r.staff || '').trim() === staff);
-      $('logCount').textContent = `${items.length} lượt`;
+      // Bộ đếm: nếu lọc client (hàng-ship/nhân viên) làm giảm số dòng thì hiện "X / Y lượt".
+      $('logCount').textContent = items.length < total
+        ? `${items.length} / ${total} lượt`
+        : `${items.length} lượt`;
       if (!items.length) {
         logTerm.innerHTML = '<div class="log-empty">Chưa có lượt báo nào khớp.</div>';
         return;
