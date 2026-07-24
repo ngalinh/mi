@@ -205,16 +205,17 @@ const App = {
       back.className = 'nav-back';
       back.type = 'button';
       back.setAttribute('aria-label', 'Quay lại');
-      back.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>';
+      // Icon kiểu "thoát" (cửa + mũi tên đi ra) thay cho mũi tên back.
+      back.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>';
       back.addEventListener('click', () => {
         const sameOrigin = document.referrer && document.referrer.indexOf(location.origin) === 0;
         if (window.history.length > 1 && sameOrigin) window.history.back();
         else window.location.href = 'index.html';
       });
-      // Đặt nút back ở GÓC PHẢI topbar (nút menu ☰ ở trái). Khối tiêu đề có flex:1
-      // nên chèn cuối là nút bị đẩy sang phải; thêm margin-left:auto để chắc chắn
-      // dính mép phải kể cả khi tiêu đề ngắn.
-      back.style.marginLeft = 'auto';
+      // Ghim nút ở GÓC PHẢI TRÊN CÙNG (ngang nút menu ☰): dùng position:absolute qua
+      // class .has-nav-back trên topbar (CSS mobile) để không bị wrap xuống hàng dưới
+      // dù tiêu đề + mô tả chiếm hết hàng đầu.
+      topbar.classList.add('has-nav-back');
       topbar.appendChild(back);
     }
 

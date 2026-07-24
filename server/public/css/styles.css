@@ -1339,6 +1339,13 @@ td.staff-col { white-space: nowrap; }
     padding: calc(14px + env(safe-area-inset-top)) 16px 10px;
     background: var(--bg); border-bottom: 1px solid var(--border);
   }
+  /* Nút "thoát" ghim GÓC PHẢI TRÊN CÙNG — cùng mốc top với nút menu ☰ ở trái, không bị
+     wrap xuống hàng dù tiêu đề dài. Chừa lề phải cho khối tiêu đề để chữ không chui xuống nút. */
+  .topbar.has-nav-back .nav-back {
+    position: absolute; right: 16px; top: calc(14px + env(safe-area-inset-top));
+    z-index: 31; margin: 0;
+  }
+  .topbar.has-nav-back > div:first-of-type { padding-right: 54px; }
   .container { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
   .topbar h1 { font-size: 24px; }
   /* Khối tiêu đề nở rộng để đẩy nút (đồng bộ/tải lại) sang phải cùng hàng nút menu. */
