@@ -211,7 +211,11 @@ const App = {
         if (window.history.length > 1 && sameOrigin) window.history.back();
         else window.location.href = 'index.html';
       });
-      topbar.insertBefore(back, topbar.firstChild);
+      // Đặt nút back ở GÓC PHẢI topbar (nút menu ☰ ở trái). Khối tiêu đề có flex:1
+      // nên chèn cuối là nút bị đẩy sang phải; thêm margin-left:auto để chắc chắn
+      // dính mép phải kể cả khi tiêu đề ngắn.
+      back.style.marginLeft = 'auto';
+      topbar.appendChild(back);
     }
 
     // Lớp phủ nền mờ khi mở drawer.
