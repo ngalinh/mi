@@ -205,11 +205,14 @@ const App = {
 
     // Nút "Quay lại" cho PWA (display: standalone) — trên mobile không có nút back
     // của trình duyệt, nên các trang con (Cài đặt/Danh bạ) sẽ kẹt không quay về được.
-    // Chỉ chèn khi KHÔNG ở trang chủ (index). Bấm: lùi trong lịch sử nếu điều hướng
-    // nội bộ, ngược lại về thẳng index.html để không rời khỏi app.
+    // CHỈ chèn ở các trang con (danhba/settings). Trang chủ = danh sách Hàng về VN
+    // KHÔNG có nút back: nó là trang gốc của app và đã có nút "Thoát về ai.basso.vn"
+    // trong menu để rời app. Nhận diện theo TÊN FILE trang con (không dựa vào việc
+    // đoán "trang chủ") vì app chạy sau gateway ai.basso.vn nên đường dẫn có thể là
+    // subpath (vd /mi/) khiến cách so trùng "/index.html" thất bại → back hiện nhầm.
     const curPath = location.pathname.replace(/\/+$/, '');
-    const isHome = curPath === '' || /\/index\.html?$/i.test(curPath);
-    if (!isHome) {
+    const isSubPage = /\/(danhba|settings)\.html?$/i.test(curPath);
+    if (isSubPage) {
       const back = document.createElement('button');
       back.className = 'nav-back';
       back.type = 'button';
