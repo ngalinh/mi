@@ -149,10 +149,6 @@ a { color: var(--primary); text-decoration: none; }
   background: var(--ink); color: #fff;
   box-shadow: var(--shadow);
 }
-/* Nút thoát về nền tảng ai.basso.vn: mờ (muted) lúc thường, hover đỏ nhạt để báo "rời khỏi". */
-.sidebar a.nav.nav-exit { color: var(--muted); }
-.sidebar a.nav.nav-exit:hover { background: var(--red-soft); color: var(--red); }
-
 .sidebar .rail-sep { width: 34px; height: 1px; background: var(--border-strong); margin: 4px 0; }
 .sidebar .side-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .sidebar .avatar {
