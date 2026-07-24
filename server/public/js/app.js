@@ -177,22 +177,10 @@ const App = {
       else rail.appendChild(gear);
     }
 
-    // Tự chèn nút "Thoát về ai.basso.vn" vào .side-foot nếu HTML còn THIẾU (vd trình duyệt/PWA
-    // giữ index.html bản CŨ trong cache — bản cũ chưa có nút thoát nên nó chỉ hiện ở các trang
-    // mới hơn như Danh bạ/Cài đặt). Chèn ngay trước avatar để mọi trang nhất quán dù chưa refresh.
-    const foot = sidebar.querySelector('.side-foot');
-    if (foot && !foot.querySelector('a.nav-exit')) {
-      const exit = document.createElement('a');
-      exit.className = 'nav nav-exit';
-      exit.href = 'https://ai.basso.vn';
-      exit.target = '_top';
-      exit.rel = 'noopener';
-      exit.title = 'Thoát về ai.basso.vn';
-      exit.innerHTML = '<span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg></span>';
-      const avatar = foot.querySelector('.avatar');
-      if (avatar) avatar.insertAdjacentElement('beforebegin', exit);
-      else foot.appendChild(exit);
-    }
+    // Gỡ nút "Thoát về ai.basso.vn" nếu HTML còn trong cache (bản cũ có nút này):
+    // đã bỏ khỏi menu. Xoá thẳng khỏi sidebar để mọi trang nhất quán dù client chưa
+    // refresh HTML.
+    sidebar.querySelectorAll('a.nav-exit').forEach((el) => el.remove());
 
     // Nút mở menu (chỉ hiện trên mobile qua CSS) — đặt đầu topbar.
     const toggle = document.createElement('button');
@@ -206,10 +194,10 @@ const App = {
     // Nút "Quay lại" cho PWA (display: standalone) — trên mobile không có nút back
     // của trình duyệt, nên các trang con (Cài đặt/Danh bạ) sẽ kẹt không quay về được.
     // CHỈ chèn ở các trang con (danhba/settings). Trang chủ = danh sách Hàng về VN
-    // KHÔNG có nút back: nó là trang gốc của app và đã có nút "Thoát về ai.basso.vn"
-    // trong menu để rời app. Nhận diện theo TÊN FILE trang con (không dựa vào việc
-    // đoán "trang chủ") vì app chạy sau gateway ai.basso.vn nên đường dẫn có thể là
-    // subpath (vd /mi/) khiến cách so trùng "/index.html" thất bại → back hiện nhầm.
+    // KHÔNG có nút back: nó là trang gốc của app. Nhận diện theo TÊN FILE trang con
+    // (không dựa vào việc đoán "trang chủ") vì app chạy sau gateway ai.basso.vn nên
+    // đường dẫn có thể là subpath (vd /mi/) khiến cách so trùng "/index.html" thất
+    // bại → back hiện nhầm.
     const curPath = location.pathname.replace(/\/+$/, '');
     const isSubPage = /\/(danhba|settings)\.html?$/i.test(curPath);
     if (isSubPage) {
