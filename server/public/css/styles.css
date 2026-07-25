@@ -1344,6 +1344,18 @@ td.staff-col { white-space: nowrap; }
     z-index: 31; margin: 0;
   }
   .topbar.has-nav-back > div:first-of-type { padding-right: 54px; }
+
+  /* Nút "Đồng bộ" trên trang danh sách: thu gọn thành nút ICON (ẩn chữ bằng font-size:0),
+     ghim GÓC PHẢI TRÊN CÙNG ngay cạnh trái nút thoát — thay vì chiếm nguyên 1 hàng riêng.
+     Giữ nền hồng (accent) để nổi bật là hành động chính. */
+  .topbar.has-sync #syncBtn {
+    position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 66px;
+    z-index: 31; width: 42px; height: 42px; min-width: 0; padding: 0; gap: 0;
+    border-radius: 13px; justify-content: center; font-size: 0;
+  }
+  .topbar.has-sync #syncBtn .icon { width: 20px; height: 20px; margin: 0; }
+  /* Chừa chỗ cho 2 nút (đồng bộ + thoát) để tiêu đề không chui xuống dưới. */
+  .topbar.has-sync.has-nav-back > div:first-of-type { padding-right: 106px; }
   .container { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
   .topbar h1 { font-size: 24px; }
   /* Khối tiêu đề nở rộng để đẩy nút (đồng bộ/tải lại) sang phải cùng hàng nút menu. */
