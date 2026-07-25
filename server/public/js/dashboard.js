@@ -71,6 +71,23 @@
   const $ = (id) => document.getElementById(id);
   const rowsEl = $('rows');
 
+  // Tự dựng lại các lựa chọn phạm vi thời gian (#fScope) nếu HTML cũ trong CACHE còn thiếu
+  // (vd chưa có "Tháng này"). Nếu thiếu mà JS lại set value='month' -> select hiện TRỐNG
+  // (không option nào khớp). Bơm lại đủ option để bộ lọc luôn hoạt động dù client chưa refresh HTML.
+  (function ensureScopeOptions() {
+    const sc = $('fScope');
+    if (!sc) return;
+    const want = [
+      ['month', 'Tháng này'], ['0', 'Tất cả thời gian'], ['7', '7 ngày gần đây'],
+      ['30', '30 ngày gần đây'], ['90', '90 ngày gần đây'], ['custom', 'Tuỳ chỉnh…'],
+    ];
+    const have = new Set(Array.from(sc.options, (o) => o.value));
+    if (want.every(([v]) => have.has(v))) return; // đã đủ -> giữ nguyên HTML
+    const cur = sc.value;
+    sc.innerHTML = want.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+    if (want.some(([v]) => v === cur)) sc.value = cur; // giữ lựa chọn cũ nếu vẫn hợp lệ
+  })();
+
   // Tự động đồng bộ danh sách mỗi 120s (giãn từ 60s): mỗi tab dashboard đang mở tự kéo lại tập
   // theo scope -> nhiều tab/nhiều người nhân tải lên Basso. Giãn ra giảm nửa số lượt kéo nền.
   // KHÔNG ảnh hưởng bot tự báo hàng/ship (chạy nền riêng phía server); chỉ là danh sách người

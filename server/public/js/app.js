@@ -148,6 +148,22 @@ const App = {
     const topbar = document.querySelector('.topbar');
     if (!app || !sidebar || !topbar) return;
 
+    // Logo Mi trong .brand: đảm bảo LUÔN có ảnh (HTML cũ trong cache có thể thiếu <img>) và
+    // dùng src BASE-AWARE để hiện đúng cả khi app chạy sau gateway ở đường dẫn con /b/<id>/
+    // — link tương đối "mi-logo.png" dễ trỏ sai ở đó nên ảnh vỡ, chỉ còn chữ "Mi". Giữ đúng
+    // logo đang dùng trên web (mi-logo.png).
+    const brand = sidebar.querySelector('.brand');
+    if (brand) {
+      let logo = brand.querySelector('.brand-logo');
+      if (!logo) {
+        logo = document.createElement('img');
+        logo.className = 'brand-logo';
+        logo.alt = 'Mi';
+        brand.insertBefore(logo, brand.firstChild);
+      }
+      logo.src = (App.BASE || '') + '/mi-logo.png';
+    }
+
     // Tự chèn mục "Danh bạ" vào rail-nav nếu HTML còn THIẾU (vd trình duyệt/PWA giữ index.html
     // bản CŨ trong cache trong khi app.js đã mới). Nhờ vậy menu luôn đủ dù chưa refresh HTML.
     const rail = sidebar.querySelector('.rail-nav');
@@ -191,32 +207,26 @@ const App = {
     toggle.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>';
     topbar.insertBefore(toggle, topbar.firstChild);
 
-    // Nút "Quay lại" cho PWA (display: standalone) — trên mobile không có nút back
-    // của trình duyệt, nên các trang con (Cài đặt/Danh bạ) sẽ kẹt không quay về được.
-    // CHỈ chèn ở các trang con (danhba/settings). Trang chủ = danh sách Hàng về VN
-    // KHÔNG có nút back: nó là trang gốc của app. Nhận diện theo TÊN FILE trang con
-    // (không dựa vào việc đoán "trang chủ") vì app chạy sau gateway ai.basso.vn nên
-    // đường dẫn có thể là subpath (vd /mi/) khiến cách so trùng "/index.html" thất
-    // bại → back hiện nhầm.
-    const curPath = location.pathname.replace(/\/+$/, '');
-    const isSubPage = /\/(danhba|settings)\.html?$/i.test(curPath);
-    if (isSubPage) {
-      const back = document.createElement('button');
-      back.className = 'nav-back';
-      back.type = 'button';
-      back.setAttribute('aria-label', 'Quay lại');
-      // Icon kiểu "thoát" (cửa + mũi tên đi ra) thay cho mũi tên back.
-      back.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>';
-      back.addEventListener('click', () => {
-        const sameOrigin = document.referrer && document.referrer.indexOf(location.origin) === 0;
-        if (window.history.length > 1 && sameOrigin) window.history.back();
-        else window.location.href = 'index.html';
+    // Nút "Thoát về ai.basso.vn" — hiện ở MỌI trang (kể cả danh sách Hàng về VN), ghim
+    // GÓC PHẢI TRÊN CÙNG (ngang nút menu ☰). Bấm = rời app Mi, quay về nền tảng
+    // ai.basso.vn; điều hướng cả trang top (window.top) phòng khi app đang nhúng iframe.
+    // Chuyển trang trong app (Hàng về VN / Danh bạ / Cài đặt) dùng menu ☰.
+    {
+      const exit = document.createElement('button');
+      exit.className = 'nav-back';
+      exit.type = 'button';
+      exit.setAttribute('aria-label', 'Thoát về ai.basso.vn');
+      exit.title = 'Thoát về ai.basso.vn';
+      // Icon kiểu "thoát" (cửa + mũi tên đi ra).
+      exit.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>';
+      exit.addEventListener('click', () => {
+        const url = 'https://ai.basso.vn';
+        try { window.top.location.href = url; } catch (e) { window.location.href = url; }
       });
-      // Ghim nút ở GÓC PHẢI TRÊN CÙNG (ngang nút menu ☰): dùng position:absolute qua
-      // class .has-nav-back trên topbar (CSS mobile) để không bị wrap xuống hàng dưới
-      // dù tiêu đề + mô tả chiếm hết hàng đầu.
+      // Ghim góc phải trên cùng qua class .has-nav-back (CSS mobile, position:absolute) để
+      // không bị wrap xuống hàng dù tiêu đề dài.
       topbar.classList.add('has-nav-back');
-      topbar.appendChild(back);
+      topbar.appendChild(exit);
     }
 
     // Lớp phủ nền mờ khi mở drawer.
