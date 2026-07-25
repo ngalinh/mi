@@ -1415,7 +1415,9 @@ td.staff-col { white-space: nowrap; }
   .toolbar-bar .tb-searchrow {
     display: flex; grid-column: 1 / -1; gap: 8px; align-items: stretch; margin-top: 2px;
   }
-  .toolbar-bar .tb-searchrow .tb-search { flex: 1 1 auto; min-width: 0; }
+  /* Ô tìm & nút chia ĐÔI hàng (mỗi cái 1 nửa) -> canh thẳng cột với các ô lọc 2 cột ở trên,
+     ô tìm không còn thừa chỗ, nút báo rộng cân đối. */
+  .toolbar-bar .tb-searchrow .tb-search { flex: 1 1 0; min-width: 0; }
   /* Ô tìm KHỚP CHIỀU CAO + kiểu với các ô lọc (.tb-select): cùng padding 10px, font 12.5px,
      cùng shadow nhẹ -> nhìn đồng bộ 1 khối. Nút bên cạnh có align-self:stretch nên tự cao theo. */
   .toolbar-bar .tb-search input {
@@ -1423,9 +1425,9 @@ td.staff-col { white-space: nowrap; }
     box-shadow: var(--shadow-sm);
   }
   .toolbar-bar .tb-search .icon { width: 15px; height: 15px; }
-  /* Nút "Báo hàng loạt" (chính là .tb-action): vừa nội dung, thấp bớt + glow nhẹ cho đỡ to. */
+  /* Nút "Báo hàng loạt" (chính là .tb-action): chiếm nửa còn lại, cao bằng ô tìm. */
   .toolbar-bar .tb-action {
-    flex: none; align-self: stretch; width: auto; margin: 0;
+    flex: 1 1 0; align-self: stretch; width: auto; min-width: 0; margin: 0;
     padding: 8px 14px; font-size: 12.5px; gap: 6px;
     box-shadow: 0 4px 10px -7px rgba(232, 76, 142, .5);
   }
