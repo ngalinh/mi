@@ -1410,6 +1410,12 @@ td.staff-col { white-space: nowrap; }
   .toolbar-bar .tb-search { grid-column: 1 / -1; flex: none; min-width: 0; }
   .toolbar-bar .tb-action { grid-column: 1 / -1; margin-left: 0; width: 100%; }
   .toolbar-bar .tb-action .btn { width: 100%; justify-content: center; }
+  /* Ô tìm & nút "Báo hàng loạt": gọn bớt chiều cao + glow nhẹ cho đỡ to/nặng. */
+  .toolbar-bar .tb-search input { padding-top: 9px; padding-bottom: 9px; font-size: 13.5px; }
+  .toolbar-bar .tb-action .btn {
+    padding-top: 9px; padding-bottom: 9px; font-size: 13.5px;
+    box-shadow: 0 5px 14px -8px rgba(232, 76, 142, .55);
+  }
   .filter-pop { width: min(300px, calc(100vw - 28px)); }
 
   /* Modal: sát mép, nút xếp dọc dễ bấm. */
