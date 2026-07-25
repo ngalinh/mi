@@ -229,6 +229,16 @@ const App = {
       topbar.appendChild(exit);
     }
 
+    // Trang có nút "Đồng bộ" (#syncBtn — chỉ trang danh sách): đánh dấu để CSS mobile thu
+    // gọn nó thành nút ICON và ghim cạnh trái nút thoát ở góc phải trên (thay vì chiếm
+    // nguyên 1 hàng riêng bên dưới). Đưa nút đồng bộ lên đầu topbar cho gọn hàng.
+    const syncBtn = topbar.querySelector('#syncBtn');
+    if (syncBtn) {
+      topbar.classList.add('has-sync');
+      if (!syncBtn.getAttribute('aria-label')) syncBtn.setAttribute('aria-label', 'Đồng bộ ngay');
+      if (!syncBtn.title) syncBtn.title = 'Đồng bộ ngay';
+    }
+
     // Lớp phủ nền mờ khi mở drawer.
     const backdrop = document.createElement('div');
     backdrop.className = 'nav-backdrop';
