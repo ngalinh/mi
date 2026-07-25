@@ -1430,13 +1430,15 @@ td.staff-col { white-space: nowrap; }
     box-shadow: var(--shadow-sm);
   }
   .toolbar-bar .tb-search .icon { width: 15px; height: 15px; }
-  /* Nút "Báo hàng loạt" (chính là .tb-action): là ô grid cột phải, tự lấp đầy 1fr = bằng ô tìm. */
+  /* Nút "Báo hàng loạt" (chính là .tb-action): là ô grid cột phải, tự lấp đầy 1fr = bằng ô tìm.
+     overflow:hidden = LƯỚI AN TOÀN: dù nhãn có dài (vd bản cũ "(chưa báo)") cũng KHÔNG tràn ra
+     ngoài ô, chỉ cắt gọn trong pill thay vì đè lên bảng. Nhãn hiện tại "Báo hàng loạt" vừa khít. */
   .toolbar-bar .tb-action {
     align-self: stretch; width: 100%; min-width: 0; margin: 0;
-    padding: 8px 14px; font-size: 12.5px; gap: 6px;
+    padding: 8px 14px; font-size: 12.5px; gap: 6px; overflow: hidden;
     box-shadow: 0 4px 10px -7px rgba(232, 76, 142, .5);
   }
-  .toolbar-bar .tb-action .icon { width: 15px; height: 15px; }
+  .toolbar-bar .tb-action .icon { width: 15px; height: 15px; flex: none; }
   .filter-pop { width: min(300px, calc(100vw - 28px)); }
 
   /* Modal: sát mép, nút xếp dọc dễ bấm. */
