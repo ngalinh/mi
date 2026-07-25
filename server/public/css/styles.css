@@ -1356,6 +1356,12 @@ td.staff-col { white-space: nowrap; }
   .topbar.has-sync #syncBtn .icon { width: 20px; height: 20px; margin: 0; }
   /* Chừa chỗ cho 2 nút (đồng bộ + thoát) để tiêu đề không chui xuống dưới. */
   .topbar.has-sync.has-nav-back > div:first-of-type { padding-right: 106px; }
+  /* Dòng "Cập nhật ..." canh PHẢI, nằm trên hàng riêng ngay dưới cụm nút đồng bộ/thoát
+     (dùng flow + flex-basis:100% nên luôn xuống hàng, không đè tiêu đề). */
+  .topbar.has-sync .sync-info {
+    order: 9; flex-basis: 100%; width: 100%;
+    text-align: right; margin: 2px 0 0;
+  }
   .container { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
   .topbar h1 { font-size: 24px; }
   /* Khối tiêu đề nở rộng để đẩy nút (đồng bộ/tải lại) sang phải cùng hàng nút menu. */
