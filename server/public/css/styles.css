@@ -548,6 +548,9 @@ a { color: var(--primary); text-decoration: none; }
    Thanh công cụ gộp (tìm kiếm · nhóm · lọc · thao tác)
    ============================================================ */
 .toolbar-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0 14px; }
+/* Bọc ô tìm + nút "Báo hàng loạt". Desktop: display:contents để 2 con hành xử như con trực
+   tiếp của toolbar (giữ nguyên bố cục cũ). Mobile: biến thành 1 hàng flex (xem @media). */
+.tb-searchrow { display: contents; }
 .toolbar-bar .tb-search { flex: 1 1 240px; min-width: 200px; }
 .toolbar-bar .tb-search input {
   width: 100%; padding: 11px 16px 11px 42px;
@@ -1332,7 +1335,7 @@ td.staff-col { white-space: nowrap; }
   .nav-back { display: inline-flex; }
   .topbar {
     position: sticky; top: 0; z-index: 30;
-    flex-wrap: wrap; gap: 12px;
+    flex-wrap: wrap; gap: 12px; align-items: flex-start;
     /* Bù notch/thanh URL của WebView FB để tiêu đề + nút menu không bị khuất trên */
     padding: calc(14px + env(safe-area-inset-top)) 16px 10px;
     background: var(--bg); border-bottom: 1px solid var(--border);
@@ -1365,7 +1368,12 @@ td.staff-col { white-space: nowrap; }
   .container { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
   .topbar h1 { font-size: 24px; }
   /* Khối tiêu đề nở rộng để đẩy nút (đồng bộ/tải lại) sang phải cùng hàng nút menu. */
-  .topbar > div:first-of-type { flex: 1 1 auto; min-width: 0; }
+  .topbar > div:first-of-type { flex: 1 1 auto; min-width: 0; padding-top: 6px; }
+  /* Trang con (Danh bạ/Cài đặt — có nút thoát nhưng KHÔNG có nút đồng bộ): dùng flex-basis:0 để
+     khối tiêu đề KHÔNG lấy bề rộng mô tả dài làm mốc -> không rớt xuống hàng dưới, mà nằm NGANG
+     HÀNG cạnh nút menu ☰ (mô tả xuống dòng bên dưới tiêu đề). Trang danh sách giữ nguyên (auto)
+     vì khối đầu chỉ có h1 ngắn + còn badge/nút đồng bộ cùng hàng. */
+  .topbar.has-nav-back:not(.has-sync) > div:first-of-type { flex-basis: 0; }
   .container { padding: 14px 16px 40px; }
   .filters { grid-template-columns: repeat(2, 1fr); }
   .stats { grid-template-columns: 1fr; }
@@ -1407,9 +1415,28 @@ td.staff-col { white-space: nowrap; }
   .toolbar-bar .tb-filter-wrap { width: 100%; }
   .toolbar-bar .tb-filter-wrap .tb-filter { width: 100%; }
   .toolbar-bar .tb-daterange { grid-column: 1 / -1; }
-  .toolbar-bar .tb-search { grid-column: 1 / -1; flex: none; min-width: 0; }
-  .toolbar-bar .tb-action { grid-column: 1 / -1; margin-left: 0; width: 100%; }
-  .toolbar-bar .tb-action .btn { width: 100%; justify-content: center; }
+  /* Ô tìm + nút "Báo hàng loạt" GỘP 1 HÀNG: ô tìm co giãn chiếm phần còn lại, nút vừa nội
+     dung nằm bên phải. */
+  /* Grid 2 cột 1fr 1fr GIỐNG HỆT hàng ô lọc -> ô tìm & nút BẰNG NHAU tuyệt đối, thẳng cột. */
+  .toolbar-bar .tb-searchrow {
+    display: grid; grid-template-columns: 1fr 1fr; grid-column: 1 / -1;
+    gap: 8px; align-items: stretch; margin-top: 2px;
+  }
+  .toolbar-bar .tb-searchrow .tb-search { min-width: 0; }
+  /* Ô tìm KHỚP CHIỀU CAO + kiểu với các ô lọc (.tb-select): cùng padding 10px, font 12.5px,
+     cùng shadow nhẹ -> nhìn đồng bộ 1 khối. Nút bên cạnh có align-self:stretch nên tự cao theo. */
+  .toolbar-bar .tb-search input {
+    padding-top: 12px; padding-bottom: 12px; font-size: 12.5px;
+    box-shadow: var(--shadow-sm);
+  }
+  .toolbar-bar .tb-search .icon { width: 15px; height: 15px; }
+  /* Nút "Báo hàng loạt" (chính là .tb-action): là ô grid cột phải, tự lấp đầy 1fr = bằng ô tìm. */
+  .toolbar-bar .tb-action {
+    align-self: stretch; width: 100%; min-width: 0; margin: 0;
+    padding: 8px 14px; font-size: 12.5px; gap: 6px;
+    box-shadow: 0 4px 10px -7px rgba(232, 76, 142, .5);
+  }
+  .toolbar-bar .tb-action .icon { width: 15px; height: 15px; }
   .filter-pop { width: min(300px, calc(100vw - 28px)); }
 
   /* Modal: sát mép, nút xếp dọc dễ bấm. */
