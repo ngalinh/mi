@@ -1287,19 +1287,13 @@ td.staff-col { white-space: nowrap; }
   }
   .app.nav-open .sidebar { transform: translateX(0); }
 
-  /* Thương hiệu: logo + chữ "Mi" nằm NGANG, canh trái trong drawer. Base .brand là
-     display:grid nên phải ép display:flex thì flex-direction:row mới ăn (nếu không ảnh
-     và chữ "Mi" bị xếp DỌC chồng lên nhau). */
+  /* Thương hiệu trong drawer: CHỈ logo, không chữ "Mi". Canh trái đầu drawer. */
   .sidebar .brand {
     display: flex; flex-direction: row; align-items: center;
-    justify-content: flex-start; gap: 11px;
+    justify-content: flex-start;
     width: auto; height: auto; margin: 2px 4px 18px;
   }
   .sidebar .brand .brand-logo { width: 42px; height: 42px; border-radius: 13px; }
-  .sidebar .brand::after {
-    content: "Mi"; font-family: var(--font-head); font-weight: 900;
-    font-size: 25px; letter-spacing: -1px; color: var(--ink);
-  }
 
   /* Mục điều hướng: hàng đầy đủ icon + nhãn, canh trái. */
   .sidebar .rail-nav { flex-direction: column; align-items: stretch; gap: 4px; width: 100%; }
@@ -1385,8 +1379,11 @@ td.staff-col { white-space: nowrap; }
   .tabs .tab { flex-shrink: 0; }
 
   /* Toolbar: lưới 2 cột gọn gàng, ô tìm & nút hành động chiếm trọn hàng. */
-  .toolbar-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }
-  .toolbar-bar .tb-select { width: 100%; font-size: 12.5px; }
+  .toolbar-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; margin: 12px 0; }
+  .toolbar-bar .tb-select {
+    width: 100%; min-width: 0; font-size: 12.5px; padding-top: 10px; padding-bottom: 10px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   .toolbar-bar .tb-filter-wrap { width: 100%; }
   .toolbar-bar .tb-filter-wrap .tb-filter { width: 100%; }
   .toolbar-bar .tb-daterange { grid-column: 1 / -1; }
@@ -1413,7 +1410,10 @@ td.staff-col { white-space: nowrap; }
 
 @media (max-width: 520px) {
   .filters { grid-template-columns: 1fr; }
-  /* Toolbar về 1 cột khi quá hẹp để chữ trong select không bị cắt. */
+}
+/* Toolbar GIỮ 2 cột cho gọn (5 select xếp 2 cột thay vì 5 hàng full-width dài lê thê).
+   Chữ trong select vẫn đủ chỗ tới ~360px; chỉ về 1 cột khi màn hình cực hẹp. */
+@media (max-width: 360px) {
   .toolbar-bar { grid-template-columns: 1fr; }
 }
 
