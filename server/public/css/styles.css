@@ -1408,14 +1408,19 @@ td.staff-col { white-space: nowrap; }
   .toolbar-bar .tb-filter-wrap .tb-filter { width: 100%; }
   .toolbar-bar .tb-daterange { grid-column: 1 / -1; }
   .toolbar-bar .tb-search { grid-column: 1 / -1; flex: none; min-width: 0; }
-  .toolbar-bar .tb-action { grid-column: 1 / -1; margin-left: 0; width: 100%; }
-  .toolbar-bar .tb-action .btn { width: 100%; justify-content: center; }
-  /* Ô tìm & nút "Báo hàng loạt": gọn bớt chiều cao + glow nhẹ cho đỡ to/nặng. */
-  .toolbar-bar .tb-search input { padding-top: 9px; padding-bottom: 9px; font-size: 13.5px; }
-  .toolbar-bar .tb-action .btn {
-    padding-top: 9px; padding-bottom: 9px; font-size: 13.5px;
-    box-shadow: 0 5px 14px -8px rgba(232, 76, 142, .55);
+  /* Ô tìm gọn RÕ chiều cao cho đỡ to. */
+  .toolbar-bar .tb-search input { padding-top: 8px; padding-bottom: 8px; font-size: 13px; }
+  .toolbar-bar .tb-search .icon { width: 15px; height: 15px; }
+  /* Nút "Báo hàng loạt" (chính là .tb-action) KHÔNG full-width nữa — pill vừa nội dung, canh
+     GIỮA, thấp bớt + glow nhẹ cho đỡ to/tràn. (Trước đây nhắm .tb-action .btn nên KHÔNG trúng
+     vì nút vừa là .tb-action vừa là .btn.) */
+  .toolbar-bar .tb-action {
+    grid-column: 1 / -1; justify-self: center; margin: 2px 0 0;
+    width: auto; max-width: 100%;
+    padding: 8px 20px; font-size: 13px;
+    box-shadow: 0 4px 10px -7px rgba(232, 76, 142, .5);
   }
+  .toolbar-bar .tb-action .icon { width: 15px; height: 15px; }
   .filter-pop { width: min(300px, calc(100vw - 28px)); }
 
   /* Modal: sát mép, nút xếp dọc dễ bấm. */
