@@ -1335,7 +1335,7 @@ td.staff-col { white-space: nowrap; }
   .nav-back { display: inline-flex; }
   .topbar {
     position: sticky; top: 0; z-index: 30;
-    flex-wrap: wrap; gap: 12px;
+    flex-wrap: wrap; gap: 12px; align-items: flex-start;
     /* Bù notch/thanh URL của WebView FB để tiêu đề + nút menu không bị khuất trên */
     padding: calc(14px + env(safe-area-inset-top)) 16px 10px;
     background: var(--bg); border-bottom: 1px solid var(--border);
@@ -1368,7 +1368,12 @@ td.staff-col { white-space: nowrap; }
   .container { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
   .topbar h1 { font-size: 24px; }
   /* Khối tiêu đề nở rộng để đẩy nút (đồng bộ/tải lại) sang phải cùng hàng nút menu. */
-  .topbar > div:first-of-type { flex: 1 1 auto; min-width: 0; }
+  .topbar > div:first-of-type { flex: 1 1 auto; min-width: 0; padding-top: 6px; }
+  /* Trang con (Danh bạ/Cài đặt — có nút thoát nhưng KHÔNG có nút đồng bộ): dùng flex-basis:0 để
+     khối tiêu đề KHÔNG lấy bề rộng mô tả dài làm mốc -> không rớt xuống hàng dưới, mà nằm NGANG
+     HÀNG cạnh nút menu ☰ (mô tả xuống dòng bên dưới tiêu đề). Trang danh sách giữ nguyên (auto)
+     vì khối đầu chỉ có h1 ngắn + còn badge/nút đồng bộ cùng hàng. */
+  .topbar.has-nav-back:not(.has-sync) > div:first-of-type { flex-basis: 0; }
   .container { padding: 14px 16px 40px; }
   .filters { grid-template-columns: repeat(2, 1fr); }
   .stats { grid-template-columns: 1fr; }
