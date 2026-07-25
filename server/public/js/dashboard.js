@@ -1150,7 +1150,7 @@
   function resetBulkBtn() {
     const btn = $('bulkBtn');
     btn.classList.remove('is-loading');
-    btn.innerHTML = App.icon('megaphone') + ' Báo hàng loạt (chưa báo)';
+    btn.innerHTML = App.icon('megaphone') + ' Báo hàng loạt';
     btn.disabled = counts.todo === 0;
   }
 

@@ -548,6 +548,9 @@ a { color: var(--primary); text-decoration: none; }
    Thanh công cụ gộp (tìm kiếm · nhóm · lọc · thao tác)
    ============================================================ */
 .toolbar-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 16px 0 14px; }
+/* Bọc ô tìm + nút "Báo hàng loạt". Desktop: display:contents để 2 con hành xử như con trực
+   tiếp của toolbar (giữ nguyên bố cục cũ). Mobile: biến thành 1 hàng flex (xem @media). */
+.tb-searchrow { display: contents; }
 .toolbar-bar .tb-search { flex: 1 1 240px; min-width: 200px; }
 .toolbar-bar .tb-search input {
   width: 100%; padding: 11px 16px 11px 42px;
@@ -1407,17 +1410,18 @@ td.staff-col { white-space: nowrap; }
   .toolbar-bar .tb-filter-wrap { width: 100%; }
   .toolbar-bar .tb-filter-wrap .tb-filter { width: 100%; }
   .toolbar-bar .tb-daterange { grid-column: 1 / -1; }
-  .toolbar-bar .tb-search { grid-column: 1 / -1; flex: none; min-width: 0; }
-  /* Ô tìm gọn RÕ chiều cao cho đỡ to. */
+  /* Ô tìm + nút "Báo hàng loạt" GỘP 1 HÀNG: ô tìm co giãn chiếm phần còn lại, nút vừa nội
+     dung nằm bên phải. */
+  .toolbar-bar .tb-searchrow {
+    display: flex; grid-column: 1 / -1; gap: 8px; align-items: stretch; margin-top: 2px;
+  }
+  .toolbar-bar .tb-searchrow .tb-search { flex: 1 1 auto; min-width: 0; }
   .toolbar-bar .tb-search input { padding-top: 8px; padding-bottom: 8px; font-size: 13px; }
   .toolbar-bar .tb-search .icon { width: 15px; height: 15px; }
-  /* Nút "Báo hàng loạt" (chính là .tb-action) KHÔNG full-width nữa — pill vừa nội dung, canh
-     GIỮA, thấp bớt + glow nhẹ cho đỡ to/tràn. (Trước đây nhắm .tb-action .btn nên KHÔNG trúng
-     vì nút vừa là .tb-action vừa là .btn.) */
+  /* Nút "Báo hàng loạt" (chính là .tb-action): vừa nội dung, thấp bớt + glow nhẹ cho đỡ to. */
   .toolbar-bar .tb-action {
-    grid-column: 1 / -1; justify-self: center; margin: 2px 0 0;
-    width: auto; max-width: 100%;
-    padding: 8px 20px; font-size: 13px;
+    flex: none; align-self: stretch; width: auto; margin: 0;
+    padding: 8px 14px; font-size: 12.5px; gap: 6px;
     box-shadow: 0 4px 10px -7px rgba(232, 76, 142, .5);
   }
   .toolbar-bar .tb-action .icon { width: 15px; height: 15px; }
