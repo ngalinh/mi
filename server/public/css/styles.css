@@ -1416,7 +1416,12 @@ td.staff-col { white-space: nowrap; }
     display: flex; grid-column: 1 / -1; gap: 8px; align-items: stretch; margin-top: 2px;
   }
   .toolbar-bar .tb-searchrow .tb-search { flex: 1 1 auto; min-width: 0; }
-  .toolbar-bar .tb-search input { padding-top: 8px; padding-bottom: 8px; font-size: 13px; }
+  /* Ô tìm KHỚP CHIỀU CAO + kiểu với các ô lọc (.tb-select): cùng padding 10px, font 12.5px,
+     cùng shadow nhẹ -> nhìn đồng bộ 1 khối. Nút bên cạnh có align-self:stretch nên tự cao theo. */
+  .toolbar-bar .tb-search input {
+    padding-top: 12px; padding-bottom: 12px; font-size: 12.5px;
+    box-shadow: var(--shadow-sm);
+  }
   .toolbar-bar .tb-search .icon { width: 15px; height: 15px; }
   /* Nút "Báo hàng loạt" (chính là .tb-action): vừa nội dung, thấp bớt + glow nhẹ cho đỡ to. */
   .toolbar-bar .tb-action {
