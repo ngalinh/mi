@@ -1287,14 +1287,18 @@ td.staff-col { white-space: nowrap; }
   }
   .app.nav-open .sidebar { transform: translateX(0); }
 
-  /* Thương hiệu: logo + chữ "Mi" nằm ngang, canh trái trong drawer. */
+  /* Thương hiệu: logo + chữ "Mi" nằm NGANG, canh trái trong drawer. Base .brand là
+     display:grid nên phải ép display:flex thì flex-direction:row mới ăn (nếu không ảnh
+     và chữ "Mi" bị xếp DỌC chồng lên nhau). */
   .sidebar .brand {
-    flex-direction: row; justify-content: flex-start; gap: 12px;
-    width: auto; height: auto; margin: 4px 6px 14px;
+    display: flex; flex-direction: row; align-items: center;
+    justify-content: flex-start; gap: 11px;
+    width: auto; height: auto; margin: 2px 4px 18px;
   }
+  .sidebar .brand .brand-logo { width: 42px; height: 42px; border-radius: 13px; }
   .sidebar .brand::after {
     content: "Mi"; font-family: var(--font-head); font-weight: 900;
-    font-size: 26px; letter-spacing: -1px; color: var(--ink);
+    font-size: 25px; letter-spacing: -1px; color: var(--ink);
   }
 
   /* Mục điều hướng: hàng đầy đủ icon + nhãn, canh trái. */
