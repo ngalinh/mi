@@ -11,6 +11,13 @@
     expanded: new Set(),  // id đơn đang mở chi tiết
   };
 
+  // "DD/MM/YYYY HH:MM" -> ngày trên, giờ dưới (mờ) để cột hẹp không tràn.
+  function splitDateTime(s) {
+    const [d, t] = String(s || '').split(' ');
+    if (!d) return '<span class="muted">—</span>';
+    return `<div>${App.esc(d)}</div>${t ? `<div class="ship-sub">${App.esc(t)}</div>` : ''}`;
+  }
+
   // ---- Nhãn/format ------------------------------------------------------
   const STATUS_CLASS = { waiting: 'waiting', exported: 'exported', completed: 'completed' };
   function statusBadge(o) {
@@ -59,17 +66,17 @@
         <tr data-id="${o.id}">
           <td class="center"><input type="checkbox" class="rowchk" data-id="${o.id}"></td>
           <td class="center"><span class="ship-eye" data-eye="${o.id}" title="Xem chi tiết">${App.icon('eye')}</span></td>
-          <td>${App.esc(o.createdAt)}</td>
+          <td>${splitDateTime(o.createdAt)}</td>
           <td>${App.esc(o.recipient)}</td>
-          <td>${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</td>
-          <td>${App.esc(o.phone)}</td>
+          <td class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</td>
+          <td class="gh-nowrap" title="${App.esc(o.phone)}">${App.esc(o.phone)}</td>
           <td>${App.esc(o.address)}</td>
           <td>${App.esc(o.note) || ''}</td>
           <td class="center">${App.fmtVnd(o.codAmount) || '0₫'}</td>
           <td class="center">${App.fmtVnd(o.shipFee) || '0₫'}${codPayer}</td>
           <td><span class="ship-carrier">${App.icon('truck')} ${App.esc(o.shipping)}</span></td>
           <td>${statusBadge(o)}</td>
-          <td>${App.esc(o.preparedAt) || '<span class="muted">—</span>'}</td>
+          <td>${splitDateTime(o.preparedAt)}</td>
           <td><div class="ship-actions">${actionButtons(o)}</div></td>
         </tr>`);
       if (state.expanded.has(String(o.id))) rows.push(detailRow(o));

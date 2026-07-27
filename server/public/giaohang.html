@@ -9,6 +9,15 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="css/styles.css?v=20260725" />
   <style>
+    /* Bảng giao hàng: cố định layout cột -> vừa khung, không cuộn ngang; địa chỉ được giãn đủ rộng */
+    .gh-table{table-layout:fixed;width:100%}
+    .gh-table th,.gh-table td{padding:10px 8px;word-break:break-word;overflow-wrap:anywhere;vertical-align:top}
+    .table-wrap .gh-table thead th{white-space:normal;line-height:1.25}
+    .gh-table td{font-size:13px}
+    .gh-table .ship-carrier{flex-wrap:wrap}
+    /* Mã đơn / SĐT: không ngắt giữa số — vượt thì cắt bằng ellipsis (hover xem đủ) */
+    .gh-nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;word-break:normal}
+    .gh-datecell{white-space:nowrap}
     /* Nhãn trạng thái giao hàng (theo phong cách badge của app) */
     .ship-badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
     .ship-badge.waiting{background:#fff3e0;color:#e08a00}
@@ -16,8 +25,8 @@
     .ship-badge.completed{background:#e8f5e9;color:#2e7d32}
     .ship-badge.unknown{background:#eef1f5;color:#64748b}
     .ship-carrier{display:flex;align-items:center;gap:4px}
-    .ship-actions{display:flex;flex-direction:column;gap:4px;align-items:stretch;min-width:120px}
-    .ship-actions .btn{padding:5px 8px;font-size:12px;justify-content:center}
+    .ship-actions{display:flex;flex-direction:column;gap:4px;align-items:stretch;min-width:0}
+    .ship-actions .btn{padding:5px 6px;font-size:11.5px;line-height:1.25;justify-content:center;white-space:normal}
     .ship-sub{color:#94a3b8;font-size:11px}
     .ship-toptabs{display:flex;gap:2px;border-bottom:1px solid #e5e9f0;margin:0 0 10px}
     .ship-toptabs button{border:none;background:none;padding:9px 16px;cursor:pointer;font-size:14px;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -104,11 +113,20 @@
           <div id="countInfo" class="count-info muted"></div>
 
           <div class="table-wrap">
-            <table>
+            <table class="gh-table">
+              <colgroup>
+                <col style="width:2.5%"><col style="width:2.5%">
+                <col style="width:7%"><col style="width:8%">
+                <col style="width:9%"><col style="width:8%">
+                <col style="width:12%"><col style="width:7.5%">
+                <col style="width:5%"><col style="width:5.5%">
+                <col style="width:8.5%"><col style="width:8%">
+                <col style="width:7.5%"><col style="width:9%">
+              </colgroup>
               <thead>
                 <tr>
-                  <th style="width:34px"></th>
-                  <th style="width:30px"></th>
+                  <th></th>
+                  <th></th>
                   <th>Ngày tạo vận đơn</th>
                   <th>Người nhận</th>
                   <th>Mã vận đơn</th>
@@ -120,7 +138,7 @@
                   <th>Đơn vị vận chuyển</th>
                   <th>Trạng thái</th>
                   <th>Thời gian soạn hàng</th>
-                  <th class="center" style="width:130px"></th>
+                  <th class="center"></th>
                 </tr>
               </thead>
               <tbody id="rows"><tr><td colspan="14" class="empty">Đang tải...</td></tr></tbody>
