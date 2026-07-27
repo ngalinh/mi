@@ -78,19 +78,26 @@
   }
 
   function detailRow(o) {
-    const items = o.items.map((it, i) => `
-      <tr>
-        <td>${App.esc(it.orderCode)}</td>
-        <td>${i + 1}</td>
-        <td>${it.image ? `<img src="${App.esc(it.image)}" loading="lazy">` : ''}</td>
-        <td>${App.esc(it.name)}</td>
-        <td>${it.quantity ?? ''}</td>
-        <td>${it.variations.map((v) => `${App.esc(v.name)}: ${App.esc(v.value)}`).join(', ')}</td>
-        <td>${App.esc(it.approveUser)}</td>
-      </tr>`).join('');
+    const items = o.items.map((it) => `
+      <div class="ship-item">
+        ${it.image
+          ? `<img class="ship-item-thumb" src="${App.esc(it.image)}" loading="lazy" alt="">`
+          : `<span class="ship-item-thumb">${App.icon('box')}</span>`}
+        <div class="ship-item-main">
+          <p class="ship-item-name">${App.esc(it.name) || '(không tên)'}</p>
+          <div class="ship-item-meta">
+            ${it.orderCode ? `<span class="ship-chip code">${App.esc(it.orderCode)}</span>` : ''}
+            ${it.variations.map((v) => `<span class="ship-chip">${App.esc(v.name)}: ${App.esc(v.value)}</span>`).join('')}
+            ${it.approveUser ? `<span class="ship-chip staff">NV: ${App.esc(it.approveUser)}</span>` : ''}
+          </div>
+        </div>
+        <span class="ship-item-qty">×${it.quantity ?? 1}</span>
+      </div>`).join('');
     return `<tr class="ship-detail"><td colspan="14">
-      <table><thead><tr><th>Mã ĐH</th><th>STT</th><th>Hình ảnh</th><th>Tên SP</th><th>SL</th><th>Variant</th><th>NV duyệt</th></tr></thead>
-      <tbody>${items || '<tr><td colspan="7" class="empty">Không có sản phẩm.</td></tr>'}</tbody></table>
+      <div class="ship-detail-wrap">
+        <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
+        <div class="ship-items">${items || '<div class="muted">Không có sản phẩm.</div>'}</div>
+      </div>
     </td></tr>`;
   }
 
