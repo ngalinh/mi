@@ -667,7 +667,9 @@ app.get('/api/order-content', async (req, res) => {
     if (customerId == null || dateInventory == null) {
       return res.status(400).json({ ok: false, error: 'Cần customerId + dateInventory' });
     }
-    const data = await getOrderContent({ customerId, dateInventory, phone });
+    // fresh=true: nút "Xem nội dung" phải thấy bản Basso mới nhất NGAY (vd đơn vừa về thêm sản
+    // phẩm: 14 -> 18 món), không để SWR cache (TTL) che mất bằng bản cũ.
+    const data = await getOrderContent({ customerId, dateInventory, phone, fresh: true });
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

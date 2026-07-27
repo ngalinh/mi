@@ -142,6 +142,7 @@ async function notifyOne(order, opts = {}) {
         customerId: order.customerId,
         dateInventory: order.dateInventory,
         phone: order.phone,
+        fresh: true, // bỏ cache: lấy đúng bản mới nhất Basso đã soạn ngay trước lúc gửi
       });
       if (fresh && fresh.found) {
         const key = kind === 'ship' ? 'noiDungBaoShip' : 'noiDungBaoHang';

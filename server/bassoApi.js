@@ -521,10 +521,13 @@ async function getArrivedItems({ id, customerId, dateInventory } = {}) {
  * soạn ND sau khi mi đã cache list, hoặc list trả thiếu content — thì lấy trực tiếp của đúng đơn.
  * Thu hẹp getArrivedVnList theo SĐT khách (key) để chỉ kéo vài dòng, rồi khớp đúng dòng bằng
  * (customer_id + date_inventory). Chỉ đọc, không đổi dữ liệu.
- * @param {{customerId:number|string, dateInventory:number|string, phone?:string}} p
+ * @param {{customerId:number|string, dateInventory:number|string, phone?:string, fresh?:boolean}} p
+ *   fresh=true: BỎ QUA cache (đọc thẳng Basso rồi nạp lại cache). Dùng cho các đường CẦN bản mới
+ *   nhất thật sự — "Xem nội dung" (modal) & refresh trước khi gửi — tránh trả bản cũ (vd 14 món)
+ *   trong khi Basso đã soạn lại (18 món). Không truyền -> ăn SWR cache (TTL) như cũ để nhẹ Basso.
  * @returns {Promise<{source, found:boolean, noiDungBaoHang:string, noiDungBaoShip:string}>}
  */
-async function getOrderContent({ customerId, dateInventory, phone } = {}) {
+async function getOrderContent({ customerId, dateInventory, phone, fresh = false } = {}) {
   const pick = (row) => ({
     found: !!row,
     noiDungBaoHang: (row && row.content) || '',
@@ -551,7 +554,8 @@ async function getOrderContent({ customerId, dateInventory, phone } = {}) {
   let rows;
   if (config.basso.listCacheTtlMs) {
     const cacheKey = 'content:' + JSON.stringify({ key: phone || '' });
-    ({ data: rows } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, runFetch));
+    // fresh=true -> swrFetch bỏ qua cache cũ, đọc thẳng Basso rồi nạp lại cache cho lần sau.
+    ({ data: rows } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, runFetch, { fresh }));
   } else {
     rows = await runFetch();
   }

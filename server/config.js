@@ -91,10 +91,13 @@ module.exports = {
     defaultDays: Math.max(parseInt(process.env.BASSO_DEFAULT_DAYS || '7', 10) || 0, 0),
     // Chu kỳ (ms) NẠP SẴN khung nhìn mặc định của dashboard vào cache RAM (xem cacheWarmer.js)
     // -> người mở dashboard không phải đợi Basso. 0 = tắt; nếu >0 thì tối thiểu 15000ms.
-    // Mặc định 120s (giãn từ 60s): warm nền thưa hơn -> nhẹ Basso. Cache TTL 60s nên trong
-    // khoảng giữa 2 lượt warm, cache có thể stale -> SWR vẫn trả ngay rồi tự làm mới, không kẹt.
+    // Mặc định 30s: warm nền dày hơn -> bảng dashboard cập nhật số món/nội dung mới (vd đơn về
+    // thêm sản phẩm 14 -> 18) nhanh hơn, không phải đợi hết TTL. Đánh đổi: gọi Basso dày hơn
+    // (nặng hơn preload 120s cũ). Muốn nhẹ Basso hơn thì nâng qua BASSO_PRELOAD_INTERVAL_MS.
+    // Lưu ý: "Xem nội dung" & gửi đã đọc TƯƠI (getOrderContent fresh) nên chính xác không phụ
+    // thuộc preload này; preload chỉ ảnh hưởng độ tươi khi HIỂN THỊ bảng ở nền.
     preloadIntervalMs: (() => {
-      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '120000', 10);
+      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '30000', 10);
       return Number.isFinite(v) && v > 0 ? Math.max(v, 15000) : 0;
     })(),
     // Ngưỡng số đơn để dashboard lọc client-side (kéo hết 1 lần rồi lọc NV/trạng thái/trang
