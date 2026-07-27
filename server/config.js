@@ -122,6 +122,22 @@ module.exports = {
     // muốn ưu tiên tốc độ báo loạt hơn (mỗi đơn tốn thêm 1 call Basso).
     refreshContentBeforeSend: String(process.env.BASSO_REFRESH_CONTENT_BEFORE_SEND || 'true').toLowerCase() === 'true',
   },
+  // ---------- WEB ADMIN BASSO ("Quản lý giao hàng") ----------
+  // KHÁC với Partner API ở trên: đây là endpoint AJAX nội bộ của web admin basso.vn
+  // (vd /basso/shipping_order/), xác thực bằng COOKIE PHIÊN (ci_session) chứ không phải
+  // X-Partner-Api-Key + Bearer. Vì Basso chưa mở phần giao hàng qua Partner API, ta gọi
+  // thẳng endpoint web bằng cookie đăng nhập của 1 tài khoản admin.
+  //   BASSO_WEB_BASE_URL : gốc web admin, mặc định https://basso.vn/basso
+  //   BASSO_WEB_COOKIE   : chuỗi Cookie đầy đủ (tối thiểu cần ci_session=...). Lấy từ trình
+  //                        duyệt đã đăng nhập (DevTools → Network → Request Headers → cookie).
+  //                        LƯU Ý: cookie hết hạn theo phiên -> cần cập nhật lại khi 401/redirect.
+  bassoWeb: {
+    baseUrl: (process.env.BASSO_WEB_BASE_URL || 'https://basso.vn/basso').replace(/\/$/, ''),
+    cookie: process.env.BASSO_WEB_COOKIE || '',
+    // Bật mock khi chưa cấu hình cookie (đọc lại file mock hàng-về cho tiện chạy thử offline).
+    useMock: !process.env.BASSO_WEB_COOKIE,
+    requestTimeoutMs: Math.max(parseInt(process.env.BASSO_WEB_TIMEOUT_MS || '20000', 10) || 0, 0),
+  },
   // Tự động báo hàng: cứ có đơn "Chưa báo" (đã về kho) là tự gửi tin, không cần bấm tay.
   autoNotify: {
     enabled: String(process.env.AUTO_NOTIFY || 'false').toLowerCase() === 'true',
