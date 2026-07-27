@@ -83,6 +83,28 @@ body:  action=<...>&id=<id đơn>          (kèm shipper_link=<url> tuỳ chọn
 - **Nút hàng loạt** (tick nhiều đơn) — chưa rõ có gửi nhiều `id` một lần không; hiện `giaohang.js`
   lặp gọi từng đơn.
 
+## 4. Partner API — ĐÃ ĐỐI CHIẾU TÀI LIỆU: chưa có endpoint giao hàng
+
+Đã rà toàn bộ tài liệu Partner API chính thức (mục "Tóm tắt endpoint"): **KHÔNG có** endpoint
+nào cho `shipping_order` / vận đơn / giao hàng. Xác minh thêm bằng `npm run probe:shipping`
+(16 tên đoán đều 404). Hai endpoint gần nhất nhưng **khác mô hình dữ liệu**:
+
+- `getArrivedVnList` = "Hàng về VN" (hàng về kho VN, gom theo customer_id+ngày) — không có vận đơn/ĐVVC/COD.
+- `getOrdersWithCancelledItems?item_status=shipped` = đơn có *dòng SP* đã giao — không phải *vận đơn*.
+
+→ Muốn dùng Partner API cho Giao hàng, **Basso phải mở thêm** nhóm endpoint (bọc màn
+`basso/shipping_order/` giống cách đã bọc `arrived_vn` / `item_issue` / `sms_log`). Spec đề xuất
+(đúng chuẩn tài liệu — auth `X-Partner-Api-Key` + Bearer, envelope `{success,message,data,errors}`):
+
+| Endpoint | Method | Tham số / Body | Trả về |
+|---|---|---|---|
+| `/partner/getShippingOrderList` | GET | `page, page_size, status, shipping_id, from, to, key, branch, include_items` | `data.rows[]` (field như màn shipping_order) + `data.total/page/page_size` |
+| `/partner/updateShippingOrderStatus` | POST | `id`, `action` (`exported\|waiting\|shipped`) | `data.record{status, waiting_prepared_at}` |
+
+Khi Basso mở xong: đổi `server/shippingApi.js` từ gọi `basso.vn/basso/shipping_order/` (cookie)
+sang `/partner/getShippingOrderList` (Partner API key + Bearer, tái dùng luồng login của
+`bassoApi.js`) — giao diện `giaohang.html`/`js/giaohang.js` giữ nguyên.
+
 ## Dùng trong mi
 
 - Backend: `GET /api/shipping`, `POST /api/shipping/action` (`server/index.js`) → `shippingApi.js`.
