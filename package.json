@@ -17,6 +17,7 @@
     "diagram": "node scripts/gen-flow-diagram.js",
     "test:basso": "node scripts/test-basso.js",
     "test:shipping": "node scripts/test-shipping.js",
+    "probe:shipping": "node scripts/probe-partner-shipping.js",
     "check": "node scripts/health-check.js"
   },
   "engines": {
