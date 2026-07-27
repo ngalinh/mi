@@ -58,7 +58,7 @@
       rows.push(`
         <tr data-id="${o.id}">
           <td class="center"><input type="checkbox" class="rowchk" data-id="${o.id}"></td>
-          <td class="center"><span class="ship-eye" data-eye="${o.id}" title="Xem chi tiết">${App.icon('search')}</span></td>
+          <td class="center"><span class="ship-eye" data-eye="${o.id}" title="Xem chi tiết">${App.icon('eye')}</span></td>
           <td>${App.esc(o.createdAt)}</td>
           <td>${App.esc(o.recipient)}</td>
           <td>${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</td>
@@ -78,25 +78,35 @@
   }
 
   function detailRow(o) {
-    const items = o.items.map((it) => `
-      <div class="ship-item">
-        ${it.image
-          ? `<img class="ship-item-thumb" src="${App.esc(it.image)}" loading="lazy" alt="">`
-          : `<span class="ship-item-thumb">${App.icon('box')}</span>`}
-        <div class="ship-item-main">
-          <p class="ship-item-name">${App.esc(it.name) || '(không tên)'}</p>
-          <div class="ship-item-meta">
-            ${it.orderCode ? `<span class="ship-chip code">${App.esc(it.orderCode)}</span>` : ''}
-            ${it.variations.map((v) => `<span class="ship-chip">${App.esc(v.name)}: ${App.esc(v.value)}</span>`).join('')}
-            ${it.approveUser ? `<span class="ship-chip staff">NV: ${App.esc(it.approveUser)}</span>` : ''}
-          </div>
-        </div>
-        <span class="ship-item-qty">×${it.quantity ?? 1}</span>
-      </div>`).join('');
+    const rows = o.items.map((it, i) => `
+      <tr>
+        <td class="center ship-list-stt">${i + 1}</td>
+        <td>${it.image
+          ? `<img class="ship-list-thumb" src="${App.esc(it.image)}" loading="lazy" alt="">`
+          : `<span class="ship-list-thumb">${App.icon('box')}</span>`}</td>
+        <td>${it.orderCode ? `<span class="ship-chip code">${App.esc(it.orderCode)}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="ship-list-name">${App.esc(it.name) || '(không tên)'}</td>
+        <td>${it.variations.length
+          ? it.variations.map((v) => `<span class="ship-chip">${App.esc(v.name)}: ${App.esc(v.value)}</span>`).join(' ')
+          : '<span class="muted">—</span>'}</td>
+        <td class="center ship-list-qty">${it.quantity ?? 1}</td>
+        <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
+      </tr>`).join('');
     return `<tr class="ship-detail"><td colspan="14">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
-        <div class="ship-items">${items || '<div class="muted">Không có sản phẩm.</div>'}</div>
+        <table class="ship-list">
+          <thead><tr>
+            <th style="width:36px" class="center">STT</th>
+            <th style="width:52px">Ảnh</th>
+            <th style="width:120px">Mã ĐH</th>
+            <th>Tên sản phẩm</th>
+            <th>Phân loại</th>
+            <th style="width:44px" class="center">SL</th>
+            <th style="width:110px">NV duyệt</th>
+          </tr></thead>
+          <tbody>${rows || '<tr><td colspan="7" class="muted" style="padding:12px">Không có sản phẩm.</td></tr>'}</tbody>
+        </table>
       </div>
     </td></tr>`;
   }
