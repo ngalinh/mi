@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#fefcf6" />
+  <title>Mi · Quản lý giao hàng</title>
+  <link rel="icon" type="image/png" href="favicon.png?v=3" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="css/styles.css?v=20260725" />
+  <style>
+    /* Nhãn trạng thái giao hàng (theo phong cách badge của app) */
+    .ship-badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+    .ship-badge.waiting{background:#fff3e0;color:#e08a00}
+    .ship-badge.exported{background:#e3f2fd;color:#1976d2}
+    .ship-badge.completed{background:#e8f5e9;color:#2e7d32}
+    .ship-badge.unknown{background:#eef1f5;color:#64748b}
+    .ship-carrier{display:flex;align-items:center;gap:4px}
+    .ship-actions{display:flex;flex-direction:column;gap:4px;align-items:stretch;min-width:120px}
+    .ship-actions .btn{padding:5px 8px;font-size:12px;justify-content:center}
+    .ship-sub{color:#94a3b8;font-size:11px}
+    .ship-toptabs{display:flex;gap:2px;border-bottom:1px solid #e5e9f0;margin:0 0 10px}
+    .ship-toptabs button{border:none;background:none;padding:9px 16px;cursor:pointer;font-size:14px;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-1px}
+    .ship-toptabs button.active{color:var(--primary,#e05c8a);border-bottom-color:var(--primary,#e05c8a);font-weight:600}
+    /* Panel bung sản phẩm của đơn — dạng LIST/bảng gọn đẹp */
+    .ship-detail > td{background:#f7f8fb;padding:0;border-bottom:1px solid #e5e9f0}
+    .ship-detail-wrap{padding:14px 20px 16px}
+    .ship-detail-head{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.03em;margin:0 0 10px;display:flex;align-items:center;gap:6px}
+    .ship-detail-head .icon{width:15px;height:15px}
+    .ship-list{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid #eceff4;border-radius:10px;overflow:hidden;font-size:12.5px}
+    .ship-list thead th{text-align:left;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em;padding:8px 12px;background:#f8fafc;border-bottom:1px solid #eceff4;white-space:nowrap}
+    .ship-list tbody td{padding:8px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle;color:#334155}
+    .ship-list tbody tr:last-child td{border-bottom:none}
+    .ship-list tbody tr:hover td{background:#fafbfd}
+    .ship-list .center{text-align:center}
+    .ship-list-stt{color:#94a3b8;font-weight:600}
+    .ship-list-thumb{width:40px;height:40px;border-radius:6px;object-fit:cover;background:#eef1f5;display:inline-flex;align-items:center;justify-content:center;color:#cbd5e1}
+    .ship-list-thumb .icon{width:18px;height:18px}
+    .ship-list-name{font-weight:600;color:#1e293b}
+    .ship-list-qty{font-weight:700}
+    .ship-chip{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#475569;white-space:nowrap;margin:1px 0}
+    .ship-chip.code{background:#eef2ff;color:#4f46e5;font-weight:600}
+    .ship-eye{cursor:pointer;color:#3b82f6}
+    .ship-topbar-actions{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand" title="Mi"><img class="brand-logo" src="mi-logo.png" alt="Mi" /></div>
+      <nav class="rail-nav">
+        <a class="nav" href="index.html" title="Hàng về VN"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span></a>
+        <a class="nav active" href="giaohang.html" title="Giao hàng"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 18V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></span></a>
+        <a class="nav" href="danhba.html" title="Danh bạ Zalo"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><circle cx="12" cy="9" r="2"/><path d="M15.5 15a3.5 3.5 0 0 0-7 0"/></svg></span></a>
+        <a class="nav" href="settings.html" title="Cài đặt"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span></a>
+      </nav>
+      <div class="side-foot">
+        <span class="rail-sep"></span>
+        <div class="avatar" id="userAvatar" title="Đang tải...">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div><h1>Quản lý <span class="accent">giao hàng</span></h1></div>
+        <span class="spacer"></span>
+        <span id="mockBadge" class="badge-status badge-mock" style="display:none">CHƯA CẤU HÌNH COOKIE</span>
+        <div class="ship-topbar-actions">
+          <button class="btn secondary small" id="btnBulkShip">Giao shipper</button>
+          <button class="btn secondary small" id="btnPrint">In phiếu giao hàng</button>
+          <button class="btn accent small" id="btnBulkComplete">Đã giao hàng</button>
+        </div>
+      </header>
+
+      <div class="container">
+        <div class="card">
+          <div class="toolbar-bar">
+            <select id="fCarrier" class="tb-select" title="Đơn vị vận chuyển"><option value="0">Tất cả ĐVVC</option></select>
+            <select id="fStatus" class="tb-select" title="Trạng thái">
+              <option value="all">Tất cả trạng thái</option>
+              <option value="waiting">Đã soạn hàng</option>
+              <option value="exported">Đã giao shipper</option>
+              <option value="completed">Đã giao hàng</option>
+            </select>
+            <input type="date" id="fDate" class="tb-date" title="Ngày tạo vận đơn" />
+            <select id="fStaff" class="tb-select" title="Nhân viên phụ trách"><option value="">Tất cả nhân viên</option></select>
+            <div class="tb-searchrow">
+              <div class="input-icon tb-search">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" id="fQ" placeholder="Tìm mã đơn, khách hàng, sđt, tên nhân viên" />
+              </div>
+              <button class="btn accent small tb-action" id="btnSearch">Tìm</button>
+            </div>
+          </div>
+
+          <div class="ship-toptabs" id="branchTabs">
+            <button data-branch="" class="active">Tất cả</button>
+            <button data-branch="ha-noi">Hà Nội</button>
+            <button data-branch="ho-chi-minh">Hồ Chí Minh</button>
+          </div>
+
+          <div id="countInfo" class="count-info muted"></div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:34px"></th>
+                  <th style="width:30px"></th>
+                  <th>Ngày tạo vận đơn</th>
+                  <th>Người nhận</th>
+                  <th>Mã vận đơn</th>
+                  <th>Điện thoại</th>
+                  <th>Địa chỉ</th>
+                  <th>Ghi chú</th>
+                  <th class="center">Thu COD</th>
+                  <th class="center">Phí ship</th>
+                  <th>Đơn vị vận chuyển</th>
+                  <th>Trạng thái</th>
+                  <th>Thời gian soạn hàng</th>
+                  <th class="center" style="width:130px"></th>
+                </tr>
+              </thead>
+              <tbody id="rows"><tr><td colspan="14" class="empty">Đang tải...</td></tr></tbody>
+            </table>
+          </div>
+          <div class="pager hidden" id="pager"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="js/app.js?v=20260725"></script>
+  <script src="js/giaohang.js?v=20260727"></script>
+  <script>App.initMobileNav(); App.initUserAvatar();</script>
+</body>
+</html>

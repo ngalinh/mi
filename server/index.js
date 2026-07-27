@@ -10,6 +10,7 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
+const shippingApi = require('./shippingApi');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
   getFbRouting, setFbRouting,
@@ -706,6 +707,45 @@ app.post('/api/update-row', async (req, res) => {
     const { customerId, dateInventory, status, note } = req.body || {};
     if (customerId == null) return res.status(400).json({ ok: false, error: 'Thiếu customerId' });
     const result = await updateOrderStatus({ customerId, dateInventory, status, note });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Quản lý giao hàng (Basso web admin, auth cookie) ----
+// Đọc danh sách đơn giao hàng. Query: page, shipping_id, status, user_approve, key, filter_date, branch.
+app.get('/api/shipping', async (req, res) => {
+  try {
+    const { page, shipping_id, status, user_approve, key, filter_date, branch } = req.query;
+    const data = await shippingApi.getShippingOrders({
+      page: page ? parseInt(page, 10) || 1 : 1,
+      shippingId: shipping_id,
+      status,
+      userApprove: user_approve,
+      key,
+      filterDate: filter_date,
+      branch,
+    });
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Đổi trạng thái 1 đơn. body: { id, kind } với kind ∈ prepared|ship|complete|revert
+// (hoặc { id, action } để gửi thẳng giá trị action tuỳ ý).
+app.post('/api/shipping/action', async (req, res) => {
+  try {
+    const { id, kind, action, shipperLink } = req.body || {};
+    if (id == null) return res.status(400).json({ ok: false, error: 'Thiếu id' });
+    let result;
+    if (kind === 'prepared') result = await shippingApi.markPrepared(id);
+    else if (kind === 'ship') result = await shippingApi.giveToShipper(id, shipperLink);
+    else if (kind === 'complete') result = await shippingApi.markCompleted(id);
+    else if (kind === 'revert') result = await shippingApi.revertShipping(id);
+    else if (action) result = await shippingApi.shippingAction(id, action, shipperLink ? { shipper_link: shipperLink } : {});
+    else return res.status(400).json({ ok: false, error: 'Thiếu kind/action' });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

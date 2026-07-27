@@ -18,6 +18,7 @@ const App = {
     hourglass: '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>',
     stop: '<rect width="16" height="16" x="4" y="4" rx="2"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    eye: '<path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/>',
   },
   icon(name, cls = '') {
     return `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${this.ICONS[name] || ''}</svg>`;
@@ -172,6 +173,19 @@ const App = {
     // danh sách hàng về). Xoá thẳng khỏi sidebar để mọi trang nhất quán dù client chưa refresh
     // HTML — nếu không, index.html bản cũ vẫn hiện icon Lịch sử báo còn trang mới thì không.
     sidebar.querySelectorAll('a.nav[href="reports.html"]').forEach((el) => el.remove());
+
+    // Tự chèn mục "Giao hàng" (giaohang.html) ngay sau "Hàng về VN" nếu HTML còn thiếu (cache cũ).
+    if (rail && !sidebar.querySelector('a.nav[href="giaohang.html"]')) {
+      const a = document.createElement('a');
+      a.className = 'nav';
+      a.href = 'giaohang.html';
+      a.title = 'Giao hàng';
+      a.innerHTML = '<span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 18V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></span>';
+      if (/giaohang\.html$/.test(location.pathname)) a.classList.add('active');
+      const home = sidebar.querySelector('a.nav[href="index.html"]');
+      if (home) home.insertAdjacentElement('afterend', a);
+      else rail.appendChild(a);
+    }
 
     if (rail && !sidebar.querySelector('a.nav[href="danhba.html"]')) {
       const a = document.createElement('a');
