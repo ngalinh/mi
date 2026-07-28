@@ -87,7 +87,7 @@ const MESSAGE_BUTTON_SELECTORS = [
 /**
  * Phân loại link FB của khách thành 2 loại để mở đúng cách:
  *  - 'message': link trỏ THẲNG vào 1 hội thoại Messenger có sẵn
- *      .../messages/t/<id>  |  m.me/<slug>  |  messenger.com/t/<id>
+ *      .../messages/t/<id>  |  .../messages/e2ee/t/<id>  |  m.me/<slug>  |  messenger.com/t/<id>
  *      -> mở thẳng vào hội thoại.
  *  - 'profile': link HỒ SƠ khách
  *      facebook.com/<username>  |  facebook.com/profile.php?id=123
@@ -105,7 +105,9 @@ function classifyFbLink(link) {
   const path = u.pathname.replace(/\/+$/, '');
 
   // --- Link dạng MESSAGE: mở thẳng hội thoại ---
-  if (/\/messages\/t\//i.test(path)) {
+  // (Chấp nhận cả /messages/t/<id> lẫn /messages/e2ee/t/<id> — Facebook dùng
+  // path có thêm segment "e2ee" cho các hội thoại mã hoá đầu-cuối.)
+  if (/\/messages\/(e2ee\/)?t\//i.test(path)) {
     return { type: 'message', messengerUrl: `https://www.facebook.com${path}` };
   }
   if (host === 'm.me') {

@@ -214,7 +214,8 @@ Thêm tài khoản Facebook sẽ mở Chromium trên máy local-runner vào `fac
 **Chỉ định khách/kênh báo FB:** Cài đặt → **Báo qua Facebook**:
 - **Theo khách** — bảng **SĐT + link Facebook/Messenger** của từng khách. SĐT để khớp đơn Basso,
   link để bot **mở thẳng đúng hội thoại** (vì ô Search Messenger tìm theo *tên*, gõ SĐT không ra).
-  Chấp nhận `facebook.com/<user>`, `m.me/<user>`, hoặc link `messages/t/…`.
+  Chấp nhận `facebook.com/<user>`, `m.me/<user>`, hoặc link `messages/t/…` (kể cả biến thể mã hoá
+  đầu-cuối `messages/e2ee/t/…`).
 - **Theo nhân viên/kênh** — bật cho NV nào thì *toàn bộ* đơn của NV đó báo qua Facebook (vẫn cần
   link FB của từng khách để gửi).
 
