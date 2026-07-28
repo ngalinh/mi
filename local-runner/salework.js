@@ -427,7 +427,9 @@ const clickPersonalTab = (page) => clickFilterTab(page, 'cá nhân', 2,
  * KHÔNG khớp được trong "Trò chuyện" -> DỪNG (ném lỗi): KHÔNG lấy đại hàng trên cùng, KHÔNG fallback
  * sang "Người dùng Zalo"/"Tin nhắn" -> tránh mở chat mới / gửi nhầm người.
  *
- * Gõ THẲNG SĐT vào ô tìm (SĐT duy nhất, khớp chính xác hơn tên); không ra mới tìm theo TÊN.
+ * Gõ THẲNG SĐT vào ô tìm (SĐT duy nhất, khớp chính xác hơn tên). Có SĐT mà KHÔNG khớp được
+ * hội thoại -> DỪNG LUÔN, KHÔNG fallback sang tìm theo TÊN (tránh khớp nhầm hội thoại của
+ * khách KHÁC trùng tên, không nằm trong whitelist). Chỉ tìm theo TÊN khi không có SĐT.
  * Click bằng element thật (Playwright cuộn tới + chờ actionable), dự phòng toạ độ chuột.
  * @param {object} p { name, phone, strictMatch, notifyTarget }
  */
@@ -579,9 +581,11 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // CẢ 2 kiểu báo (cá nhân/nhóm) đều CHỈ chọn trong mục "Trò chuyện" — hội thoại có sẵn của khách.
   // Loại "Người dùng Zalo" (click vào mở chat 1-1 MỚI -> sai chỗ) và "Tin nhắn"; không có -> DỪNG.
   const primary = 'Trò chuyện';
-  // Gõ SĐT trước (duy nhất, khớp chính xác hơn tên); không ra thì tìm theo TÊN.
+  // Có SĐT -> CHỈ tìm theo SĐT (duy nhất, khớp chính xác hơn tên). KHÔNG fallback sang tìm
+  // theo TÊN khi SĐT không ra kết quả: tên có thể trùng khách khác không nằm trong whitelist
+  // -> fallback dễ mở NHẦM hội thoại của người khác. Chỉ dùng TÊN để tìm khi hoàn toàn không có SĐT.
   if (phone) rect = await attempt(phone, [phone, name].filter(Boolean), primary);
-  if (!rect && name) rect = await attempt(name, [name], primary);
+  else if (name) rect = await attempt(name, [name], primary);
 
   // Không khớp chắc trong "Trò chuyện" -> DỪNG LUÔN (cả tay & bot): KHÔNG lấy đại hàng trên cùng,
   // KHÔNG fallback sang "Người dùng Zalo"/"Tin nhắn" -> tránh mở chat mới / gửi nhầm người.
