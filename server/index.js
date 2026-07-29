@@ -713,11 +713,20 @@ app.post('/api/update-row', async (req, res) => {
   }
 });
 
-// ---- Quản lý giao hàng (Basso web admin, auth cookie) ----
-// Đọc danh sách đơn giao hàng. Query: page, shipping_id, status, user_approve, key, filter_date, branch.
+// ---- Quản lý giao hàng (Partner API — mục 8.10 tài liệu) ----
+// Meta dựng dropdown (ĐVVC / trạng thái / chi nhánh / NV).
+app.get('/api/shipping/meta', async (req, res) => {
+  try {
+    res.json({ ok: true, ...(await shippingApi.getShippingMeta()) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Danh sách vận đơn. Query: page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch.
 app.get('/api/shipping', async (req, res) => {
   try {
-    const { page, shipping_id, status, user_approve, key, filter_date, branch } = req.query;
+    const { page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch } = req.query;
     const data = await shippingApi.getShippingOrders({
       page: page ? parseInt(page, 10) || 1 : 1,
       shippingId: shipping_id,
@@ -725,6 +734,7 @@ app.get('/api/shipping', async (req, res) => {
       userApprove: user_approve,
       key,
       filterDate: filter_date,
+      filterDateEnd: filter_date_end,
       branch,
     });
     res.json({ ok: true, ...data });
@@ -733,19 +743,54 @@ app.get('/api/shipping', async (req, res) => {
   }
 });
 
+// Dữ liệu phiếu giao hàng (JSON). Query: ids=1,2,3
+app.get('/api/shipping/invoice', async (req, res) => {
+  try {
+    const ids = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!ids.length) return res.status(400).json({ ok: false, error: 'Thiếu ids' });
+    res.json({ ok: true, ...(await shippingApi.getShippingInvoice(ids)) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Sửa vận đơn. body: { id, shipping_id, code?, fee?, cod_amount? }
+app.post('/api/shipping/update', async (req, res) => {
+  try {
+    const { id, shipping_id, code, fee, cod_amount } = req.body || {};
+    if (id == null || shipping_id == null) return res.status(400).json({ ok: false, error: 'Thiếu id/shipping_id' });
+    res.json({ ok: true, ...(await shippingApi.updateShippingOrder({ id, shipping_id, code, fee, cod_amount })) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Đổi trạng thái 1 đơn. body: { id, kind } với kind ∈ prepared|ship|complete|revert
-// (hoặc { id, action } để gửi thẳng giá trị action tuỳ ý).
 app.post('/api/shipping/action', async (req, res) => {
   try {
-    const { id, kind, action, shipperLink } = req.body || {};
+    const { id, kind, shipperLink } = req.body || {};
     if (id == null) return res.status(400).json({ ok: false, error: 'Thiếu id' });
     let result;
     if (kind === 'prepared') result = await shippingApi.markPrepared(id);
     else if (kind === 'ship') result = await shippingApi.giveToShipper(id, shipperLink);
     else if (kind === 'complete') result = await shippingApi.markCompleted(id);
-    else if (kind === 'revert') result = await shippingApi.revertShipping(id);
-    else if (action) result = await shippingApi.shippingAction(id, action, shipperLink ? { shipper_link: shipperLink } : {});
-    else return res.status(400).json({ ok: false, error: 'Thiếu kind/action' });
+    else if (kind === 'revert') result = await shippingApi.revertPrepared(id);
+    else return res.status(400).json({ ok: false, error: 'kind không hợp lệ' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Thao tác hàng loạt. body: { ids:[...], kind } với kind ∈ ship|complete
+app.post('/api/shipping/bulk', async (req, res) => {
+  try {
+    const { ids, kind } = req.body || {};
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ ok: false, error: 'Thiếu ids' });
+    let result;
+    if (kind === 'ship') result = await shippingApi.markExportedBulk(ids);
+    else if (kind === 'complete') result = await shippingApi.markShippedBulk(ids);
+    else return res.status(400).json({ ok: false, error: 'kind không hợp lệ' });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
