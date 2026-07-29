@@ -725,4 +725,7 @@ async function fetchAllOrders(filters = {}) {
   return all;
 }
 
-module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS,
+  // Dùng chung cho module khác (vd shippingApi.js) — gọi Partner API có sẵn xác thực
+  // (X-Partner-Api-Key + Bearer, tự login/refresh token, retry 401, timeout). Trả về json.data.
+  partnerApiFetch: apiFetch };

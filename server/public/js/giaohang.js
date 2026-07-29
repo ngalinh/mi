@@ -1,67 +1,56 @@
-/* Trang "Quản lý giao hàng" — gọi /api/shipping (Basso web admin). */
+/* Trang "Quản lý giao hàng" — gọi Partner API qua /api/shipping* (mục 8.10 tài liệu Basso). */
 (function () {
   const $ = (id) => document.getElementById(id);
   const state = {
     page: 1,
     branch: '',
     orders: [],
-    pagination: null,
-    carriers: new Map(), // shipping_id -> tên ĐVVC (gom dần để đổ dropdown lọc)
-    staff: new Set(),     // tên NV duyệt (lọc client-side)
-    expanded: new Set(),  // id đơn đang mở chi tiết
+    total: 0,
+    pageSize: 20,
+    meta: null,
+    shipperLinkIds: new Set(), // ĐVVC bắt buộc shipper_link (AhaMove/Grab)
+    expanded: new Set(),
   };
 
-  // "DD/MM/YYYY HH:MM" -> ngày trên, giờ dưới (mờ) để cột hẹp không tràn.
+  // "DD/MM/YYYY HH:MM" -> ngày trên, giờ dưới (mờ) cho cột hẹp.
   function splitDateTime(s) {
     const [d, t] = String(s || '').split(' ');
     if (!d) return '<span class="muted">—</span>';
     return `<div>${App.esc(d)}</div>${t ? `<div class="ship-sub">${App.esc(t)}</div>` : ''}`;
   }
 
-  // ---- Nhãn/format ------------------------------------------------------
-  const STATUS_CLASS = { waiting: 'waiting', exported: 'exported', completed: 'completed' };
+  const STATUS_CLASS = { waiting: 'waiting', waiting_prepared: 'waiting', exported: 'exported', carrier_submitted: 'exported', completed: 'completed' };
   function statusBadge(o) {
-    const cls = STATUS_CLASS[o.statusCode] || 'unknown';
-    // "Chưa soạn" (chờ giao) khi chưa prepared, dù status vẫn waiting.
-    const label = (!o.isPrepared && o.statusCode === 'waiting') ? 'Chờ giao hàng' : (o.status || o.statusCode);
-    return `<span class="ship-badge ${cls}">${App.esc(label)}</span>`;
+    const cls = STATUS_CLASS[o.statusCode] || (o.isPrepared ? 'waiting' : 'unknown');
+    return `<span class="ship-badge ${cls}">${App.esc(o.status || o.statusCode)}</span>`;
   }
 
-  // Nút thao tác theo trạng thái đơn (bám theo giao diện Basso).
+  // Nút thao tác theo trạng thái (bám luồng: waiting → đã soạn → exported → completed).
   function actionButtons(o) {
-    if (!o.isPrepared && o.statusCode === 'waiting') {
-      return `<button class="btn accent" data-act="prepared" data-id="${o.id}">✔ Đã soạn hàng</button>`;
-    }
-    if (o.statusCode === 'waiting') {
-      return `<button class="btn accent" data-act="ship" data-id="${o.id}">✔ Giao shipper</button>
-              <button class="btn secondary" data-act="revert" data-id="${o.id}">← Chưa giao hàng</button>`;
-    }
-    if (o.statusCode === 'exported') {
-      return `<button class="btn accent" data-act="complete" data-id="${o.id}">✔ Đã giao hàng</button>
-              <button class="btn secondary" data-act="revert" data-id="${o.id}">← Chưa giao hàng</button>`;
-    }
     if (o.statusCode === 'completed') {
       return `<button class="btn secondary" data-act="revert" data-id="${o.id}">← Hoàn tác</button>`;
     }
-    return '';
+    if (o.statusCode === 'exported' || o.statusCode === 'carrier_submitted') {
+      return `<button class="btn accent" data-act="complete" data-id="${o.id}">✔ Đã giao hàng</button>`;
+    }
+    // waiting
+    if (!o.isPrepared) {
+      return `<button class="btn accent" data-act="prepared" data-id="${o.id}">✔ Đã soạn hàng</button>`;
+    }
+    return `<button class="btn accent" data-act="ship" data-id="${o.id}">✔ Giao shipper</button>
+            <button class="btn secondary" data-act="revert" data-id="${o.id}">← Chưa giao hàng</button>`;
   }
 
   // ---- Render -----------------------------------------------------------
   function render() {
     const tb = $('rows');
-    let list = state.orders;
-    // Lọc NV phụ trách phía client (theo tên approve_user của SP trong đơn) — API không nhận tên NV.
-    const staff = $('fStaff').value;
-    if (staff) list = list.filter((o) => o.items.some((it) => it.approveUser === staff));
-
-    if (!list.length) {
-      tb.innerHTML = `<tr><td colspan="14" class="empty">${state.mock ? 'Chưa cấu hình BASSO_WEB_COOKIE — chưa đọc được dữ liệu giao hàng thật.' : 'Không có đơn nào.'}</td></tr>`;
+    if (!state.orders.length) {
+      tb.innerHTML = `<tr><td colspan="14" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
-
     const rows = [];
-    for (const o of list) {
-      const codPayer = o.shipPayer === 'company' ? '<div class="ship-sub">Cty trả</div>' : '';
+    for (const o of state.orders) {
+      const codPayer = o.shipPayerLabel ? `<div class="ship-sub">${App.esc(o.shipPayerLabel)}</div>` : '';
       rows.push(`
         <tr data-id="${o.id}">
           <td class="center"><input type="checkbox" class="rowchk" data-id="${o.id}"></td>
@@ -85,17 +74,13 @@
   }
 
   function detailRow(o) {
-    const rows = o.items.map((it, i) => `
+    const items = o.items.map((it, i) => `
       <tr>
         <td class="center ship-list-stt">${i + 1}</td>
-        <td>${it.image
-          ? `<img class="ship-list-thumb" src="${App.esc(it.image)}" loading="lazy" alt="">`
-          : `<span class="ship-list-thumb">${App.icon('box')}</span>`}</td>
+        <td>${it.image ? `<img class="ship-list-thumb" src="${App.esc(it.image)}" loading="lazy" alt="">` : `<span class="ship-list-thumb">${App.icon('box')}</span>`}</td>
         <td>${it.orderCode ? `<span class="ship-chip code">${App.esc(it.orderCode)}</span>` : '<span class="muted">—</span>'}</td>
         <td class="ship-list-name">${App.esc(it.name) || '(không tên)'}</td>
-        <td>${it.variations.length
-          ? it.variations.map((v) => `<span class="ship-chip">${App.esc(v.name)}: ${App.esc(v.value)}</span>`).join(' ')
-          : '<span class="muted">—</span>'}</td>
+        <td>${it.variations.length ? it.variations.map((v) => `<span class="ship-chip">${App.esc(v.name)}: ${App.esc(v.value)}</span>`).join(' ') : '<span class="muted">—</span>'}</td>
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
@@ -104,79 +89,69 @@
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
           <thead><tr>
-            <th style="width:36px" class="center">STT</th>
-            <th style="width:52px">Ảnh</th>
-            <th style="width:120px">Mã ĐH</th>
-            <th>Tên sản phẩm</th>
-            <th>Phân loại</th>
-            <th style="width:44px" class="center">SL</th>
-            <th style="width:110px">NV duyệt</th>
+            <th style="width:36px" class="center">STT</th><th style="width:52px">Ảnh</th>
+            <th style="width:120px">Mã ĐH</th><th>Tên sản phẩm</th><th>Phân loại</th>
+            <th style="width:44px" class="center">SL</th><th style="width:110px">NV duyệt</th>
           </tr></thead>
-          <tbody>${rows || '<tr><td colspan="7" class="muted" style="padding:12px">Không có sản phẩm.</td></tr>'}</tbody>
+          <tbody>${items || '<tr><td colspan="7" class="muted" style="padding:12px">Không có sản phẩm.</td></tr>'}</tbody>
         </table>
       </div>
     </td></tr>`;
   }
 
-  function fillFilters() {
-    // ĐVVC
-    const cSel = $('fCarrier');
-    const cur = cSel.value;
-    const opts = ['<option value="0">Tất cả ĐVVC</option>'];
-    for (const [id, name] of state.carriers) opts.push(`<option value="${App.esc(id)}">${App.esc(name)}</option>`);
-    cSel.innerHTML = opts.join('');
-    cSel.value = cur;
-    // NV
-    const sSel = $('fStaff');
-    const curS = sSel.value;
-    const sOpts = ['<option value="">Tất cả nhân viên</option>'];
-    [...state.staff].sort().forEach((n) => sOpts.push(`<option value="${App.esc(n)}">${App.esc(n)}</option>`));
-    sSel.innerHTML = sOpts.join('');
-    sSel.value = curS;
+  // ---- Meta (dropdown filter) -------------------------------------------
+  async function loadMeta() {
+    try {
+      const m = await App.api('/api/shipping/meta');
+      state.meta = m;
+      (m.shipper_link_shipping_ids || []).forEach((id) => state.shipperLinkIds.add(String(id)));
+      // ĐVVC
+      const c = $('fCarrier');
+      c.innerHTML = ['<option value="0">Tất cả ĐVVC</option>']
+        .concat((m.shipping_agencies || []).map((a) => `<option value="${App.esc(a.id)}">${App.esc(a.name)}</option>`)).join('');
+      // Trạng thái
+      const s = $('fStatus');
+      s.innerHTML = ['<option value="all">Tất cả trạng thái</option>']
+        .concat((m.statuses || []).map((x) => `<option value="${App.esc(x.code)}">${App.esc(x.name)}</option>`)).join('');
+      // Nhân viên phụ trách (lọc server-side qua user_approve)
+      const st = $('fStaff');
+      st.innerHTML = ['<option value="">Tất cả nhân viên</option>']
+        .concat((m.approve_users || []).map((u) => `<option value="${App.esc(u.id)}">${App.esc(u.name)}</option>`)).join('');
+    } catch (_) { /* để nguyên option tĩnh nếu meta lỗi */ }
   }
 
   function renderPager() {
-    const p = state.pagination;
     const el = $('pager');
-    if (!p || Number(p.total_page) <= 1) { el.classList.add('hidden'); return; }
+    const totalPage = Math.max(1, Math.ceil((state.total || 0) / (state.pageSize || 20)));
+    if (totalPage <= 1) { el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
-    const cur = Number(p.current_page) || state.page;
-    const total = Number(p.total_page);
     el.innerHTML = `
-      <button class="btn secondary small" ${cur <= 1 ? 'disabled' : ''} id="pgPrev">← Trước</button>
-      <span class="muted" style="padding:0 10px">Trang ${cur}/${total} · ${p.total_item} đơn</span>
-      <button class="btn secondary small" ${cur >= total ? 'disabled' : ''} id="pgNext">Sau →</button>`;
-    $('pgPrev') && ($('pgPrev').onclick = () => { state.page = cur - 1; load(); });
-    $('pgNext') && ($('pgNext').onclick = () => { state.page = cur + 1; load(); });
+      <button class="btn secondary small" ${state.page <= 1 ? 'disabled' : ''} id="pgPrev">← Trước</button>
+      <span class="muted" style="padding:0 10px">Trang ${state.page}/${totalPage} · ${state.total} đơn</span>
+      <button class="btn secondary small" ${state.page >= totalPage ? 'disabled' : ''} id="pgNext">Sau →</button>`;
+    if ($('pgPrev')) $('pgPrev').onclick = () => { state.page -= 1; load(); };
+    if ($('pgNext')) $('pgNext').onclick = () => { state.page += 1; load(); };
   }
 
-  // ---- Load -------------------------------------------------------------
+  // ---- Load list --------------------------------------------------------
   async function load() {
     $('rows').innerHTML = '<tr><td colspan="14" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     params.set('page', state.page);
     params.set('shipping_id', $('fCarrier').value || 0);
     params.set('status', $('fStatus').value || 'all');
-    if ($('fDate').value) {
-      const [y, m, d] = $('fDate').value.split('-');
-      params.set('filter_date', `${d}-${m}-${y}`); // API cần DD-MM-YYYY
-    }
+    if ($('fStaff').value) params.set('user_approve', $('fStaff').value);
+    if ($('fDate').value) params.set('filter_date', $('fDate').value); // YYYY-MM-DD (Partner nhận trực tiếp)
     if ($('fQ').value.trim()) params.set('key', $('fQ').value.trim());
     if (state.branch) params.set('branch', state.branch);
     try {
       const r = await App.api('/api/shipping?' + params.toString());
       state.orders = r.orders || [];
-      state.pagination = r.pagination;
+      state.total = r.total || 0;
+      state.pageSize = r.pageSize || 20;
       state.mock = r.source === 'mock';
       $('mockBadge').style.display = state.mock ? '' : 'none';
-      // Gom ĐVVC + NV để đổ dropdown lọc
-      for (const o of state.orders) {
-        if (o.shippingId != null && o.shipping) state.carriers.set(String(o.shippingId), o.shipping);
-        o.items.forEach((it) => it.approveUser && state.staff.add(it.approveUser));
-      }
-      fillFilters();
-      const p = state.pagination;
-      $('countInfo').textContent = p ? `${p.total_item} đơn · trang ${p.current_page}/${p.total_page}` : `${state.orders.length} đơn`;
+      $('countInfo').textContent = `${state.total} đơn · trang ${state.page}/${Math.max(1, Math.ceil(state.total / state.pageSize))}`;
       render();
       renderPager();
     } catch (e) {
@@ -186,12 +161,21 @@
 
   // ---- Thao tác ---------------------------------------------------------
   async function doAction(id, kind) {
+    let shipperLink;
+    if (kind === 'ship') {
+      const o = state.orders.find((x) => String(x.id) === String(id));
+      if (o && state.shipperLinkIds.has(String(o.shippingId))) {
+        shipperLink = prompt(`Nhập link theo dõi shipper (${o.shipping}):`, o.shipperLink || '');
+        if (shipperLink === null) return;            // huỷ
+        if (!shipperLink.trim()) { App.toast('Cần link shipper cho ' + o.shipping); return; }
+      }
+    }
     try {
       const r = await App.api('/api/shipping/action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, kind }),
+        body: JSON.stringify({ id, kind, shipperLink }),
       });
-      App.toast(`${r.message || 'Cập nhật thành công'}${r.statusLabel ? ' → ' + r.statusLabel : ''}`);
+      App.toast(`Cập nhật thành công${r.statusLabel ? ' → ' + r.statusLabel : ''}`);
       load();
     } catch (e) {
       App.toast('Lỗi: ' + App.friendlyError(e.message));
@@ -204,20 +188,45 @@
   async function bulk(kind) {
     const ids = checkedIds();
     if (!ids.length) { App.toast('Chưa chọn đơn nào.'); return; }
-    for (const id of ids) {
-      // eslint-disable-next-line no-await-in-loop
-      try { await App.api('/api/shipping/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, kind }) }); } catch (_) {}
+    try {
+      const r = await App.api('/api/shipping/bulk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, kind }),
+      });
+      const n = (r.ids && r.ids.length) || ids.length;
+      App.toast(`Đã xử lý ${n} đơn${r.statusLabel ? ' → ' + r.statusLabel : ''}.`);
+      load();
+    } catch (e) {
+      App.toast('Lỗi: ' + App.friendlyError(e.message));
     }
-    App.toast(`Đã xử lý ${ids.length} đơn.`);
-    load();
+  }
+
+  // In phiếu: mở cửa sổ in gọn từ các đơn đang chọn.
+  function printSelected() {
+    const ids = checkedIds();
+    const list = state.orders.filter((o) => ids.includes(String(o.id)));
+    if (!list.length) { App.toast('Chưa chọn đơn nào để in.'); return; }
+    const rows = list.map((o) => `
+      <div class="slip">
+        <h3>${App.esc(o.recipient)} — ${App.esc(o.phone)}</h3>
+        <p>${App.esc(o.address)}</p>
+        <p><b>MVĐ:</b> ${App.esc(o.trackingCode || '—')} · <b>ĐVVC:</b> ${App.esc(o.shipping)} · <b>COD:</b> ${App.fmtVnd(o.codAmount) || '0₫'}</p>
+        <ul>${o.items.map((it) => `<li>${App.esc(it.name)} ×${it.quantity ?? 1} ${it.variations.map((v) => App.esc(v.value)).join(' / ')}</li>`).join('')}</ul>
+      </div>`).join('');
+    const w = window.open('', '_blank');
+    w.document.write(`<html><head><title>Phiếu giao hàng</title><style>
+      body{font-family:sans-serif;padding:16px} .slip{border:1px solid #ccc;border-radius:8px;padding:12px;margin-bottom:12px;page-break-inside:avoid}
+      h3{margin:0 0 4px} p{margin:2px 0} ul{margin:6px 0 0 18px}</style></head><body>${rows}</body></html>`);
+    w.document.close();
+    w.focus();
+    w.print();
   }
 
   // ---- Events -----------------------------------------------------------
   function bind() {
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
-    ['fCarrier', 'fStatus', 'fDate'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
-    $('fStaff').addEventListener('change', render); // lọc NV client-side, không gọi lại API
+    ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
     $('branchTabs').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       state.branch = b.dataset.branch; state.page = 1;
@@ -226,8 +235,7 @@
     });
     $('btnBulkShip').onclick = () => bulk('ship');
     $('btnBulkComplete').onclick = () => bulk('complete');
-    $('btnPrint').onclick = () => App.toast('In phiếu: chưa bắt được API — bổ sung sau khi lấy endpoint.');
-    // Delegation cho nút thao tác + con mắt xem chi tiết
+    $('btnPrint').onclick = printSelected;
     $('rows').addEventListener('click', (e) => {
       const eye = e.target.closest('[data-eye]');
       if (eye) {
@@ -242,5 +250,6 @@
   }
 
   bind();
+  loadMeta();
   load();
 })();

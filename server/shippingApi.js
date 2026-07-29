@@ -1,119 +1,42 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const http = require('http');
-const https = require('https');
-const fetch = require('node-fetch');
 const config = require('./config');
+const { partnerApiFetch } = require('./bassoApi');
+
+/**
+ * Adapter tới nhóm Partner API "Quản lý giao hàng" (basso/shipping_order/) — mục 8.10 tài liệu.
+ *
+ * Dùng CHUNG Partner API với phần "Hàng về VN": xác thực bằng X-Partner-Api-Key + Bearer
+ * (tự login/refresh token qua bassoApi.partnerApiFetch). KHÔNG còn dùng cookie web.
+ *
+ * Endpoint:
+ *   GET  /partner/getShippingOrderMeta                 -> dropdown ĐVVC/status/chi nhánh/NV
+ *   GET  /partner/getShippingOrderList                 -> list (data.items) + filter; ?id= chi tiết
+ *   GET  /partner/getShippingInvoice?ids=1,2           -> dữ liệu phiếu giao hàng
+ *   POST /partner/updateShippingOrder                  -> sửa ĐVVC/mã/phí/COD
+ *   POST /partner/markShippingPrepared     {id}        -> Đã soạn hàng
+ *   POST /partner/markShippingExported     {id,shipper_link?} -> Giao shipper
+ *   POST /partner/markShippingExportedBulk {ids}       -> Giao shipper nhiều
+ *   POST /partner/markShippingShipped      {id|ids}    -> Đã giao hàng
+ *   POST /partner/revertShippingPrepared   {id}        -> Chưa giao hàng (admin/inventory_manager)
+ *
+ * Mock: khi Partner API chưa cấu hình (config.basso.useMock) -> đọc server/mock/shipping.json.
+ */
 
 const MOCK_FILE = path.join(__dirname, 'mock', 'shipping.json');
 
-/**
- * Adapter tới trang "Quản lý giao hàng" của web admin Basso.
- *
- * KHÁC Partner API (bassoApi.js):
- *   - Endpoint là AJAX nội bộ của web admin: `${BASSO_WEB_BASE_URL}/shipping_order/`
- *     (mặc định https://basso.vn/basso/shipping_order/).
- *   - Auth bằng COOKIE PHIÊN (ci_session), gửi qua header `Cookie` — KHÔNG có
- *     X-Partner-Api-Key / Bearer. Vì Basso chưa mở phần giao hàng qua Partner API.
- *   - Header `X-Requested-With: XMLHttpRequest` là bắt buộc (server chỉ trả JSON cho AJAX).
- *
- * ĐỌC danh sách:
- *   GET /shipping_order/?page&shipping_id&status&user_approve&key&filter_date
- *   -> { error:false, data:[...], pagination:{...}, has_inventory_manager_role }
- *
- * THAO TÁC (đổi trạng thái 1 đơn):
- *   POST /shipping_order/  (application/x-www-form-urlencoded)  body: action=<...>&id=<id>
- *   -> { error:false, message:"Cập nhật thành công", status:"<mới>", waiting_prepared_at? }
- *
- * Xem thêm bản đồ API đã xác minh: docs/basso-shipping-api.md
- */
-
-// Keep-alive: tái dùng TCP/TLS cho các call liên tiếp (giống bassoApi.js).
-const _httpAgent = new http.Agent({ keepAlive: true, maxSockets: 16 });
-const _httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 16 });
-const keepAliveAgent = (parsedURL) => (parsedURL.protocol === 'https:' ? _httpsAgent : _httpAgent);
-
-// ----------------------------------------------------------------------------
-// Hằng số nghiệp vụ (xác minh từ dữ liệu thật — xem docs/basso-shipping-api.md)
-// ----------------------------------------------------------------------------
-
-// Trạng thái đơn (field `status` trong danh sách & response thao tác) -> nhãn tiếng Việt.
-// Vòng đời: waiting -> exported -> completed.
+// Mã trạng thái vận đơn -> nhãn hiển thị (dùng khi API không trả status_display).
 const STATUS_LABELS = {
-  waiting: 'Đã soạn hàng',   // đã soạn, chờ giao (kèm waiting_prepared_at)
-  exported: 'Đã giao shipper', // đã xuất cho ĐVVC/shipper
-  completed: 'Đã giao hàng',   // đã giao tới khách
+  waiting: 'Chờ giao hàng',
+  waiting_prepared: 'Đã soạn hàng',
+  carrier_submitted: 'Lên đơn vận',
+  exported: 'Giao shipper',
+  completed: 'Đã giao hàng',
 };
 
-// `action` GỬI ĐI cho từng nút thao tác. Các giá trị dưới đây lấy từ request thật bắt được
-// (DevTools → Payload). LƯU Ý: chữ `action` KHÔNG nhất thiết trùng `status` trả về — luôn đọc
-// `status` trong response để biết trạng thái mới. Nếu 1 nút gọi sai, chỉ cần sửa 1 dòng ở đây.
-const ACTIONS = {
-  prepared: 'exported', // nút "Đã soạn hàng"  (đã xác nhận: action=exported -> status=waiting)
-  ship: 'shipped',      // nút "Giao shipper"   (-> status=exported)
-  revert: 'waiting',    // nút "Chưa giao hàng" (hoàn tác -> status=waiting)
-  complete: 'completed', // nút "Đã giao hàng"  (-> status=completed)
-};
-
-// Chi nhánh (tab trên web) -> giá trị field `branch`.
-const BRANCHES = { all: '', hanoi: 'ha-noi', hcm: 'ho-chi-minh' };
-
 // ----------------------------------------------------------------------------
-// HTTP helper
-// ----------------------------------------------------------------------------
-
-/** fetch có timeout (AbortController) — hủy khi web admin chậm/treo thay vì treo vô hạn. */
-async function fetchWithTimeout(url, opts = {}) {
-  const ms = config.bassoWeb.requestTimeoutMs;
-  if (!ms) return fetch(url, { agent: keepAliveAgent, ...opts });
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(url, { agent: keepAliveAgent, ...opts, signal: ctrl.signal });
-  } catch (e) {
-    if (e.name === 'AbortError') throw new Error(`Basso web không phản hồi sau ${ms}ms (timeout)`);
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function baseHeaders() {
-  return {
-    'Accept': '*/*',
-    'X-Requested-With': 'XMLHttpRequest',
-    'Cookie': config.bassoWeb.cookie,
-    'Referer': `${config.bassoWeb.baseUrl}/shipping_order/`,
-  };
-}
-
-/**
- * Ném lỗi rõ ràng khi web admin trả HTML (chưa đăng nhập -> bị redirect về trang login) thay
- * vì JSON — dấu hiệu cookie ci_session hết hạn/sai.
- */
-async function parseJsonOrThrow(res, ctx) {
-  const text = await res.text();
-  let json;
-  try { json = JSON.parse(text); } catch {
-    if (/<!doctype|<html|login|đăng nhập/i.test(text)) {
-      throw new Error(`${ctx}: bị trả HTML (khả năng COOKIE hết hạn/sai -> cập nhật BASSO_WEB_COOKIE).`);
-    }
-    throw new Error(`${ctx}: response không phải JSON (HTTP ${res.status}).`);
-  }
-  if (!res.ok || json.error === true) {
-    throw new Error(`${ctx}: ${json.message || `HTTP ${res.status}`}`);
-  }
-  return json;
-}
-
-// ----------------------------------------------------------------------------
-// Chuẩn hóa
-// ----------------------------------------------------------------------------
-function num(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
+function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 
 function fmtUnix(sec) {
   if (!sec) return '';
@@ -123,7 +46,6 @@ function fmtUnix(sec) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-// variations của item có thể là mảng [{name,value}] (đôi khi kèm code) — lọc rỗng.
 function parseVariations(v) {
   if (!Array.isArray(v)) return [];
   return v
@@ -131,181 +53,196 @@ function parseVariations(v) {
     .map((x) => ({ name: x.name || '', value: x.value || '' }));
 }
 
-/** 1 sản phẩm trong đơn giao hàng (items[]) -> shape hiển thị. */
+/** 1 SP trong vận đơn -> shape hiển thị (chịu được tên field cả web lẫn partner). */
 function normalizeItem(it) {
   return {
     id: it.id ?? null,
-    orderItemId: it.order_item_id ?? null,
-    orderCode: it.order_code || '',        // Mã ĐH (vd SU09072630)
-    name: it.name || '',                   // Tên SP
-    image: it.image_path || '',            // Ảnh SP
-    quantity: it.quantity != null ? num(it.quantity) : null,
-    variations: parseVariations(it.variations), // Size/Màu…
-    approveUser: it.approve_user || '',    // NV duyệt
-    weight: it.item_unit_weight != null ? num(it.item_unit_weight) : null,
-    note: it.note || '',
-    codValue: num(it.total),               // COD của dòng
+    orderCode: it.order_code || it.orderCode || '',
+    name: it.name || it.nameItem || '',
+    image: it.image_path || it.image || '',
+    quantity: it.quantity != null ? num(it.quantity) : (it.soLuongVe != null ? num(it.soLuongVe) : null),
+    variations: parseVariations(it.variations),
+    approveUser: it.approve_user || '',
+    codValue: num(it.cod_amount ?? it.total ?? 0),
   };
 }
 
-/** 1 đơn giao hàng (data[]) -> shape nội bộ, map đúng các cột trên web. */
+/** 1 vận đơn (data.items[] / data.record) -> shape nội bộ, map đúng cột trên màn Giao hàng. */
 function normalizeShipping(raw) {
   const statusCode = raw.status || '';
+  const prepared = raw.is_prepared === 1 || raw.is_prepared === true || String(raw.is_prepared) === '1';
+  // Nhãn: ưu tiên status_display của API; nếu không có thì suy ra (waiting + đã soạn -> "Đã soạn hàng").
+  let label = raw.status_display || STATUS_LABELS[statusCode] || statusCode;
+  if (!raw.status_display && statusCode === 'waiting' && prepared) label = STATUS_LABELS.waiting_prepared;
   return {
-    id: raw.id,                             // order_shipping id — KHÓA để gọi thao tác
-    orderId: raw.order_id,
-    createdAt: fmtUnix(raw.created_time),   // Ngày tạo vận đơn
+    id: raw.id,
+    createdAt: fmtUnix(raw.created_time),
     createdTime: raw.created_time,
-    recipient: raw.name || '',              // Người nhận
-    phone: raw.phone || '',                 // Điện thoại
-    address: raw.address || '',             // Địa chỉ
-    note: raw.note || '',                   // Ghi chú
-    trackingCode: raw.code || '',           // Mã vận đơn
-    carrierTrackingId: raw.carrier_tracking_id || '',
-    carrierCode: raw.carrier_partner_code || '',   // viettelpost…
-    carrierStatus: raw.carrier_status || '',       // mã trạng thái phía ĐVVC
-    shipping: raw.shipping || '',           // Tên ĐVVC hiển thị (Viettel Post/AhaMove/Grab…)
-    shippingId: raw.shipping_id,            // id ĐVVC (dùng cho bộ lọc)
-    codAmount: num(raw.cod_amount),         // Thu COD
-    shipFee: num(raw.fee),                  // Phí ship
-    shipPayer: raw.ship_payer || '',        // company = "Cty trả"
+    recipient: raw.name || '',
+    phone: raw.phone || '',
+    address: raw.address || '',
+    note: raw.note || '',
+    trackingCode: raw.code || raw.carrier_tracking_id || '',
+    shipping: raw.shipping || '',
+    shippingId: raw.shipping_id,
+    codAmount: num(raw.cod_amount),
+    shipFee: num(raw.fee),
+    realShipFee: raw.real_shipping_fee != null ? num(raw.real_shipping_fee) : null,
+    shipPayer: raw.ship_payer || 'company',
+    shipPayerLabel: raw.ship_payer_display || (raw.ship_payer === 'customer' ? 'Khách trả' : 'Cty trả'),
     weight: num(raw.weight),
-    total: num(raw.total),                  // Tổng giá trị đơn
-    isPrepared: String(raw.is_prepared) === '1', // đã soạn hàng?
-    preparedAt: fmtUnix(raw.waiting_prepared_at), // Thời gian soạn hàng
-    branch: raw.branch || '',               // ha-noi / ho-chi-minh
-    statusCode,                             // waiting/exported/completed
-    status: STATUS_LABELS[statusCode] || statusCode,
-    shipperName: raw.shipper_name || '',
-    shipperPhone: raw.shipper_phone || '',
+    isPrepared: prepared,
+    preparedAt: fmtUnix(raw.waiting_prepared_at),
+    branch: raw.branch || '',
+    statusCode,
+    status: label,
+    canEdit: raw.can_edit !== false,
+    isCarrierSubmitted: !!raw.is_carrier_submitted,
     shipperLink: raw.shipper_link || '',
+    carrierCode: raw.carrier_partner_code || '',
+    carrierTrackingId: raw.carrier_tracking_id || '',
     items: Array.isArray(raw.items) ? raw.items.map(normalizeItem) : [],
   };
 }
 
 // ----------------------------------------------------------------------------
-// Public
-// ----------------------------------------------------------------------------
+function loadMock() {
+  try { return JSON.parse(fs.readFileSync(MOCK_FILE, 'utf8')); } catch { return []; }
+}
+
+const MOCK_META = {
+  shipping_agencies: [
+    { id: 4, name: 'Viettel Post' }, { id: 3, name: 'AhaMove' }, { id: 7, name: 'Grab' }, { id: 8, name: 'Nhận hàng tại VP' },
+  ],
+  statuses: [
+    { code: 'waiting', name: 'Chờ giao hàng' }, { code: 'waiting_prepared', name: 'Đã soạn hàng' },
+    { code: 'carrier_submitted', name: 'Lên đơn vận' }, { code: 'exported', name: 'Giao shipper' },
+    { code: 'completed', name: 'Đã giao hàng' },
+  ],
+  branches: [{ code: 'ha-noi', name: 'Hà Nội' }, { code: 'ho-chi-minh', name: 'Hồ Chí Minh' }],
+  approve_users: [],
+  carrier_integrated_shipping_ids: [2, 4],
+  shipper_link_shipping_ids: [3, 7],
+  has_inventory_manager_role: true,
+  page_size: 20,
+};
+
+/** Meta dựng dropdown (ĐVVC / trạng thái / chi nhánh / NV). */
+async function getShippingMeta() {
+  if (config.basso.useMock) return { ...MOCK_META, source: 'mock' };
+  const data = await partnerApiFetch('/partner/getShippingOrderMeta');
+  return { ...data, source: 'api' };
+}
 
 /**
- * Lấy danh sách đơn giao hàng.
- * @param {object} [filters]
- *   page        {number}  trang (mặc định 1)
- *   shippingId  {number}  lọc theo ĐVVC (0/để trống = tất cả)
- *   status      {string}  all | waiting | exported | completed
- *   userApprove {number}  lọc theo NV duyệt (0 = tất cả)
- *   key         {string}  tìm theo mã đơn/khách/sđt/tên NV
- *   filterDate  {string}  lọc theo ngày tạo, định dạng DD-MM-YYYY
- *   branch      {string}  '' | ha-noi | ho-chi-minh (tab chi nhánh)
- * @returns {Promise<{orders, pagination, hasInventoryManagerRole, source}>}
+ * Danh sách vận đơn.
+ * @param {object} filters { page, shippingId, status, key, branch, userApprove, filterDate, filterDateEnd }
  */
 async function getShippingOrders(filters = {}) {
-  if (config.bassoWeb.useMock) {
-    let rows = [];
-    try { rows = JSON.parse(fs.readFileSync(MOCK_FILE, 'utf8')); } catch { /* mock trống */ }
-    // Lọc mock cho khớp hành vi thật (đủ để xem giao diện offline).
+  if (config.basso.useMock) {
+    let rows = loadMock();
     if (filters.branch) rows = rows.filter((r) => r.branch === filters.branch);
-    if (filters.status && filters.status !== 'all') rows = rows.filter((r) => r.status === filters.status);
+    if (filters.status && filters.status !== 'all') {
+      rows = rows.filter((r) => (filters.status === 'waiting_prepared'
+        ? r.status === 'waiting' && String(r.is_prepared) === '1'
+        : r.status === filters.status));
+    }
     if (filters.shippingId && String(filters.shippingId) !== '0') rows = rows.filter((r) => String(r.shipping_id) === String(filters.shippingId));
     if (filters.key) {
       const k = String(filters.key).toLowerCase();
       rows = rows.filter((r) => `${r.name} ${r.phone} ${r.code}`.toLowerCase().includes(k));
     }
     const orders = rows.map(normalizeShipping);
-    return { orders, pagination: { limit: 20, total_item: orders.length, current_page: 1, total_page: 1 }, hasInventoryManagerRole: true, source: 'mock' };
+    return { orders, total: orders.length, page: 1, pageSize: 20, hasInventoryManagerRole: true, source: 'mock' };
   }
-  const url = new URL(`${config.bassoWeb.baseUrl}/shipping_order/`);
-  const q = url.searchParams;
-  q.set('page', filters.page || 1);
-  q.set('shipping_id', filters.shippingId || 0);
-  q.set('status', filters.status || 'all');
-  q.set('user_approve', filters.userApprove || 0);
-  if (filters.key) q.set('key', filters.key);
-  if (filters.filterDate) q.set('filter_date', filters.filterDate);
-  if (filters.branch) q.set('branch', filters.branch);
-
-  const res = await fetchWithTimeout(url.toString(), { method: 'GET', headers: baseHeaders() });
-  const json = await parseJsonOrThrow(res, 'getShippingOrders');
+  const query = {
+    page: filters.page || 1,
+    shipping_id: filters.shippingId || 0,
+    status: filters.status || 'all',
+    key: filters.key || undefined,
+    branch: filters.branch || undefined,
+    user_approve: filters.userApprove || undefined,
+    filter_date: filters.filterDate || undefined,          // YYYY-MM-DD
+    filter_date_end: filters.filterDateEnd || undefined,   // YYYY-MM-DD
+  };
+  const data = await partnerApiFetch('/partner/getShippingOrderList', { query });
+  const items = data.items || data.rows || [];
   return {
-    orders: (json.data || []).map(normalizeShipping),
-    pagination: json.pagination || null,
-    hasInventoryManagerRole: !!json.has_inventory_manager_role,
+    orders: items.map(normalizeShipping),
+    total: data.total ?? items.length,
+    page: data.page ?? query.page,
+    pageSize: data.page_size ?? items.length,
+    hasInventoryManagerRole: !!data.has_inventory_manager_role,
     source: 'api',
   };
 }
 
-/** Kéo TẤT CẢ trang (gộp lại) cho 1 bộ lọc. Cẩn thận: có thể rất nhiều trang (mỗi trang 20). */
-async function getAllShippingOrders(filters = {}, { maxPages = 50 } = {}) {
-  const all = [];
-  let page = 1;
-  let pagination = null;
-  // eslint-disable-next-line no-constant-condition
-  while (page <= maxPages) {
-    // eslint-disable-next-line no-await-in-loop
-    const r = await getShippingOrders({ ...filters, page });
-    all.push(...r.orders);
-    pagination = r.pagination;
-    const totalPage = Number(pagination && pagination.total_page) || 1;
-    if (page >= totalPage) break;
-    page += 1;
+/** Chi tiết 1 vận đơn (kèm items). */
+async function getShippingOrder(id) {
+  if (config.basso.useMock) {
+    const row = loadMock().find((r) => String(r.id) === String(id));
+    return row ? normalizeShipping(row) : null;
   }
-  return { orders: all, pagination, source: config.bassoWeb.useMock ? 'mock' : 'api' };
+  const data = await partnerApiFetch('/partner/getShippingOrderList', { query: { id } });
+  return data && data.record ? normalizeShipping(data.record) : null;
 }
 
-/**
- * Đổi trạng thái 1 đơn giao hàng (thao tác cấp thấp — thường dùng qua helper bên dưới).
- * @param {string|number} id     order_shipping id (field `id`)
- * @param {string} action        giá trị action gửi đi (xem ACTIONS)
- * @param {object} [extra]       tham số phụ (vd { shipper_link })
- * @returns {Promise<{ok, status, preparedAt, message}>}
- */
-async function shippingAction(id, action, extra = {}) {
-  if (!id) throw new Error('shippingAction: thiếu id');
-  if (!action) throw new Error('shippingAction: thiếu action');
-  if (config.bassoWeb.useMock) return { ok: true, mock: true, status: action };
-
-  const body = new URLSearchParams();
-  body.set('action', action);
-  body.set('id', String(id));
-  for (const [k, v] of Object.entries(extra)) {
-    if (v !== undefined && v !== null && v !== '') body.set(k, v);
+/** Dữ liệu phiếu giao hàng (JSON) cho 1 hoặc nhiều id. */
+async function getShippingInvoice(ids) {
+  const list = Array.isArray(ids) ? ids : [ids];
+  if (config.basso.useMock) {
+    const rows = loadMock().filter((r) => list.map(String).includes(String(r.id))).map(normalizeShipping);
+    return { invoices: rows, source: 'mock' };
   }
-  const res = await fetchWithTimeout(`${config.bassoWeb.baseUrl}/shipping_order/`, {
-    method: 'POST',
-    headers: {
-      ...baseHeaders(),
-      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'Origin': new URL(config.bassoWeb.baseUrl).origin,
-    },
-    body: body.toString(),
-  });
-  const json = await parseJsonOrThrow(res, `shippingAction(${action})`);
+  const data = await partnerApiFetch('/partner/getShippingInvoice', { query: { ids: list.join(',') } });
+  return { ...data, source: 'api' };
+}
+
+// ---- Thao tác -------------------------------------------------------------
+function actionResult(data) {
+  const status = (data && data.status) || '';
   return {
     ok: true,
-    status: json.status || '',            // trạng thái MỚI (nguồn sự thật — đừng suy từ action)
-    statusLabel: STATUS_LABELS[json.status] || json.status || '',
-    preparedAt: json.waiting_prepared_at || null,
-    message: json.message || '',
+    status,
+    statusLabel: STATUS_LABELS[status] || status,
+    waitingPreparedAt: (data && data.waiting_prepared_at) ?? null,
+    ids: (data && data.ids) || undefined,
+    errors: (data && data.errors) || undefined,
   };
 }
 
-// Helper theo nút bấm trên web (đọc tên cho dễ dùng ở tầng trên).
-const markPrepared = (id) => shippingAction(id, ACTIONS.prepared);          // "Đã soạn hàng"
-const giveToShipper = (id, shipperLink) => shippingAction(id, ACTIONS.ship, shipperLink ? { shipper_link: shipperLink } : {}); // "Giao shipper"
-const markCompleted = (id) => shippingAction(id, ACTIONS.complete);         // "Đã giao hàng"
-const revertShipping = (id) => shippingAction(id, ACTIONS.revert);          // "Chưa giao hàng"
+async function post(pathName, body) {
+  if (config.basso.useMock) return actionResult({ status: 'exported', waiting_prepared_at: null });
+  return actionResult(await partnerApiFetch(pathName, { method: 'POST', body }));
+}
+
+const markPrepared = (id) => post('/partner/markShippingPrepared', { id });
+const giveToShipper = (id, shipperLink) => post('/partner/markShippingExported', shipperLink ? { id, shipper_link: shipperLink } : { id });
+const markCompleted = (id) => post('/partner/markShippingShipped', { id });
+const revertPrepared = (id) => post('/partner/revertShippingPrepared', { id });
+const markExportedBulk = (ids) => post('/partner/markShippingExportedBulk', { ids });
+const markShippedBulk = (ids) => post('/partner/markShippingShipped', { ids });
+
+/** Sửa vận đơn: { id, shipping_id, code?, fee?, cod_amount? }. */
+async function updateShippingOrder(payload) {
+  if (config.basso.useMock) return { ok: true, mock: true };
+  const data = await partnerApiFetch('/partner/updateShippingOrder', { method: 'POST', body: payload });
+  return { ok: true, record: data && data.record ? normalizeShipping(data.record) : null };
+}
 
 module.exports = {
+  getShippingMeta,
   getShippingOrders,
-  getAllShippingOrders,
-  shippingAction,
+  getShippingOrder,
+  getShippingInvoice,
+  updateShippingOrder,
   markPrepared,
   giveToShipper,
   markCompleted,
-  revertShipping,
+  revertPrepared,
+  markExportedBulk,
+  markShippedBulk,
   normalizeShipping,
   normalizeItem,
   STATUS_LABELS,
-  ACTIONS,
-  BRANCHES,
 };
