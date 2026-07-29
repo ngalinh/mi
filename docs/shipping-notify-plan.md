@@ -16,8 +16,11 @@ Xây dựng nội dung báo ship (báo khách khi giao shipper) từ **Quản l�
 NV có thể soạn xong hàng nhưng quên bấm Giao shipper → Viettel/GHTK không được báo. Tới **17:00**
 hằng ngày (tái dùng cơ chế `AUTO_NOTIFY_SCHEDULE_TIME` sẵn có), quét đơn **"Đã soạn hàng"**
 (`is_prepared=1`, chưa `exported`, soạn **trong ngày**) chưa báo ship → coi như đã giao trong ngày → gửi.
-- **Viettel/GHTK:** có mã vận đơn → gửi bình thường. *(tuỳ chọn tự chuyển `exported` cho khớp dashboard)*
+- **Viettel/GHTK:** có mã vận đơn → gửi bình thường.
 - **AhaMove/Grab:** chưa có `shipper_link` → **không gửi**, chỉ **cảnh báo NV** (chưa đặt shipper).
+- **CHỈ gửi tin + đánh dấu `notified_ship`** — **KHÔNG** đổi status vận đơn sang `exported`
+  (đổi status sẽ làm NV quản lý kho tưởng đã bàn giao → rối luồng kho). Giữ nguyên "Đã soạn hàng"
+  để kho tự bấm "Giao shipper" khi thực sự giao.
 - Chỉ quét đơn soạn trong ngày; dedup theo `ship_seen`.
 
 ## Template theo ĐVVC (`shipping_id`)
@@ -63,3 +66,4 @@ Sau khi gửi ship cho 1 vận đơn:
 | 5 | Template | **Hardcode** ở Pha 1, sửa được ở Pha 3 |
 | 6 | Điều kiện gửi | AhaMove/Grab = có `shipper_link` (bất kể status); Viettel/GHTK = khi bấm "Giao shipper" (`exported`) |
 | 7 | Khớp trạng thái | **`shipCode`** chính, `order_code` dự phòng; đánh dấu **mọi dòng khớp** |
+| 8 | Lưới 17:00 | **Chỉ gửi tin + mark `notified_ship`**, KHÔNG đổi status vận đơn (tránh ảnh hưởng NV kho) |
