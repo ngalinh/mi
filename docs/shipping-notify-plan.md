@@ -7,9 +7,9 @@ Xây dựng nội dung báo ship (báo khách khi giao shipper) từ **Quản l�
 - Nội dung do **mi** dựng theo mẫu riêng, đúng ĐVVC + mã vận đơn + COD + link theo dõi.
 - Sau khi gửi → đồng bộ trạng thái **`notified_ship`** về Hàng về VN (dashboard đúng + chống gửi trùng).
 
-## Trigger (theo dữ liệu từng loại ĐVVC — KHÔNG cứng theo status)
+## Trigger (theo từng loại ĐVVC)
 - **AhaMove/Grab (nhóm link):** gửi khi **có `shipper_link`** — bất kể status (có link = đã đặt shipper).
-- **Viettel/GHTK (nhóm tracking):** gửi khi **có mã vận đơn `code`** (thường ở `exported`/`carrier_submitted`).
+- **Viettel/GHTK (nhóm tracking):** gửi khi **bấm "Giao shipper"** (status → `exported`) — không dựa vào mã vận đơn (mã có thể tạo trước lúc bàn giao).
 - Dedup theo id vận đơn (`ship_seen`) → dù kiểm nhiều lần vẫn gửi đúng 1 lần.
 
 ## Template theo ĐVVC (`shipping_id`)
@@ -53,5 +53,5 @@ Sau khi gửi ship cho 1 vận đơn:
 | 3 | Tài khoản Zalo | Theo **NV phụ trách** (approve_user) |
 | 4 | Nhận tại VP | **Không gửi** (trừ khi có mẫu) |
 | 5 | Template | **Hardcode** ở Pha 1, sửa được ở Pha 3 |
-| 6 | Điều kiện gửi | Data-driven: AhaMove/Grab = có `shipper_link`; Viettel/GHTK = có mã vận đơn (không cứng theo status) |
+| 6 | Điều kiện gửi | AhaMove/Grab = có `shipper_link` (bất kể status); Viettel/GHTK = khi bấm "Giao shipper" (`exported`) |
 | 7 | Khớp trạng thái | **`shipCode`** chính, `order_code` dự phòng; đánh dấu **mọi dòng khớp** |
