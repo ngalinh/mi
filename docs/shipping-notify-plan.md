@@ -31,15 +31,21 @@ hằng ngày (tái dùng cơ chế `AUTO_NOTIFY_SCHEDULE_TIME` sẵn có), quét
 | Tracking | Viettel Post (4) & ĐVVC có mã | + 📦 mã vận đơn + 💰 COD + "dự kiến 2–5 ngày" |
 | Nhận tại VP (8) | — | **Chưa gửi** (khách tự tới lấy) — trừ khi có mẫu riêng |
 
-### ĐVVC chưa có mẫu riêng (fallback theo dữ liệu)
-Meta có ~18 ĐVVC; chỉ vài cái được định nghĩa cụ thể. Còn lại chọn mẫu **theo dữ liệu đơn**,
-không cần khai từng ĐVVC:
-- Có `shipper_link` → mẫu **Link**.
-- Có mã vận đơn (`code`) → mẫu **Tracking** (code + COD; **không** kèm link tra cứu vì chưa biết URL pattern).
-- Không có cả hai (vd Nhận tại VP) → **không gửi**.
+### ĐVVC chưa có mẫu riêng → KHÔNG gửi (Hướng B — an toàn)
+Meta có ~18 ĐVVC. **Chỉ ĐVVC được khai trong registry mới gửi tin** (whitelist).
 
-**Registry** chỉ cần khai ĐVVC có link tra cứu riêng (GHTK → `i.ghtk.vn/{code}`; thêm ĐVVC khác 1 dòng khi cần).
-Mỗi lần dùng fallback → **log/cảnh báo** để bạn quyết có bổ sung mẫu riêng không.
+Registry (shipping_id → mẫu):
+| ĐVVC | id | Mẫu |
+|---|---|---|
+| GHTK | 2 | Tracking + link `i.ghtk.vn/{code}` |
+| AhaMove | 3 | Link |
+| Viettel Post | 4 | Tracking |
+| Grab | 7 | Link |
+| Nhận hàng tại VP | 8 | none (không gửi) |
+
+- ĐVVC **không có** trong registry → **KHÔNG gửi tin**, chỉ **cảnh báo NV** (tên ĐVVC + số đơn liên quan)
+  để bổ sung mẫu. Không gửi mẫu chung tự động.
+- Thêm ĐVVC mới = thêm 1 dòng registry (dễ mở rộng; sau này đưa lên trang Cài đặt ở Pha 3).
 
 ## Gửi Zalo
 - Tái dùng hạ tầng sẵn có: `notifyService` + runner; resolve SĐT→Zalo (`getZaloMap`/`normPhone`).
@@ -77,3 +83,4 @@ Sau khi gửi ship cho 1 vận đơn:
 | 6 | Điều kiện gửi | AhaMove/Grab = có `shipper_link` (bất kể status); Viettel/GHTK = khi bấm "Giao shipper" (`exported`) |
 | 7 | Khớp trạng thái | **`shipCode`** chính, `order_code` dự phòng; đánh dấu **mọi dòng khớp** |
 | 8 | Lưới 17:00 | **Chỉ gửi tin + mark `notified_ship`**, KHÔNG đổi status vận đơn (tránh ảnh hưởng NV kho) |
+| 9 | ĐVVC chưa khai mẫu | **Hướng B** — KHÔNG gửi, chỉ cảnh báo NV (whitelist registry) |
