@@ -41,6 +41,11 @@
             <button class="btn secondary" data-act="revert" data-id="${o.id}">← Chưa giao hàng</button>`;
   }
 
+  // Đơn có thể xem trước tin báo ship: đã có link, hoặc đã giao shipper/đã giao/lên đơn vận.
+  function canPreviewMsg(o) {
+    return !!o.shipperLink || ['exported', 'completed', 'carrier_submitted'].includes(o.statusCode);
+  }
+
   // ---- Render -----------------------------------------------------------
   function render() {
     const tb = $('rows');
@@ -69,7 +74,7 @@
           <td><span class="ship-carrier">${App.icon('truck')} ${App.esc(o.shipping)}</span></td>
           <td>${statusBadge(o)}</td>
           <td>${splitDateTime(o.preparedAt)}</td>
-          <td><div class="ship-actions">${actionButtons(o)}</div></td>
+          <td><div class="ship-actions">${actionButtons(o)}${canPreviewMsg(o) ? `<button class="btn secondary" data-msg="${o.id}">💬 Tin ship</button>` : ''}</div></td>
         </tr>`);
       if (state.expanded.has(String(o.id))) rows.push(detailRow(o));
     }
@@ -225,8 +230,40 @@
     w.print();
   }
 
+  // ---- Xem tin báo ship (Pha 0 — chỉ xem/copy) --------------------------
+  async function showMessage(id) {
+    const o = state.orders.find((x) => String(x.id) === String(id));
+    if (!o) return;
+    try {
+      const r = await App.api('/api/shipping/message', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: {
+          recipient: o.recipient, shipping: o.shipping, shippingId: o.shippingId,
+          trackingCode: o.trackingCode, codAmount: o.codAmount, shipperLink: o.shipperLink,
+        } }),
+      });
+      $('msgSub').textContent = `${o.recipient} · ${o.shipping} · ${o.trackingCode || ''}`;
+      const t = $('msgText');
+      if (r.sendable) {
+        t.value = r.message; t.disabled = false; $('msgCopy').style.display = '';
+      } else {
+        t.value = '⚠️ ' + (r.reasonLabel || 'Chưa gửi được.'); t.disabled = true; $('msgCopy').style.display = 'none';
+      }
+      $('msgModalBg').classList.add('show');
+    } catch (e) { App.toast('Lỗi: ' + e.message); }
+  }
+  function closeMsg() { $('msgModalBg').classList.remove('show'); }
+
   // ---- Events -----------------------------------------------------------
   function bind() {
+    $('msgClose').onclick = closeMsg;
+    $('msgModalBg').addEventListener('click', (e) => { if (e.target.id === 'msgModalBg') closeMsg(); });
+    $('msgCopy').onclick = () => {
+      const t = $('msgText'); t.select();
+      const done = () => App.toast('Đã copy nội dung');
+      if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(done).catch(() => { document.execCommand('copy'); done(); });
+      else { document.execCommand('copy'); done(); }
+    };
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
     ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
@@ -247,6 +284,8 @@
         render();
         return;
       }
+      const msg = e.target.closest('[data-msg]');
+      if (msg) { showMessage(msg.dataset.msg); return; }
       const btn = e.target.closest('[data-act]');
       if (btn) doAction(btn.dataset.id, btn.dataset.act);
     });

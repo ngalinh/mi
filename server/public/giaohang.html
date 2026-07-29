@@ -152,9 +152,22 @@
     </div>
   </div>
 
+  <!-- Modal xem tin báo ship (Pha 0 — chỉ xem/copy, KHÔNG gửi) -->
+  <div class="modal-bg" id="msgModalBg">
+    <div class="modal">
+      <h3>Tin báo ship</h3>
+      <p class="muted" id="msgSub"></p>
+      <textarea id="msgText" rows="8" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px"></textarea>
+      <div class="row">
+        <button class="btn secondary" id="msgClose">Đóng</button>
+        <button class="btn accent" id="msgCopy">📋 Copy</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260725"></script>
-  <script src="js/giaohang.js?v=20260729"></script>
+  <script src="js/giaohang.js?v=20260729b"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
