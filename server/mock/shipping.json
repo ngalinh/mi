@@ -30,6 +30,7 @@
     "status": "exported", "shipped_time": null, "total": "6791141", "is_prepared": "1",
     "branch": "ha-noi", "waiting_prepared_at": "1785143463", "carrier_partner_code": null,
     "carrier_tracking_id": null, "carrier_status": null, "ship_payer": "company",
+    "shipper_link": "https://express.grab.com/track/Y7C5uiOGYyl7I2fuW-IKqhFgoqL8",
     "shipping": "Grab",
     "items": [
       { "id": "255539", "order_item_id": "620187", "name": "Women's L.12.D Slim Fit Stretch Mini Piqué Polo", "quantity": "1", "approve_user": "Bình", "order_code": "SU11062613", "variations": [{"name":"Size","value":"XS (34)"},{"name":"Color","value":"Light Pink"}], "item_unit_weight": "0.2", "image_path": "" },

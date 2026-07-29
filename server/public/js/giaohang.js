@@ -57,7 +57,10 @@
           <td class="center"><span class="ship-eye" data-eye="${o.id}" title="Xem chi tiết">${App.icon('eye')}</span></td>
           <td>${splitDateTime(o.createdAt)}</td>
           <td>${App.esc(o.recipient)}</td>
-          <td class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</td>
+          <td>
+            <div class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</div>
+            ${o.shipperLink ? `<a class="ship-link" href="${App.esc(o.shipperLink)}" target="_blank" rel="noopener" title="${App.esc(o.shipperLink)}">🔗 ${App.esc(o.shipperLink)}</a>` : ''}
+          </td>
           <td class="gh-nowrap" title="${App.esc(o.phone)}">${App.esc(o.phone)}</td>
           <td>${App.esc(o.address)}</td>
           <td>${App.esc(o.note) || ''}</td>
