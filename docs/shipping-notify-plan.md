@@ -31,6 +31,16 @@ hằng ngày (tái dùng cơ chế `AUTO_NOTIFY_SCHEDULE_TIME` sẵn có), quét
 | Tracking | Viettel Post (4) & ĐVVC có mã | + 📦 mã vận đơn + 💰 COD + "dự kiến 2–5 ngày" |
 | Nhận tại VP (8) | — | **Chưa gửi** (khách tự tới lấy) — trừ khi có mẫu riêng |
 
+### ĐVVC chưa có mẫu riêng (fallback theo dữ liệu)
+Meta có ~18 ĐVVC; chỉ vài cái được định nghĩa cụ thể. Còn lại chọn mẫu **theo dữ liệu đơn**,
+không cần khai từng ĐVVC:
+- Có `shipper_link` → mẫu **Link**.
+- Có mã vận đơn (`code`) → mẫu **Tracking** (code + COD; **không** kèm link tra cứu vì chưa biết URL pattern).
+- Không có cả hai (vd Nhận tại VP) → **không gửi**.
+
+**Registry** chỉ cần khai ĐVVC có link tra cứu riêng (GHTK → `i.ghtk.vn/{code}`; thêm ĐVVC khác 1 dòng khi cần).
+Mỗi lần dùng fallback → **log/cảnh báo** để bạn quyết có bổ sung mẫu riêng không.
+
 ## Gửi Zalo
 - Tái dùng hạ tầng sẵn có: `notifyService` + runner; resolve SĐT→Zalo (`getZaloMap`/`normPhone`).
 - Tài khoản Zalo gửi: theo **NV phụ trách đơn** (approve_user) như flow báo hàng hiện tại.
