@@ -8,6 +8,11 @@ Xây dựng nội dung báo ship (báo khách khi giao shipper) từ **Quản l�
 lưới an toàn 17:00) đã code xong — xem `server/shippingAutoNotify.js` — **mặc định TẮT**,
 admin bật tay ở trang Cài đặt ("Tự động báo ship — Quản lý giao hàng (mới)"), công tắc
 ĐỘC LẬP với "Tự động báo ship" cũ (`autoNotify.shipEnabled`, dựa vào `content_ship`).
+Pha 3 (sửa mẫu tin) đã code xong — trang Cài đặt → tab "Mẫu báo ship": admin sửa được
+**nội dung** mẫu theo từng ĐVVC (biến `{name}/{carrier}/{code}/{cod}/{link}/{trackUrl}`),
+xem trước bằng dữ liệu mẫu, khôi phục mặc định. Registry ĐVVC (loại link/tracking, có
+gửi hay không, whitelist) vẫn CỐ ĐỊNH trong `server/shippingNotify.js` — chưa cho thêm/xoá
+ĐVVC qua UI (xem "Còn lại" bên dưới).
 
 ## Mục tiêu
 - Nội dung do **mi** dựng theo mẫu riêng, đúng ĐVVC + mã vận đơn + COD + link theo dõi.
@@ -79,7 +84,9 @@ Sau khi gửi ship cho 1 vận đơn:
   `shipping_notified` + seed `shipping_auto_seen`) + toggle riêng ở Cài đặt (mặc định TẮT) +
   lưới an toàn 17:00. **Đã code xong** — chưa có webhook riêng (Pha 2 dùng poller interval,
   chưa đấu `/api/webhook/*` cho luồng này).
-- **Pha 3** — Cho sửa template ở Cài đặt.
+- **Pha 3** — Cho sửa NỘI DUNG template ở Cài đặt (đã xong). Chưa làm: cho quản lý cả
+  registry (thêm/xoá ĐVVC, đổi loại link/tracking) qua UI — vẫn phải sửa code
+  `shippingNotify.js` khi có ĐVVC mới.
 
 ## Quyết định (mặc định đề xuất)
 | # | Vấn đề | Chọn |

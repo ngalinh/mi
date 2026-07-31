@@ -16,7 +16,7 @@ const shippingSendService = require('./shippingSendService');
 const shippingAutoNotify = require('./shippingAutoNotify');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
-  getShippingNotified,
+  getShippingNotified, getShippingTemplates, setShippingTemplate,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
@@ -801,12 +801,74 @@ app.post('/api/shipping/message', (req, res) => {
   try {
     const order = req.body && req.body.order;
     if (!order) return res.status(400).json({ ok: false, error: 'Thiếu order' });
-    const r = shippingNotify.buildDeliveryMessage(order);
+    const r = shippingNotify.buildDeliveryMessage(order, getShippingTemplates());
     const seen = order.id != null ? getShippingNotified(order.id) : null;
     res.json({
       ok: true, ...r, reasonLabel: r.reason ? shippingNotify.REASON_LABEL[r.reason] || r.reason : '',
       alreadySent: !!seen, sentAt: seen ? seen.sentAt : null,
     });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// (Pha 3) Danh sách mẫu báo ship theo ĐVVC — mặc định + override đã lưu + xem trước (dữ liệu mẫu).
+// Registry ĐVVC (loại link/tracking, có gửi hay không) CỐ ĐỊNH trong code; chỉ TEXT sửa được.
+app.get('/api/shipping/templates', (req, res) => {
+  try {
+    const overrides = getShippingTemplates();
+    const carriers = Object.entries(shippingNotify.CARRIERS)
+      .filter(([, reg]) => reg.type !== 'none')
+      .map(([id, reg]) => {
+        const def = shippingNotify.DEFAULT_TEMPLATES[id] || '';
+        const current = overrides[id] || def;
+        return {
+          shippingId: id,
+          name: reg.name,
+          type: reg.type,
+          default: def,
+          current,
+          isCustom: !!overrides[id],
+          preview: shippingNotify.renderTemplate(current, shippingNotify.SAMPLE_VARS[id] || {}),
+        };
+      });
+    res.json({ ok: true, carriers });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Lưu mẫu tuỳ chỉnh cho 1 ĐVVC. body: { shippingId, message }. message rỗng -> khôi phục mặc định.
+app.post('/api/shipping/templates', (req, res) => {
+  try {
+    const { shippingId, message } = req.body || {};
+    if (shippingId == null) return res.status(400).json({ ok: false, error: 'Thiếu shippingId' });
+    const reg = shippingNotify.CARRIERS[Number(shippingId)];
+    if (!reg || reg.type === 'none') return res.status(400).json({ ok: false, error: 'ĐVVC không hợp lệ hoặc không gửi tin' });
+    setShippingTemplate(shippingId, message);
+    const def = shippingNotify.DEFAULT_TEMPLATES[String(shippingId)] || '';
+    const current = (message && String(message).trim()) || def;
+    res.json({
+      ok: true,
+      current,
+      isCustom: !!(message && String(message).trim()),
+      preview: shippingNotify.renderTemplate(current, shippingNotify.SAMPLE_VARS[String(shippingId)] || {}),
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Xem trước mẫu ĐANG SOẠN (chưa lưu) với dữ liệu mẫu — dùng khi gõ trong ô textarea.
+// body: { shippingId, message }
+app.post('/api/shipping/templates/preview', (req, res) => {
+  try {
+    const { shippingId, message } = req.body || {};
+    const id = String(shippingId);
+    const reg = shippingNotify.CARRIERS[Number(id)];
+    if (!reg || reg.type === 'none') return res.status(400).json({ ok: false, error: 'ĐVVC không hợp lệ hoặc không gửi tin' });
+    const preview = shippingNotify.renderTemplate(message, shippingNotify.SAMPLE_VARS[id] || {});
+    res.json({ ok: true, preview });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

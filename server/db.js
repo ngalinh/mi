@@ -576,6 +576,29 @@ function setSetting(key, value) {
   return value;
 }
 
+// ---- Mẫu báo ship tuỳ chỉnh (Pha 3, xem docs/shipping-notify-plan.md) ----
+// Admin sửa NỘI DUNG mẫu tin theo từng ĐVVC trên trang Cài đặt — registry ĐVVC (loại
+// link/tracking, có gửi hay không) vẫn cố định trong shippingNotify.js, chỉ TEXT là sửa được.
+// Lưu 1 JSON map {shippingId: text} trong app_settings -> đỡ phải quản nhiều key rời.
+const SHIPPING_TEMPLATES_KEY = 'shippingNotify.templates';
+
+/** Đọc toàn bộ mẫu tin ĐÃ TUỲ CHỈNH (shippingId -> text). {} nếu chưa có/lỗi parse. */
+function getShippingTemplates() {
+  const raw = getSetting(SHIPPING_TEMPLATES_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw) || {}; } catch (_) { return {}; }
+}
+
+/** Lưu mẫu tin tuỳ chỉnh cho 1 ĐVVC. text rỗng/null -> xoá override (dùng lại mặc định). */
+function setShippingTemplate(shippingId, text) {
+  const map = getShippingTemplates();
+  const key = String(shippingId);
+  if (text == null || !String(text).trim()) delete map[key];
+  else map[key] = String(text);
+  setSetting(SHIPPING_TEMPLATES_KEY, JSON.stringify(map));
+  return map;
+}
+
 // ---- Định tuyến báo qua Facebook ----
 // Mặc định mọi đơn báo qua Zalo. "Định tuyến FB" chỉ định RIÊNG khách/nhân viên cần báo qua
 // Facebook thay vì Zalo. Vì ô Search Messenger tìm theo TÊN (gõ SĐT không ra) nên MỖI khách báo
@@ -933,6 +956,7 @@ module.exports = {
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified, markShippingNotified,
   isShippingAutoSeen, markShippingAutoSeen,
+  getShippingTemplates, setShippingTemplate,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,

@@ -14,6 +14,7 @@
     if (p === 'zalo') loadZalo();
     if (p === 'log') loadLog();
     if (p === 'syslog') loadSystemLog();
+    if (p === 'shiptpl') loadShipTemplates();
   });
 
   // ---------------- Nhân viên (lưu thật ở server: SQLite /api/staff) ----------------
@@ -605,6 +606,87 @@
     } catch (e) {
       App.toast(`❌ ${e.message}`, 5000);
     }
+  }
+
+  // ---- Mẫu báo ship theo ĐVVC (Pha 3) — registry (link/tracking) cố định ở server, chỉ TEXT sửa được ----
+  const TYPE_LABEL = { link: 'link theo dõi shipper', tracking: 'mã vận đơn' };
+  function renderShipTplRow(c) {
+    return `
+      <div class="mode-row shiptpl-row" data-shipid="${App.esc(c.shippingId)}" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <strong>${App.esc(c.name)}</strong>
+          <span class="muted" style="font-size:12px;">(${TYPE_LABEL[c.type] || c.type})</span>
+          <span class="muted shiptpl-badge" style="margin-left:auto;font-size:12px;">${c.isCustom ? 'Đã tuỳ chỉnh' : 'Mặc định'}</span>
+        </div>
+        <textarea class="note-input shiptpl-text" rows="5" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;">${App.esc(c.current)}</textarea>
+        <div class="mode-hint shiptpl-preview" style="white-space:pre-wrap;background:var(--bg,#f8fafc);border:1px solid var(--border,#eceff4);border-radius:8px;padding:8px 10px;">${App.esc(c.preview)}</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn accent small shiptpl-save">Lưu</button>
+          <button class="btn secondary small shiptpl-reset" ${c.isCustom ? '' : 'disabled'}>Khôi phục mặc định</button>
+        </div>
+      </div>`;
+  }
+
+  async function loadShipTemplates() {
+    const el = $('shipTplList');
+    if (!el) return;
+    el.innerHTML = '<div class="muted" style="padding:16px;">Đang tải…</div>';
+    try {
+      const r = await App.api('/api/shipping/templates');
+      el.innerHTML = (r.carriers || []).map(renderShipTplRow).join('');
+      bindShipTplRows();
+    } catch (e) {
+      el.innerHTML = `<div class="muted" style="padding:16px;">Lỗi: ${App.esc(e.message)}</div>`;
+    }
+  }
+
+  function bindShipTplRows() {
+    document.querySelectorAll('#shipTplList .shiptpl-row').forEach((row) => {
+      const id = row.dataset.shipid;
+      const ta = row.querySelector('.shiptpl-text');
+      const previewEl = row.querySelector('.shiptpl-preview');
+      let debounceTimer;
+      ta.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          try {
+            const r = await App.api('/api/shipping/templates/preview', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ shippingId: id, message: ta.value }),
+            });
+            previewEl.textContent = r.preview;
+          } catch (_) { /* gõ dở, bỏ qua lỗi preview */ }
+        }, 400);
+      });
+      row.querySelector('.shiptpl-save').onclick = async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+          await App.api('/api/shipping/templates', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shippingId: id, message: ta.value }),
+          });
+          App.toast('✅ Đã lưu mẫu báo ship.');
+          loadShipTemplates();
+        } catch (err) {
+          App.toast('❌ ' + err.message, 5000);
+          btn.disabled = false;
+        }
+      };
+      row.querySelector('.shiptpl-reset').onclick = async () => {
+        if (!confirm('Khôi phục mẫu mặc định? Nội dung tuỳ chỉnh hiện tại sẽ mất.')) return;
+        try {
+          await App.api('/api/shipping/templates', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shippingId: id, message: '' }),
+          });
+          App.toast('Đã khôi phục mẫu mặc định.');
+          loadShipTemplates();
+        } catch (err) {
+          App.toast('❌ ' + err.message, 5000);
+        }
+      };
+    });
   }
 
   // ---- Nhắc ra Zalo (nội bộ) ----
