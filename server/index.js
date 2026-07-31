@@ -11,6 +11,7 @@ const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const shippingApi = require('./shippingApi');
+const shippingNotify = require('./shippingNotify');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
   getFbRouting, setFbRouting,
@@ -777,6 +778,19 @@ app.post('/api/shipping/action', async (req, res) => {
     else if (kind === 'revert') result = await shippingApi.revertPrepared(id);
     else return res.status(400).json({ ok: false, error: 'kind không hợp lệ' });
     res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// (Pha 0) Sinh nội dung báo ship cho 1 đơn — CHỈ trả nội dung, KHÔNG gửi.
+// body: { order: { recipient, shipping, shippingId, trackingCode, codAmount, shipperLink } }
+app.post('/api/shipping/message', (req, res) => {
+  try {
+    const order = req.body && req.body.order;
+    if (!order) return res.status(400).json({ ok: false, error: 'Thiếu order' });
+    const r = shippingNotify.buildDeliveryMessage(order);
+    res.json({ ok: true, ...r, reasonLabel: r.reason ? shippingNotify.REASON_LABEL[r.reason] || r.reason : '' });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
