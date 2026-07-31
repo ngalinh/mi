@@ -19,6 +19,14 @@
     return `<div>${App.esc(d)}</div>${t ? `<div class="ship-sub">${App.esc(t)}</div>` : ''}`;
   }
 
+  // ISO string (server) -> "DD/MM HH:MM" gọn cho dòng nhỏ dưới nút "Xem".
+  function fmtSentAt(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
   const STATUS_CLASS = { waiting: 'waiting', waiting_prepared: 'waiting', exported: 'exported', carrier_submitted: 'exported', completed: 'completed' };
   function statusBadge(o) {
     const cls = STATUS_CLASS[o.statusCode] || (o.isPrepared ? 'waiting' : 'unknown');
@@ -28,17 +36,17 @@
   // Nút thao tác theo trạng thái (bám luồng: waiting → đã soạn → exported → completed).
   function actionButtons(o) {
     if (o.statusCode === 'completed') {
-      return `<button class="btn secondary" data-act="revert" data-id="${o.id}">← Hoàn tác</button>`;
+      return `<button class="btn secondary" data-act="revert" data-id="${o.id}">${App.icon('undo')} Hoàn tác</button>`;
     }
     if (o.statusCode === 'exported' || o.statusCode === 'carrier_submitted') {
-      return `<button class="btn accent" data-act="complete" data-id="${o.id}">✔ Đã giao hàng</button>`;
+      return `<button class="btn accent" data-act="complete" data-id="${o.id}">${App.icon('check')} Đã giao hàng</button>`;
     }
     // waiting
     if (!o.isPrepared) {
-      return `<button class="btn accent" data-act="prepared" data-id="${o.id}">✔ Đã soạn hàng</button>`;
+      return `<button class="btn accent" data-act="prepared" data-id="${o.id}">${App.icon('check')} Đã soạn hàng</button>`;
     }
-    return `<button class="btn accent" data-act="ship" data-id="${o.id}">✔ Giao shipper</button>
-            <button class="btn secondary" data-act="revert" data-id="${o.id}">← Chưa giao hàng</button>`;
+    return `<button class="btn accent" data-act="ship" data-id="${o.id}">${App.icon('check')} Giao shipper</button>
+            <button class="btn secondary" data-act="revert" data-id="${o.id}">${App.icon('undo')} Chưa giao hàng</button>`;
   }
 
   // Đơn có thể xem trước tin báo ship: đã có link, hoặc đã giao shipper/đã giao/lên đơn vận.
@@ -64,7 +72,7 @@
           <td>${App.esc(o.recipient)}</td>
           <td>
             <div class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</div>
-            ${o.shipperLink ? `<a class="ship-link" href="${App.esc(o.shipperLink)}" target="_blank" rel="noopener" title="${App.esc(o.shipperLink)}">🔗 ${App.esc(o.shipperLink)}</a>` : ''}
+            ${o.shipperLink ? `<a class="ship-link" href="${App.esc(o.shipperLink)}" target="_blank" rel="noopener" title="${App.esc(o.shipperLink)}">${App.icon('link')} ${App.esc(o.shipperLink)}</a>` : ''}
           </td>
           <td class="gh-nowrap" title="${App.esc(o.phone)}">${App.esc(o.phone)}</td>
           <td>${App.esc(o.address)}</td>
@@ -74,7 +82,7 @@
           <td><span class="ship-carrier">${App.icon('truck')} ${App.esc(o.shipping)}</span></td>
           <td>${statusBadge(o)}</td>
           <td class="gh-datecell">${splitDateTime(o.preparedAt)}</td>
-          <td class="center">${canPreviewMsg(o) ? `<button class="btn secondary small" data-msg="${o.id}">💬 Xem</button>` : '<span class="muted">—</span>'}</td>
+          <td class="center">${canPreviewMsg(o) ? `<button class="btn secondary small" data-msg="${o.id}">${App.icon('message')} Xem</button>${o.shipSentAt ? `<div class="ship-sub ship-sent-at">${App.icon('clock')} ${App.esc(fmtSentAt(o.shipSentAt))}</div>` : ''}` : '<span class="muted">—</span>'}</td>
           <td><div class="ship-actions">${actionButtons(o)}</div></td>
         </tr>`);
       if (state.expanded.has(String(o.id))) rows.push(detailRow(o));
@@ -260,11 +268,11 @@
       if (r.sendable) {
         t.value = r.message; t.disabled = false; $('msgCopy').style.display = '';
         if (r.alreadySent) {
-          sentNote.style.display = ''; sentNote.textContent = `✔ Đã gửi lúc ${r.sentAt}`;
+          sentNote.style.display = ''; sentNote.innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAt(r.sentAt))}`;
           sendBtn.style.display = 'none';
         } else {
           sentNote.style.display = 'none';
-          sendBtn.style.display = ''; sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+          sendBtn.style.display = ''; sendBtn.disabled = false; sendBtn.innerHTML = `${App.icon('send')} Gửi Zalo`;
         }
       } else {
         t.value = '⚠️ ' + (r.reasonLabel || 'Chưa gửi được.'); t.disabled = true; $('msgCopy').style.display = 'none';
@@ -288,15 +296,17 @@
       });
       if (r.ok) {
         App.toast('✅ Đã gửi báo ship.');
-        $('msgSentNote').style.display = ''; $('msgSentNote').textContent = `✔ Đã gửi lúc ${r.sentAt || new Date().toLocaleString('vi-VN')}`;
+        const sentAtRaw = r.sentAt || new Date().toISOString();
+        $('msgSentNote').style.display = ''; $('msgSentNote').innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAt(sentAtRaw))}`;
         sendBtn.style.display = 'none';
+        o.shipSentAt = sentAtRaw; render();
       } else {
         App.toast('Lỗi: ' + App.friendlyError(r.error || 'Gửi thất bại.'));
-        sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+        sendBtn.disabled = false; sendBtn.innerHTML = `${App.icon('send')} Gửi Zalo`;
       }
     } catch (e) {
       App.toast('Lỗi: ' + App.friendlyError(e.message));
-      sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+      sendBtn.disabled = false; sendBtn.innerHTML = `${App.icon('send')} Gửi Zalo`;
     }
   }
 
@@ -312,6 +322,7 @@
         body: JSON.stringify({ orders }),
       });
       App.toast(`Đã gửi ${r.sent}/${r.total} đơn${r.failed ? `, ${r.failed} lỗi` : ''}.`);
+      load();
     } catch (e) {
       App.toast('Lỗi: ' + App.friendlyError(e.message));
     }
@@ -319,6 +330,9 @@
 
   // ---- Events -----------------------------------------------------------
   function bind() {
+    $('btnBulkNotify').innerHTML = `${App.icon('message')} Gửi báo ship`;
+    $('msgCopy').innerHTML = `${App.icon('copy')} Copy`;
+    $('msgSend').innerHTML = `${App.icon('send')} Gửi Zalo`;
     $('msgClose').onclick = closeMsg;
     $('msgModalBg').addEventListener('click', (e) => { if (e.target.id === 'msgModalBg') closeMsg(); });
     $('msgCopy').onclick = () => {

@@ -742,6 +742,14 @@ app.get('/api/shipping', async (req, res) => {
       filterDateEnd: filter_date_end,
       branch,
     });
+    // Đính kèm mốc "đã gửi báo ship" (Pha 1/2) cho từng vận đơn -> UI hiện thời gian gửi
+    // ngay dưới nút "Xem" mà không cần mở modal.
+    if (Array.isArray(data.orders)) {
+      for (const o of data.orders) {
+        const seen = o.id != null ? getShippingNotified(o.id) : null;
+        o.shipSentAt = seen ? seen.sentAt : null;
+      }
+    }
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
