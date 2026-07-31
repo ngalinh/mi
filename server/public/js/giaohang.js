@@ -10,6 +10,7 @@
     meta: null,
     shipperLinkIds: new Set(), // ĐVVC bắt buộc shipper_link (AhaMove/Grab)
     expanded: new Set(),
+    addrExpanded: new Set(), // id vận đơn đang mở rộng xem đầy đủ địa chỉ
   };
 
   // "DD/MM/YYYY HH:MM" -> ngày trên, giờ dưới (mờ) cho cột hẹp.
@@ -17,6 +18,18 @@
     const [d, t] = String(s || '').split(' ');
     if (!d) return '<span class="muted">—</span>';
     return `<div>${App.esc(d)}</div>${t ? `<div class="ship-sub">${App.esc(t)}</div>` : ''}`;
+  }
+
+  // Địa chỉ mặc định thu gọn 1 dòng (ellipsis) + nút mở/thu — địa chỉ dài không kéo cao cả hàng.
+  function renderAddress(o) {
+    const addr = App.esc(o.address);
+    if (!addr) return '<span class="muted">—</span>';
+    const open = state.addrExpanded.has(String(o.id));
+    return `
+      <div class="gh-addr-row">
+        <span class="gh-addr${open ? '' : ' gh-addr-clamped'}" title="${addr}">${addr}</span>
+        <button type="button" class="gh-addr-toggle${open ? ' open' : ''}" data-addr="${o.id}" title="${open ? 'Thu gọn địa chỉ' : 'Xem đầy đủ địa chỉ'}">${App.icon('chevron')}</button>
+      </div>`;
   }
 
   // ISO string (server) -> "DD/MM HH:MM" gọn cho dòng nhỏ dưới nút "Xem".
@@ -77,7 +90,7 @@
             <div class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</div>
             ${o.shipperLink ? `<a class="ship-link" href="${App.esc(o.shipperLink)}" target="_blank" rel="noopener" title="${App.esc(o.shipperLink)}">${App.icon('link')} ${App.esc(o.shipperLink)}</a>` : ''}
           </td>
-          <td>${App.esc(o.address)}</td>
+          <td>${renderAddress(o)}</td>
           <td>${App.esc(o.note) || ''}</td>
           <td class="center">${App.fmtVnd(o.codAmount) || '0₫'}</td>
           <td class="center">${App.fmtVnd(o.shipFee) || '0₫'}${codPayer}</td>
@@ -362,6 +375,13 @@
       if (eye) {
         const id = eye.dataset.eye;
         if (state.expanded.has(id)) state.expanded.delete(id); else state.expanded.add(id);
+        render();
+        return;
+      }
+      const addrBtn = e.target.closest('[data-addr]');
+      if (addrBtn) {
+        const id = addrBtn.dataset.addr;
+        if (state.addrExpanded.has(id)) state.addrExpanded.delete(id); else state.addrExpanded.add(id);
         render();
         return;
       }

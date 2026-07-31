@@ -20,6 +20,14 @@
     /* Mã đơn / SĐT: không ngắt giữa số — vượt thì cắt bằng ellipsis (hover xem đủ) */
     .gh-nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;word-break:normal}
     .gh-datecell{white-space:nowrap}
+    /* Địa chỉ: mặc định 1 dòng + ellipsis (rút gọn), bấm nút chevron để mở/thu toàn bộ */
+    .gh-addr-row{display:flex;align-items:flex-start;gap:4px}
+    .gh-addr{flex:1;min-width:0}
+    .gh-addr-clamped{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .gh-addr-toggle{flex:none;border:none;background:none;padding:2px;margin-top:1px;cursor:pointer;color:#94a3b8;display:inline-flex;line-height:0}
+    .gh-addr-toggle:hover{color:#3b82f6}
+    .gh-addr-toggle .icon{width:14px;height:14px;transform:rotate(90deg);transition:transform .15s}
+    .gh-addr-toggle.open .icon{transform:rotate(-90deg)}
     /* Link theo dõi shipper (AhaMove/Grab) hiển thị dưới mã vận đơn — giống web Basso */
     .ship-link{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#3b82f6;margin-top:2px}
     /* Nhãn trạng thái giao hàng (theo phong cách badge của app) */
@@ -176,7 +184,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/giaohang.js?v=20260731c"></script>
+  <script src="js/giaohang.js?v=20260731d"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
