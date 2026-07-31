@@ -528,6 +528,31 @@ function markShippingNotified(shippingId, phone) {
   insShippingNotifiedStmt.run({ shipping_id: String(shippingId), sent_at: new Date().toISOString(), phone: phone || null });
 }
 
+// ---- SEED cho tự động báo ship (Pha 2, Quản lý giao hàng) ----
+// Đánh dấu "vận đơn đủ điều kiện gửi NGAY LÚC BẬT auto" -> coi là tồn cũ, KHÔNG tự gửi. Tách hẳn
+// khỏi `shipping_notified` (đó là "đã THẬT SỰ gửi") để không làm sai badge "đã gửi" ở Pha 1 (nút
+// gửi tay vẫn coi các đơn này là CHƯA gửi, gửi tay vẫn được bình thường).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shipping_auto_seen (
+    shipping_id TEXT PRIMARY KEY,
+    seen_at     TEXT NOT NULL           -- ISO string
+  );
+`);
+const getShippingAutoSeenStmt = db.prepare('SELECT seen_at FROM shipping_auto_seen WHERE shipping_id = @shipping_id');
+const insShippingAutoSeenStmt = db.prepare(
+  'INSERT OR IGNORE INTO shipping_auto_seen (shipping_id, seen_at) VALUES (@shipping_id, @seen_at)',
+);
+
+/** Vận đơn này đã bị đánh dấu "tồn cũ" lúc bật auto (bỏ qua, không tự gửi) chưa? */
+function isShippingAutoSeen(shippingId) {
+  return !!getShippingAutoSeenStmt.get({ shipping_id: String(shippingId) });
+}
+
+/** Đánh dấu 1 vận đơn là "tồn cũ" lúc bật auto (idempotent). */
+function markShippingAutoSeen(shippingId) {
+  insShippingAutoSeenStmt.run({ shipping_id: String(shippingId), seen_at: new Date().toISOString() });
+}
+
 // ---- Cấu hình hệ thống (key-value, chỉnh trên web) ----
 const getSettingStmt = db.prepare('SELECT value FROM app_settings WHERE key = @key');
 const setSettingStmt = db.prepare(`
@@ -549,6 +574,29 @@ function setSetting(key, value) {
     now: new Date().toISOString(),
   });
   return value;
+}
+
+// ---- Mẫu báo ship tuỳ chỉnh (Pha 3, xem docs/shipping-notify-plan.md) ----
+// Admin sửa NỘI DUNG mẫu tin theo từng ĐVVC trên trang Cài đặt — registry ĐVVC (loại
+// link/tracking, có gửi hay không) vẫn cố định trong shippingNotify.js, chỉ TEXT là sửa được.
+// Lưu 1 JSON map {shippingId: text} trong app_settings -> đỡ phải quản nhiều key rời.
+const SHIPPING_TEMPLATES_KEY = 'shippingNotify.templates';
+
+/** Đọc toàn bộ mẫu tin ĐÃ TUỲ CHỈNH (shippingId -> text). {} nếu chưa có/lỗi parse. */
+function getShippingTemplates() {
+  const raw = getSetting(SHIPPING_TEMPLATES_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw) || {}; } catch (_) { return {}; }
+}
+
+/** Lưu mẫu tin tuỳ chỉnh cho 1 ĐVVC. text rỗng/null -> xoá override (dùng lại mặc định). */
+function setShippingTemplate(shippingId, text) {
+  const map = getShippingTemplates();
+  const key = String(shippingId);
+  if (text == null || !String(text).trim()) delete map[key];
+  else map[key] = String(text);
+  setSetting(SHIPPING_TEMPLATES_KEY, JSON.stringify(map));
+  return map;
 }
 
 // ---- Định tuyến báo qua Facebook ----
@@ -907,6 +955,8 @@ module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, autoKeyShip, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified, markShippingNotified,
+  isShippingAutoSeen, markShippingAutoSeen,
+  getShippingTemplates, setShippingTemplate,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,

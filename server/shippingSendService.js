@@ -12,7 +12,7 @@ const { buildDeliveryMessage, REASON_LABEL } = require('./shippingNotify');
 const { syncShipStatusByCode } = require('./bassoApi');
 const {
   addReport, updateReport, getZaloName, getFbLink,
-  getShippingNotified, markShippingNotified,
+  getShippingNotified, markShippingNotified, getShippingTemplates,
 } = require('./db');
 const { delayBetweenCustomers } = require('./notifyService');
 
@@ -44,7 +44,7 @@ async function sendShippingOne(order, opts = {}) {
     if (seen) return { ok: false, alreadySent: true, sentAt: seen.sentAt, error: `Đã gửi báo ship lúc ${seen.sentAt}` };
   }
 
-  const built = buildDeliveryMessage(order);
+  const built = buildDeliveryMessage(order, getShippingTemplates());
   if (!built.sendable) {
     return { ok: false, error: REASON_LABEL[built.reason] || 'Chưa gửi được.', reason: built.reason };
   }

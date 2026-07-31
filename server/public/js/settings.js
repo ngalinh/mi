@@ -14,6 +14,7 @@
     if (p === 'zalo') loadZalo();
     if (p === 'log') loadLog();
     if (p === 'syslog') loadSystemLog();
+    if (p === 'shiptpl') loadShipTemplates();
   });
 
   // ---------------- Nhân viên (lưu thật ở server: SQLite /api/staff) ----------------
@@ -560,6 +561,134 @@
     }
   }
 
+  // ---- Tự động báo ship — Quản lý giao hàng (Pha 2, công tắc riêng, độc lập ship cũ) ----
+  let ship2Enabled = false;
+  function renderAutoShip2(a) {
+    if (!a) return;
+    ship2Enabled = !!a.enabled;
+    setSwitch($('autoShip2Badge'), ship2Enabled, ship2Enabled ? 'Bật' : 'Tắt');
+    const st = $('autoShip2Status');
+    if (!st) return;
+    const parts = [];
+    if (ship2Enabled && a.seeding) {
+      parts.push('<span style="color:var(--accent,#b8860b)">⏳ Đang chuẩn bị: đánh dấu vận đơn tồn cũ đủ điều kiện để không gửi nhầm…</span>');
+    } else if (ship2Enabled && a.lastSeed) {
+      const sAt = a.lastSeed.at ? new Date(a.lastSeed.at).toLocaleString('vi-VN') : '';
+      parts.push(`Đã đánh dấu <strong>${a.lastSeed.seeded || 0}</strong> vận đơn tồn cũ lúc bật${sAt ? ` (${App.esc(sAt)})` : ''} — chỉ gửi vận đơn mới đủ điều kiện sau đó.`);
+    }
+    const r = a.lastResult;
+    if (r && (r.sent || r.failed)) {
+      const at = a.lastRun ? new Date(a.lastRun).toLocaleString('vi-VN') : '';
+      parts.push(`Lần quét gần nhất${at ? ` (${App.esc(at)})` : ''}: ${r.sent || 0} ✅ / ${r.failed || 0} ❌`);
+    } else if (r && r.skipped && r.reason) {
+      parts.push(`Lượt gần nhất bỏ qua: ${App.esc(r.reason)}`);
+    }
+    const sr = a.lastSafetyResult;
+    if (sr && (sr.sent || sr.alerted)) {
+      const at = a.lastSafetyRun ? new Date(a.lastSafetyRun).toLocaleString('vi-VN') : '';
+      parts.push(`Lưới an toàn 17:00 gần nhất${at ? ` (${App.esc(at)})` : ''}: ${sr.sent || 0} đã gửi · ${sr.alerted || 0} đã cảnh báo NV.`);
+    }
+    if (ship2Enabled && runnerOnline === false) {
+      parts.push('<span style="color:var(--danger,#d33)">⚠️ Local-runner (Chrome) offline — vận đơn sẽ tự gửi khi runner mở lại.</span>');
+    }
+    st.innerHTML = parts.join(' · ');
+  }
+
+  async function toggleAutoShip2() {
+    const next = !ship2Enabled;
+    if (next && !confirm('Bật TỰ ĐỘNG báo ship — Quản lý giao hàng?\n\n• AhaMove/Grab: tự nhắn khách NGAY khi có link theo dõi shipper.\n• Viettel/GHTK: tự nhắn khách NGAY khi bấm "Giao shipper".\n• Cần local-runner mở & đăng nhập Zalo.\n• Các vận đơn ĐANG đủ điều kiện lúc này sẽ được đánh dấu "tồn cũ" và KHÔNG gửi — chỉ gửi vận đơn mới đủ điều kiện SAU khi bật.')) return;
+    try {
+      const a = await App.api('/api/shipping-auto/toggle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }),
+      });
+      renderAutoShip2(a);
+      App.toast(next ? '✅ Đã bật tự động báo ship (Quản lý giao hàng)' : 'Đã tắt tự động báo ship (Quản lý giao hàng)');
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
+    }
+  }
+
+  // ---- Mẫu báo ship theo ĐVVC (Pha 3) — registry (link/tracking) cố định ở server, chỉ TEXT sửa được ----
+  const TYPE_LABEL = { link: 'link theo dõi shipper', tracking: 'mã vận đơn' };
+  function renderShipTplRow(c) {
+    return `
+      <div class="mode-row shiptpl-row" data-shipid="${App.esc(c.shippingId)}" style="flex-direction:column;align-items:stretch;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <strong>${App.esc(c.name)}</strong>
+          <span class="muted" style="font-size:12px;">(${TYPE_LABEL[c.type] || c.type})</span>
+          <span class="muted shiptpl-badge" style="margin-left:auto;font-size:12px;">${c.isCustom ? 'Đã tuỳ chỉnh' : 'Mặc định'}</span>
+        </div>
+        <textarea class="note-input shiptpl-text" rows="5" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:13px;">${App.esc(c.current)}</textarea>
+        <div class="mode-hint shiptpl-preview" style="white-space:pre-wrap;background:var(--bg,#f8fafc);border:1px solid var(--border,#eceff4);border-radius:8px;padding:8px 10px;">${App.esc(c.preview)}</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn accent small shiptpl-save">Lưu</button>
+          <button class="btn secondary small shiptpl-reset" ${c.isCustom ? '' : 'disabled'}>Khôi phục mặc định</button>
+        </div>
+      </div>`;
+  }
+
+  async function loadShipTemplates() {
+    const el = $('shipTplList');
+    if (!el) return;
+    el.innerHTML = '<div class="muted" style="padding:16px;">Đang tải…</div>';
+    try {
+      const r = await App.api('/api/shipping/templates');
+      el.innerHTML = (r.carriers || []).map(renderShipTplRow).join('');
+      bindShipTplRows();
+    } catch (e) {
+      el.innerHTML = `<div class="muted" style="padding:16px;">Lỗi: ${App.esc(e.message)}</div>`;
+    }
+  }
+
+  function bindShipTplRows() {
+    document.querySelectorAll('#shipTplList .shiptpl-row').forEach((row) => {
+      const id = row.dataset.shipid;
+      const ta = row.querySelector('.shiptpl-text');
+      const previewEl = row.querySelector('.shiptpl-preview');
+      let debounceTimer;
+      ta.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          try {
+            const r = await App.api('/api/shipping/templates/preview', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ shippingId: id, message: ta.value }),
+            });
+            previewEl.textContent = r.preview;
+          } catch (_) { /* gõ dở, bỏ qua lỗi preview */ }
+        }, 400);
+      });
+      row.querySelector('.shiptpl-save').onclick = async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        try {
+          await App.api('/api/shipping/templates', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shippingId: id, message: ta.value }),
+          });
+          App.toast('✅ Đã lưu mẫu báo ship.');
+          loadShipTemplates();
+        } catch (err) {
+          App.toast('❌ ' + err.message, 5000);
+          btn.disabled = false;
+        }
+      };
+      row.querySelector('.shiptpl-reset').onclick = async () => {
+        if (!confirm('Khôi phục mẫu mặc định? Nội dung tuỳ chỉnh hiện tại sẽ mất.')) return;
+        try {
+          await App.api('/api/shipping/templates', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shippingId: id, message: '' }),
+          });
+          App.toast('Đã khôi phục mẫu mặc định.');
+          loadShipTemplates();
+        } catch (err) {
+          App.toast('❌ ' + err.message, 5000);
+        }
+      };
+    });
+  }
+
   // ---- Nhắc ra Zalo (nội bộ) ----
   let alertEnabled = false;
   function renderAlert(a) {
@@ -815,6 +944,7 @@
       $('modeLiveBadge').style.display = h.mock ? 'none' : '';
       runnerOnline = !!h.localRunner.online; // cho cảnh báo runner-offline ở mục báo ship
       if (h.autoNotify) renderAutoBadge(h.autoNotify);
+      if (h.shippingAutoNotify) renderAutoShip2(h.shippingAutoNotify);
       renderTestMode(
         { testMode: h.localRunner.testMode, testPhones: h.localRunner.testPhones },
         !!h.localRunner.online,
@@ -845,6 +975,7 @@
 
   $('autoBadge').addEventListener('click', toggleAuto);
   { const sb = $('autoShipBadge'); if (sb) sb.addEventListener('click', toggleAutoShip); }
+  { const sb = $('autoShip2Badge'); if (sb) sb.addEventListener('click', toggleAutoShip2); }
   $('scheduleSave').addEventListener('click', saveSchedule);
   $('scheduleInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });
   $('precheckInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });

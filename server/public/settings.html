@@ -51,6 +51,7 @@
           <button class="tab" data-panel="zalo">Tài khoản</button>
           <button class="tab" data-panel="proxy">Proxy</button>
           <button class="tab" data-panel="mode">Chế độ</button>
+          <button class="tab" data-panel="shiptpl">Mẫu báo ship</button>
           <button class="tab" data-panel="log">Log</button>
           <button class="tab" data-panel="syslog">Log hệ thống</button>
         </div>
@@ -171,6 +172,25 @@
                 <span class="switch-text">…</span>
               </button>
             </div>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Tự động báo ship — Quản lý giao hàng (mới)</div>
+                <div class="mode-desc">Công tắc <strong>riêng</strong>, ĐỘC LẬP với "Tự động báo ship" ở trên. Khi bật: AhaMove/Grab tự nhắn ngay khi có link theo dõi shipper; Viettel/GHTK tự nhắn ngay khi bấm "Giao shipper". Nội dung do <strong>mi</strong> tự dựng theo mẫu riêng ĐVVC.</div>
+                <details class="mode-more">
+                  <summary>Chi tiết cách hoạt động</summary>
+                  <div class="mode-more-body">
+                    Các vận đơn <strong>đang đủ điều kiện gửi</strong> lúc bật được đánh dấu "tồn cũ" và <strong>không gửi</strong> — chỉ gửi vận đơn MỚI đủ điều kiện SAU khi bật.<br>
+                    Lưới an toàn 17:00 (dùng chung giờ hẹn báo hàng ở trên): bắt ca quên bấm "Giao shipper" — đơn đã soạn hàng TRONG NGÀY mà Viettel/GHTK có mã vẫn được nhắn (không đổi trạng thái vận đơn); AhaMove/Grab chưa đặt shipper hoặc ĐVVC chưa khai mẫu thì CHỈ cảnh báo NV (qua kênh "Nhắc ra Zalo" bên dưới), không tự gửi nhầm.<br>
+                    Cần <strong>local-runner (Chrome) đang mở &amp; đã đăng nhập Zalo</strong> để gửi được.
+                  </div>
+                </details>
+                <div class="mode-detail" id="autoShip2Status" style="font-weight:400; color:var(--muted);"></div>
+              </div>
+              <button class="switch" id="autoShip2Badge" role="switch" aria-checked="false" title="Bật/tắt tự động báo ship (Quản lý giao hàng)">
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                <span class="switch-text">…</span>
+              </button>
+            </div>
             <div class="mode-row" id="scheduleRow">
               <div class="mode-info">
                 <div class="mode-title">Giờ gửi cố định</div>
@@ -265,6 +285,19 @@
               </button>
             </div>
           </div>
+        </div>
+
+        <div class="card hidden" data-panel-content="shiptpl" style="margin-top:14px;">
+          <div class="card-header"><h2>Mẫu báo ship</h2></div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 16px;">
+            Nội dung tin nhắn tự động khi báo ship cho khách, riêng theo từng đơn vị vận chuyển
+            (Quản lý giao hàng). Đơn vị chưa liệt kê ở đây (ngoài whitelist) sẽ <strong>không tự gửi</strong> —
+            chỉ cảnh báo nhân viên. Dùng các biến sau trong nội dung, hệ thống tự thay khi gửi:
+            <code>{name}</code> người nhận, <code>{carrier}</code> tên ĐVVC, <code>{code}</code> mã vận đơn,
+            <code>{cod}</code> số tiền COD, <code>{link}</code> link theo dõi shipper (AhaMove/Grab),
+            <code>{trackUrl}</code> link tra cứu (chỉ Giao hàng tiết kiệm).
+          </div>
+          <div id="shipTplList"><div class="muted" style="padding:16px;">Đang tải…</div></div>
         </div>
 
         <div class="card hidden" data-panel-content="log" style="margin-top:14px;">
@@ -406,8 +439,8 @@
   </div>
 
   <div class="toast" id="toast"></div>
-  <script src="js/app.js?v=20260725"></script>
-  <script src="js/settings.js?v=20260725"></script>
+  <script src="js/app.js?v=20260731"></script>
+  <script src="js/settings.js?v=20260731"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
