@@ -58,7 +58,7 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="15" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="14" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
@@ -69,12 +69,14 @@
           <td class="center"><input type="checkbox" class="rowchk" data-id="${o.id}"></td>
           <td class="center"><span class="ship-eye" data-eye="${o.id}" title="Xem chi tiết">${App.icon('eye')}</span></td>
           <td class="gh-datecell">${splitDateTime(o.createdAt)}</td>
-          <td>${App.esc(o.recipient)}</td>
+          <td>
+            <div>${App.esc(o.recipient)}</div>
+            ${o.phone ? `<div class="ship-sub gh-nowrap" title="${App.esc(o.phone)}">${App.esc(o.phone)}</div>` : ''}
+          </td>
           <td>
             <div class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</div>
             ${o.shipperLink ? `<a class="ship-link" href="${App.esc(o.shipperLink)}" target="_blank" rel="noopener" title="${App.esc(o.shipperLink)}">${App.icon('link')} ${App.esc(o.shipperLink)}</a>` : ''}
           </td>
-          <td class="gh-nowrap" title="${App.esc(o.phone)}">${App.esc(o.phone)}</td>
           <td>${App.esc(o.address)}</td>
           <td>${App.esc(o.note) || ''}</td>
           <td class="center">${App.fmtVnd(o.codAmount) || '0₫'}</td>
@@ -101,7 +103,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="15">
+    return `<tr class="ship-detail"><td colspan="14">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -152,7 +154,7 @@
 
   // ---- Load list --------------------------------------------------------
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="15" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="14" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     params.set('page', state.page);
     params.set('shipping_id', $('fCarrier').value || 0);
@@ -172,7 +174,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="15" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="14" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
