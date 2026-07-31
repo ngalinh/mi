@@ -231,29 +231,91 @@
     w.print();
   }
 
-  // ---- Xem tin báo ship (Pha 0 — chỉ xem/copy) --------------------------
+  // ---- Xem + gửi tin báo ship (Pha 1) -------------------------------------
+  // Payload gọn cho API: đủ field shippingNotify + shippingSendService cần (id/phone/items để
+  // dedup, resolve account theo NV duyệt, khớp brand theo mã ĐH).
+  function toApiOrder(o) {
+    return {
+      id: o.id, recipient: o.recipient, phone: o.phone, shipping: o.shipping, shippingId: o.shippingId,
+      trackingCode: o.trackingCode, codAmount: o.codAmount, shipperLink: o.shipperLink,
+      items: (o.items || []).map((it) => ({ approveUser: it.approveUser, orderCode: it.orderCode })),
+    };
+  }
+
+  let msgCurrentId = null;
+
   async function showMessage(id) {
     const o = state.orders.find((x) => String(x.id) === String(id));
     if (!o) return;
+    msgCurrentId = id;
     try {
       const r = await App.api('/api/shipping/message', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: {
-          recipient: o.recipient, shipping: o.shipping, shippingId: o.shippingId,
-          trackingCode: o.trackingCode, codAmount: o.codAmount, shipperLink: o.shipperLink,
-        } }),
+        body: JSON.stringify({ order: toApiOrder(o) }),
       });
       $('msgSub').textContent = `${o.recipient} · ${o.shipping} · ${o.trackingCode || ''}`;
       const t = $('msgText');
+      const sentNote = $('msgSentNote');
+      const sendBtn = $('msgSend');
       if (r.sendable) {
         t.value = r.message; t.disabled = false; $('msgCopy').style.display = '';
+        if (r.alreadySent) {
+          sentNote.style.display = ''; sentNote.textContent = `✔ Đã gửi lúc ${r.sentAt}`;
+          sendBtn.style.display = 'none';
+        } else {
+          sentNote.style.display = 'none';
+          sendBtn.style.display = ''; sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+        }
       } else {
         t.value = '⚠️ ' + (r.reasonLabel || 'Chưa gửi được.'); t.disabled = true; $('msgCopy').style.display = 'none';
+        sentNote.style.display = 'none'; sendBtn.style.display = 'none';
       }
       $('msgModalBg').classList.add('show');
     } catch (e) { App.toast('Lỗi: ' + e.message); }
   }
-  function closeMsg() { $('msgModalBg').classList.remove('show'); }
+  function closeMsg() { $('msgModalBg').classList.remove('show'); msgCurrentId = null; }
+
+  async function sendMessage() {
+    const id = msgCurrentId;
+    const o = state.orders.find((x) => String(x.id) === String(id));
+    if (!o) return;
+    const sendBtn = $('msgSend');
+    sendBtn.disabled = true; sendBtn.textContent = 'Đang gửi...';
+    try {
+      const r = await App.api('/api/shipping/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: toApiOrder(o) }),
+      });
+      if (r.ok) {
+        App.toast('✅ Đã gửi báo ship.');
+        $('msgSentNote').style.display = ''; $('msgSentNote').textContent = `✔ Đã gửi lúc ${r.sentAt || new Date().toLocaleString('vi-VN')}`;
+        sendBtn.style.display = 'none';
+      } else {
+        App.toast('Lỗi: ' + App.friendlyError(r.error || 'Gửi thất bại.'));
+        sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+      }
+    } catch (e) {
+      App.toast('Lỗi: ' + App.friendlyError(e.message));
+      sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+    }
+  }
+
+  // ---- Gửi báo ship hàng loạt (tick nhiều) --------------------------------
+  async function bulkNotify() {
+    const ids = checkedIds();
+    if (!ids.length) { App.toast('Chưa chọn đơn nào.'); return; }
+    const orders = state.orders.filter((o) => ids.includes(String(o.id))).map(toApiOrder);
+    if (!confirm(`Gửi báo ship qua Zalo cho ${orders.length} đơn đã tick?`)) return;
+    try {
+      const r = await App.api('/api/shipping/send-bulk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders }),
+      });
+      App.toast(`Đã gửi ${r.sent}/${r.total} đơn${r.failed ? `, ${r.failed} lỗi` : ''}.`);
+    } catch (e) {
+      App.toast('Lỗi: ' + App.friendlyError(e.message));
+    }
+  }
 
   // ---- Events -----------------------------------------------------------
   function bind() {
@@ -265,6 +327,8 @@
       if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(done).catch(() => { document.execCommand('copy'); done(); });
       else { document.execCommand('copy'); done(); }
     };
+    $('msgSend').onclick = sendMessage;
+    $('btnBulkNotify').onclick = bulkNotify;
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
     ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));

@@ -3,6 +3,9 @@
 Xây dựng nội dung báo ship (báo khách khi giao shipper) từ **Quản lý giao hàng**
 (`shipping_order`, Partner API) thay vì dựa vào `content_ship` của **Hàng về VN**.
 
+**Trạng thái:** Pha 0 (xem/copy) + Pha 1 (gửi tay đơn lẻ/hàng loạt qua Zalo, đồng bộ
+`notified_ship`) đã xong — xem `server/shippingSendService.js`. Pha 2 (tự động) chưa làm.
+
 ## Mục tiêu
 - Nội dung do **mi** dựng theo mẫu riêng, đúng ĐVVC + mã vận đơn + COD + link theo dõi.
 - Sau khi gửi → đồng bộ trạng thái **`notified_ship`** về Hàng về VN (dashboard đúng + chống gửi trùng).

@@ -12,8 +12,10 @@ const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
 const shippingApi = require('./shippingApi');
 const shippingNotify = require('./shippingNotify');
+const shippingSendService = require('./shippingSendService');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
+  getShippingNotified,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
@@ -783,14 +785,42 @@ app.post('/api/shipping/action', async (req, res) => {
   }
 });
 
-// (Pha 0) Sinh nội dung báo ship cho 1 đơn — CHỈ trả nội dung, KHÔNG gửi.
+// Sinh nội dung báo ship cho 1 đơn — CHỈ trả nội dung + trạng thái đã gửi hay chưa, KHÔNG tự gửi.
 // body: { order: { recipient, shipping, shippingId, trackingCode, codAmount, shipperLink } }
 app.post('/api/shipping/message', (req, res) => {
   try {
     const order = req.body && req.body.order;
     if (!order) return res.status(400).json({ ok: false, error: 'Thiếu order' });
     const r = shippingNotify.buildDeliveryMessage(order);
-    res.json({ ok: true, ...r, reasonLabel: r.reason ? shippingNotify.REASON_LABEL[r.reason] || r.reason : '' });
+    const seen = order.id != null ? getShippingNotified(order.id) : null;
+    res.json({
+      ok: true, ...r, reasonLabel: r.reason ? shippingNotify.REASON_LABEL[r.reason] || r.reason : '',
+      alreadySent: !!seen, sentAt: seen ? seen.sentAt : null,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// (Pha 1) Gửi THẬT báo ship qua Zalo/Facebook cho 1 đơn. body: { order, force? }
+app.post('/api/shipping/send', async (req, res) => {
+  try {
+    const { order, force } = req.body || {};
+    if (!order || order.id == null) return res.status(400).json({ ok: false, error: 'Thiếu order' });
+    const r = await shippingSendService.sendShippingOne(order, { actor: getActor(req), force: !!force });
+    res.json({ ok: r.ok, error: r.error || null, alreadySent: !!r.alreadySent, sentAt: r.sentAt || null });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// (Pha 1) Gửi báo ship hàng loạt (tick nhiều đơn). body: { orders:[...] }
+app.post('/api/shipping/send-bulk', async (req, res) => {
+  try {
+    const orders = req.body && req.body.orders;
+    if (!Array.isArray(orders) || !orders.length) return res.status(400).json({ ok: false, error: 'Thiếu orders' });
+    const r = await shippingSendService.sendShippingBulk(orders, { actor: getActor(req) });
+    res.json({ ok: true, ...r });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

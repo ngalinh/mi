@@ -80,6 +80,7 @@
         <span id="mockBadge" class="badge-status badge-mock" style="display:none">DỮ LIỆU MẪU</span>
         <div class="ship-topbar-actions">
           <button class="btn secondary small" id="btnBulkShip">Giao shipper</button>
+          <button class="btn secondary small" id="btnBulkNotify" title="Gửi tin báo ship qua Zalo cho các đơn đã tick">💬 Gửi báo ship</button>
           <button class="btn secondary small" id="btnPrint">In phiếu giao hàng</button>
           <button class="btn accent small" id="btnBulkComplete">Đã giao hàng</button>
         </div>
@@ -154,22 +155,24 @@
     </div>
   </div>
 
-  <!-- Modal xem tin báo ship (Pha 0 — chỉ xem/copy, KHÔNG gửi) -->
+  <!-- Modal xem tin báo ship — xem/copy + gửi Zalo (Pha 1) -->
   <div class="modal-bg" id="msgModalBg">
     <div class="modal">
       <h3>Tin báo ship</h3>
       <p class="muted" id="msgSub"></p>
+      <p class="muted" id="msgSentNote" style="display:none;color:#2e7d32"></p>
       <textarea id="msgText" rows="8" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px"></textarea>
       <div class="row">
         <button class="btn secondary" id="msgClose">Đóng</button>
-        <button class="btn accent" id="msgCopy">📋 Copy</button>
+        <button class="btn secondary" id="msgCopy">📋 Copy</button>
+        <button class="btn accent" id="msgSend">✔ Gửi Zalo</button>
       </div>
     </div>
   </div>
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260725"></script>
-  <script src="js/giaohang.js?v=20260729c"></script>
+  <script src="js/giaohang.js?v=20260731"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
