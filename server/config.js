@@ -207,6 +207,24 @@ module.exports = {
       name: process.env.AUTO_NOTIFY_ALERT_NAME || 'Admin',  // tên hiển thị người nhận
     },
   },
+  // Tự động báo ship — Pha 2 (Quản lý giao hàng / Partner API shipping_order). ĐỘC LẬP hoàn toàn
+  // với autoNotify.shipEnabled ở trên (luồng CŨ dựa vào content_ship của Hàng về VN) — công tắc
+  // riêng, bảng dedup riêng (shipping_notified/shipping_auto_seen), không đụng nhau.
+  // Xem docs/shipping-notify-plan.md — Pha 2.
+  shippingAuto: {
+    // Mặc định TẮT: chỉ admin bật tay trên trang Cài đặt mới chạy tự động (an toàn khi mới deploy).
+    enabled: String(process.env.AUTO_SHIP2 || 'false').toLowerCase() === 'true',
+    // Chu kỳ quét (ms) đơn "Giao shipper" mới / có shipper_link mới. Mặc định 180s (nhẹ, giống
+    // cadence poller ship cũ) — có thể giãn nếu số vận đơn lớn.
+    intervalMs: Math.max(parseInt(process.env.AUTO_SHIP2_INTERVAL_MS || '180000', 10) || 180000, 30000),
+    // Cửa sổ NGÀY gần đây quét lại (theo ngày tạo vận đơn) — tránh kéo cả lịch sử mỗi lượt quét.
+    // Đơn tạo quá N ngày trước mới "Giao shipper" (hiếm, tồn kho lâu) sẽ được lưới an toàn 17:00
+    // (quét theo ngày SOẠN HÀNG) hoặc gửi tay bắt kịp.
+    lookbackDays: Math.max(parseInt(process.env.AUTO_SHIP2_LOOKBACK_DAYS ?? '14', 10) || 14, 1),
+    // Chu kỳ (ms) kiểm tra đồng hồ cho lưới an toàn 17:00 — tái dùng CHUNG giờ hẹn với báo hàng
+    // (đọc app_settings key 'autoNotify.scheduleTime', mặc định env AUTO_NOTIFY_SCHEDULE_TIME).
+    safetyCheckMs: Math.max(parseInt(process.env.AUTO_SHIP2_SAFETY_CHECK_MS || '60000', 10) || 60000, 15000),
+  },
   // Báo hàng loạt (áp dụng cho CẢ báo tay lẫn bot tự động): nghỉ một khoảng NGẪU NHIÊN giữa 2
   // khách LIÊN TIẾP để tránh gửi dồn quá nhanh -> giảm rủi ro chạm ngưỡng chống spam của Zalo/FB.
   // Delay chỉ chèn GIỮA các đơn (không nghỉ trước đơn đầu / sau đơn cuối / khi dừng cả loạt).

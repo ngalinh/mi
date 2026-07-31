@@ -560,6 +560,53 @@
     }
   }
 
+  // ---- Tự động báo ship — Quản lý giao hàng (Pha 2, công tắc riêng, độc lập ship cũ) ----
+  let ship2Enabled = false;
+  function renderAutoShip2(a) {
+    if (!a) return;
+    ship2Enabled = !!a.enabled;
+    setSwitch($('autoShip2Badge'), ship2Enabled, ship2Enabled ? 'Bật' : 'Tắt');
+    const st = $('autoShip2Status');
+    if (!st) return;
+    const parts = [];
+    if (ship2Enabled && a.seeding) {
+      parts.push('<span style="color:var(--accent,#b8860b)">⏳ Đang chuẩn bị: đánh dấu vận đơn tồn cũ đủ điều kiện để không gửi nhầm…</span>');
+    } else if (ship2Enabled && a.lastSeed) {
+      const sAt = a.lastSeed.at ? new Date(a.lastSeed.at).toLocaleString('vi-VN') : '';
+      parts.push(`Đã đánh dấu <strong>${a.lastSeed.seeded || 0}</strong> vận đơn tồn cũ lúc bật${sAt ? ` (${App.esc(sAt)})` : ''} — chỉ gửi vận đơn mới đủ điều kiện sau đó.`);
+    }
+    const r = a.lastResult;
+    if (r && (r.sent || r.failed)) {
+      const at = a.lastRun ? new Date(a.lastRun).toLocaleString('vi-VN') : '';
+      parts.push(`Lần quét gần nhất${at ? ` (${App.esc(at)})` : ''}: ${r.sent || 0} ✅ / ${r.failed || 0} ❌`);
+    } else if (r && r.skipped && r.reason) {
+      parts.push(`Lượt gần nhất bỏ qua: ${App.esc(r.reason)}`);
+    }
+    const sr = a.lastSafetyResult;
+    if (sr && (sr.sent || sr.alerted)) {
+      const at = a.lastSafetyRun ? new Date(a.lastSafetyRun).toLocaleString('vi-VN') : '';
+      parts.push(`Lưới an toàn 17:00 gần nhất${at ? ` (${App.esc(at)})` : ''}: ${sr.sent || 0} đã gửi · ${sr.alerted || 0} đã cảnh báo NV.`);
+    }
+    if (ship2Enabled && runnerOnline === false) {
+      parts.push('<span style="color:var(--danger,#d33)">⚠️ Local-runner (Chrome) offline — vận đơn sẽ tự gửi khi runner mở lại.</span>');
+    }
+    st.innerHTML = parts.join(' · ');
+  }
+
+  async function toggleAutoShip2() {
+    const next = !ship2Enabled;
+    if (next && !confirm('Bật TỰ ĐỘNG báo ship — Quản lý giao hàng?\n\n• AhaMove/Grab: tự nhắn khách NGAY khi có link theo dõi shipper.\n• Viettel/GHTK: tự nhắn khách NGAY khi bấm "Giao shipper".\n• Cần local-runner mở & đăng nhập Zalo.\n• Các vận đơn ĐANG đủ điều kiện lúc này sẽ được đánh dấu "tồn cũ" và KHÔNG gửi — chỉ gửi vận đơn mới đủ điều kiện SAU khi bật.')) return;
+    try {
+      const a = await App.api('/api/shipping-auto/toggle', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }),
+      });
+      renderAutoShip2(a);
+      App.toast(next ? '✅ Đã bật tự động báo ship (Quản lý giao hàng)' : 'Đã tắt tự động báo ship (Quản lý giao hàng)');
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 5000);
+    }
+  }
+
   // ---- Nhắc ra Zalo (nội bộ) ----
   let alertEnabled = false;
   function renderAlert(a) {
@@ -815,6 +862,7 @@
       $('modeLiveBadge').style.display = h.mock ? 'none' : '';
       runnerOnline = !!h.localRunner.online; // cho cảnh báo runner-offline ở mục báo ship
       if (h.autoNotify) renderAutoBadge(h.autoNotify);
+      if (h.shippingAutoNotify) renderAutoShip2(h.shippingAutoNotify);
       renderTestMode(
         { testMode: h.localRunner.testMode, testPhones: h.localRunner.testPhones },
         !!h.localRunner.online,
@@ -845,6 +893,7 @@
 
   $('autoBadge').addEventListener('click', toggleAuto);
   { const sb = $('autoShipBadge'); if (sb) sb.addEventListener('click', toggleAutoShip); }
+  { const sb = $('autoShip2Badge'); if (sb) sb.addEventListener('click', toggleAutoShip2); }
   $('scheduleSave').addEventListener('click', saveSchedule);
   $('scheduleInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });
   $('precheckInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSchedule(); });

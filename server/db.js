@@ -528,6 +528,31 @@ function markShippingNotified(shippingId, phone) {
   insShippingNotifiedStmt.run({ shipping_id: String(shippingId), sent_at: new Date().toISOString(), phone: phone || null });
 }
 
+// ---- SEED cho tự động báo ship (Pha 2, Quản lý giao hàng) ----
+// Đánh dấu "vận đơn đủ điều kiện gửi NGAY LÚC BẬT auto" -> coi là tồn cũ, KHÔNG tự gửi. Tách hẳn
+// khỏi `shipping_notified` (đó là "đã THẬT SỰ gửi") để không làm sai badge "đã gửi" ở Pha 1 (nút
+// gửi tay vẫn coi các đơn này là CHƯA gửi, gửi tay vẫn được bình thường).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shipping_auto_seen (
+    shipping_id TEXT PRIMARY KEY,
+    seen_at     TEXT NOT NULL           -- ISO string
+  );
+`);
+const getShippingAutoSeenStmt = db.prepare('SELECT seen_at FROM shipping_auto_seen WHERE shipping_id = @shipping_id');
+const insShippingAutoSeenStmt = db.prepare(
+  'INSERT OR IGNORE INTO shipping_auto_seen (shipping_id, seen_at) VALUES (@shipping_id, @seen_at)',
+);
+
+/** Vận đơn này đã bị đánh dấu "tồn cũ" lúc bật auto (bỏ qua, không tự gửi) chưa? */
+function isShippingAutoSeen(shippingId) {
+  return !!getShippingAutoSeenStmt.get({ shipping_id: String(shippingId) });
+}
+
+/** Đánh dấu 1 vận đơn là "tồn cũ" lúc bật auto (idempotent). */
+function markShippingAutoSeen(shippingId) {
+  insShippingAutoSeenStmt.run({ shipping_id: String(shippingId), seen_at: new Date().toISOString() });
+}
+
 // ---- Cấu hình hệ thống (key-value, chỉnh trên web) ----
 const getSettingStmt = db.prepare('SELECT value FROM app_settings WHERE key = @key');
 const setSettingStmt = db.prepare(`
@@ -907,6 +932,7 @@ module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, autoKeyShip, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified, markShippingNotified,
+  isShippingAutoSeen, markShippingAutoSeen,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,

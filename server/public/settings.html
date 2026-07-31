@@ -171,6 +171,25 @@
                 <span class="switch-text">…</span>
               </button>
             </div>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Tự động báo ship — Quản lý giao hàng (mới)</div>
+                <div class="mode-desc">Công tắc <strong>riêng</strong>, ĐỘC LẬP với "Tự động báo ship" ở trên. Khi bật: AhaMove/Grab tự nhắn ngay khi có link theo dõi shipper; Viettel/GHTK tự nhắn ngay khi bấm "Giao shipper". Nội dung do <strong>mi</strong> tự dựng theo mẫu riêng ĐVVC.</div>
+                <details class="mode-more">
+                  <summary>Chi tiết cách hoạt động</summary>
+                  <div class="mode-more-body">
+                    Các vận đơn <strong>đang đủ điều kiện gửi</strong> lúc bật được đánh dấu "tồn cũ" và <strong>không gửi</strong> — chỉ gửi vận đơn MỚI đủ điều kiện SAU khi bật.<br>
+                    Lưới an toàn 17:00 (dùng chung giờ hẹn báo hàng ở trên): bắt ca quên bấm "Giao shipper" — đơn đã soạn hàng TRONG NGÀY mà Viettel/GHTK có mã vẫn được nhắn (không đổi trạng thái vận đơn); AhaMove/Grab chưa đặt shipper hoặc ĐVVC chưa khai mẫu thì CHỈ cảnh báo NV (qua kênh "Nhắc ra Zalo" bên dưới), không tự gửi nhầm.<br>
+                    Cần <strong>local-runner (Chrome) đang mở &amp; đã đăng nhập Zalo</strong> để gửi được.
+                  </div>
+                </details>
+                <div class="mode-detail" id="autoShip2Status" style="font-weight:400; color:var(--muted);"></div>
+              </div>
+              <button class="switch" id="autoShip2Badge" role="switch" aria-checked="false" title="Bật/tắt tự động báo ship (Quản lý giao hàng)">
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                <span class="switch-text">…</span>
+              </button>
+            </div>
             <div class="mode-row" id="scheduleRow">
               <div class="mode-info">
                 <div class="mode-title">Giờ gửi cố định</div>

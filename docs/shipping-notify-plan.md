@@ -4,7 +4,10 @@ Xây dựng nội dung báo ship (báo khách khi giao shipper) từ **Quản l�
 (`shipping_order`, Partner API) thay vì dựa vào `content_ship` của **Hàng về VN**.
 
 **Trạng thái:** Pha 0 (xem/copy) + Pha 1 (gửi tay đơn lẻ/hàng loạt qua Zalo, đồng bộ
-`notified_ship`) đã xong — xem `server/shippingSendService.js`. Pha 2 (tự động) chưa làm.
+`notified_ship`) đã xong — xem `server/shippingSendService.js`. Pha 2 (tự động — poller +
+lưới an toàn 17:00) đã code xong — xem `server/shippingAutoNotify.js` — **mặc định TẮT**,
+admin bật tay ở trang Cài đặt ("Tự động báo ship — Quản lý giao hàng (mới)"), công tắc
+ĐỘC LẬP với "Tự động báo ship" cũ (`autoNotify.shipEnabled`, dựa vào `content_ship`).
 
 ## Mục tiêu
 - Nội dung do **mi** dựng theo mẫu riêng, đúng ĐVVC + mã vận đơn + COD + link theo dõi.
@@ -72,7 +75,10 @@ Sau khi gửi ship cho 1 vận đơn:
 ## Các pha (rủi ro tăng dần)
 - **Pha 0** — Sinh nội dung, KHÔNG gửi. Nút 💬 "Xem tin" trên đơn đã giao shipper → hiện nội dung + Copy. *(rủi ro ~0)*
 - **Pha 1** — Gửi tay: nút "Báo giao hàng" đơn lẻ + "Báo loạt" (tick nhiều) → gửi Zalo + đồng bộ `notified_ship`.
-- **Pha 2** — Tự động: poller quét đơn mới `exported` trong N ngày (dedup `ship_seen`) + toggle riêng ở Cài đặt + webhook. Có thể gửi ngay khi bấm "Giao shipper" trong mi.
+- **Pha 2** — Tự động: poller quét đơn mới `exported`/có `shipper_link` trong N ngày (dedup
+  `shipping_notified` + seed `shipping_auto_seen`) + toggle riêng ở Cài đặt (mặc định TẮT) +
+  lưới an toàn 17:00. **Đã code xong** — chưa có webhook riêng (Pha 2 dùng poller interval,
+  chưa đấu `/api/webhook/*` cho luồng này).
 - **Pha 3** — Cho sửa template ở Cài đặt.
 
 ## Quyết định (mặc định đề xuất)

@@ -13,6 +13,7 @@ const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, g
 const shippingApi = require('./shippingApi');
 const shippingNotify = require('./shippingNotify');
 const shippingSendService = require('./shippingSendService');
+const shippingAutoNotify = require('./shippingAutoNotify');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified,
@@ -179,6 +180,7 @@ app.get('/api/health', async (req, res) => {
       registered: localRegistry.getInfo(),
     },
     autoNotify: autoNotify.getStatus(),
+    shippingAutoNotify: shippingAutoNotify.getStatus(),
     preload: cacheWarmer.getStatus(),
     // Có phiên báo loạt (tay) đang chạy trên server không. Dashboard dùng cờ này để KHÔI PHỤC nút
     // "Dừng báo loạt" sau khi reload trang (state client bị mất nhưng server vẫn đang gửi).
@@ -826,6 +828,39 @@ app.post('/api/shipping/send-bulk', async (req, res) => {
   }
 });
 
+// (Pha 2) Tự động báo ship (Quản lý giao hàng) — trạng thái + bật/tắt + chạy thủ công.
+// ĐỘC LẬP với /api/auto-notify/ship-toggle (luồng CŨ dựa vào content_ship của Hàng về VN).
+app.get('/api/shipping-auto', (req, res) => {
+  res.json({ ok: true, ...shippingAutoNotify.getStatus() });
+});
+
+// Bật/tắt poller tự động báo ship (Quản lý giao hàng). body: { enabled: boolean }
+app.post('/api/shipping-auto/toggle', (req, res) => {
+  const { enabled } = req.body || {};
+  const status = shippingAutoNotify.setEnabled(!!enabled);
+  res.json({ ok: true, ...status });
+});
+
+// Chạy 1 lượt quét + gửi ngay (không phụ thuộc interval). Dùng cho nút "Quét & gửi ngay".
+app.post('/api/shipping-auto/run', async (req, res) => {
+  try {
+    const result = await shippingAutoNotify.runShippingAuto({ trigger: 'manual' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Chạy thủ công lưới an toàn (đơn "Đã soạn hàng" quên bấm "Giao shipper"). Dùng cho nút test.
+app.post('/api/shipping-auto/run-safety', async (req, res) => {
+  try {
+    const result = await shippingAutoNotify.runSafetyNet();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Thao tác hàng loạt. body: { ids:[...], kind } với kind ∈ ship|complete
 app.post('/api/shipping/bulk', async (req, res) => {
   try {
@@ -1090,6 +1125,7 @@ app.listen(config.port, () => {
     console.warn('[server] ⚠️  Webhook /api/webhook/arrived BỊ KHÓA (production nhưng chưa đặt AUTO_NOTIFY_WEBHOOK_SECRET). Đặt secret để bật, hoặc chỉ dùng poller AUTO_NOTIFY.');
   }
   autoNotify.startAutoNotify();
+  shippingAutoNotify.startShippingAutoNotify();
   // Backfill mốc "lần đầu thấy ND ship" TRƯỚC khi warm cache: cacheWarmer nạp tab "Chưa báo" có thể
   // enrich & ghi mốc "now" cho đơn tồn cũ, nên phải backdate xong mới cho warm chạy (chỉ chạy 1 lần
   // khi bảng còn rỗng; finally để cacheWarmer vẫn bật kể cả backfill lỗi/không có gì để làm).

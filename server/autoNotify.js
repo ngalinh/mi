@@ -1171,4 +1171,7 @@ function getStatus() {
 module.exports = {
   runAutoNotify, runAutoNotifyShip, debugShip, startAutoNotify, setEnabled, setShipEnabled, setScheduleTime, setPrecheckMinutes,
   setAlertConfig, sendAlertTest, previewAutoNotify, getStatus, autoKey,
+  // Tái dùng kênh "nhắc ra Zalo (nội bộ)" cho module tự động báo ship khác (Quản lý giao hàng,
+  // shippingAutoNotify.js) -> admin chỉ cấu hình 1 chỗ (Cài đặt), cả 2 luồng auto đều dùng chung.
+  dispatchAlert,
 };

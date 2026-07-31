@@ -93,6 +93,7 @@ function normalizeShipping(raw) {
     weight: num(raw.weight),
     isPrepared: prepared,
     preparedAt: fmtUnix(raw.waiting_prepared_at),
+    preparedAtRaw: raw.waiting_prepared_at != null ? num(raw.waiting_prepared_at) : null,
     branch: raw.branch || '',
     statusCode,
     status: label,
