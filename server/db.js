@@ -502,6 +502,32 @@ function recordShipSeen(keys, atISO) {
 /** Số đơn đã có mốc ship_seen — dùng để biết đã backfill lần đầu hay chưa (0 = chưa). */
 function countShipSeen() { return countShipSeenStmt.get().n || 0; }
 
+// ---- Chống gửi trùng cho "Báo ship" từ trang Quản lý giao hàng (Pha 1) ----
+// Khoá theo id VẬN ĐƠN (order_shippings.id) — khác hẳn ship_seen ở trên (khoá theo autoKey
+// customerId+dateInventory của luồng content_ship cũ). Tách bảng riêng để không lẫn 2 cơ chế.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shipping_notified (
+    shipping_id TEXT PRIMARY KEY,
+    sent_at     TEXT NOT NULL,           -- ISO string
+    phone       TEXT
+  );
+`);
+const getShippingNotifiedStmt = db.prepare('SELECT sent_at FROM shipping_notified WHERE shipping_id = @shipping_id');
+const insShippingNotifiedStmt = db.prepare(
+  'INSERT OR IGNORE INTO shipping_notified (shipping_id, sent_at, phone) VALUES (@shipping_id, @sent_at, @phone)',
+);
+
+/** Đã gửi báo ship (Pha 1) cho vận đơn này chưa -> { sentAt } hoặc null. */
+function getShippingNotified(shippingId) {
+  const row = getShippingNotifiedStmt.get({ shipping_id: String(shippingId) });
+  return row ? { sentAt: row.sent_at } : null;
+}
+
+/** Đánh dấu đã gửi báo ship cho 1 vận đơn (chống gửi trùng khi bấm loạt/xem lại). */
+function markShippingNotified(shippingId, phone) {
+  insShippingNotifiedStmt.run({ shipping_id: String(shippingId), sent_at: new Date().toISOString(), phone: phone || null });
+}
+
 // ---- Cấu hình hệ thống (key-value, chỉnh trên web) ----
 const getSettingStmt = db.prepare('SELECT value FROM app_settings WHERE key = @key');
 const setSettingStmt = db.prepare(`
@@ -880,6 +906,7 @@ migrateFbRoutingIntoContacts();
 module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, autoKeyShip, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
+  getShippingNotified, markShippingNotified,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,

@@ -625,6 +625,35 @@ async function updateOrderStatus({ customerId, dateInventory, status, note }) {
   return { ok: true, record: data && data.record };
 }
 
+/**
+ * Đồng bộ trạng thái "Đã báo ship" (notified_ship) về "Hàng về VN" sau khi báo ship THÀNH CÔNG
+ * từ Quản lý giao hàng (Pha 1). Vì "Hàng về VN" và "Quản lý giao hàng" là 2 API riêng (không
+ * chung id), khớp gián tiếp qua SĐT + mã vận đơn (item.shipCode):
+ *   1) Thu hẹp dòng "Đã báo hàng" (notified_arrival) của khách theo SĐT.
+ *   2) Soi sản phẩm từng dòng (getArrivedItems) — dòng có item shipCode == mã vận đơn vừa ship.
+ *   3) updateOrderStatus dòng khớp -> notified_ship. Không khớp dòng nào -> bỏ qua (best-effort,
+ *      KHÔNG chặn báo ship — chỉ để dashboard "Hàng về VN" phản ánh đúng, gửi Zalo vẫn đã xong).
+ * @param {{phone:string, code:string}} p
+ * @returns {Promise<{matched:number}>}
+ */
+async function syncShipStatusByCode({ phone, code }) {
+  if (!phone || !code) return { matched: 0 };
+  const codeNorm = String(code).trim();
+  if (!codeNorm) return { matched: 0 };
+  const { orders } = await getOrders({ q: phone, status: 'notified_arrival', page: 1, pageSize: 20 });
+  let matched = 0;
+  for (const o of orders || []) {
+    // eslint-disable-next-line no-await-in-loop
+    const { items } = await getArrivedItems({ id: o.id, customerId: o.customerId, dateInventory: o.dateInventory });
+    const hit = (items || []).some((it) => it.shipCode && String(it.shipCode).trim() === codeNorm);
+    if (!hit) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await updateOrderStatus({ customerId: o.customerId, dateInventory: o.dateInventory, status: 'notified_ship', note: o.note });
+    matched += 1;
+  }
+  return { matched };
+}
+
 // Nhóm trạng thái trên dashboard -> mã trạng thái Basso (để đếm & lọc server-side).
 const GROUP_STATUS = [
   ['todo', 'not_sent'],
@@ -725,7 +754,7 @@ async function fetchAllOrders(filters = {}) {
   return all;
 }
 
-module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS,
+module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, syncShipStatusByCode, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS,
   // Dùng chung cho module khác (vd shippingApi.js) — gọi Partner API có sẵn xác thực
   // (X-Partner-Api-Key + Bearer, tự login/refresh token, retry 401, timeout). Trả về json.data.
   partnerApiFetch: apiFetch };

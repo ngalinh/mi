@@ -41,11 +41,16 @@
             <button class="btn secondary" data-act="revert" data-id="${o.id}">← Chưa giao hàng</button>`;
   }
 
+  // Đơn có thể xem trước tin báo ship: đã có link, hoặc đã giao shipper/đã giao/lên đơn vận.
+  function canPreviewMsg(o) {
+    return !!o.shipperLink || ['exported', 'completed', 'carrier_submitted'].includes(o.statusCode);
+  }
+
   // ---- Render -----------------------------------------------------------
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="14" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="15" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
@@ -55,7 +60,7 @@
         <tr data-id="${o.id}">
           <td class="center"><input type="checkbox" class="rowchk" data-id="${o.id}"></td>
           <td class="center"><span class="ship-eye" data-eye="${o.id}" title="Xem chi tiết">${App.icon('eye')}</span></td>
-          <td>${splitDateTime(o.createdAt)}</td>
+          <td class="gh-datecell">${splitDateTime(o.createdAt)}</td>
           <td>${App.esc(o.recipient)}</td>
           <td>
             <div class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</div>
@@ -68,7 +73,8 @@
           <td class="center">${App.fmtVnd(o.shipFee) || '0₫'}${codPayer}</td>
           <td><span class="ship-carrier">${App.icon('truck')} ${App.esc(o.shipping)}</span></td>
           <td>${statusBadge(o)}</td>
-          <td>${splitDateTime(o.preparedAt)}</td>
+          <td class="gh-datecell">${splitDateTime(o.preparedAt)}</td>
+          <td class="center">${canPreviewMsg(o) ? `<button class="btn secondary small" data-msg="${o.id}">💬 Xem</button>` : '<span class="muted">—</span>'}</td>
           <td><div class="ship-actions">${actionButtons(o)}</div></td>
         </tr>`);
       if (state.expanded.has(String(o.id))) rows.push(detailRow(o));
@@ -87,7 +93,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="14">
+    return `<tr class="ship-detail"><td colspan="15">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -138,7 +144,7 @@
 
   // ---- Load list --------------------------------------------------------
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="14" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="15" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     params.set('page', state.page);
     params.set('shipping_id', $('fCarrier').value || 0);
@@ -158,7 +164,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="14" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="15" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -225,8 +231,104 @@
     w.print();
   }
 
+  // ---- Xem + gửi tin báo ship (Pha 1) -------------------------------------
+  // Payload gọn cho API: đủ field shippingNotify + shippingSendService cần (id/phone/items để
+  // dedup, resolve account theo NV duyệt, khớp brand theo mã ĐH).
+  function toApiOrder(o) {
+    return {
+      id: o.id, recipient: o.recipient, phone: o.phone, shipping: o.shipping, shippingId: o.shippingId,
+      trackingCode: o.trackingCode, codAmount: o.codAmount, shipperLink: o.shipperLink,
+      items: (o.items || []).map((it) => ({ approveUser: it.approveUser, orderCode: it.orderCode })),
+    };
+  }
+
+  let msgCurrentId = null;
+
+  async function showMessage(id) {
+    const o = state.orders.find((x) => String(x.id) === String(id));
+    if (!o) return;
+    msgCurrentId = id;
+    try {
+      const r = await App.api('/api/shipping/message', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: toApiOrder(o) }),
+      });
+      $('msgSub').textContent = `${o.recipient} · ${o.shipping} · ${o.trackingCode || ''}`;
+      const t = $('msgText');
+      const sentNote = $('msgSentNote');
+      const sendBtn = $('msgSend');
+      if (r.sendable) {
+        t.value = r.message; t.disabled = false; $('msgCopy').style.display = '';
+        if (r.alreadySent) {
+          sentNote.style.display = ''; sentNote.textContent = `✔ Đã gửi lúc ${r.sentAt}`;
+          sendBtn.style.display = 'none';
+        } else {
+          sentNote.style.display = 'none';
+          sendBtn.style.display = ''; sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+        }
+      } else {
+        t.value = '⚠️ ' + (r.reasonLabel || 'Chưa gửi được.'); t.disabled = true; $('msgCopy').style.display = 'none';
+        sentNote.style.display = 'none'; sendBtn.style.display = 'none';
+      }
+      $('msgModalBg').classList.add('show');
+    } catch (e) { App.toast('Lỗi: ' + e.message); }
+  }
+  function closeMsg() { $('msgModalBg').classList.remove('show'); msgCurrentId = null; }
+
+  async function sendMessage() {
+    const id = msgCurrentId;
+    const o = state.orders.find((x) => String(x.id) === String(id));
+    if (!o) return;
+    const sendBtn = $('msgSend');
+    sendBtn.disabled = true; sendBtn.textContent = 'Đang gửi...';
+    try {
+      const r = await App.api('/api/shipping/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: toApiOrder(o) }),
+      });
+      if (r.ok) {
+        App.toast('✅ Đã gửi báo ship.');
+        $('msgSentNote').style.display = ''; $('msgSentNote').textContent = `✔ Đã gửi lúc ${r.sentAt || new Date().toLocaleString('vi-VN')}`;
+        sendBtn.style.display = 'none';
+      } else {
+        App.toast('Lỗi: ' + App.friendlyError(r.error || 'Gửi thất bại.'));
+        sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+      }
+    } catch (e) {
+      App.toast('Lỗi: ' + App.friendlyError(e.message));
+      sendBtn.disabled = false; sendBtn.textContent = '✔ Gửi Zalo';
+    }
+  }
+
+  // ---- Gửi báo ship hàng loạt (tick nhiều) --------------------------------
+  async function bulkNotify() {
+    const ids = checkedIds();
+    if (!ids.length) { App.toast('Chưa chọn đơn nào.'); return; }
+    const orders = state.orders.filter((o) => ids.includes(String(o.id))).map(toApiOrder);
+    if (!confirm(`Gửi báo ship qua Zalo cho ${orders.length} đơn đã tick?`)) return;
+    try {
+      const r = await App.api('/api/shipping/send-bulk', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders }),
+      });
+      App.toast(`Đã gửi ${r.sent}/${r.total} đơn${r.failed ? `, ${r.failed} lỗi` : ''}.`);
+    } catch (e) {
+      App.toast('Lỗi: ' + App.friendlyError(e.message));
+    }
+  }
+
   // ---- Events -----------------------------------------------------------
   function bind() {
+    $('msgClose').onclick = closeMsg;
+    $('msgModalBg').addEventListener('click', (e) => { if (e.target.id === 'msgModalBg') closeMsg(); });
+    $('msgCopy').onclick = () => {
+      const t = $('msgText'); t.select();
+      const done = () => App.toast('Đã copy nội dung');
+      if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(done).catch(() => { document.execCommand('copy'); done(); });
+      else { document.execCommand('copy'); done(); }
+    };
+    $('msgSend').onclick = sendMessage;
+    $('btnBulkNotify').onclick = bulkNotify;
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
     ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
@@ -247,6 +349,8 @@
         render();
         return;
       }
+      const msg = e.target.closest('[data-msg]');
+      if (msg) { showMessage(msg.dataset.msg); return; }
       const btn = e.target.closest('[data-act]');
       if (btn) doAction(btn.dataset.id, btn.dataset.act);
     });
