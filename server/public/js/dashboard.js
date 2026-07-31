@@ -910,6 +910,30 @@
     sel.value = cur; // giữ lựa chọn cũ nếu populate lại
   }
 
+  // Danh sách Kênh sale đã cấu hình (Cài đặt → Kênh Sale). Chọn kênh sale ép mi tra bảng
+  // (kênh sale + NV phụ trách đơn) -> tài khoản Zalo, thay vì chọn tài khoản tay ở trên.
+  // Basso không trả field kênh sale trong dữ liệu đơn nên người báo phải tự chọn cho lượt gửi này.
+  let kenhSaleNames = [];
+  async function loadKenhSaleOptions() {
+    try {
+      const r = await App.api('/api/channel-accounts');
+      kenhSaleNames = [...new Set((r.channelAccounts || []).map((c) => c.kenh_sale).filter(Boolean))];
+    } catch { kenhSaleNames = []; }
+    const sel = $('modalKenhSale');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— Không chọn —</option>'
+      + kenhSaleNames.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
+  }
+  // Chọn kênh sale hay chọn tài khoản tay là 2 cách LOẠI TRỪ NHAU (server ưu tiên tài khoản tay
+  // nếu cả 2 cùng có) -> chọn cái này thì bỏ trống cái kia để tránh nhầm lẫn "đã chọn kênh sale
+  // nhưng lại gửi theo tài khoản khác".
+  const modalKenhSaleSel = $('modalKenhSale');
+  const modalAccountSel = $('modalAccount');
+  if (modalKenhSaleSel && modalAccountSel) {
+    modalKenhSaleSel.addEventListener('change', () => { if (modalKenhSaleSel.value) modalAccountSel.value = ''; });
+    modalAccountSel.addEventListener('change', () => { if (modalAccountSel.value) modalKenhSaleSel.value = ''; });
+  }
+
   function openModal(id, kind = 'hang') {
     const o = byId(id);
     if (!o) { App.toast('Không tìm thấy đơn để xem nội dung', 4000); return; }
@@ -947,6 +971,8 @@
       populateAccountSelect();
       const acc = $('modalAccount');
       if (acc) acc.value = ''; // mặc định Tự động mỗi lần mở
+      const ks = $('modalKenhSale');
+      if (ks) ks.value = ''; // mặc định không chọn kênh sale mỗi lần mở
     } catch (err) {
       console.error('[openModal] lỗi phần phụ (đã bỏ qua, popup vẫn mở):', err);
     }
@@ -1019,7 +1045,9 @@
     const acctKey = $('modalAccount').value;
     const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
     const override = acct ? { profile: acct.key, account: acct.saleworkName } : null;
-    await sendZalo(modalId, $('modalMsg').value.trim(), $('modalSend'), modalKind, override);
+    const ksEl = $('modalKenhSale');
+    const kenhSale = ksEl ? ksEl.value : '';
+    await sendZalo(modalId, $('modalMsg').value.trim(), $('modalSend'), modalKind, override, { kenhSale });
     closeModal();
   }
 
@@ -1075,6 +1103,7 @@
           kind,
           profile: override && override.profile ? override.profile : undefined,
           account: override && override.account ? override.account : undefined,
+          kenhSale: o2.kenhSale || undefined,
         }),
       });
       // Người dùng bấm Dừng trong lúc ân hạn / server đang chuẩn bị -> server hủy trước khi gửi,
@@ -1896,6 +1925,7 @@
 
   loadHealth();
   loadZaloAccounts();
+  loadKenhSaleOptions();
   setInterval(loadHealth, 15000);
   setInterval(autoSync, AUTO_SYNC_MS);
   // Khởi động: mặc định lọc theo NV ĐANG ĐĂNG NHẬP (nếu Admin đã gán user_id trong Cài đặt)

@@ -159,6 +159,24 @@ db.exec(`  -- Cấu hình hệ thống chỉnh được trên web (key-value). D
   );
 `);
 
+db.exec(`  -- CẤU HÌNH KÊNH SALE: Basso có nhiều "Kênh Sale" (vd Basso, ShipUS, Linh Dương...) hiển thị
+  -- trên web Basso NHƯNG Partner API "getArrivedVnList" mi đang gọi KHÔNG trả field này (đã kiểm
+  -- tra thực tế qua /api/basso/debug-list) -> mi KHÔNG thể tự nhận diện kênh sale của 1 đơn. Bảng
+  -- này lưu cấu hình THỦ CÔNG: 1 kênh sale + 1 nhân viên -> 1 tài khoản Zalo. Khi báo tay, người
+  -- gửi CHỌN kênh sale cho lượt báo (xem accountResolver.resolveForOrder) -> mi tra bảng này theo
+  -- (kênh sale, nhân viên phụ trách đơn) để chọn đúng account thay vì suy luận theo brand/mặc định.
+  CREATE TABLE IF NOT EXISTS channel_accounts (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    kenh_sale        TEXT NOT NULL,
+    staff_id         TEXT,                 -- user_id NV trên Basso (ưu tiên khớp nếu có)
+    staff_name       TEXT NOT NULL,        -- tên NV (fallback khớp khi đơn thiếu user_id)
+    zalo_account_key TEXT NOT NULL,        -- khớp account.key trong accountsStore (local-runner)
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_channel_accounts_lookup ON channel_accounts(kenh_sale, staff_id);
+`);
+
 db.exec(`  -- DANH BẠ ZALO/FACEBOOK: ánh xạ SĐT khách -> TÊN hiển thị trên Zalo/FB (do NV nhập/
   -- import từ file). Dùng làm FALLBACK khi runner tìm hội thoại: SĐT vẫn là khoá chính, nhưng
   -- tên Basso hay khác tên trên Zalo -> khớp theo tên hay trượt. Có tên Zalo đúng ở đây thì tìm
@@ -731,6 +749,84 @@ function deleteStaff(email) {
   return delStaffStmt.run({ email: e }).changes > 0;
 }
 
+// ---- Cấu hình Kênh Sale (kênh sale + nhân viên -> tài khoản Zalo) ----
+const listChanStmt = db.prepare('SELECT * FROM channel_accounts ORDER BY created_at ASC');
+const getChanStmt = db.prepare('SELECT * FROM channel_accounts WHERE id = @id');
+const insertChanStmt = db.prepare(`
+  INSERT INTO channel_accounts (kenh_sale, staff_id, staff_name, zalo_account_key, created_at, updated_at)
+  VALUES (@kenh_sale, @staff_id, @staff_name, @zalo_account_key, @now, @now)
+`);
+const updateChanStmt = db.prepare(`
+  UPDATE channel_accounts SET kenh_sale = @kenh_sale, staff_id = @staff_id, staff_name = @staff_name,
+    zalo_account_key = @zalo_account_key, updated_at = @now
+  WHERE id = @id
+`);
+const delChanStmt = db.prepare('DELETE FROM channel_accounts WHERE id = @id');
+// Tra cấu hình cho 1 đơn: khớp staff_id (userId Basso) trước, không có/không khớp thì tới tên NV.
+// Kênh sale so sánh KHÔNG phân biệt hoa thường/khoảng trắng thừa (người nhập tay dễ lệch).
+const findChanByStaffIdStmt = db.prepare(`
+  SELECT * FROM channel_accounts
+  WHERE LOWER(TRIM(kenh_sale)) = LOWER(TRIM(@kenh_sale)) AND staff_id = @staff_id AND staff_id IS NOT NULL AND staff_id != ''
+  LIMIT 1
+`);
+const findChanByStaffNameStmt = db.prepare(`
+  SELECT * FROM channel_accounts
+  WHERE LOWER(TRIM(kenh_sale)) = LOWER(TRIM(@kenh_sale)) AND LOWER(TRIM(staff_name)) = LOWER(TRIM(@staff_name))
+  LIMIT 1
+`);
+
+function listChannelAccounts() { return listChanStmt.all(); }
+
+/**
+ * Thêm/sửa 1 cấu hình kênh sale (id truyền vào -> sửa, không thì thêm mới). Ném lỗi
+ * .code='BAD_INPUT' nếu thiếu dữ liệu bắt buộc để route trả 400.
+ */
+function upsertChannelAccount({ id, kenhSale, staffId, staffName, zaloAccountKey }) {
+  const kenh = String(kenhSale || '').trim();
+  const name = String(staffName || '').trim();
+  const acctKey = String(zaloAccountKey || '').trim();
+  const sid = staffId != null && String(staffId).trim() !== '' ? String(staffId).trim() : null;
+  if (!kenh) { const err = new Error('Thiếu Kênh sale'); err.code = 'BAD_INPUT'; throw err; }
+  if (!name) { const err = new Error('Thiếu Nhân viên'); err.code = 'BAD_INPUT'; throw err; }
+  if (!acctKey) { const err = new Error('Thiếu Tài khoản Zalo'); err.code = 'BAD_INPUT'; throw err; }
+  const now = new Date().toISOString();
+  if (id != null && String(id).trim() !== '') {
+    const rid = parseInt(id, 10);
+    if (!getChanStmt.get({ id: rid })) { const err = new Error('Không tìm thấy cấu hình để sửa'); err.code = 'BAD_INPUT'; throw err; }
+    updateChanStmt.run({ id: rid, kenh_sale: kenh, staff_id: sid, staff_name: name, zalo_account_key: acctKey, now });
+    return getChanStmt.get({ id: rid });
+  }
+  const info = insertChanStmt.run({ kenh_sale: kenh, staff_id: sid, staff_name: name, zalo_account_key: acctKey, now });
+  return getChanStmt.get({ id: info.lastInsertRowid });
+}
+
+/** Xoá 1 cấu hình kênh sale theo id. Trả true nếu có xoá. */
+function deleteChannelAccount(id) {
+  const rid = parseInt(id, 10);
+  if (!Number.isFinite(rid)) return false;
+  return delChanStmt.run({ id: rid }).changes > 0;
+}
+
+/**
+ * Tra cấu hình kênh sale cho 1 đơn: khớp (kenhSale, staffId) trước, không có thì (kenhSale,
+ * staffName). Trả null nếu không có cấu hình nào khớp.
+ */
+function findChannelAccount({ kenhSale, staffId, staffName } = {}) {
+  const kenh = String(kenhSale || '').trim();
+  if (!kenh) return null;
+  const sid = staffId != null ? String(staffId).trim() : '';
+  if (sid) {
+    const row = findChanByStaffIdStmt.get({ kenh_sale: kenh, staff_id: sid });
+    if (row) return row;
+  }
+  const name = String(staffName || '').trim();
+  if (name) {
+    const row = findChanByStaffNameStmt.get({ kenh_sale: kenh, staff_name: name });
+    if (row) return row;
+  }
+  return null;
+}
+
 // Thẻ thống kê tôn trọng bộ lọc ngày + tìm kiếm (không lọc theo status vì đếm riêng từng loại).
 function stats({ q, from, to, staff, sender, account } = {}) {
   // Không tính 'status' vào WHERE: thẻ thống kê phải hiện đủ 4 trạng thái để bấm lọc.
@@ -962,4 +1058,5 @@ module.exports = {
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
   getContactReportTarget,
+  listChannelAccounts, upsertChannelAccount, deleteChannelAccount, findChannelAccount,
 };
