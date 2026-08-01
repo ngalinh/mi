@@ -19,7 +19,8 @@ const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoM
   getShippingNotified, getShippingTemplates, setShippingTemplate,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone,
+  listChannelAccounts, upsertChannelAccount, deleteChannelAccount } = require('./db');
 const { notifyMany, notifyOrders, requestStopBulk, isBulkRunning } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
@@ -410,6 +411,34 @@ app.delete('/api/staff/:email', async (req, res) => {
   res.json({ ok: removed, removed });
 });
 
+// ---- Cấu hình Kênh Sale: kênh sale + nhân viên -> tài khoản Zalo (xem accountResolver.js) ----
+// Partner API getArrivedVnList KHÔNG trả field kênh sale nên mi không tự nhận diện được — người
+// gửi CHỌN kênh sale cho lượt báo (opts.kenhSale ở /api/notify), mi tra bảng này để chọn account.
+app.get('/api/channel-accounts', (req, res) => res.json({ ok: true, channelAccounts: listChannelAccounts() }));
+
+async function saveChannelAccount(req, res) {
+  if (await guardAdmin(req, res)) return;
+  try {
+    const body = req.body || {};
+    const id = req.params.id != null ? req.params.id : body.id;
+    const channelAccount = upsertChannelAccount({
+      id, kenhSale: body.kenhSale, staffId: body.staffId, staffName: body.staffName, zaloAccountKey: body.zaloAccountKey,
+    });
+    res.json({ ok: true, channelAccount });
+  } catch (e) {
+    if (e.code === 'BAD_INPUT') return res.status(400).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: e.message });
+  }
+}
+app.post('/api/channel-accounts', saveChannelAccount);
+app.put('/api/channel-accounts/:id', saveChannelAccount);
+
+app.delete('/api/channel-accounts/:id', async (req, res) => {
+  if (await guardAdmin(req, res)) return;
+  const removed = deleteChannelAccount(req.params.id);
+  res.json({ ok: removed, removed });
+});
+
 // ---- Danh bạ Zalo (SĐT -> tên hội thoại Zalo/FB) ----
 // Nguồn cho bước tìm hội thoại: khớp SĐT vẫn ưu tiên, tên Zalo dùng làm fallback khi SĐT
 // không ra hội thoại / khách Facebook. Là dữ liệu VẬN HÀNH (rủi ro thấp) nên mọi NV đã đăng
@@ -615,10 +644,10 @@ app.get('/api/order-counts', async (req, res) => {
 
 // ---- Báo hàng loạt: kéo HẾT đơn "Chưa báo" qua mọi trang rồi gửi ----
 // (không bị giới hạn ở trang đang xem). Tự bỏ qua đơn đã Delay và đơn bot/đã báo tay.
-// body: { from?, to?, staff?, q?, kind? }
+// body: { from?, to?, staff?, q?, kind?, kenhSale? }
 app.post('/api/notify-all', async (req, res) => {
   try {
-    const { orders, from, to, staff, q, kind } = req.body || {};
+    const { orders, from, to, staff, q, kind, kenhSale } = req.body || {};
     const actor = getActor(req);
     // Ưu tiên danh sách client gửi lên (dashboard client-mode đã có sẵn cả tập) -> KHÔNG kéo
     // lại từ Basso, tránh timeout khi Basso chậm. Không có thì fallback kéo toàn bộ như cũ.
@@ -636,7 +665,7 @@ app.post('/api/notify-all', async (req, res) => {
     if (!targets.length) {
       return res.json({ ok: true, total: 0, sent: 0, failed: 0, results: [] });
     }
-    const result = await notifyOrders(targets, { kind, actor });
+    const result = await notifyOrders(targets, { kind, kenhSale, actor });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -684,13 +713,14 @@ app.get('/api/order-content', async (req, res) => {
 
 // ---- Báo hàng: gửi tin cho 1 hoặc nhiều đơn ----
 // body: { orders: object[] (ưu tiên, client gửi đơn đầy đủ) | orderIds: string[] (legacy),
-//         profile?, account?, messageOverride?, kind? }
+//         profile?, account?, messageOverride?, kind?,
+//         kenhSale? (Kênh sale đã chọn cho lượt báo — tra Cài đặt → Kênh Sale để chọn account) }
 app.post('/api/notify', async (req, res) => {
   try {
-    const { orders, orderIds, profile, account, messageOverride, kind } = req.body || {};
+    const { orders, orderIds, profile, account, messageOverride, kind, kenhSale } = req.body || {};
     // graceMs: ân hạn TRƯỚC khi tin thật sự đi (chỉ gửi TAY qua route này) — bấm Dừng trong lúc này
     // sẽ hủy sạch. Báo loạt (/api/notify-all) & tự động KHÔNG truyền nên chạy ngay như cũ.
-    const opts = { profile, account, messageOverride, kind, actor: getActor(req), graceMs: config.notify.manualGraceMs };
+    const opts = { profile, account, messageOverride, kind, kenhSale, actor: getActor(req), graceMs: config.notify.manualGraceMs };
     if (Array.isArray(orders) && orders.length) {
       const result = await notifyOrders(orders, opts);
       return res.json({ ok: true, ...result });

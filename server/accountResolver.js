@@ -2,13 +2,16 @@
 const config = require('./config');
 const { getAccountsCached } = require('./playwrightProxy');
 const { getArrivedItems } = require('./bassoApi');
-const { isFacebookOrder } = require('./db');
+const { isFacebookOrder, findChannelAccount } = require('./db');
 
 /**
  * Quyết định gửi đơn bằng tài khoản Zalo nào (MÔ HÌNH B: mỗi account 1 profile riêng).
  *
  * Thứ tự ưu tiên:
  *   1) opts.account truyền thẳng (người dùng chọn cụ thể trên UI) — dùng kèm opts.profile.
+ *   1.5) opts.kenhSale (người dùng chọn Kênh sale cho lượt báo): tra bảng cấu hình (kênh sale +
+ *      NV phụ trách đơn -> tài khoản Zalo, xem db.js findChannelAccount). Basso không trả field
+ *      kênh sale trong dữ liệu đơn nên KHÔNG có nhánh tự nhận diện — chỉ áp dụng khi được chọn.
  *   2) accountsStore (runner): khớp đơn theo staffId (= order.userId) rồi tới tên NV (= order.staff).
  *      - NV chỉ 1 account            -> dùng luôn (không tra API).
  *      - NV nhiều account + có gắn brand -> đọc mã đơn (getArrivedItems), chọn account có
@@ -42,6 +45,24 @@ async function fetchOrderCode(order) {
   } catch {
     return '';
   }
+}
+
+/**
+ * Đóng gói 1 account (tìm theo key) -> shape resolved cho luồng KÊNH SALE. Trả null nếu key
+ * không khớp account nào còn tồn tại (đã xoá/đổi key sau khi cấu hình kênh sale).
+ */
+function fromChannelAccount(row, accounts) {
+  const acct = (accounts || []).find((a) => a.key === row.zalo_account_key);
+  if (!acct) return null;
+  return {
+    channel: 'zalo',
+    profile: acct.key,
+    account: acct.saleworkName || undefined,
+    autoEnabled: acct.autoEnabled !== false,
+    autoEnabledAt: acct.autoEnabledAt || null,
+    notifyTarget: acct.notifyTarget === 'personal' ? 'personal' : 'group',
+    source: 'channel',
+  };
 }
 
 /** Đóng gói 1 account store -> shape resolved. */
@@ -106,6 +127,30 @@ async function resolveForOrder(order, opts = {}) {
       if (found && found.notifyTarget === 'personal') notifyTarget = 'personal';
     } catch { /* không tra được -> giữ 'group' */ }
     return { channel: 'zalo', profile: opts.profile || 'default', account: opts.account, autoEnabled: true, notifyTarget, source: 'explicit' };
+  }
+
+  // 1.5) KÊNH SALE: Basso có "Kênh Sale" hiển thị trên web nhưng Partner API KHÔNG trả field này
+  // (không có cách tự nhận diện kênh sale của 1 đơn) -> người gửi phải CHỌN kênh sale cho lượt báo
+  // (opts.kenhSale, UI báo tay). Có chọn thì tra bảng cấu hình (kênh sale + NV phụ trách đơn ->
+  // tài khoản Zalo). Đây là lựa chọn TƯỜNG MINH của người dùng nên ưu tiên hơn accountsStore/brand.
+  // Không tìm thấy cấu hình/account -> BÁO RÕ (skip), không âm thầm rơi về nhánh khác kẻo gửi
+  // nhầm tài khoản ngoài ý muốn khi người dùng đã chọn đích danh 1 kênh sale.
+  if (opts.kenhSale && String(opts.kenhSale).trim()) {
+    const row = findChannelAccount({
+      kenhSale: opts.kenhSale,
+      staffId: order && order.userId,
+      staffName: order && order.staff,
+    });
+    if (row) {
+      let accounts = [];
+      try { accounts = (await getAccountsCached()).filter((a) => a.platform !== 'facebook'); } catch { accounts = []; }
+      const resolved = fromChannelAccount(row, accounts);
+      if (resolved) return resolved;
+    }
+    return {
+      channel: 'zalo', profile: null, account: undefined, autoEnabled: true,
+      source: 'channel', skip: true, skipReason: 'channel_no_account',
+    };
   }
 
   // 2) accountsStore (Hướng B). Chỉ xét account ZALO ở nhánh này (FB đã xử lý ở trên).

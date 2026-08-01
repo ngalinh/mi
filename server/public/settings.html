@@ -49,6 +49,7 @@
         <div class="tabs" id="settingsTabs" style="margin-top:0;">
           <button class="tab active" data-panel="nhanvien">Danh sách nhân viên</button>
           <button class="tab" data-panel="zalo">Tài khoản</button>
+          <button class="tab" data-panel="kenhsale">Kênh Sale</button>
           <button class="tab" data-panel="proxy">Proxy</button>
           <button class="tab" data-panel="mode">Chế độ</button>
           <button class="tab" data-panel="shiptpl">Mẫu báo ship</button>
@@ -107,6 +108,32 @@
               </thead>
               <tbody id="zaloRows">
                 <tr><td colspan="7" class="muted" style="padding:16px;">Đang tải…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card hidden" data-panel-content="kenhsale" style="margin-top:14px;">
+          <div class="card-header">
+            <h2>Kênh Sale</h2>
+            <button class="btn small" id="addChanBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Thêm cấu hình
+            </button>
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Web Basso có "Kênh Sale" (vd Basso, ShipUS, Linh Dương, Linh Thảo, Cty...) nhưng API mi đang dùng <strong>không</strong> trả field này cho từng đơn — mi không tự nhận diện được. Cấu hình ở đây: <strong>1 kênh sale + 1 nhân viên → 1 tài khoản Zalo</strong>. Khi báo hàng tay, chọn Kênh sale cho lượt báo (ở khung Gửi Zalo) để mi tự chọn đúng tài khoản theo nhân viên phụ trách đơn.</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kênh sale</th>
+                  <th>Nhân viên</th>
+                  <th>Tài khoản Zalo</th>
+                  <th style="text-align:right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="chanRows">
+                <tr><td colspan="4" class="muted" style="padding:16px;">Đang tải…</td></tr>
               </tbody>
             </table>
           </div>
@@ -438,9 +465,35 @@
     </div>
   </div>
 
+  <!-- Popup thêm / sửa cấu hình Kênh Sale -->
+  <div class="modal-bg" id="chanModal">
+    <div class="modal" style="width:460px;">
+      <h3 id="chanTitle">Thêm cấu hình kênh sale</h3>
+      <div class="form-grid">
+        <div class="field full">
+          <label>Kênh sale</label>
+          <input id="chanKenh" type="text" list="chanKenhList" placeholder="vd: Basso, ShipUS, Linh Dương, Linh Thảo, Cty, Kênh CO" />
+          <datalist id="chanKenhList"></datalist>
+        </div>
+        <div class="field full">
+          <label>Nhân viên</label>
+          <select id="chanStaff"><option value="">— Chọn nhân viên —</option></select>
+        </div>
+        <div class="field full">
+          <label>Tài khoản Zalo</label>
+          <select id="chanAccount"><option value="">— Chọn nhân viên trước —</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="chanCancel">Huỷ</button>
+        <button class="btn accent" id="chanSave">Lưu</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/settings.js?v=20260731"></script>
+  <script src="js/settings.js?v=20260731b"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
