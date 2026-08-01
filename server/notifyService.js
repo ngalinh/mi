@@ -193,12 +193,15 @@ async function notifyOne(order, opts = {}) {
   const meta = await resolveOrderMeta(order);
 
   // Bỏ qua có lý do rõ ràng -> ghi 1 dòng "failed" vào Lịch sử báo để người soát xử lý.
-  //   - brand        : NV chưa có Zalo cho brand của đơn (tránh gửi nhầm brand).
-  //   - fb_no_account: đơn thuộc diện báo qua Facebook nhưng NV chưa cấu hình tài khoản Facebook.
-  if (resolved.skip && (resolved.skipReason === 'brand' || resolved.skipReason === 'fb_no_account')) {
+  //   - brand             : NV chưa có Zalo cho brand của đơn (tránh gửi nhầm brand).
+  //   - fb_no_account     : đơn thuộc diện báo qua Facebook nhưng NV chưa cấu hình tài khoản Facebook.
+  //   - channel_no_account: đã chọn Kênh sale nhưng chưa cấu hình (kênh sale + NV) -> tài khoản Zalo.
+  if (resolved.skip && (resolved.skipReason === 'brand' || resolved.skipReason === 'fb_no_account' || resolved.skipReason === 'channel_no_account')) {
     const err = resolved.skipReason === 'fb_no_account'
       ? `Đơn cần báo qua Facebook nhưng NV ${order.staff || '—'} chưa có tài khoản Facebook. Vào Cài đặt → Tài khoản để thêm.`
-      : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${order.staff || '—'}`;
+      : resolved.skipReason === 'channel_no_account'
+        ? `Chưa cấu hình kênh sale "${opts.kenhSale}" cho NV ${order.staff || '—'}. Vào Cài đặt → Kênh Sale để thêm.`
+        : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${order.staff || '—'}`;
     const report = addReport({
       orderId: meta.orderCode,
       customerName: order.customerName,
@@ -332,7 +335,7 @@ async function groupOrdersByProfile(orders, opts = {}) {
     let key = 'default';
     try {
       // eslint-disable-next-line no-await-in-loop
-      const r = await resolveForOrder(list[i], { defaultAccount: opts.defaultAccount, profile: opts.profile });
+      const r = await resolveForOrder(list[i], { defaultAccount: opts.defaultAccount, profile: opts.profile, kenhSale: opts.kenhSale });
       key = r.profile || 'default';
     } catch { /* lỗi resolve -> gom vào 'default' */ }
     tagged.push({ order: list[i], key, i });

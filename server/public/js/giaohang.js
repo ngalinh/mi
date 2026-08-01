@@ -1,6 +1,28 @@
 /* Trang "Quản lý giao hàng" — gọi Partner API qua /api/shipping* (mục 8.10 tài liệu Basso). */
 (function () {
   const $ = (id) => document.getElementById(id);
+
+  // ---- Cột hiển thị (ẩn/hiện tuỳ NV — vd chỉ cần Mã vận đơn + ND ship khi đi báo ship) --------
+  // Vị trí `n` PHẢI khớp đúng thứ tự <th>/<td> trong giaohang.html (nth-child) — đổi thứ tự cột ở
+  // đó thì sửa lại `n` tương ứng ở đây. Lưu lựa chọn ở localStorage -> nhớ qua lần tải trang sau.
+  const COLS = [
+    { key: 'date', label: 'Ngày tạo vận đơn', n: 3 },
+    { key: 'recipient', label: 'Người nhận', n: 4 },
+    { key: 'code', label: 'Mã vận đơn', n: 5 },
+    { key: 'address', label: 'Địa chỉ', n: 6 },
+    { key: 'note', label: 'Ghi chú', n: 7 },
+    { key: 'cod', label: 'Thu COD', n: 8 },
+    { key: 'shipfee', label: 'Phí ship', n: 9 },
+    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 10 },
+    { key: 'status', label: 'Trạng thái', n: 11 },
+    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 12 },
+    { key: 'ndship', label: 'ND ship', n: 13 },
+  ];
+  const COLVIS_LS_KEY = 'mi.giaohang.hiddenCols';
+  function loadHiddenCols() {
+    try { return new Set(JSON.parse(localStorage.getItem(COLVIS_LS_KEY) || '[]')); } catch { return new Set(); }
+  }
+
   const state = {
     page: 1,
     branch: '',
@@ -11,6 +33,7 @@
     shipperLinkIds: new Set(), // ĐVVC bắt buộc shipper_link (AhaMove/Grab)
     expanded: new Set(),
     addrExpanded: new Set(), // id vận đơn đang mở rộng xem đầy đủ địa chỉ
+    hiddenCols: loadHiddenCols(), // Set các key cột đang ẨN (xem "Cột hiển thị" bên dưới)
   };
 
   // "DD/MM/YYYY HH:MM" -> ngày trên, giờ dưới (mờ) cho cột hẹp.
@@ -85,6 +108,48 @@
         <button class="btn secondary small icon-only" data-msg="${o.id}" aria-label="Xem trước nội dung" title="Xem trước nội dung">${App.icon('message')}</button>
         <button class="btn accent small icon-only" data-send="${o.id}" aria-label="Gửi báo ship qua Zalo" title="Gửi báo ship qua Zalo">${App.icon('send')}</button>
       </div>`;
+  }
+
+  // ---- Cột hiển thị (tiếp — xem COLS/loadHiddenCols ở đầu file) --------------------------------
+  function saveHiddenCols() {
+    try { localStorage.setItem(COLVIS_LS_KEY, JSON.stringify([...state.hiddenCols])); } catch { /* private mode -> bỏ qua, chỉ mất nhớ giữa các lần */ }
+  }
+  function applyColVis() {
+    const table = document.querySelector('.gh-table');
+    if (!table) return;
+    const cols = table.querySelectorAll('colgroup col'); // đúng 14 <col>, cùng thứ tự th/td
+    // Ghi nhớ bề rộng GỐC (px) của TỪNG <col> đúng 1 lần (đọc từ style="width:...px" khai trong
+    // HTML) trước khi ghi đè — dùng làm TỈ LỆ để tính % mỗi lần ẩn/hiện sau, không mất mốc gốc.
+    cols.forEach((col) => {
+      if (col.dataset.origWidth === undefined) col.dataset.origWidth = parseFloat(col.style.width) || 0;
+    });
+    // Tổng bề rộng GỐC của các cột ĐANG HIỆN (bỏ cột đã ẩn) — vừa là mẫu số tính %, vừa dùng làm
+    // min-width của <table> (không co hẹp hơn mức đó — còn nhiều cột thì vẫn cuộn ngang như cũ,
+    // không ép bóp méo chữ). Cột 1/2/14 (checkbox/mở rộng/thao tác) không thuộc COLS -> luôn hiện.
+    let sumVisible = 0;
+    cols.forEach((col, i) => {
+      const cfg = COLS.find((c) => c.n === i + 1);
+      if (!cfg || !state.hiddenCols.has(cfg.key)) sumVisible += Number(col.dataset.origWidth);
+    });
+    // Set % cho từng <col> theo ĐÚNG TỈ LỆ bề rộng gốc/tổng còn hiện — kết hợp .gh-table{width:100%}
+    // (CSS) sẽ giãn TỈ LỆ mọi cột lấp đầy khung khi màn rộng hơn sumVisible (responsive), vẫn giữ
+    // đúng tỉ lệ tương đối giữa các cột như thiết kế gốc (không cột nào "hút" hết chỗ trống).
+    cols.forEach((col, i) => {
+      const cfg = COLS.find((c) => c.n === i + 1);
+      const hidden = !!(cfg && state.hiddenCols.has(cfg.key));
+      if (cfg) table.classList.toggle(`hc-${cfg.n}`, hidden); // ẩn th/td tương ứng (CSS nth-child)
+      col.style.width = hidden ? '0' : `${(Number(col.dataset.origWidth) / sumVisible) * 100}%`;
+    });
+    table.style.minWidth = `${sumVisible}px`; // sàn bề rộng — hẹp hơn thì .table-wrap tự cuộn ngang
+  }
+  function renderColVisMenu() {
+    const box = $('colVisMenu');
+    if (!box) return;
+    box.innerHTML = COLS.map((c) => `
+      <label class="colvis-item">
+        <input type="checkbox" data-key="${c.key}" ${state.hiddenCols.has(c.key) ? '' : 'checked'}>
+        ${App.esc(c.label)}
+      </label>`).join('');
   }
 
   // ---- Render -----------------------------------------------------------
@@ -415,6 +480,30 @@
     $('btnBulkShip').onclick = () => bulk('ship');
     $('btnBulkComplete').onclick = () => bulk('complete');
     $('btnPrint').onclick = printSelected;
+
+    // Popover "Cột hiển thị" — tái dùng đúng kiểu mở/đóng của popover "Bộ lọc" (dashboard.js).
+    applyColVis(); // phản ánh lựa chọn đã lưu (localStorage) ngay từ lần render đầu tiên
+    const colVisBtn = $('colVisBtn');
+    const colVisPop = $('colVisPop');
+    colVisBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      colVisPop.hidden = !colVisPop.hidden;
+      if (!colVisPop.hidden) renderColVisMenu();
+    });
+    colVisPop.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', () => { colVisPop.hidden = true; });
+    $('colVisMenu').addEventListener('change', (e) => {
+      const cb = e.target.closest('input[type=checkbox]'); if (!cb) return;
+      if (cb.checked) state.hiddenCols.delete(cb.dataset.key); else state.hiddenCols.add(cb.dataset.key);
+      applyColVis();
+      saveHiddenCols();
+    });
+    $('colVisReset').addEventListener('click', () => {
+      state.hiddenCols.clear();
+      applyColVis();
+      saveHiddenCols();
+      renderColVisMenu();
+    });
     $('rows').addEventListener('click', (e) => {
       const eye = e.target.closest('[data-eye]');
       if (eye) {

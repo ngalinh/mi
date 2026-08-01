@@ -12,6 +12,7 @@
     panels.forEach((pl) => pl.classList.toggle('hidden', pl.dataset.panelContent !== p));
     if (p === 'proxy') loadProxy();
     if (p === 'zalo') loadZalo();
+    if (p === 'kenhsale') loadChan();
     if (p === 'log') loadLog();
     if (p === 'syslog') loadSystemLog();
     if (p === 'shiptpl') loadShipTemplates();
@@ -141,6 +142,9 @@
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
   let zEditing = null;   // key đang sửa, null = thêm mới
   let accountsAll = [];  // toàn bộ account (cả 2 kênh) lần tải gần nhất
+  // Đang thêm tài khoản Zalo MỚI từ giữa popup "Kênh Sale" (NV chưa có account cho kênh này) ->
+  // sau khi lưu xong, mở lại popup Kênh Sale với NV/kênh sale cũ + tự chọn account vừa thêm.
+  let chanResume = null; // { kenhSale, staffId, editingId } | null
 
   // Icon SVG line dùng chung cho các nút hành động (đồng bộ với .icon toàn hệ).
   const IC = {
@@ -342,7 +346,13 @@
         App.toast(`✅ ${r.message || 'Đã thêm tài khoản'}`, 7000);
       }
       closeZalo();
-      loadZalo();
+      await loadZalo();
+      // Vừa thêm tài khoản Zalo cho NV đang cấu hình kênh sale dở -> mở lại popup Kênh Sale,
+      // giữ nguyên kênh sale/NV đã nhập + tự chọn LUÔN account vừa thêm (đỡ 1 bước chọn tay).
+      if (chanResume) {
+        const resume = chanResume; chanResume = null;
+        reopenChanAfterZalo(resume, key);
+      }
     } catch (e) {
       App.toast(`❌ ${e.message}`, 6000);
     }
@@ -411,6 +421,176 @@
   loadZalo();
 
   // Khách báo qua Facebook nay quản ở trang Danh bạ (theo SĐT + link + NV phụ trách) — bỏ tab riêng.
+
+  // ---------------- Kênh Sale (kênh sale + nhân viên -> tài khoản Zalo) ----------------
+  // Web Basso có "Kênh Sale" nhưng API mi đang dùng không trả field này cho từng đơn -> mi không
+  // tự nhận diện được. Cấu hình ở đây rồi CHỌN kênh sale lúc báo tay (xem accountResolver.js).
+  const chanRows = $('chanRows');
+  const cm = $('chanModal');
+  const chanKenh = $('chanKenh'), chanKenhList = $('chanKenhList'),
+    chanStaffSel = $('chanStaff'), chanAccountSel = $('chanAccount');
+  let chanEditing = null;        // id đang sửa, null = thêm mới
+  let channelAccountsAll = [];   // cấu hình đã tải lần gần nhất (kèm nhãn tài khoản để hiển thị)
+
+  // Danh sách "Nhân viên" lấy từ TOÀN BỘ NV trên Basso (bassoStaff, nạp qua loadBassoStaff() ở
+  // trên) — KHÔNG giới hạn ở NV đã có sẵn tài khoản Zalo, vì cấu hình kênh sale cần chọn đúng NV
+  // Basso trước rồi mới gán tài khoản Zalo (NV chưa có tài khoản thì báo rõ, chặn Lưu).
+  function zaloAcctsForStaff(u) {
+    if (!u) return [];
+    const uid = String(u.user_id || '').trim();
+    const nm = String(u.name || '').trim().toLowerCase();
+    let list = accountsAll.filter((a) => a.platform !== 'facebook' && uid && String(a.staffId || '').trim() === uid);
+    if (!list.length && nm) list = accountsAll.filter((a) => a.platform !== 'facebook' && String(a.name || '').trim().toLowerCase() === nm);
+    return list;
+  }
+  function refreshChanStaffOptions() {
+    chanStaffSel.innerHTML = '<option value="">— Chọn nhân viên —</option>'
+      + bassoStaff.map((u) => `<option value="${App.esc(u.user_id)}" data-name="${App.esc(u.name)}" data-staffid="${App.esc(u.user_id)}">${App.esc(u.name)} (NV Basso #${App.esc(u.user_id)})</option>`).join('');
+  }
+  function chanAccountOptionsHtml(u) {
+    const list = zaloAcctsForStaff(u);
+    if (!list.length) return '<option value="">— NV chưa có tài khoản Zalo (thêm ở tab Tài khoản) —</option>';
+    return '<option value="">— Chọn tài khoản —</option>'
+      + list.map((a) => `<option value="${App.esc(a.key)}">${App.esc(a.saleworkName || a.name || a.key)}${a.brand ? ` (${App.esc(a.brand)})` : ''}</option>`).join('');
+  }
+  chanStaffSel.addEventListener('change', () => {
+    const u = bassoStaff.find((x) => String(x.user_id) === chanStaffSel.value);
+    chanAccountSel.innerHTML = chanAccountOptionsHtml(u);
+  });
+
+  function chanRowHtml(r) {
+    return `<tr data-id="${App.esc(r.id)}">
+      <td>${App.esc(r.kenh_sale)}</td>
+      <td>${App.esc(r.staff_name)}</td>
+      <td>${App.esc(r.zalo_account_label)}</td>
+      <td style="text-align:right">
+        <button class="link-btn" data-action="edit">Sửa</button>
+        <button class="link-btn" data-action="del" style="color:var(--danger,#d33)">Xoá</button>
+      </td>
+    </tr>`;
+  }
+  function renderChan(list) {
+    channelAccountsAll = list || [];
+    if (!channelAccountsAll.length) {
+      chanRows.innerHTML = '<tr><td colspan="4" class="muted" style="padding:16px;">Chưa có cấu hình nào. Bấm “Thêm cấu hình”.</td></tr>';
+      return;
+    }
+    chanRows.innerHTML = channelAccountsAll.map(chanRowHtml).join('');
+  }
+  async function loadChan() {
+    try {
+      const r = await App.api('/api/channel-accounts');
+      const rows = (r.channelAccounts || []).map((row) => {
+        const a = accountsAll.find((x) => x.key === row.zalo_account_key);
+        return { ...row, zalo_account_label: a ? (a.saleworkName || a.name || a.key) : `${row.zalo_account_key} (đã xoá?)` };
+      });
+      renderChan(rows);
+      const kenhSet = [...new Set(rows.map((r) => r.kenh_sale))];
+      chanKenhList.innerHTML = kenhSet.map((k) => `<option value="${App.esc(k)}"></option>`).join('');
+    } catch (e) {
+      chanRows.innerHTML = `<tr><td colspan="4" class="muted" style="padding:16px;">Không tải được danh sách: ${App.esc(e.message)}</td></tr>`;
+    }
+  }
+  function openChan(r) {
+    chanEditing = r ? r.id : null;
+    $('chanTitle').textContent = r ? 'Sửa cấu hình kênh sale' : 'Thêm cấu hình kênh sale';
+    refreshChanStaffOptions();
+    chanKenh.value = r ? r.kenh_sale : '';
+    let u = null;
+    if (r) {
+      u = bassoStaff.find((x) => String(x.user_id) === String(r.staff_id))
+        || bassoStaff.find((x) => String(x.name || '').trim().toLowerCase() === String(r.staff_name || '').trim().toLowerCase());
+      if (!u) {
+        // Cấu hình cũ trỏ tới NV không còn khớp danh sách Basso hiện tại (đổi tên/nghỉ việc?) ->
+        // vẫn hiện tạm 1 dòng riêng để không mất dữ liệu khi mở sửa.
+        u = { user_id: r.staff_id || '', name: r.staff_name };
+        const opt = document.createElement('option');
+        opt.value = String(u.user_id);
+        opt.textContent = `${u.name} (không khớp danh sách NV Basso hiện tại)`;
+        opt.dataset.name = u.name;
+        opt.dataset.staffid = String(u.user_id);
+        chanStaffSel.appendChild(opt);
+      }
+    }
+    chanStaffSel.value = u ? String(u.user_id) : '';
+    chanAccountSel.innerHTML = chanAccountOptionsHtml(u);
+    if (r) chanAccountSel.value = r.zalo_account_key;
+    cm.classList.add('show');
+  }
+  // Mở lại popup Kênh Sale SAU KHI vừa thêm 1 tài khoản Zalo mới cho NV từ giữa popup này
+  // (xem nút #chanAddAcctBtn + saveZalo) — giữ nguyên kênh sale/NV đã nhập, tự chọn account mới.
+  function reopenChanAfterZalo(resume, newAccountKey) {
+    chanEditing = resume.editingId || null;
+    $('chanTitle').textContent = chanEditing ? 'Sửa cấu hình kênh sale' : 'Thêm cấu hình kênh sale';
+    refreshChanStaffOptions();
+    chanKenh.value = resume.kenhSale || '';
+    chanStaffSel.value = String(resume.staffId || '');
+    const u = bassoStaff.find((x) => String(x.user_id) === String(resume.staffId));
+    chanAccountSel.innerHTML = chanAccountOptionsHtml(u);
+    if (newAccountKey) chanAccountSel.value = newAccountKey;
+    cm.classList.add('show');
+  }
+  function closeChan() { cm.classList.remove('show'); }
+
+  $('addChanBtn').addEventListener('click', () => openChan(null));
+  const chanAddAcctBtn = $('chanAddAcctBtn');
+  if (chanAddAcctBtn) {
+    chanAddAcctBtn.addEventListener('click', () => {
+      const u = bassoStaff.find((x) => String(x.user_id) === chanStaffSel.value);
+      if (!u) { App.toast('❌ Chọn nhân viên trước', 4000); return; }
+      // Đóng tạm popup Kênh Sale để mở popup Thêm tài khoản (đã điền sẵn tên + staffId NV) —
+      // lưu xong sẽ tự mở lại (saveZalo -> reopenChanAfterZalo).
+      chanResume = { kenhSale: chanKenh.value, staffId: u.user_id, editingId: chanEditing };
+      closeChan();
+      openZalo(null, { platform: 'zalo', name: u.name, staffId: u.user_id });
+    });
+  }
+  $('chanCancel').addEventListener('click', closeChan);
+  cm.addEventListener('click', (e) => { if (e.target === cm) closeChan(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeChan(); });
+  $('chanSave').addEventListener('click', async () => {
+    const kenhSale = chanKenh.value.trim();
+    const staffOpt = chanStaffSel.selectedOptions[0];
+    const zaloAccountKey = chanAccountSel.value;
+    if (!kenhSale) { App.toast('❌ Cần điền Kênh sale', 5000); return; }
+    if (!staffOpt || !staffOpt.value) { App.toast('❌ Cần chọn Nhân viên', 5000); return; }
+    if (!zaloAccountKey) { App.toast('❌ Cần chọn Tài khoản Zalo (thêm ở tab Tài khoản nếu NV chưa có)', 6000); return; }
+    const body = {
+      kenhSale,
+      staffId: staffOpt.dataset.staffid || '',
+      staffName: staffOpt.dataset.name || '',
+      zaloAccountKey,
+    };
+    try {
+      if (chanEditing) {
+        await App.api(`/api/channel-accounts/${encodeURIComponent(chanEditing)}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+      } else {
+        await App.api('/api/channel-accounts', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+      }
+      App.toast('✅ Đã lưu cấu hình kênh sale');
+      closeChan();
+      loadChan();
+    } catch (e) {
+      App.toast(`❌ ${e.message}`, 6000);
+    }
+  });
+  chanRows.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-action]'); if (!b) return;
+    const tr = b.closest('tr'); if (!tr) return;
+    const row = channelAccountsAll.find((x) => String(x.id) === tr.dataset.id);
+    if (!row) return;
+    if (b.dataset.action === 'edit') { openChan(row); return; }
+    if (b.dataset.action === 'del') {
+      if (!confirm(`Xoá cấu hình "${row.kenh_sale} — ${row.staff_name}"?`)) return;
+      App.api(`/api/channel-accounts/${encodeURIComponent(row.id)}`, { method: 'DELETE' })
+        .then(() => { App.toast('Đã xoá'); loadChan(); })
+        .catch((err) => App.toast(`❌ ${err.message}`, 6000));
+    }
+  });
 
   // ---------------- Proxy theo tài khoản Zalo & Facebook (nối backend thật) ----------------
   const proxyRows = $('proxyRows');
