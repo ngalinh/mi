@@ -15,7 +15,7 @@
        width:100% + min-width = TỔNG bề rộng khai báo của các cột ĐANG HIỆN (JS cập nhật mỗi lần
        ẩn/hiện) -> màn rộng thì các cột còn lại tự giãn lấp khung; màn hẹp hơn tổng đó thì
        .table-wrap tự cuộn ngang như cũ (xem styles.css), không bị bóp méo cột. */
-    .gh-table{table-layout:fixed;width:100%;min-width:1780px}
+    .gh-table{table-layout:fixed;width:100%;min-width:1890px}
     .gh-table th,.gh-table td{padding:12px 10px;word-break:break-word;overflow-wrap:anywhere;vertical-align:top}
     .table-wrap .gh-table thead th{white-space:normal;line-height:1.25}
     .gh-table td{font-size:13px}
@@ -98,6 +98,7 @@
     .gh-table.hc-11 th:nth-child(11),.gh-table.hc-11 td:nth-child(11){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
     .gh-table.hc-12 th:nth-child(12),.gh-table.hc-12 td:nth-child(12){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
     .gh-table.hc-13 th:nth-child(13),.gh-table.hc-13 td:nth-child(13){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-14 th:nth-child(14),.gh-table.hc-14 td:nth-child(14){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
   </style>
 </head>
 <body>
@@ -178,6 +179,7 @@
               <colgroup>
                 <col style="width:40px"><col style="width:40px">
                 <col style="width:110px"><col style="width:160px">
+                <col style="width:110px">
                 <col style="width:180px">
                 <col style="width:230px"><col style="width:150px">
                 <col style="width:100px"><col style="width:100px">
@@ -191,6 +193,7 @@
                   <th></th>
                   <th>Ngày tạo vận đơn</th>
                   <th>Người nhận</th>
+                  <th>Nhân viên</th>
                   <th>Mã vận đơn</th>
                   <th>Địa chỉ</th>
                   <th>Ghi chú</th>
@@ -203,7 +206,7 @@
                   <th class="center"></th>
                 </tr>
               </thead>
-              <tbody id="rows"><tr><td colspan="14" class="empty">Đang tải...</td></tr></tbody>
+              <tbody id="rows"><tr><td colspan="15" class="empty">Đang tải...</td></tr></tbody>
             </table>
           </div>
           <div class="pager hidden" id="pager"></div>
@@ -229,7 +232,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/giaohang.js?v=20260801a"></script>
+  <script src="js/giaohang.js?v=20260801b"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
