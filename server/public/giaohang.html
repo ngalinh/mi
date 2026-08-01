@@ -9,10 +9,13 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="css/styles.css?v=20260725" />
   <style>
-    /* Bảng giao hàng: table-layout:fixed + width cố định = TỔNG các <col> -> mỗi cột đúng bề
-       rộng đã khai (không bị 1 ô nội dung dài — vd link shipper nowrap — "hút" hết chỗ của
-       cột khác như kiểu auto). Bảng rộng hơn khung thì .table-wrap tự cuộn ngang (xem styles.css). */
-    .gh-table{table-layout:fixed;width:1800px}
+    /* Bảng giao hàng: table-layout:fixed + <col> theo % (đặt bởi applyColVis() ở giaohang.js) ->
+       mỗi cột giữ ĐÚNG TỈ LỆ đã khai (không bị 1 ô nội dung dài — vd link shipper nowrap — "hút"
+       hết chỗ của cột khác như kiểu auto), NHƯNG vẫn giãn lấp đầy khung khi ẩn bớt cột (responsive).
+       width:100% + min-width = TỔNG bề rộng khai báo của các cột ĐANG HIỆN (JS cập nhật mỗi lần
+       ẩn/hiện) -> màn rộng thì các cột còn lại tự giãn lấp khung; màn hẹp hơn tổng đó thì
+       .table-wrap tự cuộn ngang như cũ (xem styles.css), không bị bóp méo cột. */
+    .gh-table{table-layout:fixed;width:100%;min-width:1800px}
     .gh-table th,.gh-table td{padding:12px 10px;word-break:break-word;overflow-wrap:anywhere;vertical-align:top}
     .table-wrap .gh-table thead th{white-space:normal;line-height:1.25}
     .gh-table td{font-size:13px}
@@ -221,7 +224,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/giaohang.js?v=20260731f"></script>
+  <script src="js/giaohang.js?v=20260731g"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>

@@ -98,29 +98,29 @@
     const table = document.querySelector('.gh-table');
     if (!table) return;
     const cols = table.querySelectorAll('colgroup col'); // đúng 14 <col>, cùng thứ tự th/td
-    // Ghi nhớ bề rộng GỐC của từng <col> đúng 1 lần (đọc từ style="width:...px" khai trong HTML)
-    // trước khi lỡ ghi đè — nếu không, lần ẨN → HIỆN lại sẽ mất mốc để khôi phục đúng bề rộng cũ.
-    COLS.forEach((c) => {
-      const col = cols[c.n - 1]; // nth-child 1-based, NodeList 0-based
-      if (col && col.dataset.origWidth === undefined) col.dataset.origWidth = col.style.width || '';
+    // Ghi nhớ bề rộng GỐC (px) của TỪNG <col> đúng 1 lần (đọc từ style="width:...px" khai trong
+    // HTML) trước khi ghi đè — dùng làm TỈ LỆ để tính % mỗi lần ẩn/hiện sau, không mất mốc gốc.
+    cols.forEach((col) => {
+      if (col.dataset.origWidth === undefined) col.dataset.origWidth = parseFloat(col.style.width) || 0;
     });
-    COLS.forEach((c) => {
-      const hidden = state.hiddenCols.has(c.key);
-      table.classList.toggle(`hc-${c.n}`, hidden); // ẩn th/td tương ứng (CSS nth-child)
-      // table-layout:fixed lấy bề rộng từ <col> — phải set width:0 TRỰC TIẾP lên đúng <col> mới co
-      // cột lại thật (không dùng visibility:collapse trên <col>: Chromium làm sai bề rộng các cột
-      // liền sau khi kết hợp table-layout:fixed, đã kiểm chứng thực tế khi làm tính năng này).
-      const col = cols[c.n - 1];
-      if (col) col.style.width = hidden ? '0px' : col.dataset.origWidth;
+    // Tổng bề rộng GỐC của các cột ĐANG HIỆN (bỏ cột đã ẩn) — vừa là mẫu số tính %, vừa dùng làm
+    // min-width của <table> (không co hẹp hơn mức đó — còn nhiều cột thì vẫn cuộn ngang như cũ,
+    // không ép bóp méo chữ). Cột 1/2/14 (checkbox/mở rộng/thao tác) không thuộc COLS -> luôn hiện.
+    let sumVisible = 0;
+    cols.forEach((col, i) => {
+      const cfg = COLS.find((c) => c.n === i + 1);
+      if (!cfg || !state.hiddenCols.has(cfg.key)) sumVisible += Number(col.dataset.origWidth);
     });
-    // .gh-table còn khai width:1800px CỐ ĐỊNH (css) — co 1 <col> về 0 mà KHÔNG chỉnh lại width
-    // của <table>, trình duyệt sẽ giãn TỈ LỆ các cột còn lại cho đủ 1800px (table-layout:fixed vẫn
-    // tôn trọng width tổng đã khai) thay vì thật sự co bảng lại. Nên phải tự tính lại tổng bề rộng
-    // các <col> hiện có (đã trừ cột ẩn) rồi set thẳng lên <table> — giành quyền kiểm soát width từ
-    // CSS tĩnh sang JS (style inline có độ ưu tiên cao hơn nên luôn thắng, kể cả lần render đầu).
-    let total = 0;
-    cols.forEach((col) => { total += parseFloat(col.style.width) || 0; });
-    if (total > 0) table.style.width = `${total}px`;
+    // Set % cho từng <col> theo ĐÚNG TỈ LỆ bề rộng gốc/tổng còn hiện — kết hợp .gh-table{width:100%}
+    // (CSS) sẽ giãn TỈ LỆ mọi cột lấp đầy khung khi màn rộng hơn sumVisible (responsive), vẫn giữ
+    // đúng tỉ lệ tương đối giữa các cột như thiết kế gốc (không cột nào "hút" hết chỗ trống).
+    cols.forEach((col, i) => {
+      const cfg = COLS.find((c) => c.n === i + 1);
+      const hidden = !!(cfg && state.hiddenCols.has(cfg.key));
+      if (cfg) table.classList.toggle(`hc-${cfg.n}`, hidden); // ẩn th/td tương ứng (CSS nth-child)
+      col.style.width = hidden ? '0' : `${(Number(col.dataset.origWidth) / sumVisible) * 100}%`;
+    });
+    table.style.minWidth = `${sumVisible}px`; // sàn bề rộng — hẹp hơn thì .table-wrap tự cuộn ngang
   }
   function renderColVisMenu() {
     const box = $('colVisMenu');
