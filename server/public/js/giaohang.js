@@ -97,7 +97,30 @@
   function applyColVis() {
     const table = document.querySelector('.gh-table');
     if (!table) return;
-    COLS.forEach((c) => table.classList.toggle(`hc-${c.n}`, state.hiddenCols.has(c.key)));
+    const cols = table.querySelectorAll('colgroup col'); // đúng 14 <col>, cùng thứ tự th/td
+    // Ghi nhớ bề rộng GỐC (px) của TỪNG <col> đúng 1 lần (đọc từ style="width:...px" khai trong
+    // HTML) trước khi ghi đè — dùng làm TỈ LỆ để tính % mỗi lần ẩn/hiện sau, không mất mốc gốc.
+    cols.forEach((col) => {
+      if (col.dataset.origWidth === undefined) col.dataset.origWidth = parseFloat(col.style.width) || 0;
+    });
+    // Tổng bề rộng GỐC của các cột ĐANG HIỆN (bỏ cột đã ẩn) — vừa là mẫu số tính %, vừa dùng làm
+    // min-width của <table> (không co hẹp hơn mức đó — còn nhiều cột thì vẫn cuộn ngang như cũ,
+    // không ép bóp méo chữ). Cột 1/2/14 (checkbox/mở rộng/thao tác) không thuộc COLS -> luôn hiện.
+    let sumVisible = 0;
+    cols.forEach((col, i) => {
+      const cfg = COLS.find((c) => c.n === i + 1);
+      if (!cfg || !state.hiddenCols.has(cfg.key)) sumVisible += Number(col.dataset.origWidth);
+    });
+    // Set % cho từng <col> theo ĐÚNG TỈ LỆ bề rộng gốc/tổng còn hiện — kết hợp .gh-table{width:100%}
+    // (CSS) sẽ giãn TỈ LỆ mọi cột lấp đầy khung khi màn rộng hơn sumVisible (responsive), vẫn giữ
+    // đúng tỉ lệ tương đối giữa các cột như thiết kế gốc (không cột nào "hút" hết chỗ trống).
+    cols.forEach((col, i) => {
+      const cfg = COLS.find((c) => c.n === i + 1);
+      const hidden = !!(cfg && state.hiddenCols.has(cfg.key));
+      if (cfg) table.classList.toggle(`hc-${cfg.n}`, hidden); // ẩn th/td tương ứng (CSS nth-child)
+      col.style.width = hidden ? '0' : `${(Number(col.dataset.origWidth) / sumVisible) * 100}%`;
+    });
+    table.style.minWidth = `${sumVisible}px`; // sàn bề rộng — hẹp hơn thì .table-wrap tự cuộn ngang
   }
   function renderColVisMenu() {
     const box = $('colVisMenu');

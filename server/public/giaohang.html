@@ -9,10 +9,13 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="css/styles.css?v=20260725" />
   <style>
-    /* Bảng giao hàng: table-layout:fixed + width cố định = TỔNG các <col> -> mỗi cột đúng bề
-       rộng đã khai (không bị 1 ô nội dung dài — vd link shipper nowrap — "hút" hết chỗ của
-       cột khác như kiểu auto). Bảng rộng hơn khung thì .table-wrap tự cuộn ngang (xem styles.css). */
-    .gh-table{table-layout:fixed;width:1800px}
+    /* Bảng giao hàng: table-layout:fixed + <col> theo % (đặt bởi applyColVis() ở giaohang.js) ->
+       mỗi cột giữ ĐÚNG TỈ LỆ đã khai (không bị 1 ô nội dung dài — vd link shipper nowrap — "hút"
+       hết chỗ của cột khác như kiểu auto), NHƯNG vẫn giãn lấp đầy khung khi ẩn bớt cột (responsive).
+       width:100% + min-width = TỔNG bề rộng khai báo của các cột ĐANG HIỆN (JS cập nhật mỗi lần
+       ẩn/hiện) -> màn rộng thì các cột còn lại tự giãn lấp khung; màn hẹp hơn tổng đó thì
+       .table-wrap tự cuộn ngang như cũ (xem styles.css), không bị bóp méo cột. */
+    .gh-table{table-layout:fixed;width:100%;min-width:1800px}
     .gh-table th,.gh-table td{padding:12px 10px;word-break:break-word;overflow-wrap:anywhere;vertical-align:top}
     .table-wrap .gh-table thead th{white-space:normal;line-height:1.25}
     .gh-table td{font-size:13px}
@@ -71,18 +74,25 @@
     .colvis-item{display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;color:var(--text);cursor:pointer;border-radius:6px}
     .colvis-item:hover{background:var(--bg)}
     .colvis-item input{margin:0;flex:none}
-    /* Ẩn cột theo vị trí (khớp đúng thứ tự <th>/<td> trong bảng) khi bảng có class hc-N tương ứng */
-    .gh-table.hc-3 th:nth-child(3),.gh-table.hc-3 td:nth-child(3){display:none}
-    .gh-table.hc-4 th:nth-child(4),.gh-table.hc-4 td:nth-child(4){display:none}
-    .gh-table.hc-5 th:nth-child(5),.gh-table.hc-5 td:nth-child(5){display:none}
-    .gh-table.hc-6 th:nth-child(6),.gh-table.hc-6 td:nth-child(6){display:none}
-    .gh-table.hc-7 th:nth-child(7),.gh-table.hc-7 td:nth-child(7){display:none}
-    .gh-table.hc-8 th:nth-child(8),.gh-table.hc-8 td:nth-child(8){display:none}
-    .gh-table.hc-9 th:nth-child(9),.gh-table.hc-9 td:nth-child(9){display:none}
-    .gh-table.hc-10 th:nth-child(10),.gh-table.hc-10 td:nth-child(10){display:none}
-    .gh-table.hc-11 th:nth-child(11),.gh-table.hc-11 td:nth-child(11){display:none}
-    .gh-table.hc-12 th:nth-child(12),.gh-table.hc-12 td:nth-child(12){display:none}
-    .gh-table.hc-13 th:nth-child(13),.gh-table.hc-13 td:nth-child(13){display:none}
+    /* Ẩn cột theo vị trí (khớp đúng thứ tự <th>/<td> trong bảng) khi bảng có class hc-N tương ứng.
+       QUAN TRỌNG: dùng visibility:hidden (KHÔNG dùng display:none) cho th/td — display:none gỡ hẳn
+       ô đó khỏi việc "đếm cột" của trình duyệt, khiến MỌI ô sau nó trong hàng bị gán NHẦM sang <col>
+       của ô đứng trước (lệch dần, đã kiểm chứng thực tế khi làm tính năng này: ẩn cột 3+4 làm cột 5
+       hiện sai bề rộng của cột 3, cột 6 sai bề rộng cột 4, v.v.). visibility:hidden vẫn giữ đúng chỗ
+       trong hàng (không lệch cột) mà không hiện nội dung; kết hợp set width:0 + padding:0 để co hẳn
+       bề rộng ô về 0 (table-layout:fixed lấy bề rộng cột từ <colgroup><col> — applyColVis() trong
+       giaohang.js còn set width:0 trực tiếp lên <col> tương ứng + tính lại width tổng của <table>). */
+    .gh-table.hc-3 th:nth-child(3),.gh-table.hc-3 td:nth-child(3){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-4 th:nth-child(4),.gh-table.hc-4 td:nth-child(4){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-5 th:nth-child(5),.gh-table.hc-5 td:nth-child(5){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-6 th:nth-child(6),.gh-table.hc-6 td:nth-child(6){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-7 th:nth-child(7),.gh-table.hc-7 td:nth-child(7){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-8 th:nth-child(8),.gh-table.hc-8 td:nth-child(8){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-9 th:nth-child(9),.gh-table.hc-9 td:nth-child(9){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-10 th:nth-child(10),.gh-table.hc-10 td:nth-child(10){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-11 th:nth-child(11),.gh-table.hc-11 td:nth-child(11){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-12 th:nth-child(12),.gh-table.hc-12 td:nth-child(12){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
+    .gh-table.hc-13 th:nth-child(13),.gh-table.hc-13 td:nth-child(13){visibility:hidden;width:0;padding:0;overflow:hidden;white-space:nowrap}
   </style>
 </head>
 <body>
@@ -214,7 +224,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/giaohang.js?v=20260731e"></script>
+  <script src="js/giaohang.js?v=20260731g"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
