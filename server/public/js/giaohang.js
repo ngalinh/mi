@@ -67,19 +67,23 @@
     return !!o.shipperLink || ['exported', 'completed', 'carrier_submitted'].includes(o.statusCode);
   }
 
-  // Cột "ND ship": chưa gửi -> "Xem" (mở modal xem/sửa trước khi gửi) + "Gửi" (gửi thẳng, không
-  // cần mở modal). Đã gửi -> chỉ còn "Xem" (coi lại nội dung đã gửi) + giờ đã gửi, ẩn nút Gửi để
-  // khỏi bấm nhầm gửi trùng (đã có chống trùng phía server, đây là tránh thao tác thừa).
+  // Cột "ND ship": chưa gửi -> icon "Xem" (mở modal xem/sửa trước khi gửi) + icon "Gửi" (gửi
+  // thẳng, không cần mở modal) — icon-only cho gọn, hover ra tooltip tên. Đã gửi -> chỉ còn icon
+  // Xem (coi lại nội dung đã gửi) + giờ đã gửi, ẩn nút Gửi để khỏi bấm nhầm gửi trùng (đã có
+  // chống trùng phía server, đây là tránh thao tác thừa).
   function renderNdShip(o) {
     if (!canPreviewMsg(o)) return '<span class="muted">—</span>';
     if (o.shipSentAt) {
-      return `<button class="btn secondary small" data-msg="${o.id}">${App.icon('message')} Xem</button>
+      return `
+        <div class="ship-ndship-actions">
+          <button class="btn small icon-only" data-msg="${o.id}" aria-label="Xem nội dung đã gửi" title="Xem nội dung đã gửi">${App.icon('message')}</button>
+        </div>
         <div class="ship-sub ship-sent-at">${App.icon('clock')} ${App.esc(fmtSentAt(o.shipSentAt))}</div>`;
     }
     return `
       <div class="ship-ndship-actions">
-        <button class="btn secondary small" data-msg="${o.id}">${App.icon('message')} Xem</button>
-        <button class="btn accent small" data-send="${o.id}">${App.icon('send')} Gửi</button>
+        <button class="btn secondary small icon-only" data-msg="${o.id}" aria-label="Xem trước nội dung" title="Xem trước nội dung">${App.icon('message')}</button>
+        <button class="btn accent small icon-only" data-send="${o.id}" aria-label="Gửi báo ship qua Zalo" title="Gửi báo ship qua Zalo">${App.icon('send')}</button>
       </div>`;
   }
 
@@ -346,7 +350,7 @@
     const o = state.orders.find((x) => String(x.id) === String(id));
     if (!o) return;
     const orig = btn.innerHTML;
-    btn.disabled = true; btn.innerHTML = 'Đang gửi...';
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
       const r = await App.api('/api/shipping/send', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
