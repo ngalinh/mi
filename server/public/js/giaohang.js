@@ -1,6 +1,28 @@
 /* Trang "Quản lý giao hàng" — gọi Partner API qua /api/shipping* (mục 8.10 tài liệu Basso). */
 (function () {
   const $ = (id) => document.getElementById(id);
+
+  // ---- Cột hiển thị (ẩn/hiện tuỳ NV — vd chỉ cần Mã vận đơn + ND ship khi đi báo ship) --------
+  // Vị trí `n` PHẢI khớp đúng thứ tự <th>/<td> trong giaohang.html (nth-child) — đổi thứ tự cột ở
+  // đó thì sửa lại `n` tương ứng ở đây. Lưu lựa chọn ở localStorage -> nhớ qua lần tải trang sau.
+  const COLS = [
+    { key: 'date', label: 'Ngày tạo vận đơn', n: 3 },
+    { key: 'recipient', label: 'Người nhận', n: 4 },
+    { key: 'code', label: 'Mã vận đơn', n: 5 },
+    { key: 'address', label: 'Địa chỉ', n: 6 },
+    { key: 'note', label: 'Ghi chú', n: 7 },
+    { key: 'cod', label: 'Thu COD', n: 8 },
+    { key: 'shipfee', label: 'Phí ship', n: 9 },
+    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 10 },
+    { key: 'status', label: 'Trạng thái', n: 11 },
+    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 12 },
+    { key: 'ndship', label: 'ND ship', n: 13 },
+  ];
+  const COLVIS_LS_KEY = 'mi.giaohang.hiddenCols';
+  function loadHiddenCols() {
+    try { return new Set(JSON.parse(localStorage.getItem(COLVIS_LS_KEY) || '[]')); } catch { return new Set(); }
+  }
+
   const state = {
     page: 1,
     branch: '',
@@ -11,6 +33,7 @@
     shipperLinkIds: new Set(), // ĐVVC bắt buộc shipper_link (AhaMove/Grab)
     expanded: new Set(),
     addrExpanded: new Set(), // id vận đơn đang mở rộng xem đầy đủ địa chỉ
+    hiddenCols: loadHiddenCols(), // Set các key cột đang ẨN (xem "Cột hiển thị" bên dưới)
   };
 
   // "DD/MM/YYYY HH:MM" -> ngày trên, giờ dưới (mờ) cho cột hẹp.
@@ -65,6 +88,25 @@
   // Đơn có thể xem trước tin báo ship: đã có link, hoặc đã giao shipper/đã giao/lên đơn vận.
   function canPreviewMsg(o) {
     return !!o.shipperLink || ['exported', 'completed', 'carrier_submitted'].includes(o.statusCode);
+  }
+
+  // ---- Cột hiển thị (tiếp — xem COLS/loadHiddenCols ở đầu file) --------------------------------
+  function saveHiddenCols() {
+    try { localStorage.setItem(COLVIS_LS_KEY, JSON.stringify([...state.hiddenCols])); } catch { /* private mode -> bỏ qua, chỉ mất nhớ giữa các lần */ }
+  }
+  function applyColVis() {
+    const table = document.querySelector('.gh-table');
+    if (!table) return;
+    COLS.forEach((c) => table.classList.toggle(`hc-${c.n}`, state.hiddenCols.has(c.key)));
+  }
+  function renderColVisMenu() {
+    const box = $('colVisMenu');
+    if (!box) return;
+    box.innerHTML = COLS.map((c) => `
+      <label class="colvis-item">
+        <input type="checkbox" data-key="${c.key}" ${state.hiddenCols.has(c.key) ? '' : 'checked'}>
+        ${App.esc(c.label)}
+      </label>`).join('');
   }
 
   // ---- Render -----------------------------------------------------------
@@ -370,6 +412,30 @@
     $('btnBulkShip').onclick = () => bulk('ship');
     $('btnBulkComplete').onclick = () => bulk('complete');
     $('btnPrint').onclick = printSelected;
+
+    // Popover "Cột hiển thị" — tái dùng đúng kiểu mở/đóng của popover "Bộ lọc" (dashboard.js).
+    applyColVis(); // phản ánh lựa chọn đã lưu (localStorage) ngay từ lần render đầu tiên
+    const colVisBtn = $('colVisBtn');
+    const colVisPop = $('colVisPop');
+    colVisBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      colVisPop.hidden = !colVisPop.hidden;
+      if (!colVisPop.hidden) renderColVisMenu();
+    });
+    colVisPop.addEventListener('click', (e) => e.stopPropagation());
+    document.addEventListener('click', () => { colVisPop.hidden = true; });
+    $('colVisMenu').addEventListener('change', (e) => {
+      const cb = e.target.closest('input[type=checkbox]'); if (!cb) return;
+      if (cb.checked) state.hiddenCols.delete(cb.dataset.key); else state.hiddenCols.add(cb.dataset.key);
+      applyColVis();
+      saveHiddenCols();
+    });
+    $('colVisReset').addEventListener('click', () => {
+      state.hiddenCols.clear();
+      applyColVis();
+      saveHiddenCols();
+      renderColVisMenu();
+    });
     $('rows').addEventListener('click', (e) => {
       const eye = e.target.closest('[data-eye]');
       if (eye) {

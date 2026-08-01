@@ -66,6 +66,23 @@
     .ship-chip.code{background:#eef2ff;color:#4f46e5;font-weight:600}
     .ship-eye{cursor:pointer;color:#3b82f6}
     .ship-topbar-actions{display:flex;gap:8px;flex-wrap:wrap}
+    /* Popover "Cột hiển thị" — tái dùng khung .filter-pop có sẵn, chỉ thêm style cho list checkbox */
+    .colvis-list{display:flex;flex-direction:column;gap:1px;max-height:320px;overflow:auto}
+    .colvis-item{display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;color:var(--text);cursor:pointer;border-radius:6px}
+    .colvis-item:hover{background:var(--bg)}
+    .colvis-item input{margin:0;flex:none}
+    /* Ẩn cột theo vị trí (khớp đúng thứ tự <th>/<td> trong bảng) khi bảng có class hc-N tương ứng */
+    .gh-table.hc-3 th:nth-child(3),.gh-table.hc-3 td:nth-child(3){display:none}
+    .gh-table.hc-4 th:nth-child(4),.gh-table.hc-4 td:nth-child(4){display:none}
+    .gh-table.hc-5 th:nth-child(5),.gh-table.hc-5 td:nth-child(5){display:none}
+    .gh-table.hc-6 th:nth-child(6),.gh-table.hc-6 td:nth-child(6){display:none}
+    .gh-table.hc-7 th:nth-child(7),.gh-table.hc-7 td:nth-child(7){display:none}
+    .gh-table.hc-8 th:nth-child(8),.gh-table.hc-8 td:nth-child(8){display:none}
+    .gh-table.hc-9 th:nth-child(9),.gh-table.hc-9 td:nth-child(9){display:none}
+    .gh-table.hc-10 th:nth-child(10),.gh-table.hc-10 td:nth-child(10){display:none}
+    .gh-table.hc-11 th:nth-child(11),.gh-table.hc-11 td:nth-child(11){display:none}
+    .gh-table.hc-12 th:nth-child(12),.gh-table.hc-12 td:nth-child(12){display:none}
+    .gh-table.hc-13 th:nth-child(13),.gh-table.hc-13 td:nth-child(13){display:none}
   </style>
 </head>
 <body>
@@ -111,6 +128,19 @@
             </select>
             <input type="date" id="fDate" class="tb-date" title="Ngày tạo vận đơn" />
             <select id="fStaff" class="tb-select" title="Nhân viên phụ trách"><option value="">Tất cả nhân viên</option></select>
+            <div class="tb-filter-wrap">
+              <button class="btn secondary small tb-filter" id="colVisBtn" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/></svg>
+                Cột
+              </button>
+              <div class="filter-pop" id="colVisPop" hidden style="width:240px">
+                <div class="fp-head">Cột hiển thị</div>
+                <div id="colVisMenu" class="colvis-list"></div>
+                <div class="fp-foot">
+                  <button type="button" class="btn secondary small" id="colVisReset">Hiện tất cả</button>
+                </div>
+              </div>
+            </div>
             <div class="tb-searchrow">
               <div class="input-icon tb-search">
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -184,7 +214,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/giaohang.js?v=20260731d"></script>
+  <script src="js/giaohang.js?v=20260731e"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
