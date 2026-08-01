@@ -15,7 +15,7 @@
        width:100% + min-width = TỔNG bề rộng khai báo của các cột ĐANG HIỆN (JS cập nhật mỗi lần
        ẩn/hiện) -> màn rộng thì các cột còn lại tự giãn lấp khung; màn hẹp hơn tổng đó thì
        .table-wrap tự cuộn ngang như cũ (xem styles.css), không bị bóp méo cột. */
-    .gh-table{table-layout:fixed;width:100%;min-width:1800px}
+    .gh-table{table-layout:fixed;width:100%;min-width:1780px}
     .gh-table th,.gh-table td{padding:12px 10px;word-break:break-word;overflow-wrap:anywhere;vertical-align:top}
     .table-wrap .gh-table thead th{white-space:normal;line-height:1.25}
     .gh-table td{font-size:13px}
@@ -68,6 +68,11 @@
     .ship-chip{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#475569;white-space:nowrap;margin:1px 0}
     .ship-chip.code{background:#eef2ff;color:#4f46e5;font-weight:600}
     .ship-eye{cursor:pointer;color:#3b82f6}
+    /* Cột "ND ship": icon Xem + Gửi cạnh nhau (chưa gửi) — gửi thẳng không cần mở modal trước */
+    .ship-ndship-actions{display:flex;gap:6px;justify-content:center}
+    .ship-ndship-actions .btn.icon-only{padding:0;min-width:0;width:28px;height:28px}
+    .ship-ndship-actions .btn.icon-only .icon{width:14px;height:14px}
+    .ship-ndship-actions .btn.icon-only .spinner{width:14px;height:14px;vertical-align:0}
     .ship-topbar-actions{display:flex;gap:8px;flex-wrap:wrap}
     /* Popover "Cột hiển thị" — tái dùng khung .filter-pop có sẵn, chỉ thêm style cho list checkbox */
     .colvis-list{display:flex;flex-direction:column;gap:1px;max-height:320px;overflow:auto}
@@ -177,7 +182,7 @@
                 <col style="width:230px"><col style="width:150px">
                 <col style="width:100px"><col style="width:100px">
                 <col style="width:140px"><col style="width:120px">
-                <col style="width:120px"><col style="width:120px">
+                <col style="width:120px"><col style="width:100px">
                 <col style="width:190px">
               </colgroup>
               <thead>
@@ -224,7 +229,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/giaohang.js?v=20260731g"></script>
+  <script src="js/giaohang.js?v=20260801a"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
