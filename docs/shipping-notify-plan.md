@@ -23,10 +23,17 @@ gửi hay không, whitelist) vẫn CỐ ĐỊNH trong `server/shippingNotify.js`
 - **Viettel/GHTK (nhóm tracking):** gửi khi **bấm "Giao shipper"** (status → `exported`) — không dựa vào mã vận đơn (mã có thể tạo trước lúc bàn giao).
 - Dedup theo id vận đơn (`ship_seen`) → dù kiểm nhiều lần vẫn gửi đúng 1 lần.
 
-## Lưới an toàn 17:00 (NV quên bấm "Giao shipper")
-NV có thể soạn xong hàng nhưng quên bấm Giao shipper → Viettel/GHTK không được báo. Tới **17:00**
-hằng ngày (tái dùng cơ chế `AUTO_NOTIFY_SCHEDULE_TIME` sẵn có), quét đơn **"Đã soạn hàng"**
-(`is_prepared=1`, chưa `exported`, soạn **trong ngày**) chưa báo ship → coi như đã giao trong ngày → gửi.
+## Lưới an toàn 17:00 (NV quên bấm "Giao shipper") — ĐANG TẮT
+> **Quyết định sản phẩm (2026-08-01):** tắt trigger tự động của lưới an toàn — Viettel/GHTK
+> **bắt buộc** NV bấm "Giao shipper" mới gửi, không có ngoại lệ nào tự gửi trước đó. Code
+> (`runSafetyNet()` trong `server/shippingAutoNotify.js` + route `POST /api/shipping-auto/
+> run-safety`) vẫn còn nguyên để chạy tay/bật lại sau này (gọi `startSafetyTimer()` trong
+> `startShippingAutoNotify()`), chỉ tắt lịch tự động theo giờ.
+
+Thiết kế gốc (khi cần bật lại): NV có thể soạn xong hàng nhưng quên bấm Giao shipper →
+Viettel/GHTK không được báo. Tới **17:00** hằng ngày (tái dùng cơ chế
+`AUTO_NOTIFY_SCHEDULE_TIME` sẵn có), quét đơn **"Đã soạn hàng"** (`is_prepared=1`, chưa
+`exported`, soạn **trong ngày**) chưa báo ship → coi như đã giao trong ngày → gửi.
 - **Viettel/GHTK:** có mã vận đơn → gửi bình thường.
 - **AhaMove/Grab:** chưa có `shipper_link` → **không gửi**, chỉ **cảnh báo NV** (chưa đặt shipper).
 - **CHỈ gửi tin + đánh dấu `notified_ship`** — **KHÔNG** đổi status vận đơn sang `exported`

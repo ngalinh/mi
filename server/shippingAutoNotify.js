@@ -10,11 +10,12 @@
  *
  * 2 cơ chế:
  *   1) Poller (interval cfg.shippingAuto.intervalMs) — quét vận đơn gần đây (lookbackDays),
- *      gửi ngay khi AhaMove/Grab có shipper_link, hoặc Viettel/GHTK đã "Giao shipper".
- *   2) Lưới an toàn 17:00 (tái dùng CHUNG giờ hẹn với báo hàng, key app_settings
- *      'autoNotify.scheduleTime') — bắt ca NV quên bấm "Giao shipper": đơn "Đã soạn hàng"
- *      soạn TRONG NGÀY, chưa báo ship. Viettel/GHTK có mã -> gửi luôn (KHÔNG đổi status vận
- *      đơn). AhaMove/Grab chưa có shipper_link -> KHÔNG gửi, chỉ cảnh báo NV.
+ *      gửi ngay khi AhaMove/Grab có shipper_link, hoặc Viettel/GHTK đã "Giao shipper". Đây là
+ *      trigger DUY NHẤT đang hoạt động: Viettel/GHTK BẮT BUỘC NV bấm "Giao shipper" mới gửi.
+ *   2) Lưới an toàn 17:00 (đơn "Đã soạn hàng" trong ngày quên bấm "Giao shipper" vẫn được báo) —
+ *      code còn nguyên (runSafetyNet, route /api/shipping-auto/run-safety) nhưng trigger TỰ ĐỘNG
+ *      theo giờ ĐANG TẮT (quyết định sản phẩm — xem startShippingAutoNotify()) để Viettel/GHTK
+ *      không có ngoại lệ nào gửi trước khi tick "Giao shipper".
  */
 const config = require('./config');
 const shippingApi = require('./shippingApi');
@@ -423,12 +424,16 @@ function getStatus() {
 /** Khởi động cùng server. Timer luôn dựng (kể cả khi tắt) để bật lại lúc runtime không cần restart. */
 function startShippingAutoNotify() {
   syncTimer();
-  startSafetyTimer();
+  // Lưới an toàn 17:00 ĐANG TẮT theo quyết định sản phẩm: Viettel Post/GHTK BẮT BUỘC phải bấm
+  // "Giao shipper" mới gửi, không có ngoại lệ nào tự gửi trước khi NV tick trạng thái (kể cả đơn
+  // đã soạn hàng trong ngày). Muốn bật lại: gọi startSafetyTimer() ở đây (hàm runSafetyNet() và
+  // route POST /api/shipping-auto/run-safety vẫn còn nguyên, chỉ tắt trigger TỰ ĐỘNG theo giờ).
+  // startSafetyTimer();
   if (state.enabled && !safeGet(SEEDED_KEY)) {
     console.log('[auto-ship2] chưa có mốc seed -> chạy seed lần đầu.');
     startSeed().catch(() => {});
   }
-  console.log(`[auto-ship2] BÁO SHIP (Quản lý giao hàng) ${state.enabled ? `BẬT — quét mỗi ${Math.round(cfg.intervalMs / 1000)}s, lưới an toàn theo giờ hẹn báo hàng` : 'TẮT'}`);
+  console.log(`[auto-ship2] BÁO SHIP (Quản lý giao hàng) ${state.enabled ? `BẬT — quét mỗi ${Math.round(cfg.intervalMs / 1000)}s (lưới an toàn 17:00 đang TẮT)` : 'TẮT'}`);
 }
 
 module.exports = {
