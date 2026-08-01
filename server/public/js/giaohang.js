@@ -67,6 +67,22 @@
     return !!o.shipperLink || ['exported', 'completed', 'carrier_submitted'].includes(o.statusCode);
   }
 
+  // Cột "ND ship": chưa gửi -> "Xem" (mở modal xem/sửa trước khi gửi) + "Gửi" (gửi thẳng, không
+  // cần mở modal). Đã gửi -> chỉ còn "Xem" (coi lại nội dung đã gửi) + giờ đã gửi, ẩn nút Gửi để
+  // khỏi bấm nhầm gửi trùng (đã có chống trùng phía server, đây là tránh thao tác thừa).
+  function renderNdShip(o) {
+    if (!canPreviewMsg(o)) return '<span class="muted">—</span>';
+    if (o.shipSentAt) {
+      return `<button class="btn secondary small" data-msg="${o.id}">${App.icon('message')} Xem</button>
+        <div class="ship-sub ship-sent-at">${App.icon('clock')} ${App.esc(fmtSentAt(o.shipSentAt))}</div>`;
+    }
+    return `
+      <div class="ship-ndship-actions">
+        <button class="btn secondary small" data-msg="${o.id}">${App.icon('message')} Xem</button>
+        <button class="btn accent small" data-send="${o.id}">${App.icon('send')} Gửi</button>
+      </div>`;
+  }
+
   // ---- Render -----------------------------------------------------------
   function render() {
     const tb = $('rows');
@@ -97,7 +113,7 @@
           <td><span class="ship-carrier">${App.icon('truck')} ${App.esc(o.shipping)}</span></td>
           <td>${statusBadge(o)}</td>
           <td class="gh-datecell">${splitDateTime(o.preparedAt)}</td>
-          <td class="center">${canPreviewMsg(o) ? `<button class="btn secondary small" data-msg="${o.id}">${App.icon('message')} Xem</button>${o.shipSentAt ? `<div class="ship-sub ship-sent-at">${App.icon('clock')} ${App.esc(fmtSentAt(o.shipSentAt))}</div>` : ''}` : '<span class="muted">—</span>'}</td>
+          <td class="center">${renderNdShip(o)}</td>
           <td><div class="ship-actions">${actionButtons(o)}</div></td>
         </tr>`);
       if (state.expanded.has(String(o.id))) rows.push(detailRow(o));
@@ -325,6 +341,31 @@
     }
   }
 
+  // ---- Gửi thẳng 1 đơn từ bảng (nút "Gửi" cạnh "Xem", không cần mở modal) ------------------
+  async function quickSend(id, btn) {
+    const o = state.orders.find((x) => String(x.id) === String(id));
+    if (!o) return;
+    const orig = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = 'Đang gửi...';
+    try {
+      const r = await App.api('/api/shipping/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: toApiOrder(o) }),
+      });
+      if (r.ok) {
+        App.toast('✅ Đã gửi báo ship.');
+        o.shipSentAt = r.sentAt || new Date().toISOString();
+        render();
+      } else {
+        App.toast('Lỗi: ' + App.friendlyError(r.error || 'Gửi thất bại.'));
+        btn.disabled = false; btn.innerHTML = orig;
+      }
+    } catch (e) {
+      App.toast('Lỗi: ' + App.friendlyError(e.message));
+      btn.disabled = false; btn.innerHTML = orig;
+    }
+  }
+
   // ---- Gửi báo ship hàng loạt (tick nhiều) --------------------------------
   async function bulkNotify() {
     const ids = checkedIds();
@@ -387,6 +428,8 @@
       }
       const msg = e.target.closest('[data-msg]');
       if (msg) { showMessage(msg.dataset.msg); return; }
+      const sendBtn = e.target.closest('[data-send]');
+      if (sendBtn) { quickSend(sendBtn.dataset.send, sendBtn); return; }
       const btn = e.target.closest('[data-act]');
       if (btn) doAction(btn.dataset.id, btn.dataset.act);
     });
