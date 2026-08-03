@@ -12,7 +12,7 @@
   <link rel="icon" type="image/png" href="favicon.png?v=3" />
   <link rel="apple-touch-icon" href="favicon.png?v=3" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/styles.css?v=20260725" />
 </head>
 <body>
   <div class="app">
@@ -23,12 +23,12 @@
       </div>
       <nav class="rail-nav">
         <a class="nav" href="index.html" title="Hàng về VN"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span></a>
+        <a class="nav" href="giaohang.html" title="Giao hàng"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 18V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></span></a>
         <a class="nav" href="danhba.html" title="Danh bạ Zalo"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><circle cx="12" cy="9" r="2"/><path d="M15.5 15a3.5 3.5 0 0 0-7 0"/></svg></span></a>
         <a class="nav active" href="settings.html" title="Cài đặt"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span></a>
       </nav>
       <div class="side-foot">
         <span class="rail-sep"></span>
-        <a class="nav nav-exit" href="https://ai.basso.vn" target="_top" rel="noopener" title="Thoát về ai.basso.vn"><span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg></span></a>
         <div class="avatar" id="userAvatar" title="Đang tải...">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </div>
@@ -49,8 +49,10 @@
         <div class="tabs" id="settingsTabs" style="margin-top:0;">
           <button class="tab active" data-panel="nhanvien">Danh sách nhân viên</button>
           <button class="tab" data-panel="zalo">Tài khoản</button>
+          <button class="tab" data-panel="kenhsale">Kênh Sale</button>
           <button class="tab" data-panel="proxy">Proxy</button>
           <button class="tab" data-panel="mode">Chế độ</button>
+          <button class="tab" data-panel="shiptpl">Mẫu báo ship</button>
           <button class="tab" data-panel="log">Log</button>
           <button class="tab" data-panel="syslog">Log hệ thống</button>
         </div>
@@ -106,6 +108,32 @@
               </thead>
               <tbody id="zaloRows">
                 <tr><td colspan="7" class="muted" style="padding:16px;">Đang tải…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card hidden" data-panel-content="kenhsale" style="margin-top:14px;">
+          <div class="card-header">
+            <h2>Kênh Sale</h2>
+            <button class="btn small" id="addChanBtn">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              Thêm cấu hình
+            </button>
+          </div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Web Basso có "Kênh Sale" (vd Basso, ShipUS, Linh Dương, Linh Thảo, Cty...) nhưng API mi đang dùng <strong>không</strong> trả field này cho từng đơn — mi không tự nhận diện được. Cấu hình ở đây: <strong>1 kênh sale + 1 nhân viên → 1 tài khoản Zalo</strong>. Khi báo hàng tay, chọn Kênh sale cho lượt báo (ở khung Gửi Zalo) để mi tự chọn đúng tài khoản theo nhân viên phụ trách đơn.</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kênh sale</th>
+                  <th>Nhân viên</th>
+                  <th>Tài khoản Zalo</th>
+                  <th style="text-align:right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="chanRows">
+                <tr><td colspan="4" class="muted" style="padding:16px;">Đang tải…</td></tr>
               </tbody>
             </table>
           </div>
@@ -167,6 +195,25 @@
                 <div class="mode-detail" id="autoShipStatus" style="font-weight:400; color:var(--muted);"></div>
               </div>
               <button class="switch" id="autoShipBadge" role="switch" aria-checked="false" title="Bật/tắt tự động báo ship">
+                <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+                <span class="switch-text">…</span>
+              </button>
+            </div>
+            <div class="mode-row">
+              <div class="mode-info">
+                <div class="mode-title">Tự động báo ship — Quản lý giao hàng (mới)</div>
+                <div class="mode-desc">Công tắc <strong>riêng</strong>, ĐỘC LẬP với "Tự động báo ship" ở trên. Khi bật: AhaMove/Grab tự nhắn ngay khi có link theo dõi shipper; Viettel/GHTK tự nhắn ngay khi bấm "Giao shipper". Nội dung do <strong>mi</strong> tự dựng theo mẫu riêng ĐVVC.</div>
+                <details class="mode-more">
+                  <summary>Chi tiết cách hoạt động</summary>
+                  <div class="mode-more-body">
+                    Các vận đơn <strong>đang đủ điều kiện gửi</strong> lúc bật được đánh dấu "tồn cũ" và <strong>không gửi</strong> — chỉ gửi vận đơn MỚI đủ điều kiện SAU khi bật.<br>
+                    Viettel/GHTK <strong>bắt buộc</strong> NV bấm "Giao shipper" mới gửi — không có ngoại lệ tự gửi trước đó (lưới an toàn 17:00 hiện đang <strong>TẮT</strong> theo quyết định sản phẩm).<br>
+                    Cần <strong>local-runner (Chrome) đang mở &amp; đã đăng nhập Zalo</strong> để gửi được.
+                  </div>
+                </details>
+                <div class="mode-detail" id="autoShip2Status" style="font-weight:400; color:var(--muted);"></div>
+              </div>
+              <button class="switch" id="autoShip2Badge" role="switch" aria-checked="false" title="Bật/tắt tự động báo ship (Quản lý giao hàng)">
                 <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
                 <span class="switch-text">…</span>
               </button>
@@ -267,6 +314,21 @@
           </div>
         </div>
 
+        <div class="card hidden" data-panel-content="shiptpl" style="margin-top:14px;">
+          <div class="card-header"><h2>Mẫu báo ship</h2></div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 16px;">
+            Nội dung tin nhắn tự động khi báo ship cho khách, riêng theo từng đơn vị vận chuyển
+            (Quản lý giao hàng). Đơn vị chưa liệt kê ở đây (ngoài whitelist) sẽ <strong>không tự gửi</strong> —
+            chỉ cảnh báo nhân viên. Dùng các biến sau trong nội dung, hệ thống tự thay khi gửi:
+            <code>{name}</code> người nhận, <code>{carrier}</code> tên ĐVVC, <code>{code}</code> mã vận đơn,
+            <code>{cod}</code> số tiền COD, <code>{link}</code> link theo dõi shipper (AhaMove/Grab),
+            <code>{trackUrl}</code> link tra cứu (chỉ Giao hàng tiết kiệm),
+            <code>{shipFeeLine}</code> dòng "Phí ship (khách trả)" — tự động CHỈ hiện khi phí ship
+            do khách trả, ẩn hẳn (không hiện dòng) khi công ty trả phí ship.
+          </div>
+          <div id="shipTplList"><div class="muted" style="padding:16px;">Đang tải…</div></div>
+        </div>
+
         <div class="card hidden" data-panel-content="log" style="margin-top:14px;">
           <div class="card-header">
             <h2>Log thao tác &amp; gửi</h2>
@@ -289,6 +351,15 @@
               <option value="hang">Báo hàng</option>
               <option value="ship">Báo ship</option>
             </select>
+            <select class="note-input" id="logStaff" style="max-width:170px;">
+              <option value="">Tất cả nhân viên</option>
+            </select>
+            <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:5px;">
+              Từ <input class="note-input" type="date" id="logFrom" style="max-width:150px;" />
+            </label>
+            <label class="muted" style="font-size:12px; display:inline-flex; align-items:center; gap:5px;">
+              đến <input class="note-input" type="date" id="logTo" style="max-width:150px;" />
+            </label>
             <select class="note-input" id="logLimit" style="max-width:130px;">
               <option value="100">100 dòng</option>
               <option value="200" selected>200 dòng</option>
@@ -396,9 +467,36 @@
     </div>
   </div>
 
+  <!-- Popup thêm / sửa cấu hình Kênh Sale -->
+  <div class="modal-bg" id="chanModal">
+    <div class="modal" style="width:460px;">
+      <h3 id="chanTitle">Thêm cấu hình kênh sale</h3>
+      <div class="form-grid">
+        <div class="field full">
+          <label>Kênh sale</label>
+          <input id="chanKenh" type="text" list="chanKenhList" placeholder="vd: Basso, ShipUS, Linh Dương, Linh Thảo, Cty, Kênh CO" />
+          <datalist id="chanKenhList"></datalist>
+        </div>
+        <div class="field full">
+          <label>Nhân viên</label>
+          <select id="chanStaff"><option value="">— Chọn nhân viên —</option></select>
+        </div>
+        <div class="field full">
+          <label>Tài khoản Zalo</label>
+          <select id="chanAccount"><option value="">— Chọn nhân viên trước —</option></select>
+          <button type="button" class="link-btn" id="chanAddAcctBtn" style="margin-top:6px;">+ Thêm tài khoản Zalo mới cho NV này</button>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn secondary" id="chanCancel">Huỷ</button>
+        <button class="btn accent" id="chanSave">Lưu</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
-  <script src="js/app.js"></script>
-  <script src="js/settings.js"></script>
+  <script src="js/app.js?v=20260731"></script>
+  <script src="js/settings.js?v=20260803a"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>

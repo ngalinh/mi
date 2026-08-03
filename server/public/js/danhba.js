@@ -25,20 +25,35 @@
 
   // NV phụ trách được chọn để lọc (rỗng = tất cả nhân viên)
   const nvSelected = new Set();
+  // NV phụ trách được TICK cho khách đang thêm/sửa trong modal (rỗng = không gán)
+  const cmStaffSelected = new Set();
 
   const staffName = (uid) => {
     if (uid == null || uid === '') return '';
     const f = bassoStaff.find((u) => String(u.user_id) === String(uid));
     return f ? f.name : `#${uid}`;
   };
+  // Tách chuỗi "9941,1704" (cột staff_id) thành mảng id, bỏ khoảng trắng/rỗng.
+  const splitStaffIds = (v) => (v ? String(v).split(',').map((s) => s.trim()).filter(Boolean) : []);
+
   async function loadBassoStaff() {
     try {
       const r = await App.api('/api/tab-users');
       bassoStaff = (r && r.tabUsers) || [];
     } catch { bassoStaff = []; }
-    const opts = bassoStaff.map((u) => `<option value="${App.esc(u.user_id)}">${App.esc(u.name)} (#${App.esc(u.user_id)})</option>`).join('');
-    $('cmStaff').innerHTML = '<option value="">— Không gán —</option>' + opts;
     renderNvPanel();
+    renderCmStaffPanel();
+  }
+
+  // Gợi ý "Kênh sale" trong modal thêm/sửa liên hệ = danh sách kênh sale đã cấu hình ở
+  // Cài đặt → Kênh Sale (bảng channel_accounts) — mỗi kênh gắn sẵn 1 tài khoản Zalo cố định.
+  async function loadKenhSaleList() {
+    try {
+      const r = await App.api('/api/channel-accounts');
+      const rows = (r && r.channelAccounts) || [];
+      const kenhSet = [...new Set(rows.map((row) => row.kenh_sale).filter(Boolean))];
+      $('cmKenhSaleList').innerHTML = kenhSet.map((k) => `<option value="${App.esc(k)}"></option>`).join('');
+    } catch { /* không tải được -> chỉ mất gợi ý, vẫn gõ tay được */ }
   }
 
   // Dựng danh sách checkbox NV phụ trách (chọn nhiều) + dòng "Tất cả nhân viên" để bỏ chọn nhanh.
@@ -57,6 +72,50 @@
     if (nvSelected.size === 1) { els.nvLabel.textContent = staffName([...nvSelected][0]); return; }
     els.nvLabel.textContent = `${nvSelected.size} nhân viên`;
   }
+
+  // Dựng danh sách checkbox "NV phụ trách" (chọn NHIỀU) trong modal thêm/sửa liên hệ. Dòng đầu
+  // "— Không gán —" đóng vai trò bỏ chọn nhanh (khác panel lọc: ở đây rỗng = không gán, không
+  // phải "tất cả").
+  function renderCmStaffPanel() {
+    const rows = bassoStaff.map((u) => {
+      const id = String(u.user_id);
+      const on = cmStaffSelected.has(id) ? ' checked' : '';
+      return `<label class="ms-opt"><input type="checkbox" value="${App.esc(id)}"${on}/><span>${App.esc(u.name)} (#${App.esc(id)})</span></label>`;
+    }).join('');
+    $('cmStaffPanel').innerHTML = `<label class="ms-opt all"><input type="checkbox" value="__none__"${cmStaffSelected.size ? '' : ' checked'}/><span>— Không gán —</span></label>${rows}`;
+    updateCmStaffLabel();
+  }
+
+  function updateCmStaffLabel() {
+    if (!cmStaffSelected.size) { $('cmStaffLabel').textContent = '— Không gán —'; return; }
+    if (cmStaffSelected.size === 1) { $('cmStaffLabel').textContent = staffName([...cmStaffSelected][0]); return; }
+    $('cmStaffLabel').textContent = `${cmStaffSelected.size} nhân viên`;
+  }
+
+  const cmStaffBox = $('cmStaffMs');
+  function toggleCmStaff(open) {
+    const panel = $('cmStaffPanel');
+    const willOpen = open != null ? open : panel.hidden;
+    panel.hidden = !willOpen;
+    cmStaffBox.classList.toggle('open', willOpen);
+    $('cmStaffToggle').setAttribute('aria-expanded', String(willOpen));
+  }
+  $('cmStaffToggle').addEventListener('click', (e) => { e.stopPropagation(); toggleCmStaff(); });
+  $('cmStaffPanel').addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"]');
+    if (!cb) return;
+    if (cb.value === '__none__') {
+      cmStaffSelected.clear();
+    } else if (cb.checked) {
+      cmStaffSelected.add(cb.value);
+    } else {
+      cmStaffSelected.delete(cb.value);
+    }
+    renderCmStaffPanel();
+  });
+  document.addEventListener('click', (e) => {
+    if (!$('cmStaffPanel').hidden && !cmStaffBox.contains(e.target)) toggleCmStaff(false);
+  });
 
   // ================= IMPORT =================
   els.file.addEventListener('change', async (e) => {
@@ -256,7 +315,7 @@
         const rt = c.report_target === 'personal' ? 'personal' : c.report_target === 'group' ? 'group' : 'default';
         if (rt !== rtMode) return false;
       }
-      if (nvSelected.size && !nvSelected.has(String(c.staff_id || ''))) return false;
+      if (nvSelected.size && !splitStaffIds(c.staff_id).some((id) => nvSelected.has(id))) return false;
       if (q) {
         return (c.zalo_name || '').toLowerCase().includes(q)
           || (c.raw_phone || c.phone || '').toLowerCase().includes(q)
@@ -275,7 +334,7 @@
         <td class="cust">${c.zalo_name ? `<span class="cust-text" title="${App.esc(c.zalo_name)}">${App.esc(c.zalo_name)}</span>` : '—'}</td>
         <td class="center">${fbCell(c)}</td>
         <td class="center">${rtCell(c)}</td>
-        <td>${c.staff_id ? App.esc(staffName(c.staff_id)) : '<span class="muted">—</span>'}</td>
+        <td>${splitStaffIds(c.staff_id).map((id) => App.esc(staffName(id))).join(', ') || '<span class="muted">—</span>'}${c.kenh_sale ? `<br><span class="muted" style="font-size:11px;" title="Kênh sale (tài khoản Zalo cố định)">Kênh: ${App.esc(c.kenh_sale)}</span>` : ''}</td>
         <td class="zalo-note">${c.note ? `<span class="note-text" title="${App.esc(c.note)}">${App.esc(c.note)}</span>` : ''}</td>
         <td class="center"><span class="pill chua">${App.esc(SOURCE_LABEL[c.source] || c.source || '—')}</span></td>
         <td class="muted" style="font-size:12px;">${App.esc(App.fmtDateTime(c.updated_at))}</td>
@@ -364,8 +423,8 @@
   // ================= MODAL THÊM / SỬA =================
   const modal = $('contactModal');
   const cmTitle = $('cmTitle'), cmPhone = $('cmPhone'), cmName = $('cmName'), cmNote = $('cmNote');
-  const cmFbLink = $('cmFbLink'), cmStaff = $('cmStaff');
-  const cmReportTarget = $('cmReportTarget');
+  const cmFbLink = $('cmFbLink');
+  const cmReportTarget = $('cmReportTarget'), cmKenhSale = $('cmKenhSale');
   let editingPhone = null; // SĐT (đã chuẩn hoá) đang sửa; null = thêm mới
 
   function openModal(c) {
@@ -375,12 +434,15 @@
     cmName.value = c ? (c.zalo_name || '') : '';
     cmNote.value = c ? (c.note || '') : '';
     cmFbLink.value = c ? (c.fb_link || '') : '';
-    cmStaff.value = c && c.staff_id != null ? String(c.staff_id) : '';
+    cmStaffSelected.clear();
+    if (c) splitStaffIds(c.staff_id).forEach((id) => cmStaffSelected.add(id));
+    renderCmStaffPanel();
     cmReportTarget.value = c && (c.report_target === 'personal' || c.report_target === 'group') ? c.report_target : '';
+    cmKenhSale.value = c ? (c.kenh_sale || '') : '';
     modal.classList.add('show');
     setTimeout(() => (c ? cmName : cmPhone).focus(), 30);
   }
-  function closeModal() { modal.classList.remove('show'); editingPhone = null; }
+  function closeModal() { modal.classList.remove('show'); editingPhone = null; toggleCmStaff(false); }
 
   els.addBtn.addEventListener('click', () => openModal(null));
   $('cmCancel').addEventListener('click', closeModal);
@@ -403,8 +465,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phone, zalo_name: name, note: cmNote.value.trim(),
-          fb_link: fbLink, staff_id: cmStaff.value || '',
+          fb_link: fbLink, staff_id: [...cmStaffSelected].join(','),
           report_target: cmReportTarget.value || '',
+          kenh_sale: cmKenhSale.value.trim(),
         }),
       });
       App.toast('Đã lưu');
@@ -415,4 +478,5 @@
 
   // ================= INIT =================
   loadBassoStaff().then(loadContacts); // nạp NV trước để hiển thị đúng tên "NV phụ trách"
+  loadKenhSaleList();
 })();

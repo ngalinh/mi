@@ -521,10 +521,13 @@ async function getArrivedItems({ id, customerId, dateInventory } = {}) {
  * soạn ND sau khi mi đã cache list, hoặc list trả thiếu content — thì lấy trực tiếp của đúng đơn.
  * Thu hẹp getArrivedVnList theo SĐT khách (key) để chỉ kéo vài dòng, rồi khớp đúng dòng bằng
  * (customer_id + date_inventory). Chỉ đọc, không đổi dữ liệu.
- * @param {{customerId:number|string, dateInventory:number|string, phone?:string}} p
+ * @param {{customerId:number|string, dateInventory:number|string, phone?:string, fresh?:boolean}} p
+ *   fresh=true: BỎ QUA cache (đọc thẳng Basso rồi nạp lại cache). Dùng cho các đường CẦN bản mới
+ *   nhất thật sự — "Xem nội dung" (modal) & refresh trước khi gửi — tránh trả bản cũ (vd 14 món)
+ *   trong khi Basso đã soạn lại (18 món). Không truyền -> ăn SWR cache (TTL) như cũ để nhẹ Basso.
  * @returns {Promise<{source, found:boolean, noiDungBaoHang:string, noiDungBaoShip:string}>}
  */
-async function getOrderContent({ customerId, dateInventory, phone } = {}) {
+async function getOrderContent({ customerId, dateInventory, phone, fresh = false } = {}) {
   const pick = (row) => ({
     found: !!row,
     noiDungBaoHang: (row && row.content) || '',
@@ -551,7 +554,8 @@ async function getOrderContent({ customerId, dateInventory, phone } = {}) {
   let rows;
   if (config.basso.listCacheTtlMs) {
     const cacheKey = 'content:' + JSON.stringify({ key: phone || '' });
-    ({ data: rows } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, runFetch));
+    // fresh=true -> swrFetch bỏ qua cache cũ, đọc thẳng Basso rồi nạp lại cache cho lần sau.
+    ({ data: rows } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, runFetch, { fresh }));
   } else {
     rows = await runFetch();
   }
@@ -619,6 +623,37 @@ async function updateOrderStatus({ customerId, dateInventory, status, note }) {
   // Đánh dấu stale + patch đúng dòng vừa đổi -> lần load sau hiện NGAY (không cold), đã đúng trạng thái.
   invalidateOrdersCache({ customerId, dateInventory, status, note });
   return { ok: true, record: data && data.record };
+}
+
+/**
+ * Đồng bộ trạng thái "Đã báo ship" (notified_ship) về "Hàng về VN" sau khi báo ship THÀNH CÔNG
+ * từ Quản lý giao hàng (Pha 1). Vì "Hàng về VN" và "Quản lý giao hàng" là 2 API riêng (không
+ * chung id), khớp gián tiếp qua SĐT + mã vận đơn (item.shipCode):
+ *   1) Thu hẹp dòng "Đã báo hàng" (notified_arrival) của khách theo SĐT.
+ *   2) Soi sản phẩm từng dòng (getArrivedItems) — dòng có item shipCode == mã vận đơn vừa ship.
+ *   3) updateOrderStatus dòng khớp -> notified_ship. Không khớp dòng nào -> bỏ qua (best-effort,
+ *      KHÔNG chặn báo ship — chỉ để dashboard "Hàng về VN" phản ánh đúng, gửi Zalo vẫn đã xong).
+ * @param {{phone:string, code:string}} p
+ * @returns {Promise<{matched:number}>}
+ */
+async function syncShipStatusByCode({ phone, code }) {
+  if (!phone || !code) return { matched: 0, matches: [] };
+  const codeNorm = String(code).trim();
+  if (!codeNorm) return { matched: 0, matches: [] };
+  const { orders } = await getOrders({ q: phone, status: 'notified_arrival', page: 1, pageSize: 20 });
+  let matched = 0;
+  const matches = []; // { customerId, dateInventory } của MỌI dòng "Hàng về VN" đã khớp + đổi trạng thái
+  for (const o of orders || []) {
+    // eslint-disable-next-line no-await-in-loop
+    const { items } = await getArrivedItems({ id: o.id, customerId: o.customerId, dateInventory: o.dateInventory });
+    const hit = (items || []).some((it) => it.shipCode && String(it.shipCode).trim() === codeNorm);
+    if (!hit) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await updateOrderStatus({ customerId: o.customerId, dateInventory: o.dateInventory, status: 'notified_ship', note: o.note });
+    matched += 1;
+    matches.push({ customerId: o.customerId, dateInventory: o.dateInventory });
+  }
+  return { matched, matches };
 }
 
 // Nhóm trạng thái trên dashboard -> mã trạng thái Basso (để đếm & lọc server-side).
@@ -721,4 +756,7 @@ async function fetchAllOrders(filters = {}) {
   return all;
 }
 
-module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS };
+module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, syncShipStatusByCode, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS,
+  // Dùng chung cho module khác (vd shippingApi.js) — gọi Partner API có sẵn xác thực
+  // (X-Partner-Api-Key + Bearer, tự login/refresh token, retry 401, timeout). Trả về json.data.
+  partnerApiFetch: apiFetch };

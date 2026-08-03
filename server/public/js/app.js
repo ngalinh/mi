@@ -18,6 +18,12 @@ const App = {
     hourglass: '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>',
     stop: '<rect width="16" height="16" x="4" y="4" rx="2"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    eye: '<path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/>',
+    message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    undo: '<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>',
+    link: '<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
   },
   icon(name, cls = '') {
     return `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true">${this.ICONS[name] || ''}</svg>`;
@@ -148,6 +154,22 @@ const App = {
     const topbar = document.querySelector('.topbar');
     if (!app || !sidebar || !topbar) return;
 
+    // Logo Mi trong .brand: đảm bảo LUÔN có ảnh (HTML cũ trong cache có thể thiếu <img>) và
+    // dùng src BASE-AWARE để hiện đúng cả khi app chạy sau gateway ở đường dẫn con /b/<id>/
+    // — link tương đối "mi-logo.png" dễ trỏ sai ở đó nên ảnh vỡ, chỉ còn chữ "Mi". Giữ đúng
+    // logo đang dùng trên web (mi-logo.png).
+    const brand = sidebar.querySelector('.brand');
+    if (brand) {
+      let logo = brand.querySelector('.brand-logo');
+      if (!logo) {
+        logo = document.createElement('img');
+        logo.className = 'brand-logo';
+        logo.alt = 'Mi';
+        brand.insertBefore(logo, brand.firstChild);
+      }
+      logo.src = (App.BASE || '') + '/mi-logo.png';
+    }
+
     // Tự chèn mục "Danh bạ" vào rail-nav nếu HTML còn THIẾU (vd trình duyệt/PWA giữ index.html
     // bản CŨ trong cache trong khi app.js đã mới). Nhờ vậy menu luôn đủ dù chưa refresh HTML.
     const rail = sidebar.querySelector('.rail-nav');
@@ -156,6 +178,19 @@ const App = {
     // danh sách hàng về). Xoá thẳng khỏi sidebar để mọi trang nhất quán dù client chưa refresh
     // HTML — nếu không, index.html bản cũ vẫn hiện icon Lịch sử báo còn trang mới thì không.
     sidebar.querySelectorAll('a.nav[href="reports.html"]').forEach((el) => el.remove());
+
+    // Tự chèn mục "Giao hàng" (giaohang.html) ngay sau "Hàng về VN" nếu HTML còn thiếu (cache cũ).
+    if (rail && !sidebar.querySelector('a.nav[href="giaohang.html"]')) {
+      const a = document.createElement('a');
+      a.className = 'nav';
+      a.href = 'giaohang.html';
+      a.title = 'Giao hàng';
+      a.innerHTML = '<span class="ic"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 18V6a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg></span>';
+      if (/giaohang\.html$/.test(location.pathname)) a.classList.add('active');
+      const home = sidebar.querySelector('a.nav[href="index.html"]');
+      if (home) home.insertAdjacentElement('afterend', a);
+      else rail.appendChild(a);
+    }
 
     if (rail && !sidebar.querySelector('a.nav[href="danhba.html"]')) {
       const a = document.createElement('a');
@@ -177,6 +212,11 @@ const App = {
       else rail.appendChild(gear);
     }
 
+    // Gỡ nút "Thoát về ai.basso.vn" nếu HTML còn trong cache (bản cũ có nút này):
+    // đã bỏ khỏi menu. Xoá thẳng khỏi sidebar để mọi trang nhất quán dù client chưa
+    // refresh HTML.
+    sidebar.querySelectorAll('a.nav-exit').forEach((el) => el.remove());
+
     // Nút mở menu (chỉ hiện trên mobile qua CSS) — đặt đầu topbar.
     const toggle = document.createElement('button');
     toggle.className = 'nav-toggle';
@@ -185,6 +225,38 @@ const App = {
     toggle.setAttribute('aria-expanded', 'false');
     toggle.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>';
     topbar.insertBefore(toggle, topbar.firstChild);
+
+    // Nút "Thoát về ai.basso.vn" — hiện ở MỌI trang (kể cả danh sách Hàng về VN), ghim
+    // GÓC PHẢI TRÊN CÙNG (ngang nút menu ☰). Bấm = rời app Mi, quay về nền tảng
+    // ai.basso.vn; điều hướng cả trang top (window.top) phòng khi app đang nhúng iframe.
+    // Chuyển trang trong app (Hàng về VN / Danh bạ / Cài đặt) dùng menu ☰.
+    {
+      const exit = document.createElement('button');
+      exit.className = 'nav-back';
+      exit.type = 'button';
+      exit.setAttribute('aria-label', 'Thoát về ai.basso.vn');
+      exit.title = 'Thoát về ai.basso.vn';
+      // Icon kiểu "thoát" (cửa + mũi tên đi ra).
+      exit.innerHTML = '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>';
+      exit.addEventListener('click', () => {
+        const url = 'https://ai.basso.vn';
+        try { window.top.location.href = url; } catch (e) { window.location.href = url; }
+      });
+      // Ghim góc phải trên cùng qua class .has-nav-back (CSS mobile, position:absolute) để
+      // không bị wrap xuống hàng dù tiêu đề dài.
+      topbar.classList.add('has-nav-back');
+      topbar.appendChild(exit);
+    }
+
+    // Trang có nút "Đồng bộ" (#syncBtn — chỉ trang danh sách): đánh dấu để CSS mobile thu
+    // gọn nó thành nút ICON và ghim cạnh trái nút thoát ở góc phải trên (thay vì chiếm
+    // nguyên 1 hàng riêng bên dưới). Đưa nút đồng bộ lên đầu topbar cho gọn hàng.
+    const syncBtn = topbar.querySelector('#syncBtn');
+    if (syncBtn) {
+      topbar.classList.add('has-sync');
+      if (!syncBtn.getAttribute('aria-label')) syncBtn.setAttribute('aria-label', 'Đồng bộ ngay');
+      if (!syncBtn.title) syncBtn.title = 'Đồng bộ ngay';
+    }
 
     // Lớp phủ nền mờ khi mở drawer.
     const backdrop = document.createElement('div');

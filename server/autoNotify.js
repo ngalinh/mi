@@ -458,10 +458,11 @@ async function classifyForAuto(order, delayedMap) {
  * Trả { decision:'send'|'skip', reason?, acct? }.
  */
 async function classifyForShip(order, delayedMap) {
-  // KHÔNG bắt buộc "Đã báo hàng" trước: nhân viên hay QUÊN tick trạng thái -> đơn kẹt "Chưa báo" dù
-  // đang giao. Nên hễ đơn CÓ "ND báo ship" là gửi, dù trạng thái là "Chưa báo" (not_sent) hay "Đã
-  // báo hàng" (notified_arrival). Chỉ bỏ đơn ĐÃ báo ship rồi (notified_ship).
-  if (order.statusCode === 'notified_ship') return { decision: 'skip', reason: 'already' };
+  // KHÔNG chặn theo TRẠNG THÁI. NV hay QUÊN/nhầm tick: đơn kẹt "Chưa báo" dù đang giao, HOẶC tick
+  // "Đã báo ship" TAY dù Mi chưa gửi (ND ship hiện sau). Nên hễ đơn CÓ "ND báo ship" là xét gửi,
+  // dù trạng thái là not_sent / notified_arrival / notified_ship. Chống trùng CHỈ dựa vào DẤU
+  // auto_notified (success/manual/seeded) bên dưới -> đơn Mi đã gửi thật mới bị bỏ, còn đơn "đã báo
+  // ship" trên web nhưng Mi chưa gửi (ca Hải Hà) vẫn được báo cho khách.
   // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo ship" (raw.content_ship). Đơn trống -> bỏ qua.
   if (!order.noiDungBaoShip || !String(order.noiDungBaoShip).trim()) return { decision: 'skip', reason: 'no_content' };
   const rec = getAutoRecord(autoKeyShip(order));
@@ -494,17 +495,30 @@ async function classifyForShip(order, delayedMap) {
  * 'seeded' (KHÔNG gửi) -> coi là tồn cũ, bỏ qua. MỐC TUYỆT ĐỐI: seed bất kể đơn đang bị chặn hay
  * không (account tắt auto / brand / chưa báo hàng) -> "đơn cũ" có ND ship trước lúc bật KHÔNG bao giờ
  * bị nhắn, kể cả khi sau này gỡ chặn account. Nhờ vậy chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có
- * dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Quét cả 'not_sent' lẫn
- * 'notified_arrival'. Ghi mốc SHIP_SEEDED_KEY khi xong. Muốn nhắn lại nhóm cũ -> BẬT lại (chốt mốc mới).
+ * dấu) mới được gửi. Chỉ đọc Basso + ghi DB, KHÔNG cần local-runner. Ghi mốc SHIP_SEEDED_KEY khi
+ * xong. Muốn nhắn lại nhóm cũ -> BẬT lại (chốt mốc mới).
+ *
+ * Quét CẢ 'not_sent', 'notified_arrival' LẪN 'notified_ship': mỗi lần BẬT = "vạch mốc mới", loại trừ
+ * MỌI đơn đang có sẵn ND ship lúc đó (kể cả đơn đã ở trạng thái "Đã báo ship" mà Mi chưa gửi) -> KHÔNG
+ * nhắn loạt khi bật lại. Chỉ ND ship XUẤT HIỆN SAU khi bật (đơn chưa có dấu) mới được luồng quét gửi.
+ * Nhờ vậy off -> deploy -> bật lại KHÔNG blast đơn tồn; đơn "đã báo ship tay mà Mi chưa gửi" đang tồn
+ * tại đúng lúc bật sẽ bị loại trừ (gửi tay 1 lần), còn ca phát sinh SAU vẫn được bắt real-time.
+ * Đơn 'failed' (thử hụt trước) đang có ND ship lúc bật CŨNG bị đè 'seeded' -> KHÔNG thử lại sau khi
+ * bật (đúng "vạch mốc mới: loại trừ mọi đơn có ND ship lúc bật"). Muốn thử lại -> gửi tay.
  * @returns {Promise<{at:string, scanned:number, seeded:number}>}
  */
 async function seedShip() {
   let scanned = 0;
   let seeded = 0;
   const seen = new Set();
-  for (const status of ['not_sent', 'notified_arrival']) {
+  // Seed ĐỒNG BỘ phạm vi với luồng gửi: 'notified_ship' chỉ seed trong N ngày gần đây (và bỏ hẳn nếu
+  // shipRecentDays=0) -> không seed đơn nằm ngoài tầm quét gửi, tránh quét notified_ship all-time nặng.
+  const seedStatuses = ['not_sent', 'notified_arrival'];
+  if (cfg.shipRecentDays > 0) seedStatuses.push('notified_ship');
+  for (const status of seedStatuses) {
+    const days = status === 'notified_ship' ? cfg.shipRecentDays : undefined;
     // eslint-disable-next-line no-await-in-loop
-    const orders = await fetchAllByStatus(status, { fresh: true }); // fresh: chốt đúng hiện trạng lúc bấm Bật
+    const orders = await fetchAllByStatus(status, { fresh: true, days }); // fresh: chốt đúng hiện trạng lúc bấm Bật
     for (const o of orders) {
       const k = autoKey(o);
       if (seen.has(k)) continue;
@@ -518,8 +532,13 @@ async function seedShip() {
       // vì ND ship 1 đơn thường chỉ soạn 1 lần; và đúng ý "chỉ nhắn đơn mới sau khi bật".)
       if (!o.noiDungBaoShip || !String(o.noiDungBaoShip).trim()) continue; // chưa có ND ship -> khỏi seed
       const key = autoKeyShip(o);
-      if (getAutoRecord(key)) continue;   // đã có dấu (đã gửi/tay/seeded trước) -> giữ nguyên
-      recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi
+      const rec = getAutoRecord(key);
+      // Giữ nguyên đơn Mi ĐÃ chốt: 'success' (bot đã gửi), 'manual' (báo tay qua Mi), 'seeded' (đã
+      // chốt lần bật trước) — các dấu này vốn đã bị bỏ qua khi gửi.
+      if (rec && (rec.status === 'success' || rec.status === 'manual' || rec.status === 'seeded')) continue;
+      // Còn lại: CHƯA có dấu HOẶC dấu 'failed' (thử hụt trước) -> đè 'seeded' để KHÔNG gửi/thử lại sau
+      // khi bật. Vạch mốc mới = loại trừ MỌI đơn có ND ship lúc bật (kể cả đơn từng gửi hụt).
+      recordAutoNotified(key, 'seeded', 0); // đánh dấu tồn cũ: KHÔNG gửi/thử lại
       seeded += 1;
     }
   }
@@ -548,17 +567,21 @@ async function startShipSeed() {
 /**
  * Lấy TẤT CẢ đơn theo 1 trạng thái qua mọi trang (vì không cập nhật web nên tập này không tự co lại).
  * @param {string} status - mã trạng thái Basso ('not_sent' báo hàng | 'notified_arrival' báo ship...)
- * @param {object} [opts] { fresh } — fresh=true: đọc tươi từ Basso, bỏ qua cache (dùng cho webhook
- *   để thấy NGAY đơn vừa về/vừa có ND ship, không bị cache 30s che). Poller thường dùng cache cho nhẹ.
+ * @param {object} [opts] { fresh, days } — fresh=true: đọc tươi từ Basso, bỏ qua cache (dùng cho
+ *   webhook để thấy NGAY đơn vừa về/vừa có ND ship, không bị cache 30s che). Poller thường dùng cache
+ *   cho nhẹ. days > 0: CHỈ lấy đơn về kho trong N ngày gần đây (giới hạn tập notified_ship tích lũy).
  */
 async function fetchAllByStatus(status, opts = {}) {
   const all = [];
   const seen = new Set();
   const MAX_PAGES = 50;
   let capped = false;
+  // days > 0 -> truyền xuống getOrders để Basso lọc theo cửa sổ ngày (resolveDateWindow). 0/undefined
+  // -> all-time (giữ hành vi cũ cho not_sent/notified_arrival là tập sống, nhỏ).
+  const days = opts.days > 0 ? opts.days : undefined;
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     // eslint-disable-next-line no-await-in-loop
-    const { orders, total } = await getOrders({ status, page, pageSize: 100, fresh: !!opts.fresh });
+    const { orders, total } = await getOrders({ status, page, pageSize: 100, fresh: !!opts.fresh, days });
     for (const o of orders) {
       const k = autoKey(o);
       if (!seen.has(k)) { seen.add(k); all.push(o); }
@@ -611,13 +634,16 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
     // Đọc TƯƠI (bỏ cache) cho webhook (thấy ngay đơn mới / ND vừa soạn), lượt theo lịch, và
     // poll báo ship ('ship-poll'/'ship-catch') — để bắt ND ship MỚI ngay, không dính cache 30s.
     const fresh = trigger === 'webhook' || trigger === 'scheduled' || trigger === 'ship-poll' || trigger === 'ship-catch';
-    // statusFilter có thể là 1 mã hoặc MẢNG mã (báo ship quét cả 'not_sent' lẫn 'notified_arrival').
-    const statuses = Array.isArray(statusFilter) ? statusFilter : [statusFilter];
+    // statusFilter có thể là 1 mã, hoặc MẢNG các entry. Mỗi entry = chuỗi mã ('not_sent') HOẶC
+    // object { status, days } khi cần GIỚI HẠN cửa sổ ngày cho riêng trạng thái đó (báo ship dùng
+    // { status: 'notified_ship', days: N } để không kéo cả kho notified_ship tích lũy).
+    const statuses = (Array.isArray(statusFilter) ? statusFilter : [statusFilter])
+      .map((s) => (typeof s === 'string' ? { status: s } : s));
     const orders = [];
     const seenKeys = new Set();
     for (const st of statuses) {
       // eslint-disable-next-line no-await-in-loop
-      const part = await fetchAllByStatus(st, { fresh });
+      const part = await fetchAllByStatus(st.status, { fresh, days: st.days });
       for (const o of part) {
         const k = autoKey(o);
         if (!seenKeys.has(k)) { seenKeys.add(k); orders.push(o); }
@@ -777,12 +803,15 @@ async function runAutoNotify(opts = {}) {
  */
 async function debugShip() {
   const runnerOnline = await checkLocalHealth().catch(() => false);
-  // Quét CẢ "Chưa báo" lẫn "Đã báo hàng" — khớp đúng phạm vi luồng gửi ship thật (khử trùng theo autoKey).
+  // Quét "Chưa báo" + "Đã báo hàng" (all-time) + "Đã báo ship" (N ngày gần đây) — khớp đúng phạm vi
+  // luồng gửi ship thật (khử trùng theo autoKey) để soi được cả ca "đã báo ship tay mà Mi chưa gửi".
   const orders = [];
   const seen = new Set();
-  for (const st of ['not_sent', 'notified_arrival']) {
+  const debugStatuses = ['not_sent', 'notified_arrival'];
+  if (cfg.shipRecentDays > 0) debugStatuses.push('notified_ship');
+  for (const st of debugStatuses) {
     // eslint-disable-next-line no-await-in-loop
-    const part = await fetchAllByStatus(st, { fresh: true });
+    const part = await fetchAllByStatus(st, { fresh: true, days: st === 'notified_ship' ? cfg.shipRecentDays : undefined });
     for (const o of part) { const k = autoKey(o); if (!seen.has(k)) { seen.add(k); orders.push(o); } }
   }
   const delayedMap = getDelayedMap();
@@ -853,10 +882,16 @@ async function runAutoNotifyShip(opts = {}) {
   state.runningShip = true;
   const summary = { trigger, kind: 'ship', scanned: 0, candidates: 0, sent: 0, failed: 0, results: [] };
   try {
+    // Quét "Chưa báo" + "Đã báo hàng" (all-time, tập sống nhỏ) -> bắt đơn có ND ship dù NV quên tick.
+    // + "Đã báo ship" GIỚI HẠN N ngày gần đây (cfg.shipRecentDays) -> bắt ca "NV tick 'Đã báo ship'
+    // tay nhưng Mi chưa gửi, ND ship hiện sau" (Hải Hà) mà không kéo cả kho notified_ship tích lũy.
+    // shipRecentDays=0 -> bỏ notified_ship (chỉ 2 trạng thái đầu như trước). Chống trùng bằng dấu.
+    const statusFilter = ['not_sent', 'notified_arrival'];
+    if (cfg.shipRecentDays > 0) statusFilter.push({ status: 'notified_ship', days: cfg.shipRecentDays });
     await executeNotifyPass({
-      // Quét CẢ "Chưa báo" lẫn "Đã báo hàng" -> bắt đơn có ND ship dù NV quên tick trạng thái.
-      // Lượt CATCH truyền statusFilter hẹp (['notified_arrival']) -> quét nhẹ & nhanh hơn.
-      trigger, kind: 'ship', statusFilter: opts.statusFilter || ['not_sent', 'notified_arrival'],
+      // Lượt CATCH truyền statusFilter hẹp (['notified_arrival']) -> quét nhẹ & nhanh hơn; các lượt
+      // khác dùng statusFilter đầy đủ (gồm cả notified_ship giới hạn ngày) đã build ở trên.
+      trigger, kind: 'ship', statusFilter: opts.statusFilter || statusFilter,
       classify: classifyForShip, keyOf: autoKeyShip, logTag: 'auto-ship', summary,
     });
   } catch (err) {
@@ -1160,4 +1195,7 @@ function getStatus() {
 module.exports = {
   runAutoNotify, runAutoNotifyShip, debugShip, startAutoNotify, setEnabled, setShipEnabled, setScheduleTime, setPrecheckMinutes,
   setAlertConfig, sendAlertTest, previewAutoNotify, getStatus, autoKey,
+  // Tái dùng kênh "nhắc ra Zalo (nội bộ)" cho module tự động báo ship khác (Quản lý giao hàng,
+  // shippingAutoNotify.js) -> admin chỉ cấu hình 1 chỗ (Cài đặt), cả 2 luồng auto đều dùng chung.
+  dispatchAlert,
 };

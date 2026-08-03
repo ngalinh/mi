@@ -28,10 +28,12 @@ module.exports = {
   // + mật khẩu này rồi bấm "Đăng nhập". Để trống = KHÔNG tự đăng nhập (chạy `npm run login` tay).
   saleworkLoginUser: process.env.SALEWORK_LOGIN_USER || '',
   saleworkLoginPass: process.env.SALEWORK_LOGIN_PASS || '',
-  // Giữ ấm session (tự đăng nhập lại trước khi hết hạn). Bật để định kỳ mở từng profile Zalo có
-  // lưu tài khoản/mật khẩu, kiểm tra + tự đăng nhập lại nếu session đã hết. Mặc định TẮT (chỉ tự
-  // đăng nhập ngay lúc gửi khi gặp form login). SESSION_KEEPALIVE_MS = chu kỳ quét (mặc định 12h).
-  sessionKeepalive: String(process.env.SESSION_KEEPALIVE || 'false').toLowerCase() === 'true',
+  // Giữ ấm session (tự đăng nhập lại trước khi hết hạn). Định kỳ mở từng profile Zalo CÓ lưu tài
+  // khoản/mật khẩu, kiểm tra + tự đăng nhập lại nếu session đã hết -> session luôn tươi, hiếm khi
+  // gặp form login (kể cả OTP) đúng lúc gửi. Mặc định BẬT. An toàn: chỉ đụng account có credential
+  // (không có creds -> no-op), chạy tuần tự có khóa profile nên không đụng luồng gửi. Đặt
+  // SESSION_KEEPALIVE=false để tắt (khi đó chỉ tự đăng nhập ngay lúc gửi). SESSION_KEEPALIVE_MS = chu kỳ (mặc định 12h).
+  sessionKeepalive: String(process.env.SESSION_KEEPALIVE || 'true').toLowerCase() === 'true',
   sessionKeepaliveMs: parseInt(process.env.SESSION_KEEPALIVE_MS || String(12 * 60 * 60 * 1000), 10),
   // --- Facebook (báo hàng qua Messenger khi khách không dùng Zalo) ---
   // Trang mở khi ĐĂNG NHẬP Facebook (giống Xeko: mở facebook.com rồi NV đăng nhập tay, lưu session).

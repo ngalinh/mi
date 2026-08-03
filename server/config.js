@@ -91,10 +91,13 @@ module.exports = {
     defaultDays: Math.max(parseInt(process.env.BASSO_DEFAULT_DAYS || '7', 10) || 0, 0),
     // Chu kỳ (ms) NẠP SẴN khung nhìn mặc định của dashboard vào cache RAM (xem cacheWarmer.js)
     // -> người mở dashboard không phải đợi Basso. 0 = tắt; nếu >0 thì tối thiểu 15000ms.
-    // Mặc định 120s (giãn từ 60s): warm nền thưa hơn -> nhẹ Basso. Cache TTL 60s nên trong
-    // khoảng giữa 2 lượt warm, cache có thể stale -> SWR vẫn trả ngay rồi tự làm mới, không kẹt.
+    // Mặc định 30s: warm nền dày hơn -> bảng dashboard cập nhật số món/nội dung mới (vd đơn về
+    // thêm sản phẩm 14 -> 18) nhanh hơn, không phải đợi hết TTL. Đánh đổi: gọi Basso dày hơn
+    // (nặng hơn preload 120s cũ). Muốn nhẹ Basso hơn thì nâng qua BASSO_PRELOAD_INTERVAL_MS.
+    // Lưu ý: "Xem nội dung" & gửi đã đọc TƯƠI (getOrderContent fresh) nên chính xác không phụ
+    // thuộc preload này; preload chỉ ảnh hưởng độ tươi khi HIỂN THỊ bảng ở nền.
     preloadIntervalMs: (() => {
-      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '120000', 10);
+      const v = parseInt(process.env.BASSO_PRELOAD_INTERVAL_MS ?? '30000', 10);
       return Number.isFinite(v) && v > 0 ? Math.max(v, 15000) : 0;
     })(),
     // Ngưỡng số đơn để dashboard lọc client-side (kéo hết 1 lần rồi lọc NV/trạng thái/trang
@@ -156,14 +159,25 @@ module.exports = {
       if (raw != null && (n === 0 || raw === '0')) return 0; // tắt tường minh
       return Math.max(Number.isFinite(n) && n > 0 ? n : 45000, 15000);
     })(),
+    // BÁO SHIP quét thêm đơn ĐÃ ở trạng thái "Đã báo ship" (notified_ship) để bắt ca "NV tick trạng
+    // thái tay TRƯỚC, ND ship hiện SAU, Mi chưa từng gửi" -> vẫn báo cho khách. Vì tập notified_ship
+    // TÍCH LŨY vô hạn, GIỚI HẠN theo N ngày gần đây (lọc theo ngày đơn về kho) để không kéo cả kho
+    // lịch sử mỗi lượt quét. Mặc định 7 ngày. Đặt AUTO_NOTIFY_SHIP_RECENT_DAYS=0 để TẮT quét
+    // notified_ship (chỉ quét not_sent/notified_arrival như trước).
+    shipRecentDays: Math.max(parseInt(process.env.AUTO_NOTIFY_SHIP_RECENT_DAYS ?? '7', 10) || 0, 0),
     profile: process.env.AUTO_NOTIFY_PROFILE || 'default',
     account: process.env.AUTO_NOTIFY_ACCOUNT || undefined,
     // Bot gửi xong có đẩy trạng thái "Đã báo hàng" về web Basso không?
     // Mặc định true: đồng bộ trạng thái về Basso như luồng báo tay. Đặt
     // AUTO_NOTIFY_UPDATE_WEB=false nếu muốn bot chỉ đánh dấu trong mi.
     updateWeb: String(process.env.AUTO_NOTIFY_UPDATE_WEB || 'true').toLowerCase() === 'true',
-    // Số lần thử lại tối đa cho 1 đơn nếu gửi lỗi (tránh spam khi local-runner offline)
-    maxRetries: Math.max(parseInt(process.env.AUTO_NOTIFY_MAX_RETRIES || '3', 10) || 3, 1),
+    // Số lần THỬ tối đa cho 1 đơn nếu gặp LỖI CẤP-ĐƠN (runner còn sống nhưng gửi lỗi, vd
+    // KHONG_THAY_HOI_THOAI — không tìm thấy hội thoại). Mặc định 1 = KHÔNG thử lại: gửi hụt là chốt
+    // 'failed', để người trực tự kiểm tra & gửi tay (thử lại thường vô ích — hội thoại không tự hiện
+    // ra, brand/khách sai không tự đúng). Muốn thử lại N lần thì đặt AUTO_NOTIFY_MAX_RETRIES=N.
+    // LƯU Ý: lỗi TẠM THỜI (runner offline / chưa đăng nhập Zalo) KHÔNG tính vào đây — luồng bỏ cả
+    // lượt và thử lại nguyên vẹn khi runner online / đã đăng nhập (vì tin CHƯA hề tới khách).
+    maxRetries: Math.max(parseInt(process.env.AUTO_NOTIFY_MAX_RETRIES || '1', 10) || 1, 1),
     // Bí mật bảo vệ webhook /api/webhook/arrived (so khớp header x-webhook-secret). Trống = không kiểm tra.
     webhookSecret: process.env.AUTO_NOTIFY_WEBHOOK_SECRET || '',
     // CHỈ tự báo đơn về TỪ ngày account được bật "Tự động báo" trở đi (bỏ qua đơn tồn đọng
@@ -203,6 +217,26 @@ module.exports = {
       phone: process.env.AUTO_NOTIFY_ALERT_PHONE || '',     // SĐT nhận (của người trực)
       name: process.env.AUTO_NOTIFY_ALERT_NAME || 'Admin',  // tên hiển thị người nhận
     },
+  },
+  // Tự động báo ship — Pha 2 (Quản lý giao hàng / Partner API shipping_order). ĐỘC LẬP hoàn toàn
+  // với autoNotify.shipEnabled ở trên (luồng CŨ dựa vào content_ship của Hàng về VN) — công tắc
+  // riêng, bảng dedup riêng (shipping_notified/shipping_auto_seen), không đụng nhau.
+  // Xem docs/shipping-notify-plan.md — Pha 2.
+  shippingAuto: {
+    // Mặc định TẮT: chỉ admin bật tay trên trang Cài đặt mới chạy tự động (an toàn khi mới deploy).
+    enabled: String(process.env.AUTO_SHIP2 || 'false').toLowerCase() === 'true',
+    // Chu kỳ quét (ms) đơn "Giao shipper" mới / có shipper_link mới. Mặc định 180s (nhẹ, giống
+    // cadence poller ship cũ) — có thể giãn nếu số vận đơn lớn.
+    intervalMs: Math.max(parseInt(process.env.AUTO_SHIP2_INTERVAL_MS || '180000', 10) || 180000, 30000),
+    // Cửa sổ NGÀY gần đây quét lại (theo ngày tạo vận đơn) — tránh kéo cả lịch sử mỗi lượt quét.
+    // Mặc định 1 = CHỈ vận đơn tạo HÔM NAY (an toàn nhất khi mới bật: đơn cũ hơn — dù đã/chưa
+    // "Giao shipper" — coi như ngoài tầm, KHÔNG BAO GIỜ tự gửi, kể cả sau này đổi trạng thái;
+    // NV gửi tay qua nút Xem/Gửi nếu cần). Đặt AUTO_SHIP2_LOOKBACK_DAYS lớn hơn nếu muốn bắt cả
+    // đơn tạo vài ngày trước mới "Giao shipper" (đánh đổi: seed lúc bật cũng quét xa hơn).
+    lookbackDays: Math.max(parseInt(process.env.AUTO_SHIP2_LOOKBACK_DAYS ?? '1', 10) || 1, 1),
+    // Chu kỳ (ms) kiểm tra đồng hồ cho lưới an toàn 17:00 — tái dùng CHUNG giờ hẹn với báo hàng
+    // (đọc app_settings key 'autoNotify.scheduleTime', mặc định env AUTO_NOTIFY_SCHEDULE_TIME).
+    safetyCheckMs: Math.max(parseInt(process.env.AUTO_SHIP2_SAFETY_CHECK_MS || '60000', 10) || 60000, 15000),
   },
   // Báo hàng loạt (áp dụng cho CẢ báo tay lẫn bot tự động): nghỉ một khoảng NGẪU NHIÊN giữa 2
   // khách LIÊN TIẾP để tránh gửi dồn quá nhanh -> giảm rủi ro chạm ngưỡng chống spam của Zalo/FB.

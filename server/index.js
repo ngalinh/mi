@@ -10,11 +10,18 @@ const express = require('express');
 const cors = require('cors');
 const config = require('./config');
 const { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, debugRawRows } = require('./bassoApi');
+const shippingApi = require('./shippingApi');
+const shippingNotify = require('./shippingNotify');
+const shippingSendService = require('./shippingSendService');
+const shippingAutoNotify = require('./shippingAutoNotify');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
+  getShippingNotified, getShippingTemplates, setShippingTemplate,
+  isShippingExcluded, setShippingExcluded,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone } = require('./db');
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone,
+  listChannelAccounts, upsertChannelAccount, deleteChannelAccount } = require('./db');
 const { notifyMany, notifyOrders, requestStopBulk, isBulkRunning } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
 const localRegistry = require('./localRegistry');
@@ -175,6 +182,7 @@ app.get('/api/health', async (req, res) => {
       registered: localRegistry.getInfo(),
     },
     autoNotify: autoNotify.getStatus(),
+    shippingAutoNotify: shippingAutoNotify.getStatus(),
     preload: cacheWarmer.getStatus(),
     // Có phiên báo loạt (tay) đang chạy trên server không. Dashboard dùng cờ này để KHÔI PHỤC nút
     // "Dừng báo loạt" sau khi reload trang (state client bị mất nhưng server vẫn đang gửi).
@@ -404,6 +412,34 @@ app.delete('/api/staff/:email', async (req, res) => {
   res.json({ ok: removed, removed });
 });
 
+// ---- Cấu hình Kênh Sale: kênh sale + nhân viên -> tài khoản Zalo (xem accountResolver.js) ----
+// Partner API getArrivedVnList KHÔNG trả field kênh sale nên mi không tự nhận diện được — người
+// gửi CHỌN kênh sale cho lượt báo (opts.kenhSale ở /api/notify), mi tra bảng này để chọn account.
+app.get('/api/channel-accounts', (req, res) => res.json({ ok: true, channelAccounts: listChannelAccounts() }));
+
+async function saveChannelAccount(req, res) {
+  if (await guardAdmin(req, res)) return;
+  try {
+    const body = req.body || {};
+    const id = req.params.id != null ? req.params.id : body.id;
+    const channelAccount = upsertChannelAccount({
+      id, kenhSale: body.kenhSale, staffId: body.staffId, staffName: body.staffName, zaloAccountKey: body.zaloAccountKey,
+    });
+    res.json({ ok: true, channelAccount });
+  } catch (e) {
+    if (e.code === 'BAD_INPUT') return res.status(400).json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: e.message });
+  }
+}
+app.post('/api/channel-accounts', saveChannelAccount);
+app.put('/api/channel-accounts/:id', saveChannelAccount);
+
+app.delete('/api/channel-accounts/:id', async (req, res) => {
+  if (await guardAdmin(req, res)) return;
+  const removed = deleteChannelAccount(req.params.id);
+  res.json({ ok: removed, removed });
+});
+
 // ---- Danh bạ Zalo (SĐT -> tên hội thoại Zalo/FB) ----
 // Nguồn cho bước tìm hội thoại: khớp SĐT vẫn ưu tiên, tên Zalo dùng làm fallback khi SĐT
 // không ra hội thoại / khách Facebook. Là dữ liệu VẬN HÀNH (rủi ro thấp) nên mọi NV đã đăng
@@ -418,7 +454,7 @@ app.post('/api/zalo-contacts', (req, res) => {
     const contact = upsertZaloContact({
       phone: b.phone, zalo_name: b.zalo_name, note: b.note, source: 'manual',
       fb_link: b.fb_link, staff_id: b.staff_id,
-      report_target: b.report_target,
+      report_target: b.report_target, kenh_sale: b.kenh_sale,
     });
     res.json({ ok: true, contact });
   } catch (e) {
@@ -609,10 +645,10 @@ app.get('/api/order-counts', async (req, res) => {
 
 // ---- Báo hàng loạt: kéo HẾT đơn "Chưa báo" qua mọi trang rồi gửi ----
 // (không bị giới hạn ở trang đang xem). Tự bỏ qua đơn đã Delay và đơn bot/đã báo tay.
-// body: { from?, to?, staff?, q?, kind? }
+// body: { from?, to?, staff?, q?, kind?, kenhSale? }
 app.post('/api/notify-all', async (req, res) => {
   try {
-    const { orders, from, to, staff, q, kind } = req.body || {};
+    const { orders, from, to, staff, q, kind, kenhSale } = req.body || {};
     const actor = getActor(req);
     // Ưu tiên danh sách client gửi lên (dashboard client-mode đã có sẵn cả tập) -> KHÔNG kéo
     // lại từ Basso, tránh timeout khi Basso chậm. Không có thì fallback kéo toàn bộ như cũ.
@@ -630,7 +666,7 @@ app.post('/api/notify-all', async (req, res) => {
     if (!targets.length) {
       return res.json({ ok: true, total: 0, sent: 0, failed: 0, results: [] });
     }
-    const result = await notifyOrders(targets, { kind, actor });
+    const result = await notifyOrders(targets, { kind, kenhSale, actor });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -667,7 +703,9 @@ app.get('/api/order-content', async (req, res) => {
     if (customerId == null || dateInventory == null) {
       return res.status(400).json({ ok: false, error: 'Cần customerId + dateInventory' });
     }
-    const data = await getOrderContent({ customerId, dateInventory, phone });
+    // fresh=true: nút "Xem nội dung" phải thấy bản Basso mới nhất NGAY (vd đơn vừa về thêm sản
+    // phẩm: 14 -> 18 món), không để SWR cache (TTL) che mất bằng bản cũ.
+    const data = await getOrderContent({ customerId, dateInventory, phone, fresh: true });
     res.json({ ok: true, ...data });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -676,13 +714,14 @@ app.get('/api/order-content', async (req, res) => {
 
 // ---- Báo hàng: gửi tin cho 1 hoặc nhiều đơn ----
 // body: { orders: object[] (ưu tiên, client gửi đơn đầy đủ) | orderIds: string[] (legacy),
-//         profile?, account?, messageOverride?, kind? }
+//         profile?, account?, messageOverride?, kind?,
+//         kenhSale? (Kênh sale đã chọn cho lượt báo — tra Cài đặt → Kênh Sale để chọn account) }
 app.post('/api/notify', async (req, res) => {
   try {
-    const { orders, orderIds, profile, account, messageOverride, kind } = req.body || {};
+    const { orders, orderIds, profile, account, messageOverride, kind, kenhSale } = req.body || {};
     // graceMs: ân hạn TRƯỚC khi tin thật sự đi (chỉ gửi TAY qua route này) — bấm Dừng trong lúc này
     // sẽ hủy sạch. Báo loạt (/api/notify-all) & tự động KHÔNG truyền nên chạy ngay như cũ.
-    const opts = { profile, account, messageOverride, kind, actor: getActor(req), graceMs: config.notify.manualGraceMs };
+    const opts = { profile, account, messageOverride, kind, kenhSale, actor: getActor(req), graceMs: config.notify.manualGraceMs };
     if (Array.isArray(orders) && orders.length) {
       const result = await notifyOrders(orders, opts);
       return res.json({ ok: true, ...result });
@@ -704,6 +743,253 @@ app.post('/api/update-row', async (req, res) => {
     const { customerId, dateInventory, status, note } = req.body || {};
     if (customerId == null) return res.status(400).json({ ok: false, error: 'Thiếu customerId' });
     const result = await updateOrderStatus({ customerId, dateInventory, status, note });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- Quản lý giao hàng (Partner API — mục 8.10 tài liệu) ----
+// Meta dựng dropdown (ĐVVC / trạng thái / chi nhánh / NV).
+app.get('/api/shipping/meta', async (req, res) => {
+  try {
+    res.json({ ok: true, ...(await shippingApi.getShippingMeta()) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Danh sách vận đơn. Query: page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch.
+app.get('/api/shipping', async (req, res) => {
+  try {
+    const { page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch } = req.query;
+    const data = await shippingApi.getShippingOrders({
+      page: page ? parseInt(page, 10) || 1 : 1,
+      shippingId: shipping_id,
+      status,
+      userApprove: user_approve,
+      key,
+      filterDate: filter_date,
+      filterDateEnd: filter_date_end,
+      branch,
+    });
+    // Đính kèm mốc "đã gửi báo ship" (Pha 1/2) cho từng vận đơn -> UI hiện thời gian gửi
+    // ngay dưới nút "Xem" mà không cần mở modal.
+    if (Array.isArray(data.orders)) {
+      for (const o of data.orders) {
+        const seen = o.id != null ? getShippingNotified(o.id) : null;
+        o.shipSentAt = seen ? seen.sentAt : null;
+        o.autoExcluded = o.id != null ? isShippingExcluded(o.id) : false;
+      }
+    }
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Dữ liệu phiếu giao hàng (JSON). Query: ids=1,2,3
+app.get('/api/shipping/invoice', async (req, res) => {
+  try {
+    const ids = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (!ids.length) return res.status(400).json({ ok: false, error: 'Thiếu ids' });
+    res.json({ ok: true, ...(await shippingApi.getShippingInvoice(ids)) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Sửa vận đơn. body: { id, shipping_id, code?, fee?, cod_amount? }
+app.post('/api/shipping/update', async (req, res) => {
+  try {
+    const { id, shipping_id, code, fee, cod_amount } = req.body || {};
+    if (id == null || shipping_id == null) return res.status(400).json({ ok: false, error: 'Thiếu id/shipping_id' });
+    res.json({ ok: true, ...(await shippingApi.updateShippingOrder({ id, shipping_id, code, fee, cod_amount })) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Đổi trạng thái 1 đơn. body: { id, kind } với kind ∈ prepared|ship|complete|revert
+app.post('/api/shipping/action', async (req, res) => {
+  try {
+    const { id, kind, shipperLink } = req.body || {};
+    if (id == null) return res.status(400).json({ ok: false, error: 'Thiếu id' });
+    let result;
+    if (kind === 'prepared') result = await shippingApi.markPrepared(id);
+    else if (kind === 'ship') result = await shippingApi.giveToShipper(id, shipperLink);
+    else if (kind === 'complete') result = await shippingApi.markCompleted(id);
+    else if (kind === 'revert') result = await shippingApi.revertPrepared(id);
+    else return res.status(400).json({ ok: false, error: 'kind không hợp lệ' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Sinh nội dung báo ship cho 1 đơn — CHỈ trả nội dung + trạng thái đã gửi hay chưa, KHÔNG tự gửi.
+// body: { order: { recipient, shipping, shippingId, trackingCode, codAmount, shipperLink } }
+app.post('/api/shipping/message', (req, res) => {
+  try {
+    const order = req.body && req.body.order;
+    if (!order) return res.status(400).json({ ok: false, error: 'Thiếu order' });
+    const r = shippingNotify.buildDeliveryMessage(order, getShippingTemplates());
+    const seen = order.id != null ? getShippingNotified(order.id) : null;
+    res.json({
+      ok: true, ...r, reasonLabel: r.reason ? shippingNotify.REASON_LABEL[r.reason] || r.reason : '',
+      alreadySent: !!seen, sentAt: seen ? seen.sentAt : null,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ĐVVC hợp lệ để sửa mẫu = có trong registry (không phải 'none') HOẶC 'fallback' (mẫu chung
+// dự phòng cho ĐVVC chưa khai riêng — xem shippingNotify.buildFallbackMessage).
+function isEditableTemplateId(id) {
+  if (String(id) === 'fallback') return true;
+  const reg = shippingNotify.CARRIERS[Number(id)];
+  return !!reg && reg.type !== 'none';
+}
+
+// (Pha 3) Danh sách mẫu báo ship theo ĐVVC — mặc định + override đã lưu + xem trước (dữ liệu mẫu).
+// Registry ĐVVC (loại link/tracking, có gửi hay không) CỐ ĐỊNH trong code; chỉ TEXT sửa được.
+// Kèm 1 dòng "fallback" — mẫu chung dùng cho ĐVVC chưa khai riêng.
+app.get('/api/shipping/templates', (req, res) => {
+  try {
+    const overrides = getShippingTemplates();
+    const buildRow = (id, name, type) => {
+      const def = shippingNotify.DEFAULT_TEMPLATES[id] || '';
+      const current = overrides[id] || def;
+      return {
+        shippingId: id, name, type, default: def, current, isCustom: !!overrides[id],
+        preview: shippingNotify.renderTemplate(current, shippingNotify.SAMPLE_VARS[id] || {}),
+      };
+    };
+    const carriers = Object.entries(shippingNotify.CARRIERS)
+      .filter(([, reg]) => reg.type !== 'none')
+      .map(([id, reg]) => buildRow(id, reg.name, reg.type));
+    carriers.push(buildRow('fallback', 'Mẫu chung (ĐVVC chưa khai riêng)', 'fallback'));
+    res.json({ ok: true, carriers });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Lưu mẫu tuỳ chỉnh cho 1 ĐVVC (hoặc 'fallback'). body: { shippingId, message }.
+// message rỗng -> khôi phục mặc định.
+app.post('/api/shipping/templates', (req, res) => {
+  try {
+    const { shippingId, message } = req.body || {};
+    if (shippingId == null) return res.status(400).json({ ok: false, error: 'Thiếu shippingId' });
+    if (!isEditableTemplateId(shippingId)) return res.status(400).json({ ok: false, error: 'ĐVVC không hợp lệ hoặc không gửi tin' });
+    setShippingTemplate(shippingId, message);
+    const def = shippingNotify.DEFAULT_TEMPLATES[String(shippingId)] || '';
+    const current = (message && String(message).trim()) || def;
+    res.json({
+      ok: true,
+      current,
+      isCustom: !!(message && String(message).trim()),
+      preview: shippingNotify.renderTemplate(current, shippingNotify.SAMPLE_VARS[String(shippingId)] || {}),
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Xem trước mẫu ĐANG SOẠN (chưa lưu) với dữ liệu mẫu — dùng khi gõ trong ô textarea.
+// body: { shippingId, message }
+app.post('/api/shipping/templates/preview', (req, res) => {
+  try {
+    const { shippingId, message } = req.body || {};
+    const id = String(shippingId);
+    if (!isEditableTemplateId(id)) return res.status(400).json({ ok: false, error: 'ĐVVC không hợp lệ hoặc không gửi tin' });
+    const preview = shippingNotify.renderTemplate(message, shippingNotify.SAMPLE_VARS[id] || {});
+    res.json({ ok: true, preview });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// (Pha 1) Gửi THẬT báo ship qua Zalo/Facebook cho 1 đơn. body: { order, force? }
+app.post('/api/shipping/send', async (req, res) => {
+  try {
+    const { order, force } = req.body || {};
+    if (!order || order.id == null) return res.status(400).json({ ok: false, error: 'Thiếu order' });
+    const r = await shippingSendService.sendShippingOne(order, { actor: getActor(req), force: !!force });
+    res.json({ ok: r.ok, error: r.error || null, alreadySent: !!r.alreadySent, sentAt: r.sentAt || null });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// (Pha 1) Gửi báo ship hàng loạt (tick nhiều đơn). body: { orders:[...] }
+app.post('/api/shipping/send-bulk', async (req, res) => {
+  try {
+    const orders = req.body && req.body.orders;
+    if (!Array.isArray(orders) || !orders.length) return res.status(400).json({ ok: false, error: 'Thiếu orders' });
+    const r = await shippingSendService.sendShippingBulk(orders, { actor: getActor(req) });
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// (Pha 2) Tự động báo ship (Quản lý giao hàng) — trạng thái + bật/tắt + chạy thủ công.
+// ĐỘC LẬP với /api/auto-notify/ship-toggle (luồng CŨ dựa vào content_ship của Hàng về VN).
+app.get('/api/shipping-auto', (req, res) => {
+  res.json({ ok: true, ...shippingAutoNotify.getStatus() });
+});
+
+// Bật/tắt poller tự động báo ship (Quản lý giao hàng). body: { enabled: boolean }
+app.post('/api/shipping-auto/toggle', (req, res) => {
+  const { enabled } = req.body || {};
+  const status = shippingAutoNotify.setEnabled(!!enabled);
+  res.json({ ok: true, ...status });
+});
+
+// Chạy 1 lượt quét + gửi ngay (không phụ thuộc interval). Dùng cho nút "Quét & gửi ngay".
+app.post('/api/shipping-auto/run', async (req, res) => {
+  try {
+    const result = await shippingAutoNotify.runShippingAuto({ trigger: 'manual' });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Chạy thủ công lưới an toàn (đơn "Đã soạn hàng" quên bấm "Giao shipper"). Dùng cho nút test.
+app.post('/api/shipping-auto/run-safety', async (req, res) => {
+  try {
+    const result = await shippingAutoNotify.runSafetyNet();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Tick/bỏ tick "Loại trừ" 1 vận đơn khỏi tự động báo ship (Pha 2) — giống Delay bên Hàng về VN,
+// KHÔNG ảnh hưởng gửi tay. body: { id, excluded: boolean }
+app.post('/api/shipping-auto/exclude', (req, res) => {
+  try {
+    const { id, excluded } = req.body || {};
+    if (id == null) return res.status(400).json({ ok: false, error: 'Cần id' });
+    setShippingExcluded(id, !!excluded);
+    res.json({ ok: true, id: String(id), excluded: !!excluded });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Thao tác hàng loạt. body: { ids:[...], kind } với kind ∈ ship|complete
+app.post('/api/shipping/bulk', async (req, res) => {
+  try {
+    const { ids, kind } = req.body || {};
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ ok: false, error: 'Thiếu ids' });
+    let result;
+    if (kind === 'ship') result = await shippingApi.markExportedBulk(ids);
+    else if (kind === 'complete') result = await shippingApi.markShippedBulk(ids);
+    else return res.status(400).json({ ok: false, error: 'kind không hợp lệ' });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -959,6 +1245,7 @@ app.listen(config.port, () => {
     console.warn('[server] ⚠️  Webhook /api/webhook/arrived BỊ KHÓA (production nhưng chưa đặt AUTO_NOTIFY_WEBHOOK_SECRET). Đặt secret để bật, hoặc chỉ dùng poller AUTO_NOTIFY.');
   }
   autoNotify.startAutoNotify();
+  shippingAutoNotify.startShippingAutoNotify();
   // Backfill mốc "lần đầu thấy ND ship" TRƯỚC khi warm cache: cacheWarmer nạp tab "Chưa báo" có thể
   // enrich & ghi mốc "now" cho đơn tồn cũ, nên phải backdate xong mới cho warm chạy (chỉ chạy 1 lần
   // khi bảng còn rỗng; finally để cacheWarmer vẫn bật kể cả backfill lỗi/không có gì để làm).

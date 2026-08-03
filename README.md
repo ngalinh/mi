@@ -67,9 +67,9 @@ nhập lại. Để khỏi làm tay mỗi tuần, lưu **tài khoản + mật kh
   (không mất lượt). Không có credential (hoặc gặp OTP/captcha) → báo lỗi `CHUA_DANG_NHAP` rõ ràng
   để đăng nhập thủ công (`npm run login`).
 - **Lúc bấm "Kiểm tra"** kết nối account (`/api/accounts/:key/check`): tự đăng nhập lại nếu hết hạn.
-- **Giữ ấm định kỳ** (tuỳ chọn): bật `SESSION_KEEPALIVE=true` để runner tự quét từng profile Zalo
-  có lưu credential mỗi `SESSION_KEEPALIVE_MS` (mặc định 12h) và đăng nhập lại **trước** khi tới
-  lượt gửi. Mặc định tắt.
+- **Giữ ấm định kỳ** (mặc định BẬT): runner tự quét từng profile Zalo có lưu credential mỗi
+  `SESSION_KEEPALIVE_MS` (mặc định 12h) và đăng nhập lại **trước** khi tới lượt gửi -> hiếm khi gặp
+  form login (kể cả OTP) đúng lúc gửi. Chỉ đụng account có credential. Đặt `SESSION_KEEPALIVE=false` để tắt.
 - **Nút "Đăng nhập"** trên UI (mở Chromium): tự điền sẵn tài khoản/mật khẩu, NV chỉ cần bấm đăng
   nhập / xử lý xác minh nếu có.
 
@@ -214,7 +214,8 @@ Thêm tài khoản Facebook sẽ mở Chromium trên máy local-runner vào `fac
 **Chỉ định khách/kênh báo FB:** Cài đặt → **Báo qua Facebook**:
 - **Theo khách** — bảng **SĐT + link Facebook/Messenger** của từng khách. SĐT để khớp đơn Basso,
   link để bot **mở thẳng đúng hội thoại** (vì ô Search Messenger tìm theo *tên*, gõ SĐT không ra).
-  Chấp nhận `facebook.com/<user>`, `m.me/<user>`, hoặc link `messages/t/…`.
+  Chấp nhận `facebook.com/<user>`, `m.me/<user>`, hoặc link `messages/t/…` (kể cả biến thể mã hoá
+  đầu-cuối `messages/e2ee/t/…`).
 - **Theo nhân viên/kênh** — bật cho NV nào thì *toàn bộ* đơn của NV đó báo qua Facebook (vẫn cần
   link FB của từng khách để gửi).
 

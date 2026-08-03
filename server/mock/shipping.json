@@ -1,0 +1,40 @@
+[
+  {
+    "id": "54465", "created_time": "1785141881", "order_id": "135682", "name": "Hà Nhữ",
+    "phone": "0356237450", "address": "thôn 4 tầng, thanh hương, thanh liêm, hà nam", "note": null,
+    "shipping_id": "4", "code": "147928260778", "fee": "0", "cod_amount": "0", "weight": "3.2",
+    "status": "waiting", "shipped_time": null, "total": "1529500", "is_prepared": "1",
+    "branch": "ha-noi", "waiting_prepared_at": "1785143181", "carrier_partner_code": "viettelpost",
+    "carrier_tracking_id": "147928260778", "carrier_status": "100", "ship_payer": "company",
+    "shipping": "Viettel Post",
+    "items": [
+      { "id": "255548", "order_item_id": "626017", "name": "Calvin Klein Men's Elern Slip-On Casual Sandals", "quantity": "1", "approve_user": "Thảo", "order_code": "SU09072630", "variations": [{"name":"Size","value":"12"},{"name":"Color","value":"Black"}], "item_unit_weight": "0.88", "image_path": "" }
+    ]
+  },
+  {
+    "id": "54454", "created_time": "1785127571", "order_id": "134645", "name": "Zenny Nguyen",
+    "phone": "0369636869", "address": "Số 115 ngõ Núi trúc, kim mã. Ship h hành chính", "note": null,
+    "shipping_id": "3", "code": "H27071143", "fee": "0", "cod_amount": "0", "weight": "0.56",
+    "status": "waiting", "shipped_time": null, "total": "1501500", "is_prepared": "0",
+    "branch": "ha-noi", "waiting_prepared_at": null, "carrier_partner_code": null,
+    "carrier_tracking_id": null, "carrier_status": null, "ship_payer": "company",
+    "shipping": "AhaMove",
+    "items": [
+      { "id": "255515", "order_item_id": "623538", "name": "ITALIA 70S SHOES", "quantity": "1", "approve_user": "Tâm", "order_code": "SU28062678", "variations": [{"name":"Size","value":"5.5"},{"name":"Color","value":"Silver Metallic"}], "item_unit_weight": "0.56", "image_path": "" }
+    ]
+  },
+  {
+    "id": "54464", "created_time": "1785141848", "order_id": "133305", "name": "Nguyễn Khánh Linh",
+    "phone": "0837162005", "address": "16 phan chu trinh", "note": null,
+    "shipping_id": "7", "code": "NT27071544", "fee": "0", "cod_amount": "0", "weight": "9.06",
+    "status": "exported", "shipped_time": null, "total": "6791141", "is_prepared": "1",
+    "branch": "ha-noi", "waiting_prepared_at": "1785143463", "carrier_partner_code": null,
+    "carrier_tracking_id": null, "carrier_status": null, "ship_payer": "company",
+    "shipper_link": "https://express.grab.com/track/Y7C5uiOGYyl7I2fuW-IKqhFgoqL8",
+    "shipping": "Grab",
+    "items": [
+      { "id": "255539", "order_item_id": "620187", "name": "Women's L.12.D Slim Fit Stretch Mini Piqué Polo", "quantity": "1", "approve_user": "Bình", "order_code": "SU11062613", "variations": [{"name":"Size","value":"XS (34)"},{"name":"Color","value":"Light Pink"}], "item_unit_weight": "0.2", "image_path": "" },
+      { "id": "255540", "order_item_id": "622625", "name": "Calvin Klein Cotton Blend Pique Classic Polo Shirt", "quantity": "1", "approve_user": "Bình", "order_code": "SU23062606", "variations": [{"name":"Size","value":"S"}], "item_unit_weight": "0.26", "image_path": "" }
+    ]
+  }
+]

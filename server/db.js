@@ -159,6 +159,24 @@ db.exec(`  -- Cấu hình hệ thống chỉnh được trên web (key-value). D
   );
 `);
 
+db.exec(`  -- CẤU HÌNH KÊNH SALE: Basso có nhiều "Kênh Sale" (vd Basso, ShipUS, Linh Dương...) hiển thị
+  -- trên web Basso NHƯNG Partner API "getArrivedVnList" mi đang gọi KHÔNG trả field này (đã kiểm
+  -- tra thực tế qua /api/basso/debug-list) -> mi KHÔNG thể tự nhận diện kênh sale của 1 đơn. Bảng
+  -- này lưu cấu hình THỦ CÔNG: 1 kênh sale + 1 nhân viên -> 1 tài khoản Zalo. Khi báo tay, người
+  -- gửi CHỌN kênh sale cho lượt báo (xem accountResolver.resolveForOrder) -> mi tra bảng này theo
+  -- (kênh sale, nhân viên phụ trách đơn) để chọn đúng account thay vì suy luận theo brand/mặc định.
+  CREATE TABLE IF NOT EXISTS channel_accounts (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    kenh_sale        TEXT NOT NULL,
+    staff_id         TEXT,                 -- user_id NV trên Basso (ưu tiên khớp nếu có)
+    staff_name       TEXT NOT NULL,        -- tên NV (fallback khớp khi đơn thiếu user_id)
+    zalo_account_key TEXT NOT NULL,        -- khớp account.key trong accountsStore (local-runner)
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_channel_accounts_lookup ON channel_accounts(kenh_sale, staff_id);
+`);
+
 db.exec(`  -- DANH BẠ ZALO/FACEBOOK: ánh xạ SĐT khách -> TÊN hiển thị trên Zalo/FB (do NV nhập/
   -- import từ file). Dùng làm FALLBACK khi runner tìm hội thoại: SĐT vẫn là khoá chính, nhưng
   -- tên Basso hay khác tên trên Zalo -> khớp theo tên hay trượt. Có tên Zalo đúng ở đây thì tìm
@@ -183,6 +201,12 @@ try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN staff_id TEXT'); } catch (_)
 // theo NV (mặc định), 'personal' = ép báo CÁ NHÂN, 'group' = ép báo NHÓM. Vd NV báo cá nhân nhưng
 // có 1 khách lại phải báo vào group Zalo.
 try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN report_target TEXT'); } catch (_) { /* đã có cột */ }
+// KÊNH SALE riêng cho khách này (vd "Basso", "ShipUS", "Linh Dương" — xem bảng channel_accounts).
+// Rỗng = không gắn, resolve tài khoản Zalo như cũ theo NV phụ trách/brand. Có giá trị -> tra
+// channel_accounts (kênh sale + NV phụ trách đơn) để lấy THẲNG tài khoản Zalo cố định của kênh
+// này, không cần người gửi chọn tay mỗi lượt báo (xem accountResolver.resolveForOrder nhánh 1.5
+// và notifyService.notifyOne dùng getContactKenhSale làm mặc định cho opts.kenhSale).
+try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN kenh_sale TEXT'); } catch (_) { /* đã có cột */ }
 
 const insertStmt = db.prepare(`
   INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, zalo_account, customer_id, date_inventory, user_id, kind, channel, created_at)
@@ -221,7 +245,8 @@ function addReport(row) {
 
 const updateStmt = db.prepare(`
   UPDATE reports
-     SET status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id
+     SET status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id,
+         customer_id = @customer_id, date_inventory = @date_inventory
    WHERE id = @id
 `);
 const getReportStmt = db.prepare('SELECT * FROM reports WHERE id = @id');
@@ -243,6 +268,11 @@ function updateReport(id, fields = {}) {
       ? (Array.isArray(fields.images) && fields.images.length ? JSON.stringify(fields.images) : null)
       : cur.images,
     order_id: fields.orderId !== undefined ? fields.orderId : cur.order_id,
+    // customerId/dateInventory: dùng để Hàng về VN hiện "Người gửi/Tài khoản" ngay trên dòng đơn
+    // (getSentTimesMap/getLastReportMap khớp theo 2 khoá này) — báo ship từ "Quản lý giao hàng"
+    // không có sẵn lúc addReport (chỉ biết sau khi syncShipStatusByCode tra ra), nên set SAU qua đây.
+    customer_id: fields.customerId != null ? String(fields.customerId) : cur.customer_id,
+    date_inventory: fields.dateInventory != null ? String(fields.dateInventory) : cur.date_inventory,
   };
   updateStmt.run(next);
   // Trạng thái/nội dung report đổi (pending -> success/failed) -> làm mới cache map dẫn xuất.
@@ -502,6 +532,85 @@ function recordShipSeen(keys, atISO) {
 /** Số đơn đã có mốc ship_seen — dùng để biết đã backfill lần đầu hay chưa (0 = chưa). */
 function countShipSeen() { return countShipSeenStmt.get().n || 0; }
 
+// ---- Chống gửi trùng cho "Báo ship" từ trang Quản lý giao hàng (Pha 1) ----
+// Khoá theo id VẬN ĐƠN (order_shippings.id) — khác hẳn ship_seen ở trên (khoá theo autoKey
+// customerId+dateInventory của luồng content_ship cũ). Tách bảng riêng để không lẫn 2 cơ chế.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shipping_notified (
+    shipping_id TEXT PRIMARY KEY,
+    sent_at     TEXT NOT NULL,           -- ISO string
+    phone       TEXT
+  );
+`);
+const getShippingNotifiedStmt = db.prepare('SELECT sent_at FROM shipping_notified WHERE shipping_id = @shipping_id');
+const insShippingNotifiedStmt = db.prepare(
+  'INSERT OR IGNORE INTO shipping_notified (shipping_id, sent_at, phone) VALUES (@shipping_id, @sent_at, @phone)',
+);
+
+/** Đã gửi báo ship (Pha 1) cho vận đơn này chưa -> { sentAt } hoặc null. */
+function getShippingNotified(shippingId) {
+  const row = getShippingNotifiedStmt.get({ shipping_id: String(shippingId) });
+  return row ? { sentAt: row.sent_at } : null;
+}
+
+/** Đánh dấu đã gửi báo ship cho 1 vận đơn (chống gửi trùng khi bấm loạt/xem lại). */
+function markShippingNotified(shippingId, phone) {
+  insShippingNotifiedStmt.run({ shipping_id: String(shippingId), sent_at: new Date().toISOString(), phone: phone || null });
+}
+
+// ---- SEED cho tự động báo ship (Pha 2, Quản lý giao hàng) ----
+// Đánh dấu "vận đơn đủ điều kiện gửi NGAY LÚC BẬT auto" -> coi là tồn cũ, KHÔNG tự gửi. Tách hẳn
+// khỏi `shipping_notified` (đó là "đã THẬT SỰ gửi") để không làm sai badge "đã gửi" ở Pha 1 (nút
+// gửi tay vẫn coi các đơn này là CHƯA gửi, gửi tay vẫn được bình thường).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shipping_auto_seen (
+    shipping_id TEXT PRIMARY KEY,
+    seen_at     TEXT NOT NULL           -- ISO string
+  );
+`);
+const getShippingAutoSeenStmt = db.prepare('SELECT seen_at FROM shipping_auto_seen WHERE shipping_id = @shipping_id');
+const insShippingAutoSeenStmt = db.prepare(
+  'INSERT OR IGNORE INTO shipping_auto_seen (shipping_id, seen_at) VALUES (@shipping_id, @seen_at)',
+);
+
+/** Vận đơn này đã bị đánh dấu "tồn cũ" lúc bật auto (bỏ qua, không tự gửi) chưa? */
+function isShippingAutoSeen(shippingId) {
+  return !!getShippingAutoSeenStmt.get({ shipping_id: String(shippingId) });
+}
+
+/** Đánh dấu 1 vận đơn là "tồn cũ" lúc bật auto (idempotent). */
+function markShippingAutoSeen(shippingId) {
+  insShippingAutoSeenStmt.run({ shipping_id: String(shippingId), seen_at: new Date().toISOString() });
+}
+
+// ---- Loại trừ khỏi tự động báo ship (Pha 2) — NV tick tay, giống "Delay" bên Hàng về VN ----
+// Cờ lưu bền theo id vận đơn: khi bật, poller Pha 2 (shippingAutoNotify.js/classify()) BỎ QUA
+// đơn này (không tự gửi) cho tới khi NV bỏ tick. KHÔNG ảnh hưởng gửi tay (nút Xem/Gửi vẫn gửi
+// bình thường) — chỉ chặn nhánh TỰ ĐỘNG.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shipping_excluded (
+    shipping_id  TEXT PRIMARY KEY,
+    excluded_at  TEXT NOT NULL           -- ISO string
+  );
+`);
+const getShippingExcludedStmt = db.prepare('SELECT excluded_at FROM shipping_excluded WHERE shipping_id = @shipping_id');
+const insShippingExcludedStmt = db.prepare(
+  'INSERT OR IGNORE INTO shipping_excluded (shipping_id, excluded_at) VALUES (@shipping_id, @excluded_at)',
+);
+const delShippingExcludedStmt = db.prepare('DELETE FROM shipping_excluded WHERE shipping_id = @shipping_id');
+
+/** Vận đơn này có đang bị NV tick loại khỏi tự động báo ship (Pha 2) không? */
+function isShippingExcluded(shippingId) {
+  return !!getShippingExcludedStmt.get({ shipping_id: String(shippingId) });
+}
+
+/** Bật/tắt cờ loại trừ khỏi tự động báo ship cho 1 vận đơn (idempotent cả 2 chiều). */
+function setShippingExcluded(shippingId, excluded) {
+  const id = String(shippingId);
+  if (excluded) insShippingExcludedStmt.run({ shipping_id: id, excluded_at: new Date().toISOString() });
+  else delShippingExcludedStmt.run({ shipping_id: id });
+}
+
 // ---- Cấu hình hệ thống (key-value, chỉnh trên web) ----
 const getSettingStmt = db.prepare('SELECT value FROM app_settings WHERE key = @key');
 const setSettingStmt = db.prepare(`
@@ -523,6 +632,29 @@ function setSetting(key, value) {
     now: new Date().toISOString(),
   });
   return value;
+}
+
+// ---- Mẫu báo ship tuỳ chỉnh (Pha 3, xem docs/shipping-notify-plan.md) ----
+// Admin sửa NỘI DUNG mẫu tin theo từng ĐVVC trên trang Cài đặt — registry ĐVVC (loại
+// link/tracking, có gửi hay không) vẫn cố định trong shippingNotify.js, chỉ TEXT là sửa được.
+// Lưu 1 JSON map {shippingId: text} trong app_settings -> đỡ phải quản nhiều key rời.
+const SHIPPING_TEMPLATES_KEY = 'shippingNotify.templates';
+
+/** Đọc toàn bộ mẫu tin ĐÃ TUỲ CHỈNH (shippingId -> text). {} nếu chưa có/lỗi parse. */
+function getShippingTemplates() {
+  const raw = getSetting(SHIPPING_TEMPLATES_KEY);
+  if (!raw) return {};
+  try { return JSON.parse(raw) || {}; } catch (_) { return {}; }
+}
+
+/** Lưu mẫu tin tuỳ chỉnh cho 1 ĐVVC. text rỗng/null -> xoá override (dùng lại mặc định). */
+function setShippingTemplate(shippingId, text) {
+  const map = getShippingTemplates();
+  const key = String(shippingId);
+  if (text == null || !String(text).trim()) delete map[key];
+  else map[key] = String(text);
+  setSetting(SHIPPING_TEMPLATES_KEY, JSON.stringify(map));
+  return map;
 }
 
 // ---- Định tuyến báo qua Facebook ----
@@ -657,6 +789,84 @@ function deleteStaff(email) {
   return delStaffStmt.run({ email: e }).changes > 0;
 }
 
+// ---- Cấu hình Kênh Sale (kênh sale + nhân viên -> tài khoản Zalo) ----
+const listChanStmt = db.prepare('SELECT * FROM channel_accounts ORDER BY created_at ASC');
+const getChanStmt = db.prepare('SELECT * FROM channel_accounts WHERE id = @id');
+const insertChanStmt = db.prepare(`
+  INSERT INTO channel_accounts (kenh_sale, staff_id, staff_name, zalo_account_key, created_at, updated_at)
+  VALUES (@kenh_sale, @staff_id, @staff_name, @zalo_account_key, @now, @now)
+`);
+const updateChanStmt = db.prepare(`
+  UPDATE channel_accounts SET kenh_sale = @kenh_sale, staff_id = @staff_id, staff_name = @staff_name,
+    zalo_account_key = @zalo_account_key, updated_at = @now
+  WHERE id = @id
+`);
+const delChanStmt = db.prepare('DELETE FROM channel_accounts WHERE id = @id');
+// Tra cấu hình cho 1 đơn: khớp staff_id (userId Basso) trước, không có/không khớp thì tới tên NV.
+// Kênh sale so sánh KHÔNG phân biệt hoa thường/khoảng trắng thừa (người nhập tay dễ lệch).
+const findChanByStaffIdStmt = db.prepare(`
+  SELECT * FROM channel_accounts
+  WHERE LOWER(TRIM(kenh_sale)) = LOWER(TRIM(@kenh_sale)) AND staff_id = @staff_id AND staff_id IS NOT NULL AND staff_id != ''
+  LIMIT 1
+`);
+const findChanByStaffNameStmt = db.prepare(`
+  SELECT * FROM channel_accounts
+  WHERE LOWER(TRIM(kenh_sale)) = LOWER(TRIM(@kenh_sale)) AND LOWER(TRIM(staff_name)) = LOWER(TRIM(@staff_name))
+  LIMIT 1
+`);
+
+function listChannelAccounts() { return listChanStmt.all(); }
+
+/**
+ * Thêm/sửa 1 cấu hình kênh sale (id truyền vào -> sửa, không thì thêm mới). Ném lỗi
+ * .code='BAD_INPUT' nếu thiếu dữ liệu bắt buộc để route trả 400.
+ */
+function upsertChannelAccount({ id, kenhSale, staffId, staffName, zaloAccountKey }) {
+  const kenh = String(kenhSale || '').trim();
+  const name = String(staffName || '').trim();
+  const acctKey = String(zaloAccountKey || '').trim();
+  const sid = staffId != null && String(staffId).trim() !== '' ? String(staffId).trim() : null;
+  if (!kenh) { const err = new Error('Thiếu Kênh sale'); err.code = 'BAD_INPUT'; throw err; }
+  if (!name) { const err = new Error('Thiếu Nhân viên'); err.code = 'BAD_INPUT'; throw err; }
+  if (!acctKey) { const err = new Error('Thiếu Tài khoản Zalo'); err.code = 'BAD_INPUT'; throw err; }
+  const now = new Date().toISOString();
+  if (id != null && String(id).trim() !== '') {
+    const rid = parseInt(id, 10);
+    if (!getChanStmt.get({ id: rid })) { const err = new Error('Không tìm thấy cấu hình để sửa'); err.code = 'BAD_INPUT'; throw err; }
+    updateChanStmt.run({ id: rid, kenh_sale: kenh, staff_id: sid, staff_name: name, zalo_account_key: acctKey, now });
+    return getChanStmt.get({ id: rid });
+  }
+  const info = insertChanStmt.run({ kenh_sale: kenh, staff_id: sid, staff_name: name, zalo_account_key: acctKey, now });
+  return getChanStmt.get({ id: info.lastInsertRowid });
+}
+
+/** Xoá 1 cấu hình kênh sale theo id. Trả true nếu có xoá. */
+function deleteChannelAccount(id) {
+  const rid = parseInt(id, 10);
+  if (!Number.isFinite(rid)) return false;
+  return delChanStmt.run({ id: rid }).changes > 0;
+}
+
+/**
+ * Tra cấu hình kênh sale cho 1 đơn: khớp (kenhSale, staffId) trước, không có thì (kenhSale,
+ * staffName). Trả null nếu không có cấu hình nào khớp.
+ */
+function findChannelAccount({ kenhSale, staffId, staffName } = {}) {
+  const kenh = String(kenhSale || '').trim();
+  if (!kenh) return null;
+  const sid = staffId != null ? String(staffId).trim() : '';
+  if (sid) {
+    const row = findChanByStaffIdStmt.get({ kenh_sale: kenh, staff_id: sid });
+    if (row) return row;
+  }
+  const name = String(staffName || '').trim();
+  if (name) {
+    const row = findChanByStaffNameStmt.get({ kenh_sale: kenh, staff_name: name });
+    if (row) return row;
+  }
+  return null;
+}
+
 // Thẻ thống kê tôn trọng bộ lọc ngày + tìm kiếm (không lọc theo status vì đếm riêng từng loại).
 function stats({ q, from, to, staff, sender, account } = {}) {
   // Không tính 'status' vào WHERE: thẻ thống kê phải hiện đủ 4 trạng thái để bấm lọc.
@@ -686,6 +896,18 @@ function normPhone(phone) {
   return String(phone == null ? '' : phone).replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
 }
 
+/**
+ * Chuẩn hoá "NV phụ trách" về chuỗi user_id cách nhau bởi dấu phẩy (hỗ trợ gán NHIỀU NV cho
+ * cùng 1 khách — vd 2 NV cùng chăm 1 khách). Nhận mảng hoặc chuỗi (tách theo dấu phẩy/khoảng
+ * trắng/;/|), loại trùng, giữ thứ tự chọn. Trả '' nếu không có NV nào.
+ */
+function normStaffIds(v) {
+  if (v == null) return '';
+  const arr = Array.isArray(v) ? v : String(v).split(/[\s,;/|]+/);
+  const ids = [...new Set(arr.map((x) => String(x).trim()).filter(Boolean))];
+  return ids.join(',');
+}
+
 /** Chuẩn hoá "Kiểu báo riêng" của khách về 'personal' | 'group' | null (null = theo NV). */
 function normReportTarget(v) {
   const s = String(v == null ? '' : v).trim().toLowerCase();
@@ -703,15 +925,24 @@ function getContactReportTarget(phone) {
   return (r && normReportTarget(r.report_target)) || '';
 }
 
+/** Kênh sale riêng đã lưu cho 1 SĐT khách (xem cột kenh_sale). '' nếu chưa gắn. */
+function getContactKenhSale(phone) {
+  const p = normPhone(phone);
+  if (!p) return '';
+  const r = getZaloContactStmt.get({ phone: p });
+  return (r && String(r.kenh_sale || '').trim()) || '';
+}
+
 const getZaloContactStmt = db.prepare('SELECT * FROM zalo_contacts WHERE phone = @phone');
 const listZaloContactsStmt = db.prepare('SELECT * FROM zalo_contacts ORDER BY updated_at DESC');
 const countZaloContactsStmt = db.prepare('SELECT COUNT(*) AS n FROM zalo_contacts');
 const upsertZaloContactStmt = db.prepare(`
-  INSERT INTO zalo_contacts (phone, zalo_name, raw_phone, note, source, fb_report, fb_link, staff_id, report_target, updated_at)
-  VALUES (@phone, @zalo_name, @raw_phone, @note, @source, @fb_report, @fb_link, @staff_id, @report_target, @now)
+  INSERT INTO zalo_contacts (phone, zalo_name, raw_phone, note, source, fb_report, fb_link, staff_id, report_target, kenh_sale, updated_at)
+  VALUES (@phone, @zalo_name, @raw_phone, @note, @source, @fb_report, @fb_link, @staff_id, @report_target, @kenh_sale, @now)
   ON CONFLICT(phone) DO UPDATE SET
     zalo_name = @zalo_name, raw_phone = @raw_phone, note = @note, source = @source,
-    fb_report = @fb_report, fb_link = @fb_link, staff_id = @staff_id, report_target = @report_target, updated_at = @now
+    fb_report = @fb_report, fb_link = @fb_link, staff_id = @staff_id, report_target = @report_target,
+    kenh_sale = @kenh_sale, updated_at = @now
 `);
 const delZaloContactStmt = db.prepare('DELETE FROM zalo_contacts WHERE phone = @phone');
 
@@ -743,13 +974,16 @@ function getZaloName(phone) {
  * cả tên lẫn link — khách chỉ báo qua FB thì cần link thay cho tên.
  * "Báo qua FB" KHÔNG còn cờ bật/tắt riêng: suy ra từ việc có LINK hay không (có link = báo FB).
  */
-function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, report_target } = {}) {
+function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, report_target, kenh_sale } = {}) {
   const p = normPhone(phone);
   if (!p) { const err = new Error('SĐT không hợp lệ'); err.code = 'BAD_INPUT'; throw err; }
   const existed = getZaloContactStmt.get({ phone: p });
   const reportTarget = report_target !== undefined
     ? normReportTarget(report_target)
     : (existed ? normReportTarget(existed.report_target) : null);
+  const kenhSale = kenh_sale !== undefined
+    ? (String(kenh_sale == null ? '' : kenh_sale).trim() || null)
+    : (existed ? (existed.kenh_sale || null) : null);
   const name = zalo_name !== undefined
     ? String(zalo_name == null ? '' : zalo_name).trim()
     : (existed ? existed.zalo_name : '');
@@ -759,7 +993,7 @@ function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, 
   // Cờ fb_report suy ra từ link (giữ cột đồng bộ để các truy vấn cũ vẫn đúng): có link = 1.
   const fbReport = fbLink ? 1 : 0;
   const staffId = staff_id !== undefined
-    ? (String(staff_id == null ? '' : staff_id).trim() || null)
+    ? (normStaffIds(staff_id) || null)
     : (existed ? (existed.staff_id || null) : null);
   const noteVal = note !== undefined
     ? (String(note == null ? '' : note).trim() || null)
@@ -777,6 +1011,7 @@ function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, 
     fb_link: fbLink || null,
     staff_id: staffId,
     report_target: reportTarget,
+    kenh_sale: kenhSale,
     now: new Date().toISOString(),
   });
   getZaloMap.invalidate(); // danh bạ đổi -> cache tên Zalo/FB dựng lại ở lần enrich kế
@@ -815,6 +1050,7 @@ function importZaloContacts(rows = [], mode = 'merge') {
         fb_link: existed ? (existed.fb_link || null) : null,
         staff_id: existed ? (existed.staff_id || null) : null,
         report_target: existed ? normReportTarget(existed.report_target) : null,
+        kenh_sale: existed ? (existed.kenh_sale || null) : null,
         now,
       });
       if (existed) updated += 1; else added += 1;
@@ -865,6 +1101,7 @@ function migrateFbRoutingIntoContacts() {
         fb_link: String((c && c.link) || '').trim() || null,
         staff_id: existed ? (existed.staff_id || null) : null,
         report_target: existed ? normReportTarget(existed.report_target) : null,
+        kenh_sale: existed ? (existed.kenh_sale || null) : null,
         now,
       });
     }
@@ -880,9 +1117,14 @@ migrateFbRoutingIntoContacts();
 module.exports = {
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, autoKeyShip, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
+  getShippingNotified, markShippingNotified,
+  isShippingAutoSeen, markShippingAutoSeen,
+  isShippingExcluded, setShippingExcluded,
+  getShippingTemplates, setShippingTemplate,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
-  getContactReportTarget,
+  getContactReportTarget, getContactKenhSale,
+  listChannelAccounts, upsertChannelAccount, deleteChannelAccount, findChannelAccount,
 };
