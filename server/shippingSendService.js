@@ -148,4 +148,4 @@ async function sendShippingBulk(orders, opts = {}) {
   return { total: results.length, sent, failed: results.length - sent, results };
 }
 
-module.exports = { sendShippingOne, sendShippingBulk };
+module.exports = { sendShippingOne, sendShippingBulk, firstApproveUser };

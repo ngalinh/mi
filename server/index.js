@@ -20,7 +20,7 @@ const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoM
   isShippingExcluded, setShippingExcluded,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, getKenhSaleMap, normPhone,
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, getOrderKenhSales, normPhone,
   listChannelAccounts, upsertChannelAccount, deleteChannelAccount } = require('./db');
 const { notifyMany, notifyOrders, requestStopBulk, isBulkRunning } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
@@ -541,9 +541,6 @@ function enrichOrders(orders) {
   // Danh bạ Zalo (SĐT-chuẩn-hoá -> tên group) để hiện cột "Tên Zalo/FB" + cho biết đơn nào
   // sẽ gửi theo tên group. Nạp 1 lần cho cả tập.
   const zaloMap = getZaloMap();
-  // Kênh sale đã gắn cho khách (SĐT-chuẩn-hoá -> kênh sale) — để bộ lọc "Kênh" trên dashboard
-  // lọc được các đơn của khách đã gắn kênh (Basso không trả field này theo đơn).
-  const kenhSaleMap = getKenhSaleMap();
   // Mốc "lần đầu Mi thấy ND ship" -> cho bộ lọc "ND ship mới hôm nay". Đơn CÓ ND ship mà chưa có
   // mốc thì ghi mốc = BÂY GIỜ (Mi vừa thấy lần đầu) rồi gom lại ghi 1 lượt cuối vòng lặp.
   const shipSeenMap = getShipSeenMap();
@@ -562,8 +559,12 @@ function enrichOrders(orders) {
       : withLast;
     const zaloName = o.phone ? zaloMap.get(normPhone(o.phone)) : '';
     const withZalo = zaloName ? { ...withDelay, zaloName } : withDelay;
-    const kenhSale = o.phone ? kenhSaleMap.get(normPhone(o.phone)) : '';
-    const withKenh = kenhSale ? { ...withZalo, kenhSale } : withZalo;
+    // Kênh sale mà đơn "thuộc về", suy theo NV phụ trách đơn (userId + tên) trong bảng
+    // channel_accounts (Cài đặt → Kênh Sale) — 1 NV có thể thuộc nhiều kênh (xem getOrderKenhSales).
+    // Chỉ dùng cho bộ lọc "Kênh" hiển thị; chọn tài khoản Zalo khi gửi tin KHÔNG đổi (vẫn qua
+    // findChannelAccount + opts.kenhSale tường minh như cũ).
+    const kenhSaleList = getOrderKenhSales({ staffId: o.userId, staffName: o.staff });
+    const withKenh = kenhSaleList.length ? { ...withZalo, kenhSaleList } : withZalo;
     // Mốc "mới hôm nay": chỉ áp cho đơn ĐANG có ND ship. Chưa có mốc -> lần đầu thấy = now.
     const hasShip = o.noiDungBaoShip && String(o.noiDungBaoShip).trim();
     if (!hasShip) return withKenh;
@@ -765,17 +766,19 @@ app.get('/api/shipping/meta', async (req, res) => {
 });
 
 // Gắn dấu local (mi) lên danh sách vận đơn: mốc "đã gửi báo ship" (Pha 1/2), cờ loại trừ tự động,
-// và Kênh sale đã gắn cho khách (SĐT-chuẩn-hoá -> kenhSale, xem zalo_contacts.kenh_sale) — dùng cho
-// bộ lọc "Kênh" trên trang Quản lý giao hàng (Partner API không trả field kênh sale theo vận đơn).
+// và danh sách Kênh sale mà vận đơn "thuộc về" — suy theo NV duyệt đơn (firstApproveUser, cùng logic
+// shippingSendService dùng để chọn tài khoản gửi thật) khớp trong bảng channel_accounts (Cài đặt →
+// Kênh Sale). Dùng cho bộ lọc "Kênh" trên trang Quản lý giao hàng; KHÔNG đổi cách chọn tài khoản
+// Zalo khi gửi tin (vẫn qua accountResolver + opts.kenhSale tường minh như cũ).
 function enrichShippingOrders(orders) {
   if (!Array.isArray(orders)) return orders;
-  const kenhSaleMap = getKenhSaleMap();
   for (const o of orders) {
     const seen = o.id != null ? getShippingNotified(o.id) : null;
     o.shipSentAt = seen ? seen.sentAt : null;
     o.autoExcluded = o.id != null ? isShippingExcluded(o.id) : false;
-    const kenhSale = o.phone ? kenhSaleMap.get(normPhone(o.phone)) : '';
-    if (kenhSale) o.kenhSale = kenhSale;
+    const staffName = shippingSendService.firstApproveUser(o);
+    const kenhSaleList = staffName ? getOrderKenhSales({ staffName }) : [];
+    if (kenhSaleList.length) o.kenhSaleList = kenhSaleList;
   }
   return orders;
 }

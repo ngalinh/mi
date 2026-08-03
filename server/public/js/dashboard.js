@@ -660,9 +660,10 @@
     if (currentSendStatus === 'ship_pending') list = list.filter(hasUnsentShipContent);
     else if (currentSendStatus === 'ship_new_today') list = list.filter(isShipNewToday);
     else if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
-    // Kênh sale: chỉ có ở khách đã gắn thủ công trong Danh bạ (server enrich `kenhSale`),
-    // Basso không trả field này theo đơn nên lọc CLIENT-SIDE như các bộ lọc trên.
-    if (currentChannel) list = list.filter((o) => (o.kenhSale || '') === currentChannel);
+    // Kênh sale: đơn "thuộc" 1 kênh nếu NV phụ trách đơn có cấu hình kênh đó (server enrich
+    // `kenhSaleList` theo NV — 1 NV có thể thuộc nhiều kênh, xem db.getOrderKenhSales). Basso
+    // không trả field kênh sale theo đơn nên lọc CLIENT-SIDE như các bộ lọc trên.
+    if (currentChannel) list = list.filter((o) => (o.kenhSaleList || []).includes(currentChannel));
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -931,7 +932,8 @@
     renderChannelFilter();
   }
   // Bộ lọc "Kênh" trên toolbar: cùng danh sách kênh sale đã cấu hình (Cài đặt → Kênh Sale).
-  // Chỉ lọc được các đơn của khách ĐÃ gắn kênh sale trong Danh bạ (server enrich `kenhSale`).
+  // Lọc theo NV phụ trách đơn có thuộc kênh đó không (server enrich `kenhSaleList`) — 1 NV thuộc
+  // nhiều kênh thì đơn của NV đó khớp mọi kênh NV có mặt.
   function renderChannelFilter() {
     const sel = $('fChannel');
     if (!sel) return;
