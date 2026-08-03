@@ -260,8 +260,8 @@
 
   // ---- Kênh sale (dropdown filter) ---------------------------------------
   // Cùng danh sách kênh sale đã cấu hình ở Cài đặt → Kênh Sale (dùng chung cho trang Hàng về VN).
-  // Chỉ lọc được vận đơn của khách ĐÃ gắn kênh sale trong Danh bạ (server enrich `kenhSale` theo
-  // SĐT — Partner API không trả field này theo vận đơn).
+  // Vận đơn "thuộc" 1 kênh nếu NV duyệt đơn (firstApproveUser phía server) có cấu hình kênh đó
+  // (server enrich `kenhSaleList`) — 1 NV thuộc nhiều kênh thì khớp mọi kênh NV có mặt.
   async function loadChannelOptions() {
     try {
       const r = await App.api('/api/channel-accounts');
@@ -332,7 +332,7 @@
         // Kênh sale: Partner API không trả field này theo vận đơn -> không lọc được ở server.
         // Kéo TOÀN BỘ vận đơn khớp các bộ lọc còn lại rồi lọc + phân trang tại client.
         const r = await App.api('/api/shipping/all?' + baseParams().toString());
-        const all = (r.orders || []).filter((o) => (o.kenhSale || '') === channel);
+        const all = (r.orders || []).filter((o) => (o.kenhSaleList || []).includes(channel));
         state.pageSize = 20;
         state.total = all.length;
         const start = (state.page - 1) * state.pageSize;
