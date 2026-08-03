@@ -637,11 +637,12 @@ async function updateOrderStatus({ customerId, dateInventory, status, note }) {
  * @returns {Promise<{matched:number}>}
  */
 async function syncShipStatusByCode({ phone, code }) {
-  if (!phone || !code) return { matched: 0 };
+  if (!phone || !code) return { matched: 0, matches: [] };
   const codeNorm = String(code).trim();
-  if (!codeNorm) return { matched: 0 };
+  if (!codeNorm) return { matched: 0, matches: [] };
   const { orders } = await getOrders({ q: phone, status: 'notified_arrival', page: 1, pageSize: 20 });
   let matched = 0;
+  const matches = []; // { customerId, dateInventory } của MỌI dòng "Hàng về VN" đã khớp + đổi trạng thái
   for (const o of orders || []) {
     // eslint-disable-next-line no-await-in-loop
     const { items } = await getArrivedItems({ id: o.id, customerId: o.customerId, dateInventory: o.dateInventory });
@@ -650,8 +651,9 @@ async function syncShipStatusByCode({ phone, code }) {
     // eslint-disable-next-line no-await-in-loop
     await updateOrderStatus({ customerId: o.customerId, dateInventory: o.dateInventory, status: 'notified_ship', note: o.note });
     matched += 1;
+    matches.push({ customerId: o.customerId, dateInventory: o.dateInventory });
   }
-  return { matched };
+  return { matched, matches };
 }
 
 // Nhóm trạng thái trên dashboard -> mã trạng thái Basso (để đếm & lọc server-side).

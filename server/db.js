@@ -239,7 +239,8 @@ function addReport(row) {
 
 const updateStmt = db.prepare(`
   UPDATE reports
-     SET status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id
+     SET status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id,
+         customer_id = @customer_id, date_inventory = @date_inventory
    WHERE id = @id
 `);
 const getReportStmt = db.prepare('SELECT * FROM reports WHERE id = @id');
@@ -261,6 +262,11 @@ function updateReport(id, fields = {}) {
       ? (Array.isArray(fields.images) && fields.images.length ? JSON.stringify(fields.images) : null)
       : cur.images,
     order_id: fields.orderId !== undefined ? fields.orderId : cur.order_id,
+    // customerId/dateInventory: dùng để Hàng về VN hiện "Người gửi/Tài khoản" ngay trên dòng đơn
+    // (getSentTimesMap/getLastReportMap khớp theo 2 khoá này) — báo ship từ "Quản lý giao hàng"
+    // không có sẵn lúc addReport (chỉ biết sau khi syncShipStatusByCode tra ra), nên set SAU qua đây.
+    customer_id: fields.customerId != null ? String(fields.customerId) : cur.customer_id,
+    date_inventory: fields.dateInventory != null ? String(fields.dateInventory) : cur.date_inventory,
   };
   updateStmt.run(next);
   // Trạng thái/nội dung report đổi (pending -> success/failed) -> làm mới cache map dẫn xuất.

@@ -101,7 +101,7 @@ async function sendShippingOne(order, opts = {}) {
     result = { ok: false, error: err.message };
   }
 
-  const report = updateReport(pending.id, {
+  let report = updateReport(pending.id, {
     status: result.ok ? 'success' : 'failed',
     error: result.ok ? null : result.error,
     jobId: result.jobId,
@@ -111,7 +111,12 @@ async function sendShippingOne(order, opts = {}) {
     markShippingNotified(order.id, order.phone);
     // Đồng bộ "Đã báo ship" về Hàng về VN — best-effort, KHÔNG chặn kết quả gửi (tin đã đi rồi).
     try {
-      await syncShipStatusByCode({ phone: order.phone, code: order.trackingCode });
+      const sync = await syncShipStatusByCode({ phone: order.phone, code: order.trackingCode });
+      // Gắn customerId/dateInventory của dòng vừa khớp vào report -> Hàng về VN hiện được
+      // "Người gửi/Tài khoản" ngay trên dòng đơn (getLastReportMap/getSentTimesMap khớp theo
+      // 2 khoá này). Nhiều dòng khớp (hiếm) -> lấy dòng ĐẦU làm đại diện, đủ cho mục đích hiển thị.
+      const first = sync.matches && sync.matches[0];
+      if (first) report = updateReport(pending.id, { customerId: first.customerId, dateInventory: first.dateInventory });
     } catch (err) {
       console.warn(`[shipping-notify] không đồng bộ được notified_ship cho ${order.phone}/${order.trackingCode}: ${err.message}`);
     }
