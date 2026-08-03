@@ -56,12 +56,23 @@
       </div>`;
   }
 
-  // ISO string (server) -> "DD/MM HH:MM" gọn cho dòng nhỏ dưới nút "Xem".
-  function fmtSentAt(iso) {
+  const pad2 = (n) => String(n).padStart(2, '0');
+
+  // ISO string (server) -> "HH:MM" — dùng cho dòng nhỏ dưới nút "Xem" (cột hẹp, tránh vỡ dòng).
+  // Xem ngày đầy đủ qua tooltip (fmtSentAtFull) khi hover.
+  function fmtSentAtShort(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  // ISO string (server) -> "HH:MM DD/MM" đầy đủ — dùng trong modal (đủ chỗ) + tooltip bản rút gọn.
+  function fmtSentAtFull(iso) {
     if (!iso) return '';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return String(iso);
-    return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
   }
 
   const STATUS_CLASS = { waiting: 'waiting', waiting_prepared: 'waiting', exported: 'exported', carrier_submitted: 'exported', completed: 'completed' };
@@ -110,7 +121,7 @@
         <div class="ship-ndship-actions">
           <button class="btn small icon-only" data-msg="${o.id}" aria-label="Xem nội dung đã gửi" title="Xem nội dung đã gửi">${App.icon('message')}</button>
         </div>
-        <div class="ship-sub ship-sent-at">${App.icon('clock')} ${App.esc(fmtSentAt(o.shipSentAt))}</div>`;
+        <div class="ship-sub ship-sent-at" title="Đã gửi lúc ${App.esc(fmtSentAtFull(o.shipSentAt))}">${App.icon('clock')} ${App.esc(fmtSentAtShort(o.shipSentAt))}</div>`;
     }
     return `
       <div class="ship-ndship-actions">
@@ -381,7 +392,7 @@
       if (r.sendable) {
         t.value = r.message; t.disabled = false; $('msgCopy').style.display = '';
         if (r.alreadySent) {
-          sentNote.style.display = ''; sentNote.innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAt(r.sentAt))}`;
+          sentNote.style.display = ''; sentNote.innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAtFull(r.sentAt))}`;
           sendBtn.style.display = 'none';
         } else {
           sentNote.style.display = 'none';
@@ -410,7 +421,7 @@
       if (r.ok) {
         App.toast('✅ Đã gửi báo ship.');
         const sentAtRaw = r.sentAt || new Date().toISOString();
-        $('msgSentNote').style.display = ''; $('msgSentNote').innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAt(sentAtRaw))}`;
+        $('msgSentNote').style.display = ''; $('msgSentNote').innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAtFull(sentAtRaw))}`;
         sendBtn.style.display = 'none';
         o.shipSentAt = sentAtRaw; render();
       } else {
