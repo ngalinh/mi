@@ -459,6 +459,7 @@
   async function quickSend(id, btn) {
     const o = state.orders.find((x) => String(x.id) === String(id));
     if (!o) return;
+    if (!confirm(`Gửi báo ship qua Zalo cho ${o.recipient}?`)) return;
     const orig = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
