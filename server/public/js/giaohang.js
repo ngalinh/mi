@@ -8,15 +8,16 @@
   const COLS = [
     { key: 'date', label: 'Ngày tạo vận đơn', n: 3 },
     { key: 'recipient', label: 'Người nhận', n: 4 },
-    { key: 'code', label: 'Mã vận đơn', n: 5 },
-    { key: 'address', label: 'Địa chỉ', n: 6 },
-    { key: 'note', label: 'Ghi chú', n: 7 },
-    { key: 'cod', label: 'Thu COD', n: 8 },
-    { key: 'shipfee', label: 'Phí ship', n: 9 },
-    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 10 },
-    { key: 'status', label: 'Trạng thái', n: 11 },
-    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 12 },
-    { key: 'ndship', label: 'ND ship', n: 13 },
+    { key: 'staff', label: 'Nhân viên', n: 5 },
+    { key: 'code', label: 'Mã vận đơn', n: 6 },
+    { key: 'address', label: 'Địa chỉ', n: 7 },
+    { key: 'note', label: 'Ghi chú', n: 8 },
+    { key: 'cod', label: 'Thu COD', n: 9 },
+    { key: 'shipfee', label: 'Phí ship', n: 10 },
+    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 11 },
+    { key: 'status', label: 'Trạng thái', n: 12 },
+    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 13 },
+    { key: 'ndship', label: 'ND ship', n: 14 },
   ];
   const COLVIS_LS_KEY = 'mi.giaohang.hiddenCols';
   function loadHiddenCols() {
@@ -85,6 +86,14 @@
             <button class="btn secondary" data-act="revert" data-id="${o.id}">${App.icon('undo')} Chưa giao hàng</button>`;
   }
 
+  // NV phụ trách vận đơn — lấy từ dòng SP đầu tiên có approveUser (thường cả đơn cùng 1 NV duyệt,
+  // giống logic firstApproveUser() phía server dùng để chọn tài khoản Zalo gửi báo ship).
+  function orderStaff(o) {
+    const items = Array.isArray(o.items) ? o.items : [];
+    const hit = items.find((it) => it && it.approveUser && String(it.approveUser).trim());
+    return hit ? String(hit.approveUser).trim() : '';
+  }
+
   // Đơn có thể xem trước tin báo ship: đã có link, hoặc đã giao shipper/đã giao/lên đơn vận.
   function canPreviewMsg(o) {
     return !!o.shipperLink || ['exported', 'completed', 'carrier_submitted'].includes(o.statusCode);
@@ -117,7 +126,7 @@
   function applyColVis() {
     const table = document.querySelector('.gh-table');
     if (!table) return;
-    const cols = table.querySelectorAll('colgroup col'); // đúng 14 <col>, cùng thứ tự th/td
+    const cols = table.querySelectorAll('colgroup col'); // đúng 15 <col>, cùng thứ tự th/td
     // Ghi nhớ bề rộng GỐC (px) của TỪNG <col> đúng 1 lần (đọc từ style="width:...px" khai trong
     // HTML) trước khi ghi đè — dùng làm TỈ LỆ để tính % mỗi lần ẩn/hiện sau, không mất mốc gốc.
     cols.forEach((col) => {
@@ -125,7 +134,7 @@
     });
     // Tổng bề rộng GỐC của các cột ĐANG HIỆN (bỏ cột đã ẩn) — vừa là mẫu số tính %, vừa dùng làm
     // min-width của <table> (không co hẹp hơn mức đó — còn nhiều cột thì vẫn cuộn ngang như cũ,
-    // không ép bóp méo chữ). Cột 1/2/14 (checkbox/mở rộng/thao tác) không thuộc COLS -> luôn hiện.
+    // không ép bóp méo chữ). Cột 1/2/15 (checkbox/mở rộng/thao tác) không thuộc COLS -> luôn hiện.
     let sumVisible = 0;
     cols.forEach((col, i) => {
       const cfg = COLS.find((c) => c.n === i + 1);
@@ -156,7 +165,7 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="14" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="15" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
@@ -171,6 +180,7 @@
             <div>${App.esc(o.recipient)}</div>
             ${o.phone ? `<div class="ship-sub gh-nowrap" title="${App.esc(o.phone)}">${App.esc(o.phone)}</div>` : ''}
           </td>
+          <td class="gh-nowrap">${App.esc(orderStaff(o)) || '<span class="muted">—</span>'}</td>
           <td>
             <div class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</div>
             ${o.shipperLink ? `<a class="ship-link" href="${App.esc(o.shipperLink)}" target="_blank" rel="noopener" title="${App.esc(o.shipperLink)}">${App.icon('link')} ${App.esc(o.shipperLink)}</a>` : ''}
@@ -201,7 +211,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="14">
+    return `<tr class="ship-detail"><td colspan="15">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -252,7 +262,7 @@
 
   // ---- Load list --------------------------------------------------------
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="14" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="15" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     params.set('page', state.page);
     params.set('shipping_id', $('fCarrier').value || 0);
@@ -272,7 +282,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="14" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="15" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
