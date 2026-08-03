@@ -213,6 +213,11 @@
         <div class="field full"><label>NV phụ trách</label>
           <select id="cmStaff"><option value="">— Không gán —</option></select>
         </div>
+        <div class="field full"><label>Kênh sale</label>
+          <input id="cmKenhSale" type="text" list="cmKenhSaleList" placeholder="vd: Basso, ShipUS, Linh Dương… (để trống = không gắn)" />
+          <datalist id="cmKenhSaleList"></datalist>
+          <div class="muted" style="font-size:12px;margin-top:4px;">Kênh sale gắn liền với 1 tài khoản Zalo cố định (cấu hình ở Cài đặt → Kênh Sale). Gắn khách này vào 1 kênh sale để tự chọn đúng tài khoản Zalo khi báo hàng, không cần chọn tay mỗi lượt.</div>
+        </div>
         <div class="field full"><label>Báo Zalo</label>
           <select id="cmReportTarget">
             <option value="">Theo NV</option>

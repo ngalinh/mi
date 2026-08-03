@@ -453,7 +453,7 @@ app.post('/api/zalo-contacts', (req, res) => {
     const contact = upsertZaloContact({
       phone: b.phone, zalo_name: b.zalo_name, note: b.note, source: 'manual',
       fb_link: b.fb_link, staff_id: b.staff_id,
-      report_target: b.report_target,
+      report_target: b.report_target, kenh_sale: b.kenh_sale,
     });
     res.json({ ok: true, contact });
   } catch (e) {
