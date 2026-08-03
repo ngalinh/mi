@@ -44,7 +44,7 @@
     .ship-actions .btn{padding:5px 6px;font-size:11.5px;line-height:1.25;justify-content:center;white-space:normal}
     .ship-sub{color:#94a3b8;font-size:11px}
     /* Thời gian đã gửi báo ship — hiện dưới nút "Xem" trong cột ND ship */
-    .ship-sent-at{margin-top:4px;display:flex;align-items:center;justify-content:center;gap:4px}
+    .ship-sent-at{margin-top:4px;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
     .ship-sent-at .icon{width:12px;height:12px}
     .ship-toptabs{display:flex;gap:2px;border-bottom:1px solid #e5e9f0;margin:0 0 10px}
     .ship-toptabs button{border:none;background:none;padding:9px 16px;cursor:pointer;font-size:14px;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -185,7 +185,7 @@
                 <col style="width:100px"><col style="width:100px">
                 <col style="width:140px"><col style="width:120px">
                 <col style="width:120px"><col style="width:100px">
-                <col style="width:190px">
+                <col style="width:190px"><col style="width:90px">
               </colgroup>
               <thead>
                 <tr>
@@ -204,9 +204,10 @@
                   <th>Thời gian soạn hàng</th>
                   <th class="center">ND ship</th>
                   <th class="center"></th>
+                  <th class="center">Loại trừ</th>
                 </tr>
               </thead>
-              <tbody id="rows"><tr><td colspan="15" class="empty">Đang tải...</td></tr></tbody>
+              <tbody id="rows"><tr><td colspan="16" class="empty">Đang tải...</td></tr></tbody>
             </table>
           </div>
           <div class="pager hidden" id="pager"></div>
@@ -220,6 +221,7 @@
     <div class="modal">
       <h3>Tin báo ship</h3>
       <p class="muted" id="msgSub"></p>
+      <p class="muted" id="msgFallbackNote" style="display:none;color:#b8860b">⚠️ ĐVVC này chưa khai mẫu riêng — đang dùng mẫu chung (sửa được ở Cài đặt → Mẫu báo ship → "Mẫu chung").</p>
       <p class="muted" id="msgSentNote" style="display:none;color:#2e7d32"></p>
       <textarea id="msgText" rows="8" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:14px"></textarea>
       <div class="row">
@@ -232,7 +234,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/giaohang.js?v=20260801b"></script>
+  <script src="js/giaohang.js?v=20260803c"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>

@@ -56,12 +56,23 @@
       </div>`;
   }
 
-  // ISO string (server) -> "DD/MM HH:MM" gọn cho dòng nhỏ dưới nút "Xem".
-  function fmtSentAt(iso) {
+  const pad2 = (n) => String(n).padStart(2, '0');
+
+  // ISO string (server) -> "HH:MM" — dùng cho dòng nhỏ dưới nút "Xem" (cột hẹp, tránh vỡ dòng).
+  // Xem ngày đầy đủ qua tooltip (fmtSentAtFull) khi hover.
+  function fmtSentAtShort(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  }
+
+  // ISO string (server) -> "HH:MM DD/MM" đầy đủ — dùng trong modal (đủ chỗ) + tooltip bản rút gọn.
+  function fmtSentAtFull(iso) {
     if (!iso) return '';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return String(iso);
-    return d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `${pad2(d.getHours())}:${pad2(d.getMinutes())} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
   }
 
   const STATUS_CLASS = { waiting: 'waiting', waiting_prepared: 'waiting', exported: 'exported', carrier_submitted: 'exported', completed: 'completed' };
@@ -110,13 +121,22 @@
         <div class="ship-ndship-actions">
           <button class="btn small icon-only" data-msg="${o.id}" aria-label="Xem nội dung đã gửi" title="Xem nội dung đã gửi">${App.icon('message')}</button>
         </div>
-        <div class="ship-sub ship-sent-at">${App.icon('clock')} ${App.esc(fmtSentAt(o.shipSentAt))}</div>`;
+        <div class="ship-sub ship-sent-at" title="Đã gửi lúc ${App.esc(fmtSentAtFull(o.shipSentAt))}">${App.icon('clock')} ${App.esc(fmtSentAtShort(o.shipSentAt))}</div>`;
     }
     return `
       <div class="ship-ndship-actions">
         <button class="btn secondary small icon-only" data-msg="${o.id}" aria-label="Xem trước nội dung" title="Xem trước nội dung">${App.icon('message')}</button>
         <button class="btn accent small icon-only" data-send="${o.id}" aria-label="Gửi báo ship qua Zalo" title="Gửi báo ship qua Zalo">${App.icon('send')}</button>
       </div>`;
+  }
+
+  // Tick "Loại trừ" 1 vận đơn khỏi tự động báo ship (Pha 2) — giống Delay bên Hàng về VN, KHÔNG
+  // ảnh hưởng gửi tay (nút Xem/Gửi vẫn gửi bình thường). Ẩn nếu đã gửi rồi (loại trừ hết ý nghĩa).
+  function renderExclude(o) {
+    if (o.shipSentAt) return '';
+    return `<label class="excl-wrap" title="Tick để loại vận đơn này khỏi tự động báo ship (Pha 2) — gửi tay ở nút Xem/Gửi vẫn hoạt động bình thường">
+      <input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${o.autoExcluded ? 'checked' : ''} />
+    </label>`;
   }
 
   // ---- Cột hiển thị (tiếp — xem COLS/loadHiddenCols ở đầu file) --------------------------------
@@ -134,7 +154,8 @@
     });
     // Tổng bề rộng GỐC của các cột ĐANG HIỆN (bỏ cột đã ẩn) — vừa là mẫu số tính %, vừa dùng làm
     // min-width của <table> (không co hẹp hơn mức đó — còn nhiều cột thì vẫn cuộn ngang như cũ,
-    // không ép bóp méo chữ). Cột 1/2/15 (checkbox/mở rộng/thao tác) không thuộc COLS -> luôn hiện.
+    // không ép bóp méo chữ). Cột 1/2/15/16 (checkbox/mở rộng/thao tác/loại trừ) không thuộc COLS
+    // -> luôn hiện.
     let sumVisible = 0;
     cols.forEach((col, i) => {
       const cfg = COLS.find((c) => c.n === i + 1);
@@ -165,14 +186,14 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="15" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="16" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
     for (const o of state.orders) {
       const codPayer = o.shipPayerLabel ? `<div class="ship-sub">${App.esc(o.shipPayerLabel)}</div>` : '';
       rows.push(`
-        <tr data-id="${o.id}">
+        <tr data-id="${o.id}" class="${o.autoExcluded ? 'row-excluded' : ''}">
           <td class="center"><input type="checkbox" class="rowchk" data-id="${o.id}"></td>
           <td class="center"><span class="ship-eye" data-eye="${o.id}" title="Xem chi tiết">${App.icon('eye')}</span></td>
           <td class="gh-datecell">${splitDateTime(o.createdAt)}</td>
@@ -194,6 +215,7 @@
           <td class="gh-datecell">${splitDateTime(o.preparedAt)}</td>
           <td class="center">${renderNdShip(o)}</td>
           <td><div class="ship-actions">${actionButtons(o)}</div></td>
+          <td class="center">${renderExclude(o)}</td>
         </tr>`);
       if (state.expanded.has(String(o.id))) rows.push(detailRow(o));
     }
@@ -211,7 +233,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="15">
+    return `<tr class="ship-detail"><td colspan="16">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -262,7 +284,7 @@
 
   // ---- Load list --------------------------------------------------------
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="15" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="16" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     params.set('page', state.page);
     params.set('shipping_id', $('fCarrier').value || 0);
@@ -282,7 +304,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="15" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="16" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -356,6 +378,7 @@
     return {
       id: o.id, recipient: o.recipient, phone: o.phone, shipping: o.shipping, shippingId: o.shippingId,
       trackingCode: o.trackingCode, codAmount: o.codAmount, shipperLink: o.shipperLink,
+      shipFee: o.shipFee, shipPayer: o.shipPayer,
       items: (o.items || []).map((it) => ({ approveUser: it.approveUser, orderCode: it.orderCode })),
     };
   }
@@ -375,10 +398,12 @@
       const t = $('msgText');
       const sentNote = $('msgSentNote');
       const sendBtn = $('msgSend');
+      const fbNote = $('msgFallbackNote');
+      if (fbNote) fbNote.style.display = r.usedFallback ? '' : 'none';
       if (r.sendable) {
         t.value = r.message; t.disabled = false; $('msgCopy').style.display = '';
         if (r.alreadySent) {
-          sentNote.style.display = ''; sentNote.innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAt(r.sentAt))}`;
+          sentNote.style.display = ''; sentNote.innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAtFull(r.sentAt))}`;
           sendBtn.style.display = 'none';
         } else {
           sentNote.style.display = 'none';
@@ -407,7 +432,7 @@
       if (r.ok) {
         App.toast('✅ Đã gửi báo ship.');
         const sentAtRaw = r.sentAt || new Date().toISOString();
-        $('msgSentNote').style.display = ''; $('msgSentNote').innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAt(sentAtRaw))}`;
+        $('msgSentNote').style.display = ''; $('msgSentNote').innerHTML = `${App.icon('check')} Đã gửi lúc ${App.esc(fmtSentAtFull(sentAtRaw))}`;
         sendBtn.style.display = 'none';
         o.shipSentAt = sentAtRaw; render();
       } else {
@@ -442,6 +467,23 @@
     } catch (e) {
       App.toast('Lỗi: ' + App.friendlyError(e.message));
       btn.disabled = false; btn.innerHTML = orig;
+    }
+  }
+
+  // ---- Loại trừ khỏi tự động báo ship (Pha 2) — tick checkbox ở cột "Loại trừ" ------------
+  async function toggleExclude(id, checked, cb) {
+    const o = state.orders.find((x) => String(x.id) === String(id));
+    try {
+      await App.api('/api/shipping-auto/exclude', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, excluded: checked }),
+      });
+      if (o) o.autoExcluded = checked;
+      App.toast(checked ? 'Đã loại khỏi tự động báo ship (Pha 2).' : 'Đã bỏ loại trừ — tự động báo ship lại bình thường.');
+      render();
+    } catch (e) {
+      App.toast('Lỗi: ' + App.friendlyError(e.message));
+      if (cb) cb.checked = !checked; // khôi phục vì lưu thất bại
     }
   }
 
@@ -535,6 +577,10 @@
       if (sendBtn) { quickSend(sendBtn.dataset.send, sendBtn); return; }
       const btn = e.target.closest('[data-act]');
       if (btn) doAction(btn.dataset.id, btn.dataset.act);
+    });
+    $('rows').addEventListener('change', (e) => {
+      const cb = e.target.closest('.excl-cb');
+      if (cb) toggleExclude(cb.dataset.id, cb.checked, cb);
     });
   }
 

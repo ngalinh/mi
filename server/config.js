@@ -218,9 +218,11 @@ module.exports = {
     // cadence poller ship cũ) — có thể giãn nếu số vận đơn lớn.
     intervalMs: Math.max(parseInt(process.env.AUTO_SHIP2_INTERVAL_MS || '180000', 10) || 180000, 30000),
     // Cửa sổ NGÀY gần đây quét lại (theo ngày tạo vận đơn) — tránh kéo cả lịch sử mỗi lượt quét.
-    // Đơn tạo quá N ngày trước mới "Giao shipper" (hiếm, tồn kho lâu) sẽ được lưới an toàn 17:00
-    // (quét theo ngày SOẠN HÀNG) hoặc gửi tay bắt kịp.
-    lookbackDays: Math.max(parseInt(process.env.AUTO_SHIP2_LOOKBACK_DAYS ?? '14', 10) || 14, 1),
+    // Mặc định 1 = CHỈ vận đơn tạo HÔM NAY (an toàn nhất khi mới bật: đơn cũ hơn — dù đã/chưa
+    // "Giao shipper" — coi như ngoài tầm, KHÔNG BAO GIỜ tự gửi, kể cả sau này đổi trạng thái;
+    // NV gửi tay qua nút Xem/Gửi nếu cần). Đặt AUTO_SHIP2_LOOKBACK_DAYS lớn hơn nếu muốn bắt cả
+    // đơn tạo vài ngày trước mới "Giao shipper" (đánh đổi: seed lúc bật cũng quét xa hơn).
+    lookbackDays: Math.max(parseInt(process.env.AUTO_SHIP2_LOOKBACK_DAYS ?? '1', 10) || 1, 1),
     // Chu kỳ (ms) kiểm tra đồng hồ cho lưới an toàn 17:00 — tái dùng CHUNG giờ hẹn với báo hàng
     // (đọc app_settings key 'autoNotify.scheduleTime', mặc định env AUTO_NOTIFY_SCHEDULE_TIME).
     safetyCheckMs: Math.max(parseInt(process.env.AUTO_SHIP2_SAFETY_CHECK_MS || '60000', 10) || 60000, 15000),

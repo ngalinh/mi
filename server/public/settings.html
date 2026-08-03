@@ -322,7 +322,9 @@
             chỉ cảnh báo nhân viên. Dùng các biến sau trong nội dung, hệ thống tự thay khi gửi:
             <code>{name}</code> người nhận, <code>{carrier}</code> tên ĐVVC, <code>{code}</code> mã vận đơn,
             <code>{cod}</code> số tiền COD, <code>{link}</code> link theo dõi shipper (AhaMove/Grab),
-            <code>{trackUrl}</code> link tra cứu (chỉ Giao hàng tiết kiệm).
+            <code>{trackUrl}</code> link tra cứu (chỉ Giao hàng tiết kiệm),
+            <code>{shipFeeLine}</code> dòng "Phí ship (khách trả)" — tự động CHỈ hiện khi phí ship
+            do khách trả, ẩn hẳn (không hiện dòng) khi công ty trả phí ship.
           </div>
           <div id="shipTplList"><div class="muted" style="padding:16px;">Đang tải…</div></div>
         </div>
@@ -494,7 +496,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/settings.js?v=20260731c"></script>
+  <script src="js/settings.js?v=20260803a"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>

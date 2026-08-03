@@ -583,6 +583,34 @@ function markShippingAutoSeen(shippingId) {
   insShippingAutoSeenStmt.run({ shipping_id: String(shippingId), seen_at: new Date().toISOString() });
 }
 
+// ---- Loại trừ khỏi tự động báo ship (Pha 2) — NV tick tay, giống "Delay" bên Hàng về VN ----
+// Cờ lưu bền theo id vận đơn: khi bật, poller Pha 2 (shippingAutoNotify.js/classify()) BỎ QUA
+// đơn này (không tự gửi) cho tới khi NV bỏ tick. KHÔNG ảnh hưởng gửi tay (nút Xem/Gửi vẫn gửi
+// bình thường) — chỉ chặn nhánh TỰ ĐỘNG.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shipping_excluded (
+    shipping_id  TEXT PRIMARY KEY,
+    excluded_at  TEXT NOT NULL           -- ISO string
+  );
+`);
+const getShippingExcludedStmt = db.prepare('SELECT excluded_at FROM shipping_excluded WHERE shipping_id = @shipping_id');
+const insShippingExcludedStmt = db.prepare(
+  'INSERT OR IGNORE INTO shipping_excluded (shipping_id, excluded_at) VALUES (@shipping_id, @excluded_at)',
+);
+const delShippingExcludedStmt = db.prepare('DELETE FROM shipping_excluded WHERE shipping_id = @shipping_id');
+
+/** Vận đơn này có đang bị NV tick loại khỏi tự động báo ship (Pha 2) không? */
+function isShippingExcluded(shippingId) {
+  return !!getShippingExcludedStmt.get({ shipping_id: String(shippingId) });
+}
+
+/** Bật/tắt cờ loại trừ khỏi tự động báo ship cho 1 vận đơn (idempotent cả 2 chiều). */
+function setShippingExcluded(shippingId, excluded) {
+  const id = String(shippingId);
+  if (excluded) insShippingExcludedStmt.run({ shipping_id: id, excluded_at: new Date().toISOString() });
+  else delShippingExcludedStmt.run({ shipping_id: id });
+}
+
 // ---- Cấu hình hệ thống (key-value, chỉnh trên web) ----
 const getSettingStmt = db.prepare('SELECT value FROM app_settings WHERE key = @key');
 const setSettingStmt = db.prepare(`
@@ -1079,6 +1107,7 @@ module.exports = {
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified, markShippingNotified,
   isShippingAutoSeen, markShippingAutoSeen,
+  isShippingExcluded, setShippingExcluded,
   getShippingTemplates, setShippingTemplate,
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
