@@ -11,8 +11,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 14;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 13; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 13;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 12; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -378,12 +378,14 @@
     const nameHtml = o.customerId
       ? `<a href="${CUSTOMER_DETAIL_BASE + encodeURIComponent(o.customerId)}" target="_blank" rel="noopener">${name}</a>`
       : name;
+    // SĐT khách hiện thành 1 dòng nhỏ dưới tên (đã gộp cột SĐT riêng vào đây cho gọn bảng).
+    const phone = o.phone ? `<div class="phone-sub">${App.esc(o.phone)}</div>` : '';
     // Tên hội thoại Zalo/FB (từ Danh bạ, khớp SĐT) hiện thành 1 dòng nhỏ dưới tên khách. Có ->
     // khi gửi sẽ tìm nhóm theo tên này; không có -> không hiện gì (thêm ở trang Danh bạ).
     const zalo = o.zaloName
       ? `<div class="zalo-sub" title="Đã liên kết Danh bạ Zalo — khi gửi tìm nhóm theo tên: ${App.esc(o.zaloName)}"><svg class="zalo-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="zalo-txt">${App.esc(o.zaloName)}</span></div>`
       : '';
-    return nameHtml + zalo;
+    return nameHtml + phone + zalo;
   }
   function orderCodeCell(it) {
     const code = App.esc(it.orderCode);
@@ -496,7 +498,6 @@
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
       <td class="cust">${customerNameCell(o)}</td>
-      <td>${App.esc(o.phone)}</td>
       <td class="center content-col">${contentCombinedCell(o)}</td>
       <td>${actionsCell}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
@@ -1933,7 +1934,6 @@
       <th class="center" style="width:50px">STT</th>
       <th title="Ngày nhập kho">Ngày về</th>
       <th>Khách hàng</th>
-      <th>SĐT</th>
       <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
       <th class="center" style="width:120px" title="Gửi báo hàng / báo ship qua Zalo">Gửi</th>
       <th>Trạng thái</th>
