@@ -19,6 +19,10 @@
  *      code còn nguyên (runSafetyNet, route /api/shipping-auto/run-safety) nhưng trigger TỰ ĐỘNG
  *      theo giờ ĐANG TẮT (quyết định sản phẩm — xem startShippingAutoNotify()) để Viettel/GHTK
  *      không có ngoại lệ nào gửi trước khi tick "Giao shipper".
+ *
+ * NV còn có thể tick "Loại trừ" 1 vận đơn cụ thể (bảng `shipping_excluded`, giống checkbox
+ * "Delay" bên Hàng về VN) để BUỘC 2 cơ chế trên bỏ qua đơn đó — không ảnh hưởng gửi tay (nút
+ * Xem/Gửi vẫn gửi bình thường). Xem `classify()`.
  */
 const config = require('./config');
 const shippingApi = require('./shippingApi');
@@ -29,6 +33,7 @@ const { checkLocalHealth } = require('./playwrightProxy');
 const { withLock } = require('./lock');
 const {
   getSetting, setSetting, getShippingNotified, isShippingAutoSeen, markShippingAutoSeen,
+  isShippingExcluded,
 } = require('./db');
 
 const cfg = config.shippingAuto;
@@ -155,6 +160,7 @@ async function fetchRecentOrders(days) {
  * @returns {{decision:'send'|'skip', reason?:string}}
  */
 function classify(order) {
+  if (order.id != null && isShippingExcluded(order.id)) return { decision: 'skip', reason: 'excluded' };
   const reg = CARRIERS[Number(order.shippingId)];
   if (!reg) return { decision: 'skip', reason: 'unregistered' };
   if (reg.type === 'none') return { decision: 'skip', reason: 'no_notify' };
@@ -290,6 +296,7 @@ async function runSafetyNet(day) {
         if (!o.isPrepared) return false;
         if (o.statusCode === 'exported' || o.statusCode === 'completed') return false;
         if (getShippingNotified(o.id)) return false;
+        if (o.id != null && isShippingExcluded(o.id)) return false;
         const dayKey = o.preparedAtRaw ? localDayKey(o.preparedAtRaw) : null;
         return dayKey === day;
       });

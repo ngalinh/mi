@@ -33,6 +33,14 @@ gửi hay không, whitelist) vẫn CỐ ĐỊNH trong `server/shippingNotify.js`
 > `AUTO_SHIP2_LOOKBACK_DAYS` lớn hơn nếu muốn bắt cả đơn tạo vài ngày trước mới "Giao
 > shipper" (đánh đổi: seed lúc bật cũng quét xa hơn, có thể seed nhiều đơn tồn cũ hơn).
 
+## Loại trừ tay khỏi tự động báo ship
+Cột **"Loại trừ"** ở cuối bảng "Quản lý giao hàng" (giống checkbox "Delay" bên Hàng về VN) —
+NV tick 1 vận đơn cụ thể để BUỘC cả poller lẫn lưới an toàn bỏ qua, không bao giờ tự gửi cho
+tới khi bỏ tick. Lưu bền ở bảng `shipping_excluded` (khoá theo id vận đơn), API
+`POST /api/shipping-auto/exclude` body `{ id, excluded }`. KHÔNG ảnh hưởng gửi tay — nút
+Xem/Gửi vẫn gửi bình thường cho đơn đang bị loại trừ. Chỉ hiện checkbox khi đơn CHƯA gửi báo
+ship (đã gửi thì loại trừ hết ý nghĩa).
+
 ## Lưới an toàn 17:00 (NV quên bấm "Giao shipper") — ĐANG TẮT
 > **Quyết định sản phẩm (2026-08-01):** tắt trigger tự động của lưới an toàn — Viettel/GHTK
 > **bắt buộc** NV bấm "Giao shipper" mới gửi, không có ngoại lệ nào tự gửi trước đó. Code

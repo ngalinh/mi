@@ -130,6 +130,15 @@
       </div>`;
   }
 
+  // Tick "Loại trừ" 1 vận đơn khỏi tự động báo ship (Pha 2) — giống Delay bên Hàng về VN, KHÔNG
+  // ảnh hưởng gửi tay (nút Xem/Gửi vẫn gửi bình thường). Ẩn nếu đã gửi rồi (loại trừ hết ý nghĩa).
+  function renderExclude(o) {
+    if (o.shipSentAt) return '';
+    return `<label class="excl-wrap" title="Tick để loại vận đơn này khỏi tự động báo ship (Pha 2) — gửi tay ở nút Xem/Gửi vẫn hoạt động bình thường">
+      <input type="checkbox" class="excl-cb" data-id="${App.esc(o.id)}" ${o.autoExcluded ? 'checked' : ''} />
+    </label>`;
+  }
+
   // ---- Cột hiển thị (tiếp — xem COLS/loadHiddenCols ở đầu file) --------------------------------
   function saveHiddenCols() {
     try { localStorage.setItem(COLVIS_LS_KEY, JSON.stringify([...state.hiddenCols])); } catch { /* private mode -> bỏ qua, chỉ mất nhớ giữa các lần */ }
@@ -145,7 +154,8 @@
     });
     // Tổng bề rộng GỐC của các cột ĐANG HIỆN (bỏ cột đã ẩn) — vừa là mẫu số tính %, vừa dùng làm
     // min-width của <table> (không co hẹp hơn mức đó — còn nhiều cột thì vẫn cuộn ngang như cũ,
-    // không ép bóp méo chữ). Cột 1/2/15 (checkbox/mở rộng/thao tác) không thuộc COLS -> luôn hiện.
+    // không ép bóp méo chữ). Cột 1/2/15/16 (checkbox/mở rộng/thao tác/loại trừ) không thuộc COLS
+    // -> luôn hiện.
     let sumVisible = 0;
     cols.forEach((col, i) => {
       const cfg = COLS.find((c) => c.n === i + 1);
@@ -176,14 +186,14 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="15" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="16" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
     for (const o of state.orders) {
       const codPayer = o.shipPayerLabel ? `<div class="ship-sub">${App.esc(o.shipPayerLabel)}</div>` : '';
       rows.push(`
-        <tr data-id="${o.id}">
+        <tr data-id="${o.id}" class="${o.autoExcluded ? 'row-excluded' : ''}">
           <td class="center"><input type="checkbox" class="rowchk" data-id="${o.id}"></td>
           <td class="center"><span class="ship-eye" data-eye="${o.id}" title="Xem chi tiết">${App.icon('eye')}</span></td>
           <td class="gh-datecell">${splitDateTime(o.createdAt)}</td>
@@ -205,6 +215,7 @@
           <td class="gh-datecell">${splitDateTime(o.preparedAt)}</td>
           <td class="center">${renderNdShip(o)}</td>
           <td><div class="ship-actions">${actionButtons(o)}</div></td>
+          <td class="center">${renderExclude(o)}</td>
         </tr>`);
       if (state.expanded.has(String(o.id))) rows.push(detailRow(o));
     }
@@ -222,7 +233,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="15">
+    return `<tr class="ship-detail"><td colspan="16">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -273,7 +284,7 @@
 
   // ---- Load list --------------------------------------------------------
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="15" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="16" class="empty">Đang tải...</td></tr>';
     const params = new URLSearchParams();
     params.set('page', state.page);
     params.set('shipping_id', $('fCarrier').value || 0);
@@ -293,7 +304,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="15" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="16" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -459,6 +470,23 @@
     }
   }
 
+  // ---- Loại trừ khỏi tự động báo ship (Pha 2) — tick checkbox ở cột "Loại trừ" ------------
+  async function toggleExclude(id, checked, cb) {
+    const o = state.orders.find((x) => String(x.id) === String(id));
+    try {
+      await App.api('/api/shipping-auto/exclude', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, excluded: checked }),
+      });
+      if (o) o.autoExcluded = checked;
+      App.toast(checked ? 'Đã loại khỏi tự động báo ship (Pha 2).' : 'Đã bỏ loại trừ — tự động báo ship lại bình thường.');
+      render();
+    } catch (e) {
+      App.toast('Lỗi: ' + App.friendlyError(e.message));
+      if (cb) cb.checked = !checked; // khôi phục vì lưu thất bại
+    }
+  }
+
   // ---- Gửi báo ship hàng loạt (tick nhiều) --------------------------------
   async function bulkNotify() {
     const ids = checkedIds();
@@ -549,6 +577,10 @@
       if (sendBtn) { quickSend(sendBtn.dataset.send, sendBtn); return; }
       const btn = e.target.closest('[data-act]');
       if (btn) doAction(btn.dataset.id, btn.dataset.act);
+    });
+    $('rows').addEventListener('change', (e) => {
+      const cb = e.target.closest('.excl-cb');
+      if (cb) toggleExclude(cb.dataset.id, cb.checked, cb);
     });
   }
 

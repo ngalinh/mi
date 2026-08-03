@@ -17,6 +17,7 @@ const shippingAutoNotify = require('./shippingAutoNotify');
 const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified, getShippingTemplates, setShippingTemplate,
+  isShippingExcluded, setShippingExcluded,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone,
@@ -778,6 +779,7 @@ app.get('/api/shipping', async (req, res) => {
       for (const o of data.orders) {
         const seen = o.id != null ? getShippingNotified(o.id) : null;
         o.shipSentAt = seen ? seen.sentAt : null;
+        o.autoExcluded = o.id != null ? isShippingExcluded(o.id) : false;
       }
     }
     res.json({ ok: true, ...data });
@@ -961,6 +963,19 @@ app.post('/api/shipping-auto/run-safety', async (req, res) => {
   try {
     const result = await shippingAutoNotify.runSafetyNet();
     res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Tick/bỏ tick "Loại trừ" 1 vận đơn khỏi tự động báo ship (Pha 2) — giống Delay bên Hàng về VN,
+// KHÔNG ảnh hưởng gửi tay. body: { id, excluded: boolean }
+app.post('/api/shipping-auto/exclude', (req, res) => {
+  try {
+    const { id, excluded } = req.body || {};
+    if (id == null) return res.status(400).json({ ok: false, error: 'Cần id' });
+    setShippingExcluded(id, !!excluded);
+    res.json({ ok: true, id: String(id), excluded: !!excluded });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
