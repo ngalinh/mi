@@ -49,6 +49,8 @@
     .ship-toptabs{display:flex;gap:2px;border-bottom:1px solid #e5e9f0;margin:0 0 10px}
     .ship-toptabs button{border:none;background:none;padding:9px 16px;cursor:pointer;font-size:14px;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-1px}
     .ship-toptabs button.active{color:var(--primary,#e05c8a);border-bottom-color:var(--primary,#e05c8a);font-weight:600}
+    /* Nút "Hôm nay" cạnh bộ lọc ngày — bật màu khi #fDate đang đúng ngày hôm nay */
+    #btnToday.active{background:var(--primary-soft,#fde3ee);color:var(--primary,#e05c8a);border-color:var(--primary,#e05c8a)}
     /* Panel bung sản phẩm của đơn — dạng LIST/bảng gọn đẹp */
     .ship-detail > td{background:#f7f8fb;padding:0;border-bottom:1px solid #e5e9f0}
     .ship-detail-wrap{padding:14px 20px 16px}
@@ -143,6 +145,7 @@
               <option value="completed">Đã giao hàng</option>
             </select>
             <input type="date" id="fDate" class="tb-date" title="Ngày tạo vận đơn" />
+            <button class="btn secondary small" id="btnToday" type="button">Hôm nay</button>
             <select id="fStaff" class="tb-select" title="Nhân viên phụ trách"><option value="">Tất cả nhân viên</option></select>
             <div class="tb-filter-wrap">
               <button class="btn secondary small tb-filter" id="colVisBtn" type="button">

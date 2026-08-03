@@ -58,6 +58,16 @@
 
   const pad2 = (n) => String(n).padStart(2, '0');
 
+  // "YYYY-MM-DD" của ngày hôm nay (local) — dùng cho nút "Hôm nay" cạnh #fDate.
+  function todayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+  // Bật màu nút "Hôm nay" khi #fDate đang đúng ngày hôm nay (kể cả khi chọn thủ công qua lịch).
+  function syncTodayBtn() {
+    $('btnToday').classList.toggle('active', $('fDate').value === todayStr());
+  }
+
   // ISO string (server) -> "HH:MM" — dùng cho dòng nhỏ dưới nút "Xem" (cột hẹp, tránh vỡ dòng).
   // Xem ngày đầy đủ qua tooltip (fmtSentAtFull) khi hover.
   function fmtSentAtShort(iso) {
@@ -449,6 +459,7 @@
   async function quickSend(id, btn) {
     const o = state.orders.find((x) => String(x.id) === String(id));
     if (!o) return;
+    if (!confirm(`Gửi báo ship qua Zalo cho ${o.recipient}?`)) return;
     const orig = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
@@ -523,6 +534,13 @@
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
     ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
+    $('fDate').addEventListener('change', syncTodayBtn);
+    $('btnToday').onclick = () => {
+      $('fDate').value = $('fDate').value === todayStr() ? '' : todayStr();
+      syncTodayBtn();
+      state.page = 1; load();
+    };
+    syncTodayBtn();
     $('branchTabs').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       state.branch = b.dataset.branch; state.page = 1;
