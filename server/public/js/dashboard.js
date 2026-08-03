@@ -11,8 +11,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 13;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 12; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 14;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 13; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -260,6 +260,14 @@
     return `<span class="acct-with-ic" title="${App.esc(acct)}">${chanTag(o.lastReport.channel)}<span class="acct-name">${App.esc(acct)}</span></span>`;
   }
 
+  // Kênh sale mà đơn "thuộc về" (server enrich `kenhSaleList` theo NV phụ trách — xem
+  // db.getOrderKenhSales). NV thuộc nhiều kênh -> hiện đủ, cách nhau dấu phẩy. Không có cấu hình
+  // nào cho NV này (chưa khai ở Cài đặt → Kênh Sale) -> "—".
+  function kenhSaleCell(o) {
+    const list = o.kenhSaleList || [];
+    return list.length ? App.esc(list.join(', ')) : '<span class="muted">—</span>';
+  }
+
   // Gom "Người gửi" + "Tài khoản" về 1 ô: người gửi ở trên, chip tài khoản Zalo/FB ở dòng dưới.
   // Đơn chưa từng báo -> 1 ô trống "—" (không hiện 2 dấu "—" chồng nhau).
   function senderAccountCell(o) {
@@ -499,6 +507,7 @@
       </div></td>
       <td class="center">${excludeCell}</td>
       <td class="staff-col">${App.esc(o.staff)}</td>
+      <td class="kenh-col">${kenhSaleCell(o)}</td>
       <td class="sender-col">${senderAccountCell(o)}</td>
     </tr>`;
 
@@ -1932,6 +1941,7 @@
       <th>Ghi chú</th>
       <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Delay</th>
       <th>Nhân viên</th>
+      <th title="Kênh sale mà đơn thuộc về, suy theo NV phụ trách (xem Cài đặt → Kênh Sale)">Kênh Sale</th>
       <th style="width:160px" title="Người đã gửi lượt báo (Bot/nhân viên) & tài khoản Zalo/FB đã dùng">Người gửi / TK</th>`;
   }
   renderHeader();
