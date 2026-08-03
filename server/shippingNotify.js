@@ -25,27 +25,38 @@ const CARRIERS = {
 
 // Mẫu tin MẶC ĐỊNH theo shippingId — admin sửa được trên Cài đặt (Pha 3). Placeholder thay bằng
 // {tên}: {name} người nhận, {carrier} tên ĐVVC, {code} mã vận đơn (nhóm tracking), {cod} số tiền
-// COD đã format, {link} link theo dõi shipper (nhóm link), {trackUrl} link tra cứu (chỉ GHTK).
+// COD đã format, {link} link theo dõi shipper (nhóm link), {trackUrl} link tra cứu (chỉ GHTK),
+// {shipFeeLine} dòng "Phí ship khách trả" — CHỈ có nội dung khi ship_payer='customer' (khách trả
+// phí ship, cần chuẩn bị thêm tiền cho shipper); Cty trả thì {shipFeeLine} là chuỗi rỗng.
 const DEFAULT_TEMPLATES = {
   2: 'Anh/Chị {name} ơi, đơn hàng của mình đã được bàn giao cho {carrier} rồi ạ 🚚\n'
     + '📦 Mã vận đơn: {code}\n'
-    + '💰 Thu COD: {cod}\n'
+    + '💰 Thu COD: {cod}{shipFeeLine}\n'
     + '🔎 Theo dõi đơn hàng: {trackUrl}\n'
     + 'Dự kiến 2–5 ngày (tùy khu vực) mình sẽ nhận được hàng. Nếu cần hỗ trợ về đơn hàng, Anh/Chị cứ nhắn bên em nhé 💕',
   3: 'Anh/Chị {name} ơi, đơn hàng của mình đã được bàn giao cho {carrier} rồi ạ 🚚\n'
-    + '📦 Theo dõi đơn hàng: {link}\n'
+    + '📦 Theo dõi đơn hàng: {link}{shipFeeLine}\n'
     + 'Anh/Chị để ý điện thoại để nhận hàng giúp em ạ 💕',
   4: 'Anh/Chị {name} ơi, đơn hàng của mình đã được bàn giao cho {carrier} rồi ạ 🚚\n'
     + '📦 Mã vận đơn: {code}\n'
-    + '💰 Thu COD: {cod}\n'
+    + '💰 Thu COD: {cod}{shipFeeLine}\n'
     + 'Dự kiến 2–5 ngày (tùy khu vực) mình sẽ nhận được hàng. Nếu cần hỗ trợ về đơn hàng, Anh/Chị cứ nhắn bên em nhé 💕',
   7: 'Anh/Chị {name} ơi, đơn hàng của mình đã được bàn giao cho {carrier} rồi ạ 🚚\n'
-    + '📦 Theo dõi đơn hàng: {link}\n'
+    + '📦 Theo dõi đơn hàng: {link}{shipFeeLine}\n'
     + 'Anh/Chị để ý điện thoại để nhận hàng giúp em ạ 💕',
 };
 
 function fmtCod(n) {
   return (Number(n) || 0).toLocaleString('vi-VN') + 'đ';
+}
+
+// Dòng "Phí ship khách trả" — chỉ sinh ra khi ship_payer='customer' VÀ phí > 0. Cty trả -> rỗng,
+// không hiện vào tin (khách không cần biết/trả thêm gì).
+function buildShipFeeLine(order) {
+  if (String(order.shipPayer) !== 'customer') return '';
+  const fee = Number(order.shipFee) || 0;
+  if (fee <= 0) return '';
+  return `\n💵 Phí ship (khách trả): ${fmtCod(fee)}`;
 }
 
 /** Thay {key} trong template bằng vars[key] (chuỗi rỗng nếu thiếu). Không hỗ trợ điều kiện/lặp. */
@@ -71,16 +82,17 @@ function buildDeliveryMessage(order = {}, overrides = {}) {
   const name = order.recipient || 'mình';
   const code = order.trackingCode || '';
   const link = order.shipperLink || '';
+  const shipFeeLine = buildShipFeeLine(order);
   const tpl = (overrides && overrides[String(order.shippingId)]) || DEFAULT_TEMPLATES[String(order.shippingId)];
 
   if (reg.type === 'link') {
     if (!link) return { sendable: false, message: '', carrier, reason: 'no_link' };
-    return { sendable: true, carrier, message: renderTemplate(tpl, { name, carrier, link }) };
+    return { sendable: true, carrier, message: renderTemplate(tpl, { name, carrier, link, shipFeeLine }) };
   }
   // tracking
   if (!code) return { sendable: false, message: '', carrier, reason: 'no_code' };
   const trackUrl = reg.trackUrl ? reg.trackUrl(code) : '';
-  return { sendable: true, carrier, message: renderTemplate(tpl, { name, carrier, code, cod: fmtCod(order.codAmount), trackUrl }) };
+  return { sendable: true, carrier, message: renderTemplate(tpl, { name, carrier, code, cod: fmtCod(order.codAmount), trackUrl, shipFeeLine }) };
 }
 
 // Nhãn lý do không gửi -> câu tiếng Việt cho UI.
@@ -92,11 +104,13 @@ const REASON_LABEL = {
 };
 
 // Dữ liệu mẫu để xem trước khi sửa template (không phải đơn thật) — đủ field renderTemplate cần.
+// shipFeeLine có ví dụ sẵn (khách trả phí ship) để admin thấy dòng này trông thế nào khi xuất hiện.
+const SAMPLE_SHIP_FEE_LINE = '\n💵 Phí ship (khách trả): 20.000đ';
 const SAMPLE_VARS = {
-  2: { name: 'Minh Anh', carrier: 'Giao hàng tiết kiệm', code: 'S1234567890', cod: fmtCod(350000), trackUrl: 'https://i.ghtk.vn/S1234567890' },
-  3: { name: 'Minh Anh', carrier: 'AhaMove', link: 'https://aha.link/track/abc123' },
-  4: { name: 'Minh Anh', carrier: 'Viettel Post', code: '147928260778', cod: fmtCod(250000) },
-  7: { name: 'Minh Anh', carrier: 'Grab', link: 'https://express.grab.com/track/abc123' },
+  2: { name: 'Minh Anh', carrier: 'Giao hàng tiết kiệm', code: 'S1234567890', cod: fmtCod(350000), trackUrl: 'https://i.ghtk.vn/S1234567890', shipFeeLine: SAMPLE_SHIP_FEE_LINE },
+  3: { name: 'Minh Anh', carrier: 'AhaMove', link: 'https://aha.link/track/abc123', shipFeeLine: SAMPLE_SHIP_FEE_LINE },
+  4: { name: 'Minh Anh', carrier: 'Viettel Post', code: '147928260778', cod: fmtCod(250000), shipFeeLine: '' },
+  7: { name: 'Minh Anh', carrier: 'Grab', link: 'https://express.grab.com/track/abc123', shipFeeLine: '' },
 };
 
 module.exports = {
