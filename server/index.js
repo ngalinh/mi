@@ -842,39 +842,45 @@ app.post('/api/shipping/message', (req, res) => {
   }
 });
 
+// ĐVVC hợp lệ để sửa mẫu = có trong registry (không phải 'none') HOẶC 'fallback' (mẫu chung
+// dự phòng cho ĐVVC chưa khai riêng — xem shippingNotify.buildFallbackMessage).
+function isEditableTemplateId(id) {
+  if (String(id) === 'fallback') return true;
+  const reg = shippingNotify.CARRIERS[Number(id)];
+  return !!reg && reg.type !== 'none';
+}
+
 // (Pha 3) Danh sách mẫu báo ship theo ĐVVC — mặc định + override đã lưu + xem trước (dữ liệu mẫu).
 // Registry ĐVVC (loại link/tracking, có gửi hay không) CỐ ĐỊNH trong code; chỉ TEXT sửa được.
+// Kèm 1 dòng "fallback" — mẫu chung dùng cho ĐVVC chưa khai riêng.
 app.get('/api/shipping/templates', (req, res) => {
   try {
     const overrides = getShippingTemplates();
+    const buildRow = (id, name, type) => {
+      const def = shippingNotify.DEFAULT_TEMPLATES[id] || '';
+      const current = overrides[id] || def;
+      return {
+        shippingId: id, name, type, default: def, current, isCustom: !!overrides[id],
+        preview: shippingNotify.renderTemplate(current, shippingNotify.SAMPLE_VARS[id] || {}),
+      };
+    };
     const carriers = Object.entries(shippingNotify.CARRIERS)
       .filter(([, reg]) => reg.type !== 'none')
-      .map(([id, reg]) => {
-        const def = shippingNotify.DEFAULT_TEMPLATES[id] || '';
-        const current = overrides[id] || def;
-        return {
-          shippingId: id,
-          name: reg.name,
-          type: reg.type,
-          default: def,
-          current,
-          isCustom: !!overrides[id],
-          preview: shippingNotify.renderTemplate(current, shippingNotify.SAMPLE_VARS[id] || {}),
-        };
-      });
+      .map(([id, reg]) => buildRow(id, reg.name, reg.type));
+    carriers.push(buildRow('fallback', 'Mẫu chung (ĐVVC chưa khai riêng)', 'fallback'));
     res.json({ ok: true, carriers });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-// Lưu mẫu tuỳ chỉnh cho 1 ĐVVC. body: { shippingId, message }. message rỗng -> khôi phục mặc định.
+// Lưu mẫu tuỳ chỉnh cho 1 ĐVVC (hoặc 'fallback'). body: { shippingId, message }.
+// message rỗng -> khôi phục mặc định.
 app.post('/api/shipping/templates', (req, res) => {
   try {
     const { shippingId, message } = req.body || {};
     if (shippingId == null) return res.status(400).json({ ok: false, error: 'Thiếu shippingId' });
-    const reg = shippingNotify.CARRIERS[Number(shippingId)];
-    if (!reg || reg.type === 'none') return res.status(400).json({ ok: false, error: 'ĐVVC không hợp lệ hoặc không gửi tin' });
+    if (!isEditableTemplateId(shippingId)) return res.status(400).json({ ok: false, error: 'ĐVVC không hợp lệ hoặc không gửi tin' });
     setShippingTemplate(shippingId, message);
     const def = shippingNotify.DEFAULT_TEMPLATES[String(shippingId)] || '';
     const current = (message && String(message).trim()) || def;
@@ -895,8 +901,7 @@ app.post('/api/shipping/templates/preview', (req, res) => {
   try {
     const { shippingId, message } = req.body || {};
     const id = String(shippingId);
-    const reg = shippingNotify.CARRIERS[Number(id)];
-    if (!reg || reg.type === 'none') return res.status(400).json({ ok: false, error: 'ĐVVC không hợp lệ hoặc không gửi tin' });
+    if (!isEditableTemplateId(id)) return res.status(400).json({ ok: false, error: 'ĐVVC không hợp lệ hoặc không gửi tin' });
     const preview = shippingNotify.renderTemplate(message, shippingNotify.SAMPLE_VARS[id] || {});
     res.json({ ok: true, preview });
   } catch (err) {

@@ -789,7 +789,7 @@
   }
 
   // ---- Mẫu báo ship theo ĐVVC (Pha 3) — registry (link/tracking) cố định ở server, chỉ TEXT sửa được ----
-  const TYPE_LABEL = { link: 'link theo dõi shipper', tracking: 'mã vận đơn' };
+  const TYPE_LABEL = { link: 'link theo dõi shipper', tracking: 'mã vận đơn', fallback: 'dùng chung cho ĐVVC chưa khai riêng' };
   function renderShipTplRow(c) {
     return `
       <div class="mode-row shiptpl-row" data-shipid="${App.esc(c.shippingId)}" style="flex-direction:column;align-items:stretch;gap:8px;">

@@ -376,6 +376,8 @@
       const t = $('msgText');
       const sentNote = $('msgSentNote');
       const sendBtn = $('msgSend');
+      const fbNote = $('msgFallbackNote');
+      if (fbNote) fbNote.style.display = r.usedFallback ? '' : 'none';
       if (r.sendable) {
         t.value = r.message; t.disabled = false; $('msgCopy').style.display = '';
         if (r.alreadySent) {
