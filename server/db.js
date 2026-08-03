@@ -896,6 +896,18 @@ function normPhone(phone) {
   return String(phone == null ? '' : phone).replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
 }
 
+/**
+ * Chuẩn hoá "NV phụ trách" về chuỗi user_id cách nhau bởi dấu phẩy (hỗ trợ gán NHIỀU NV cho
+ * cùng 1 khách — vd 2 NV cùng chăm 1 khách). Nhận mảng hoặc chuỗi (tách theo dấu phẩy/khoảng
+ * trắng/;/|), loại trùng, giữ thứ tự chọn. Trả '' nếu không có NV nào.
+ */
+function normStaffIds(v) {
+  if (v == null) return '';
+  const arr = Array.isArray(v) ? v : String(v).split(/[\s,;/|]+/);
+  const ids = [...new Set(arr.map((x) => String(x).trim()).filter(Boolean))];
+  return ids.join(',');
+}
+
 /** Chuẩn hoá "Kiểu báo riêng" của khách về 'personal' | 'group' | null (null = theo NV). */
 function normReportTarget(v) {
   const s = String(v == null ? '' : v).trim().toLowerCase();
@@ -981,7 +993,7 @@ function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, 
   // Cờ fb_report suy ra từ link (giữ cột đồng bộ để các truy vấn cũ vẫn đúng): có link = 1.
   const fbReport = fbLink ? 1 : 0;
   const staffId = staff_id !== undefined
-    ? (String(staff_id == null ? '' : staff_id).trim() || null)
+    ? (normStaffIds(staff_id) || null)
     : (existed ? (existed.staff_id || null) : null);
   const noteVal = note !== undefined
     ? (String(note == null ? '' : note).trim() || null)
