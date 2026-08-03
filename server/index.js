@@ -764,7 +764,23 @@ app.get('/api/shipping/meta', async (req, res) => {
   }
 });
 
-// Danh sách vận đơn. Query: page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch.
+// Gắn dấu local (mi) lên danh sách vận đơn: mốc "đã gửi báo ship" (Pha 1/2), cờ loại trừ tự động,
+// và Kênh sale đã gắn cho khách (SĐT-chuẩn-hoá -> kenhSale, xem zalo_contacts.kenh_sale) — dùng cho
+// bộ lọc "Kênh" trên trang Quản lý giao hàng (Partner API không trả field kênh sale theo vận đơn).
+function enrichShippingOrders(orders) {
+  if (!Array.isArray(orders)) return orders;
+  const kenhSaleMap = getKenhSaleMap();
+  for (const o of orders) {
+    const seen = o.id != null ? getShippingNotified(o.id) : null;
+    o.shipSentAt = seen ? seen.sentAt : null;
+    o.autoExcluded = o.id != null ? isShippingExcluded(o.id) : false;
+    const kenhSale = o.phone ? kenhSaleMap.get(normPhone(o.phone)) : '';
+    if (kenhSale) o.kenhSale = kenhSale;
+  }
+  return orders;
+}
+
+// Danh sách vận đơn (phân trang server). Query: page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch.
 app.get('/api/shipping', async (req, res) => {
   try {
     const { page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch } = req.query;
@@ -778,16 +794,30 @@ app.get('/api/shipping', async (req, res) => {
       filterDateEnd: filter_date_end,
       branch,
     });
-    // Đính kèm mốc "đã gửi báo ship" (Pha 1/2) cho từng vận đơn -> UI hiện thời gian gửi
-    // ngay dưới nút "Xem" mà không cần mở modal.
-    if (Array.isArray(data.orders)) {
-      for (const o of data.orders) {
-        const seen = o.id != null ? getShippingNotified(o.id) : null;
-        o.shipSentAt = seen ? seen.sentAt : null;
-        o.autoExcluded = o.id != null ? isShippingExcluded(o.id) : false;
-      }
-    }
+    enrichShippingOrders(data.orders);
     res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- TOÀN BỘ vận đơn khớp bộ lọc (bỏ phân trang) — cho bộ lọc "Kênh" (client-side lọc theo
+// kenhSale, xem enrichShippingOrders). Query: shipping_id, status, user_approve, key, filter_date,
+// filter_date_end, branch (KHÔNG có page/pageSize — trả hết).
+app.get('/api/shipping/all', async (req, res) => {
+  try {
+    const { shipping_id, status, user_approve, key, filter_date, filter_date_end, branch } = req.query;
+    const data = await shippingApi.fetchAllShippingOrders({
+      shippingId: shipping_id,
+      status,
+      userApprove: user_approve,
+      key,
+      filterDate: filter_date,
+      filterDateEnd: filter_date_end,
+      branch,
+    });
+    enrichShippingOrders(data.orders);
+    res.json({ ok: true, ...data, total: data.orders.length });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

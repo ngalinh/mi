@@ -258,6 +258,24 @@
     </td></tr>`;
   }
 
+  // ---- Kênh sale (dropdown filter) ---------------------------------------
+  // Cùng danh sách kênh sale đã cấu hình ở Cài đặt → Kênh Sale (dùng chung cho trang Hàng về VN).
+  // Chỉ lọc được vận đơn của khách ĐÃ gắn kênh sale trong Danh bạ (server enrich `kenhSale` theo
+  // SĐT — Partner API không trả field này theo vận đơn).
+  async function loadChannelOptions() {
+    try {
+      const r = await App.api('/api/channel-accounts');
+      const names = [...new Set((r.channelAccounts || []).map((c) => c.kenh_sale).filter(Boolean))];
+      const sel = $('fChannel');
+      if (sel) {
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">Tất cả kênh</option>'
+          + names.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
+        sel.value = cur;
+      }
+    } catch (_) { /* lỗi -> giữ nguyên option tĩnh */ }
+  }
+
   // ---- Meta (dropdown filter) -------------------------------------------
   async function loadMeta() {
     try {
@@ -293,22 +311,42 @@
   }
 
   // ---- Load list --------------------------------------------------------
+  // Bộ lọc chung (trừ page/kênh) dùng cho cả 2 đường: phân trang server (mặc định) và
+  // kéo-toàn-bộ (khi đang lọc theo Kênh — xem nhánh channel bên dưới).
+  function baseParams() {
+    const p = new URLSearchParams();
+    p.set('shipping_id', $('fCarrier').value || 0);
+    p.set('status', $('fStatus').value || 'all');
+    if ($('fStaff').value) p.set('user_approve', $('fStaff').value);
+    if ($('fDate').value) p.set('filter_date', $('fDate').value); // YYYY-MM-DD (Partner nhận trực tiếp)
+    if ($('fQ').value.trim()) p.set('key', $('fQ').value.trim());
+    if (state.branch) p.set('branch', state.branch);
+    return p;
+  }
+
   async function load() {
     $('rows').innerHTML = '<tr><td colspan="16" class="empty">Đang tải...</td></tr>';
-    const params = new URLSearchParams();
-    params.set('page', state.page);
-    params.set('shipping_id', $('fCarrier').value || 0);
-    params.set('status', $('fStatus').value || 'all');
-    if ($('fStaff').value) params.set('user_approve', $('fStaff').value);
-    if ($('fDate').value) params.set('filter_date', $('fDate').value); // YYYY-MM-DD (Partner nhận trực tiếp)
-    if ($('fQ').value.trim()) params.set('key', $('fQ').value.trim());
-    if (state.branch) params.set('branch', state.branch);
+    const channel = $('fChannel') ? $('fChannel').value : '';
     try {
-      const r = await App.api('/api/shipping?' + params.toString());
-      state.orders = r.orders || [];
-      state.total = r.total || 0;
-      state.pageSize = r.pageSize || 20;
-      state.mock = r.source === 'mock';
+      if (channel) {
+        // Kênh sale: Partner API không trả field này theo vận đơn -> không lọc được ở server.
+        // Kéo TOÀN BỘ vận đơn khớp các bộ lọc còn lại rồi lọc + phân trang tại client.
+        const r = await App.api('/api/shipping/all?' + baseParams().toString());
+        const all = (r.orders || []).filter((o) => (o.kenhSale || '') === channel);
+        state.pageSize = 20;
+        state.total = all.length;
+        const start = (state.page - 1) * state.pageSize;
+        state.orders = all.slice(start, start + state.pageSize);
+        state.mock = r.source === 'mock';
+      } else {
+        const params = baseParams();
+        params.set('page', state.page);
+        const r = await App.api('/api/shipping?' + params.toString());
+        state.orders = r.orders || [];
+        state.total = r.total || 0;
+        state.pageSize = r.pageSize || 20;
+        state.mock = r.source === 'mock';
+      }
       $('mockBadge').style.display = state.mock ? '' : 'none';
       $('countInfo').textContent = `${state.total} đơn · trang ${state.page}/${Math.max(1, Math.ceil(state.total / state.pageSize))}`;
       render();
@@ -533,7 +571,7 @@
     $('btnBulkNotify').onclick = bulkNotify;
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
-    ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
+    ['fCarrier', 'fStatus', 'fDate', 'fStaff', 'fChannel'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
     $('fDate').addEventListener('change', syncTodayBtn);
     $('btnToday').onclick = () => {
       $('fDate').value = $('fDate').value === todayStr() ? '' : todayStr();
@@ -604,5 +642,6 @@
 
   bind();
   loadMeta();
+  loadChannelOptions();
   load();
 })();

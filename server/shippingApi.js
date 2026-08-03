@@ -178,6 +178,35 @@ async function getShippingOrders(filters = {}) {
   };
 }
 
+/**
+ * Kéo TOÀN BỘ vận đơn khớp bộ lọc qua mọi trang (gộp lại) — dùng cho bộ lọc "Kênh sale" (client-side,
+ * xem enrichShippingOrders ở index.js): Partner API không có field kênh sale nên không lọc được ở
+ * server, phải kéo hết rồi lọc tại client, giống fetchAllOrders bên "Hàng về VN".
+ * @param {object} [filters] { shippingId, status, key, branch, userApprove, filterDate, filterDateEnd }
+ * @returns {Promise<{orders: object[], source: string}>}
+ */
+async function fetchAllShippingOrders(filters = {}) {
+  if (config.basso.useMock) {
+    const { orders, source } = await getShippingOrders({ ...filters, page: 1 });
+    return { orders, source };
+  }
+  const all = [];
+  const seen = new Set();
+  let source = 'api';
+  for (let page = 1; page <= 100; page += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const { orders, total, pageSize, source: pageSource } = await getShippingOrders({ ...filters, page });
+    source = pageSource || source;
+    for (const o of orders) {
+      if (!seen.has(o.id)) { seen.add(o.id); all.push(o); }
+    }
+    if (!orders.length) break;                                  // hết trang
+    if (pageSize && orders.length < pageSize) break;             // trang cuối (chưa đầy)
+    if (total != null && all.length >= total) break;             // đã đủ
+  }
+  return { orders: all, source };
+}
+
 /** Chi tiết 1 vận đơn (kèm items). */
 async function getShippingOrder(id) {
   if (config.basso.useMock) {
@@ -234,6 +263,7 @@ async function updateShippingOrder(payload) {
 module.exports = {
   getShippingMeta,
   getShippingOrders,
+  fetchAllShippingOrders,
   getShippingOrder,
   getShippingInvoice,
   updateShippingOrder,
