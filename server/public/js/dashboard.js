@@ -1909,6 +1909,21 @@
   }
   renderHeader();
 
+  // Deep-link từ tab Log (Cài đặt): mở kèm ?q=<sđt>&dateInventory=<unix giây> để nhảy thẳng
+  // tới đúng dòng khách bị đổi trạng thái bởi 1 lượt báo ship — set sẵn ô tìm + đổi phạm vi
+  // ngày sang đúng ngày đó (tránh lọt ngoài "Tháng này" mặc định nếu lượt báo đã cũ hơn).
+  (function applyDeepLinkFromUrl() {
+    const p = new URLSearchParams(location.search);
+    const q = p.get('q');
+    const di = p.get('dateInventory');
+    if (q) $('fQ').value = q;
+    const sec = Number(di);
+    if (Number.isFinite(sec) && sec > 0) {
+      const d = new Date(sec * 1000);
+      if (!isNaN(d.getTime())) { const s = ymd(d); F.from = s; F.to = s; scopeMonth = false; }
+    }
+  })();
+
   // Khởi tạo: mặc định phạm vi "Tháng này" (F.from/F.to = tháng hiện tại). Sync để toolbar
   // hiện đúng "Tháng này" (ẩn ô ngày inline) và popover phản ánh đúng khoảng đang áp dụng.
   syncDateInputs();
