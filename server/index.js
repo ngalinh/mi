@@ -20,7 +20,7 @@ const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoM
   isShippingExcluded, setShippingExcluded,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone,
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, getKenhSaleMap, normPhone,
   listChannelAccounts, upsertChannelAccount, deleteChannelAccount } = require('./db');
 const { notifyMany, notifyOrders, requestStopBulk, isBulkRunning } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
@@ -541,6 +541,9 @@ function enrichOrders(orders) {
   // Danh bạ Zalo (SĐT-chuẩn-hoá -> tên group) để hiện cột "Tên Zalo/FB" + cho biết đơn nào
   // sẽ gửi theo tên group. Nạp 1 lần cho cả tập.
   const zaloMap = getZaloMap();
+  // Kênh sale đã gắn cho khách (SĐT-chuẩn-hoá -> kênh sale) — để bộ lọc "Kênh" trên dashboard
+  // lọc được các đơn của khách đã gắn kênh (Basso không trả field này theo đơn).
+  const kenhSaleMap = getKenhSaleMap();
   // Mốc "lần đầu Mi thấy ND ship" -> cho bộ lọc "ND ship mới hôm nay". Đơn CÓ ND ship mà chưa có
   // mốc thì ghi mốc = BÂY GIỜ (Mi vừa thấy lần đầu) rồi gom lại ghi 1 lượt cuối vòng lặp.
   const shipSeenMap = getShipSeenMap();
@@ -559,12 +562,14 @@ function enrichOrders(orders) {
       : withLast;
     const zaloName = o.phone ? zaloMap.get(normPhone(o.phone)) : '';
     const withZalo = zaloName ? { ...withDelay, zaloName } : withDelay;
+    const kenhSale = o.phone ? kenhSaleMap.get(normPhone(o.phone)) : '';
+    const withKenh = kenhSale ? { ...withZalo, kenhSale } : withZalo;
     // Mốc "mới hôm nay": chỉ áp cho đơn ĐANG có ND ship. Chưa có mốc -> lần đầu thấy = now.
     const hasShip = o.noiDungBaoShip && String(o.noiDungBaoShip).trim();
-    if (!hasShip) return withZalo;
+    if (!hasShip) return withKenh;
     let firstSeen = shipSeenMap.get(String(key));
     if (!firstSeen) { firstSeen = nowIso; newShipKeys.push(String(key)); }
-    return { ...withZalo, shipFirstSeen: firstSeen };
+    return { ...withKenh, shipFirstSeen: firstSeen };
   });
   if (newShipKeys.length) { try { recordShipSeen(newShipKeys, nowIso); } catch (_) { /* ghi mốc lỗi -> bỏ qua, lần sau ghi lại */ } }
   return enriched;

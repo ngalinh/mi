@@ -960,6 +960,19 @@ const getZaloMap = makeCachedMap(() => {
   return m;
 });
 
+/**
+ * Map SĐT-đã-chuẩn-hoá -> Kênh sale đã gắn cho khách (nếu có). Dùng cho bộ lọc "Kênh" trên
+ * danh sách Hàng về VN — Basso không trả field kênh sale theo đơn nên chỉ lọc được các khách
+ * đã gắn kênh sale thủ công trong Danh bạ Zalo (xem cột zalo_contacts.kenh_sale).
+ */
+const getKenhSaleMap = makeCachedMap(() => {
+  const m = new Map();
+  for (const r of listZaloContactsStmt.all()) {
+    if (r.kenh_sale) m.set(r.phone, r.kenh_sale);
+  }
+  return m;
+});
+
 /** Lấy TÊN Zalo/FB đã lưu cho 1 SĐT (khớp sau chuẩn hoá). '' nếu chưa có. */
 function getZaloName(phone) {
   const p = normPhone(phone);
@@ -1015,6 +1028,7 @@ function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, 
     now: new Date().toISOString(),
   });
   getZaloMap.invalidate(); // danh bạ đổi -> cache tên Zalo/FB dựng lại ở lần enrich kế
+  getKenhSaleMap.invalidate(); // kênh sale gắn cho khách có thể đã đổi -> làm mới cache lọc kênh
   return getZaloContactStmt.get({ phone: p });
 }
 
@@ -1057,6 +1071,7 @@ function importZaloContacts(rows = [], mode = 'merge') {
     }
     db.exec('COMMIT');
     getZaloMap.invalidate(); // nạp hàng loạt -> làm mới cache tên Zalo/FB
+    getKenhSaleMap.invalidate();
     return { added, updated, skipped, total: list.length };
   } catch (e) {
     try { db.exec('ROLLBACK'); } catch (_) { /* ignore */ }
@@ -1070,6 +1085,7 @@ function deleteZaloContact(phone) {
   if (!p) return false;
   const info = delZaloContactStmt.run({ phone: p });
   getZaloMap.invalidate(); // xoá liên hệ -> làm mới cache tên Zalo/FB
+  getKenhSaleMap.invalidate();
   return (info.changes || 0) > 0;
 }
 
@@ -1124,7 +1140,7 @@ module.exports = {
   getSetting, setSetting,
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
+  normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, getKenhSaleMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
   getContactReportTarget, getContactKenhSale,
   listChannelAccounts, upsertChannelAccount, deleteChannelAccount, findChannelAccount,
 };
