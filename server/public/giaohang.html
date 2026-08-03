@@ -7,7 +7,7 @@
   <title>Mi · Quản lý giao hàng</title>
   <link rel="icon" type="image/png" href="favicon.png?v=3" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="css/styles.css?v=20260725" />
+  <link rel="stylesheet" href="css/styles.css?v=20260803" />
   <style>
     /* Bảng giao hàng: table-layout:fixed + <col> theo % (đặt bởi applyColVis() ở giaohang.js) ->
        mỗi cột giữ ĐÚNG TỈ LỆ đã khai (không bị 1 ô nội dung dài — vd link shipper nowrap — "hút"
@@ -15,7 +15,7 @@
        width:100% + min-width = TỔNG bề rộng khai báo của các cột ĐANG HIỆN (JS cập nhật mỗi lần
        ẩn/hiện) -> màn rộng thì các cột còn lại tự giãn lấp khung; màn hẹp hơn tổng đó thì
        .table-wrap tự cuộn ngang như cũ (xem styles.css), không bị bóp méo cột. */
-    .gh-table{table-layout:fixed;width:100%;min-width:1890px}
+    .gh-table{table-layout:fixed;width:100%;min-width:1940px}
     .gh-table th,.gh-table td{padding:12px 10px;word-break:break-word;overflow-wrap:anywhere;vertical-align:top}
     .table-wrap .gh-table thead th{white-space:normal;line-height:1.25}
     .gh-table td{font-size:13px}
@@ -40,8 +40,8 @@
     .ship-badge.completed{background:#e8f5e9;color:#2e7d32}
     .ship-badge.unknown{background:#eef1f5;color:#64748b}
     .ship-carrier{display:flex;align-items:center;gap:4px}
-    .ship-actions{display:flex;flex-direction:column;gap:4px;align-items:stretch;min-width:0}
-    .ship-actions .btn{padding:5px 6px;font-size:11.5px;line-height:1.25;justify-content:center;white-space:normal}
+    .ship-actions{display:flex;flex-direction:column;gap:4px;align-items:flex-start;min-width:0}
+    .ship-actions .btn{padding:5px 10px;font-size:11.5px;line-height:1.25;justify-content:center;white-space:nowrap}
     .ship-sub{color:#94a3b8;font-size:11px}
     /* Thời gian đã gửi báo ship — hiện dưới nút "Xem" trong cột ND ship */
     .ship-sent-at{margin-top:4px;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}
@@ -191,7 +191,7 @@
                 <col style="width:100px"><col style="width:100px">
                 <col style="width:140px"><col style="width:120px">
                 <col style="width:120px"><col style="width:100px">
-                <col style="width:190px"><col style="width:90px">
+                <col style="width:150px"><col style="width:90px">
               </colgroup>
               <thead>
                 <tr>

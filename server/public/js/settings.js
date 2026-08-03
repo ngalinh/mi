@@ -1248,6 +1248,12 @@
         // Lỗi -> ưu tiên lý do lỗi; ngược lại nội dung tin đã gửi. Gộp về 1 dòng.
         const detailRaw = (r.status === 'failed' && r.error) ? r.error : (r.message || '');
         const detail = detailRaw ? String(detailRaw).replace(/\s*\n\s*/g, ' ⏎ ') : '';
+        // Lượt báo ship đã tra khớp + đổi trạng thái ở Hàng về VN (customer_id/date_inventory
+        // gắn kèm — xem shippingSendService.js) -> cho link nhảy thẳng tới đúng dòng đó để kiểm
+        // tra thay vì phải tự tìm bằng SĐT/tên.
+        const jumpLink = (r.customer_id && r.date_inventory)
+          ? ` <a class="t-key log-jump" href="index.html?${new URLSearchParams({ q: r.phone || '', customerId: r.customer_id, dateInventory: r.date_inventory }).toString()}" target="_blank" rel="noopener" title="Xem dòng Hàng về VN đã bị đổi trạng thái">↗ Hàng về VN</a>`
+          : '';
         return '<div class="ln">'
           + `<span class="t-time">${E(logTs(r.created_at))}</span> `
           + `<span class="${cls}">${tok}</span> `
@@ -1257,6 +1263,7 @@
           + `<span class="t-key">by=</span>${by} `
           + `<span class="t-key">acct=</span>${acct}`
           + (detail ? `  <span class="t-msg">· ${E(detail)}</span>` : '')
+          + jumpLink
           + '</div>';
       }).join('');
       logTerm.scrollTop = 0;
