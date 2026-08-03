@@ -147,6 +147,9 @@
             <input type="date" id="fDate" class="tb-date" title="Ngày tạo vận đơn" />
             <button class="btn secondary small" id="btnToday" type="button">Hôm nay</button>
             <select id="fStaff" class="tb-select" title="Nhân viên phụ trách"><option value="">Tất cả nhân viên</option></select>
+            <select id="fChannel" class="tb-select" title="Lọc theo kênh sale (chỉ áp dụng cho khách đã gắn kênh trong Danh bạ)">
+              <option value="">Tất cả kênh</option>
+            </select>
             <div class="tb-filter-wrap">
               <button class="btn secondary small tb-filter" id="colVisBtn" type="button">
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="18" rx="1"/><rect x="14" y="3" width="7" height="18" rx="1"/></svg>
@@ -237,7 +240,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260731"></script>
-  <script src="js/giaohang.js?v=20260803c"></script>
+  <script src="js/giaohang.js?v=20260803d"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>
