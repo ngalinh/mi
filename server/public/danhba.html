@@ -211,7 +211,18 @@
         <div class="field full"><label>SĐT</label><input id="cmPhone" type="text" placeholder="vd: 0985 093 767" /></div>
         <div class="field full"><label>Tên Zalo/FB</label><input id="cmName" type="text" placeholder="Đúng tên hội thoại trên Zalo" /></div>
         <div class="field full"><label>NV phụ trách</label>
-          <select id="cmStaff"><option value="">— Không gán —</option></select>
+          <div class="ms" id="cmStaffMs">
+            <button type="button" class="note-input ms-toggle" id="cmStaffToggle" aria-haspopup="true" aria-expanded="false">
+              <span class="ms-label" id="cmStaffLabel">— Không gán —</span>
+              <svg class="ms-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="ms-panel" id="cmStaffPanel" hidden></div>
+          </div>
+        </div>
+        <div class="field full"><label>Kênh sale</label>
+          <input id="cmKenhSale" type="text" list="cmKenhSaleList" placeholder="vd: Basso, ShipUS, Linh Dương… (để trống = không gắn)" />
+          <datalist id="cmKenhSaleList"></datalist>
+          <div class="muted" style="font-size:12px;margin-top:4px;">Kênh sale gắn liền với 1 tài khoản Zalo cố định (cấu hình ở Cài đặt → Kênh Sale). Gắn khách này vào 1 kênh sale để tự chọn đúng tài khoản Zalo khi báo hàng, không cần chọn tay mỗi lượt.</div>
         </div>
         <div class="field full"><label>Báo Zalo</label>
           <select id="cmReportTarget">

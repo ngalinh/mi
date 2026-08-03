@@ -5,6 +5,7 @@
                           // false = fallback phân trang server (tập quá lớn / chưa kéo xong)
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
+  let currentChannel = ''; // kênh sale đang lọc ('' = tất cả) — xem zalo_contacts.kenh_sale
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
   let currentSendStatus = ''; // lọc theo TRẠNG THÁI GỬI TIN (lastReport): '' = tất cả | success | pending | failed | none
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
@@ -259,6 +260,14 @@
     return `<span class="acct-with-ic" title="${App.esc(acct)}">${chanTag(o.lastReport.channel)}<span class="acct-name">${App.esc(acct)}</span></span>`;
   }
 
+  // Kênh sale mà đơn "thuộc về" (server enrich `kenhSaleList` theo NV phụ trách — xem
+  // db.getOrderKenhSales). NV thuộc nhiều kênh -> hiện đủ, cách nhau dấu phẩy. Không có cấu hình
+  // nào cho NV này (chưa khai ở Cài đặt → Kênh Sale) -> "—".
+  function kenhSaleCell(o) {
+    const list = o.kenhSaleList || [];
+    return list.length ? App.esc(list.join(', ')) : '<span class="muted">—</span>';
+  }
+
   // Gom "Người gửi" + "Tài khoản" về 1 ô: người gửi ở trên, chip tài khoản Zalo/FB ở dòng dưới.
   // Đơn chưa từng báo -> 1 ô trống "—" (không hiện 2 dấu "—" chồng nhau).
   function senderAccountCell(o) {
@@ -369,12 +378,14 @@
     const nameHtml = o.customerId
       ? `<a href="${CUSTOMER_DETAIL_BASE + encodeURIComponent(o.customerId)}" target="_blank" rel="noopener">${name}</a>`
       : name;
+    // SĐT khách hiện thành 1 dòng nhỏ dưới tên (đã gộp cột SĐT riêng vào đây cho gọn bảng).
+    const phone = o.phone ? `<div class="phone-sub">${App.esc(o.phone)}</div>` : '';
     // Tên hội thoại Zalo/FB (từ Danh bạ, khớp SĐT) hiện thành 1 dòng nhỏ dưới tên khách. Có ->
     // khi gửi sẽ tìm nhóm theo tên này; không có -> không hiện gì (thêm ở trang Danh bạ).
     const zalo = o.zaloName
       ? `<div class="zalo-sub" title="Đã liên kết Danh bạ Zalo — khi gửi tìm nhóm theo tên: ${App.esc(o.zaloName)}"><svg class="zalo-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg><span class="zalo-txt">${App.esc(o.zaloName)}</span></div>`
       : '';
-    return nameHtml + zalo;
+    return nameHtml + phone + zalo;
   }
   function orderCodeCell(it) {
     const code = App.esc(it.orderCode);
@@ -487,7 +498,6 @@
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
       <td class="cust">${customerNameCell(o)}</td>
-      <td>${App.esc(o.phone)}</td>
       <td class="center content-col">${contentCombinedCell(o)}</td>
       <td>${actionsCell}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
@@ -498,6 +508,7 @@
       </div></td>
       <td class="center">${excludeCell}</td>
       <td class="staff-col">${App.esc(o.staff)}</td>
+      <td class="kenh-col">${kenhSaleCell(o)}</td>
       <td class="sender-col">${senderAccountCell(o)}</td>
     </tr>`;
 
@@ -659,6 +670,10 @@
     if (currentSendStatus === 'ship_pending') list = list.filter(hasUnsentShipContent);
     else if (currentSendStatus === 'ship_new_today') list = list.filter(isShipNewToday);
     else if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
+    // Kênh sale: đơn "thuộc" 1 kênh nếu NV phụ trách đơn có cấu hình kênh đó (server enrich
+    // `kenhSaleList` theo NV — 1 NV có thể thuộc nhiều kênh, xem db.getOrderKenhSales). Basso
+    // không trả field kênh sale theo đơn nên lọc CLIENT-SIDE như các bộ lọc trên.
+    if (currentChannel) list = list.filter((o) => (o.kenhSaleList || []).includes(currentChannel));
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -920,9 +935,22 @@
       kenhSaleNames = [...new Set((r.channelAccounts || []).map((c) => c.kenh_sale).filter(Boolean))];
     } catch { kenhSaleNames = []; }
     const sel = $('modalKenhSale');
+    if (sel) {
+      sel.innerHTML = '<option value="">— Không chọn —</option>'
+        + kenhSaleNames.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
+    }
+    renderChannelFilter();
+  }
+  // Bộ lọc "Kênh" trên toolbar: cùng danh sách kênh sale đã cấu hình (Cài đặt → Kênh Sale).
+  // Lọc theo NV phụ trách đơn có thuộc kênh đó không (server enrich `kenhSaleList`) — 1 NV thuộc
+  // nhiều kênh thì đơn của NV đó khớp mọi kênh NV có mặt.
+  function renderChannelFilter() {
+    const sel = $('fChannel');
     if (!sel) return;
-    sel.innerHTML = '<option value="">— Không chọn —</option>'
+    const cur = currentChannel;
+    sel.innerHTML = '<option value="">Tất cả kênh</option>'
       + kenhSaleNames.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
+    sel.value = cur;
   }
   // Chọn kênh sale hay chọn tài khoản tay là 2 cách LOẠI TRỪ NHAU (server ưu tiên tài khoản tay
   // nếu cả 2 cùng có) -> chọn cái này thì bỏ trống cái kia để tránh nhầm lẫn "đã chọn kênh sale
@@ -1504,7 +1532,7 @@
   // Có bất kỳ bộ lọc CLIENT-SIDE nào đang bật không? (gom nhóm, trạng thái gửi tin, hoặc
   // Loại trừ/Ghi chú trong popover). Các lọc này không làm được ở Basso -> phải lọc tại client.
   function hasClientFilter() {
-    return !!currentGroupBy || !!currentSendStatus || F.exclude !== 'all' || F.note !== 'all';
+    return !!currentGroupBy || !!currentSendStatus || !!currentChannel || F.exclude !== 'all' || F.note !== 'all';
   }
   // Đồng bộ chế độ theo bộ lọc client-side: nếu đang bật mà chưa kéo cả tập -> kéo cả tập rồi
   // lọc/phân trang tại client (để lọc trên TOÀN tập chứ không chỉ 20 đơn của trang đang xem);
@@ -1752,6 +1780,15 @@
     applyFilters({ keepPage: true });
   });
 
+  // Lọc theo Kênh sale (client-side — xem applyExcludeNote/hasClientFilter). Bật lọc -> kéo cả
+  // tập rồi lọc trên toàn tập (giống Trạng thái gửi tin/Loại trừ/Ghi chú).
+  const fChannelEl = $('fChannel');
+  if (fChannelEl) fChannelEl.addEventListener('change', (e) => {
+    currentChannel = e.target.value || '';
+    currentPage = 1;
+    syncClientFilterMode();
+  });
+
   $('pager').addEventListener('click', (e) => {
     const b = e.target.closest('.pg-btn');
     if (!b || b.disabled) return;
@@ -1897,7 +1934,6 @@
       <th class="center" style="width:50px">STT</th>
       <th title="Ngày nhập kho">Ngày về</th>
       <th>Khách hàng</th>
-      <th>SĐT</th>
       <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
       <th class="center" style="width:120px" title="Gửi báo hàng / báo ship qua Zalo">Gửi</th>
       <th>Trạng thái</th>
@@ -1905,6 +1941,7 @@
       <th>Ghi chú</th>
       <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Delay</th>
       <th>Nhân viên</th>
+      <th title="Kênh sale mà đơn thuộc về, suy theo NV phụ trách (xem Cài đặt → Kênh Sale)">Kênh Sale</th>
       <th style="width:160px" title="Người đã gửi lượt báo (Bot/nhân viên) & tài khoản Zalo/FB đã dùng">Người gửi / TK</th>`;
   }
   renderHeader();

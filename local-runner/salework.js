@@ -220,6 +220,17 @@ async function accountListVisible(page) {
   return page.locator('.v-list:has(.acc-tick)').first().isVisible().catch(() => false);
 }
 
+// Đọc nhãn hiện tại trên nút mở dropdown (span.acc-btn-text) MÀ KHÔNG mở dropdown ra. Khi
+// đúng 1 tài khoản đang được lọc, nhãn này hiển thị chính tên tài khoản đó (thay vì "Tất cả
+// Zalo") — dùng để bỏ qua việc mở/tick/đóng dropdown khi gửi liên tiếp nhiều khách cùng 1
+// tài khoản (keepContext=true) mà tài khoản không đổi giữa các lần gửi.
+async function currentAccountButtonLabel(page) {
+  const loc = page.locator('.acc-btn-text').first();
+  if (!(await loc.count().catch(() => 0))) return null;
+  const text = await loc.textContent().catch(() => null);
+  return text ? text.normalize('NFC').replace(/\s+/g, ' ').trim() : null;
+}
+
 // Mở dropdown chọn tài khoản. Nút mở hiển thị nhãn span.acc-btn-text ("Tất cả Zalo" hoặc
 // tên tài khoản đã chọn lần trước). Thử vài selector phòng khi DOM đổi.
 async function openAccountDropdown(page) {
@@ -271,6 +282,13 @@ async function clickAccountRowByIdx(page, idx) {
 async function selectZaloAccount(page, accountLabel) {
   if (!accountLabel) return false;
   const want = ACC_NORM(accountLabel);
+
+  // Đã đúng tài khoản từ lần gửi trước (VD gửi liên tiếp nhiều khách cùng 1 tài khoản,
+  // keepContext=true giữ nguyên page) -> khỏi mở dropdown/tick lại, đỡ thao tác thừa.
+  const currentLabel = await currentAccountButtonLabel(page);
+  if (currentLabel && ACC_NORM(currentLabel) === want) {
+    return true;
+  }
 
   if (!(await openAccountDropdown(page))) {
     await shot(page, '02b-account-dropdown-fail');

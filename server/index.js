@@ -20,7 +20,7 @@ const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoM
   isShippingExcluded, setShippingExcluded,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone,
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, getOrderKenhSales, normPhone,
   listChannelAccounts, upsertChannelAccount, deleteChannelAccount } = require('./db');
 const { notifyMany, notifyOrders, requestStopBulk, isBulkRunning } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
@@ -454,7 +454,7 @@ app.post('/api/zalo-contacts', (req, res) => {
     const contact = upsertZaloContact({
       phone: b.phone, zalo_name: b.zalo_name, note: b.note, source: 'manual',
       fb_link: b.fb_link, staff_id: b.staff_id,
-      report_target: b.report_target,
+      report_target: b.report_target, kenh_sale: b.kenh_sale,
     });
     res.json({ ok: true, contact });
   } catch (e) {
@@ -559,12 +559,18 @@ function enrichOrders(orders) {
       : withLast;
     const zaloName = o.phone ? zaloMap.get(normPhone(o.phone)) : '';
     const withZalo = zaloName ? { ...withDelay, zaloName } : withDelay;
+    // Kênh sale mà đơn "thuộc về", suy theo NV phụ trách đơn (userId + tên) trong bảng
+    // channel_accounts (Cài đặt → Kênh Sale) — 1 NV có thể thuộc nhiều kênh (xem getOrderKenhSales).
+    // Chỉ dùng cho bộ lọc "Kênh" hiển thị; chọn tài khoản Zalo khi gửi tin KHÔNG đổi (vẫn qua
+    // findChannelAccount + opts.kenhSale tường minh như cũ).
+    const kenhSaleList = getOrderKenhSales({ staffId: o.userId, staffName: o.staff });
+    const withKenh = kenhSaleList.length ? { ...withZalo, kenhSaleList } : withZalo;
     // Mốc "mới hôm nay": chỉ áp cho đơn ĐANG có ND ship. Chưa có mốc -> lần đầu thấy = now.
     const hasShip = o.noiDungBaoShip && String(o.noiDungBaoShip).trim();
-    if (!hasShip) return withZalo;
+    if (!hasShip) return withKenh;
     let firstSeen = shipSeenMap.get(String(key));
     if (!firstSeen) { firstSeen = nowIso; newShipKeys.push(String(key)); }
-    return { ...withZalo, shipFirstSeen: firstSeen };
+    return { ...withKenh, shipFirstSeen: firstSeen };
   });
   if (newShipKeys.length) { try { recordShipSeen(newShipKeys, nowIso); } catch (_) { /* ghi mốc lỗi -> bỏ qua, lần sau ghi lại */ } }
   return enriched;
@@ -759,7 +765,25 @@ app.get('/api/shipping/meta', async (req, res) => {
   }
 });
 
-// Danh sách vận đơn. Query: page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch.
+// Gắn dấu local (mi) lên danh sách vận đơn: mốc "đã gửi báo ship" (Pha 1/2), cờ loại trừ tự động,
+// và danh sách Kênh sale mà vận đơn "thuộc về" — suy theo NV duyệt đơn (firstApproveUser, cùng logic
+// shippingSendService dùng để chọn tài khoản gửi thật) khớp trong bảng channel_accounts (Cài đặt →
+// Kênh Sale). Dùng cho bộ lọc "Kênh" trên trang Quản lý giao hàng; KHÔNG đổi cách chọn tài khoản
+// Zalo khi gửi tin (vẫn qua accountResolver + opts.kenhSale tường minh như cũ).
+function enrichShippingOrders(orders) {
+  if (!Array.isArray(orders)) return orders;
+  for (const o of orders) {
+    const seen = o.id != null ? getShippingNotified(o.id) : null;
+    o.shipSentAt = seen ? seen.sentAt : null;
+    o.autoExcluded = o.id != null ? isShippingExcluded(o.id) : false;
+    const staffName = shippingSendService.firstApproveUser(o);
+    const kenhSaleList = staffName ? getOrderKenhSales({ staffName }) : [];
+    if (kenhSaleList.length) o.kenhSaleList = kenhSaleList;
+  }
+  return orders;
+}
+
+// Danh sách vận đơn (phân trang server). Query: page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch.
 app.get('/api/shipping', async (req, res) => {
   try {
     const { page, shipping_id, status, user_approve, key, filter_date, filter_date_end, branch } = req.query;
@@ -773,16 +797,30 @@ app.get('/api/shipping', async (req, res) => {
       filterDateEnd: filter_date_end,
       branch,
     });
-    // Đính kèm mốc "đã gửi báo ship" (Pha 1/2) cho từng vận đơn -> UI hiện thời gian gửi
-    // ngay dưới nút "Xem" mà không cần mở modal.
-    if (Array.isArray(data.orders)) {
-      for (const o of data.orders) {
-        const seen = o.id != null ? getShippingNotified(o.id) : null;
-        o.shipSentAt = seen ? seen.sentAt : null;
-        o.autoExcluded = o.id != null ? isShippingExcluded(o.id) : false;
-      }
-    }
+    enrichShippingOrders(data.orders);
     res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ---- TOÀN BỘ vận đơn khớp bộ lọc (bỏ phân trang) — cho bộ lọc "Kênh" (client-side lọc theo
+// kenhSale, xem enrichShippingOrders). Query: shipping_id, status, user_approve, key, filter_date,
+// filter_date_end, branch (KHÔNG có page/pageSize — trả hết).
+app.get('/api/shipping/all', async (req, res) => {
+  try {
+    const { shipping_id, status, user_approve, key, filter_date, filter_date_end, branch } = req.query;
+    const data = await shippingApi.fetchAllShippingOrders({
+      shippingId: shipping_id,
+      status,
+      userApprove: user_approve,
+      key,
+      filterDate: filter_date,
+      filterDateEnd: filter_date_end,
+      branch,
+    });
+    enrichShippingOrders(data.orders);
+    res.json({ ok: true, ...data, total: data.orders.length });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

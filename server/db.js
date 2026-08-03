@@ -201,6 +201,12 @@ try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN staff_id TEXT'); } catch (_)
 // theo NV (mặc định), 'personal' = ép báo CÁ NHÂN, 'group' = ép báo NHÓM. Vd NV báo cá nhân nhưng
 // có 1 khách lại phải báo vào group Zalo.
 try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN report_target TEXT'); } catch (_) { /* đã có cột */ }
+// KÊNH SALE riêng cho khách này (vd "Basso", "ShipUS", "Linh Dương" — xem bảng channel_accounts).
+// Rỗng = không gắn, resolve tài khoản Zalo như cũ theo NV phụ trách/brand. Có giá trị -> tra
+// channel_accounts (kênh sale + NV phụ trách đơn) để lấy THẲNG tài khoản Zalo cố định của kênh
+// này, không cần người gửi chọn tay mỗi lượt báo (xem accountResolver.resolveForOrder nhánh 1.5
+// và notifyService.notifyOne dùng getContactKenhSale làm mặc định cho opts.kenhSale).
+try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN kenh_sale TEXT'); } catch (_) { /* đã có cột */ }
 
 const insertStmt = db.prepare(`
   INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, zalo_account, customer_id, date_inventory, user_id, kind, channel, created_at)
@@ -828,9 +834,11 @@ function upsertChannelAccount({ id, kenhSale, staffId, staffName, zaloAccountKey
     const rid = parseInt(id, 10);
     if (!getChanStmt.get({ id: rid })) { const err = new Error('Không tìm thấy cấu hình để sửa'); err.code = 'BAD_INPUT'; throw err; }
     updateChanStmt.run({ id: rid, kenh_sale: kenh, staff_id: sid, staff_name: name, zalo_account_key: acctKey, now });
+    getStaffChannelMap.invalidate(); // cấu hình NV<->kênh đổi -> làm mới cache lọc "Kênh" trên UI
     return getChanStmt.get({ id: rid });
   }
   const info = insertChanStmt.run({ kenh_sale: kenh, staff_id: sid, staff_name: name, zalo_account_key: acctKey, now });
+  getStaffChannelMap.invalidate();
   return getChanStmt.get({ id: info.lastInsertRowid });
 }
 
@@ -838,7 +846,9 @@ function upsertChannelAccount({ id, kenhSale, staffId, staffName, zaloAccountKey
 function deleteChannelAccount(id) {
   const rid = parseInt(id, 10);
   if (!Number.isFinite(rid)) return false;
-  return delChanStmt.run({ id: rid }).changes > 0;
+  const removed = delChanStmt.run({ id: rid }).changes > 0;
+  if (removed) getStaffChannelMap.invalidate();
+  return removed;
 }
 
 /**
@@ -890,6 +900,18 @@ function normPhone(phone) {
   return String(phone == null ? '' : phone).replace(/\D/g, '').replace(/^84/, '').replace(/^0/, '');
 }
 
+/**
+ * Chuẩn hoá "NV phụ trách" về chuỗi user_id cách nhau bởi dấu phẩy (hỗ trợ gán NHIỀU NV cho
+ * cùng 1 khách — vd 2 NV cùng chăm 1 khách). Nhận mảng hoặc chuỗi (tách theo dấu phẩy/khoảng
+ * trắng/;/|), loại trùng, giữ thứ tự chọn. Trả '' nếu không có NV nào.
+ */
+function normStaffIds(v) {
+  if (v == null) return '';
+  const arr = Array.isArray(v) ? v : String(v).split(/[\s,;/|]+/);
+  const ids = [...new Set(arr.map((x) => String(x).trim()).filter(Boolean))];
+  return ids.join(',');
+}
+
 /** Chuẩn hoá "Kiểu báo riêng" của khách về 'personal' | 'group' | null (null = theo NV). */
 function normReportTarget(v) {
   const s = String(v == null ? '' : v).trim().toLowerCase();
@@ -907,15 +929,24 @@ function getContactReportTarget(phone) {
   return (r && normReportTarget(r.report_target)) || '';
 }
 
+/** Kênh sale riêng đã lưu cho 1 SĐT khách (xem cột kenh_sale). '' nếu chưa gắn. */
+function getContactKenhSale(phone) {
+  const p = normPhone(phone);
+  if (!p) return '';
+  const r = getZaloContactStmt.get({ phone: p });
+  return (r && String(r.kenh_sale || '').trim()) || '';
+}
+
 const getZaloContactStmt = db.prepare('SELECT * FROM zalo_contacts WHERE phone = @phone');
 const listZaloContactsStmt = db.prepare('SELECT * FROM zalo_contacts ORDER BY updated_at DESC');
 const countZaloContactsStmt = db.prepare('SELECT COUNT(*) AS n FROM zalo_contacts');
 const upsertZaloContactStmt = db.prepare(`
-  INSERT INTO zalo_contacts (phone, zalo_name, raw_phone, note, source, fb_report, fb_link, staff_id, report_target, updated_at)
-  VALUES (@phone, @zalo_name, @raw_phone, @note, @source, @fb_report, @fb_link, @staff_id, @report_target, @now)
+  INSERT INTO zalo_contacts (phone, zalo_name, raw_phone, note, source, fb_report, fb_link, staff_id, report_target, kenh_sale, updated_at)
+  VALUES (@phone, @zalo_name, @raw_phone, @note, @source, @fb_report, @fb_link, @staff_id, @report_target, @kenh_sale, @now)
   ON CONFLICT(phone) DO UPDATE SET
     zalo_name = @zalo_name, raw_phone = @raw_phone, note = @note, source = @source,
-    fb_report = @fb_report, fb_link = @fb_link, staff_id = @staff_id, report_target = @report_target, updated_at = @now
+    fb_report = @fb_report, fb_link = @fb_link, staff_id = @staff_id, report_target = @report_target,
+    kenh_sale = @kenh_sale, updated_at = @now
 `);
 const delZaloContactStmt = db.prepare('DELETE FROM zalo_contacts WHERE phone = @phone');
 
@@ -933,6 +964,51 @@ const getZaloMap = makeCachedMap(() => {
   return m;
 });
 
+/**
+ * { byStaffId: Map(userId -> Set(kenhSale)), byStaffName: Map(tên NV đã lowercase/trim -> Set(kenhSale)) }
+ * dựng từ bảng channel_accounts (Cài đặt → Kênh Sale) — 1 NV có thể có NHIỀU dòng cấu hình (thuộc
+ * nhiều kênh sale, vd Trần vừa ở "Linh Dương" vừa ở "Basso"). Dùng cho bộ lọc "Kênh" trên Hàng về
+ * VN/Quản lý giao hàng (xem getOrderKenhSales) — KHÔNG dùng để chọn tài khoản Zalo khi gửi tin
+ * (accountResolver.js vẫn tra thẳng findChannelAccount + opts.kenhSale tường minh như cũ).
+ */
+const getStaffChannelMap = makeCachedMap(() => {
+  const byStaffId = new Map();
+  const byStaffName = new Map();
+  for (const r of listChanStmt.all()) {
+    const kenh = String(r.kenh_sale || '').trim();
+    if (!kenh) continue;
+    const sid = r.staff_id != null ? String(r.staff_id).trim() : '';
+    if (sid) {
+      if (!byStaffId.has(sid)) byStaffId.set(sid, new Set());
+      byStaffId.get(sid).add(kenh);
+    }
+    const name = String(r.staff_name || '').trim().toLowerCase();
+    if (name) {
+      if (!byStaffName.has(name)) byStaffName.set(name, new Set());
+      byStaffName.get(name).add(kenh);
+    }
+  }
+  return { byStaffId, byStaffName };
+});
+
+/**
+ * Danh sách kênh sale mà 1 đơn "thuộc về", suy theo NV phụ trách đơn (khớp userId VÀ/HOẶC tên NV
+ * trong bảng channel_accounts, gộp cả 2 nguồn khớp) — vd đơn của Trần khớp cả "Linh Dương" lẫn
+ * "Basso" vì Trần có mặt ở cả 2 dòng cấu hình. Chỉ dùng cho HIỂN THỊ/LỌC trên UI danh sách; việc
+ * chọn tài khoản Zalo thật khi gửi tin vẫn qua findChannelAccount (opts.kenhSale tường minh).
+ * @param {{staffId?:string|number, staffName?:string}} p
+ * @returns {string[]}
+ */
+function getOrderKenhSales({ staffId, staffName } = {}) {
+  const { byStaffId, byStaffName } = getStaffChannelMap();
+  const out = new Set();
+  const sid = staffId != null ? String(staffId).trim() : '';
+  if (sid && byStaffId.has(sid)) for (const k of byStaffId.get(sid)) out.add(k);
+  const name = staffName ? String(staffName).trim().toLowerCase() : '';
+  if (name && byStaffName.has(name)) for (const k of byStaffName.get(name)) out.add(k);
+  return [...out];
+}
+
 /** Lấy TÊN Zalo/FB đã lưu cho 1 SĐT (khớp sau chuẩn hoá). '' nếu chưa có. */
 function getZaloName(phone) {
   const p = normPhone(phone);
@@ -947,13 +1023,16 @@ function getZaloName(phone) {
  * cả tên lẫn link — khách chỉ báo qua FB thì cần link thay cho tên.
  * "Báo qua FB" KHÔNG còn cờ bật/tắt riêng: suy ra từ việc có LINK hay không (có link = báo FB).
  */
-function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, report_target } = {}) {
+function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, report_target, kenh_sale } = {}) {
   const p = normPhone(phone);
   if (!p) { const err = new Error('SĐT không hợp lệ'); err.code = 'BAD_INPUT'; throw err; }
   const existed = getZaloContactStmt.get({ phone: p });
   const reportTarget = report_target !== undefined
     ? normReportTarget(report_target)
     : (existed ? normReportTarget(existed.report_target) : null);
+  const kenhSale = kenh_sale !== undefined
+    ? (String(kenh_sale == null ? '' : kenh_sale).trim() || null)
+    : (existed ? (existed.kenh_sale || null) : null);
   const name = zalo_name !== undefined
     ? String(zalo_name == null ? '' : zalo_name).trim()
     : (existed ? existed.zalo_name : '');
@@ -963,7 +1042,7 @@ function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, 
   // Cờ fb_report suy ra từ link (giữ cột đồng bộ để các truy vấn cũ vẫn đúng): có link = 1.
   const fbReport = fbLink ? 1 : 0;
   const staffId = staff_id !== undefined
-    ? (String(staff_id == null ? '' : staff_id).trim() || null)
+    ? (normStaffIds(staff_id) || null)
     : (existed ? (existed.staff_id || null) : null);
   const noteVal = note !== undefined
     ? (String(note == null ? '' : note).trim() || null)
@@ -981,6 +1060,7 @@ function upsertZaloContact({ phone, zalo_name, note, source, fb_link, staff_id, 
     fb_link: fbLink || null,
     staff_id: staffId,
     report_target: reportTarget,
+    kenh_sale: kenhSale,
     now: new Date().toISOString(),
   });
   getZaloMap.invalidate(); // danh bạ đổi -> cache tên Zalo/FB dựng lại ở lần enrich kế
@@ -1019,6 +1099,7 @@ function importZaloContacts(rows = [], mode = 'merge') {
         fb_link: existed ? (existed.fb_link || null) : null,
         staff_id: existed ? (existed.staff_id || null) : null,
         report_target: existed ? normReportTarget(existed.report_target) : null,
+        kenh_sale: existed ? (existed.kenh_sale || null) : null,
         now,
       });
       if (existed) updated += 1; else added += 1;
@@ -1069,6 +1150,7 @@ function migrateFbRoutingIntoContacts() {
         fb_link: String((c && c.link) || '').trim() || null,
         staff_id: existed ? (existed.staff_id || null) : null,
         report_target: existed ? normReportTarget(existed.report_target) : null,
+        kenh_sale: existed ? (existed.kenh_sale || null) : null,
         now,
       });
     }
@@ -1092,6 +1174,6 @@ module.exports = {
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
-  getContactReportTarget,
-  listChannelAccounts, upsertChannelAccount, deleteChannelAccount, findChannelAccount,
+  getContactReportTarget, getContactKenhSale,
+  listChannelAccounts, upsertChannelAccount, deleteChannelAccount, findChannelAccount, getOrderKenhSales,
 };
