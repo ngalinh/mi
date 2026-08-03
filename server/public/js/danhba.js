@@ -41,6 +41,17 @@
     renderNvPanel();
   }
 
+  // Gợi ý "Kênh sale" trong modal thêm/sửa liên hệ = danh sách kênh sale đã cấu hình ở
+  // Cài đặt → Kênh Sale (bảng channel_accounts) — mỗi kênh gắn sẵn 1 tài khoản Zalo cố định.
+  async function loadKenhSaleList() {
+    try {
+      const r = await App.api('/api/channel-accounts');
+      const rows = (r && r.channelAccounts) || [];
+      const kenhSet = [...new Set(rows.map((row) => row.kenh_sale).filter(Boolean))];
+      $('cmKenhSaleList').innerHTML = kenhSet.map((k) => `<option value="${App.esc(k)}"></option>`).join('');
+    } catch { /* không tải được -> chỉ mất gợi ý, vẫn gõ tay được */ }
+  }
+
   // Dựng danh sách checkbox NV phụ trách (chọn nhiều) + dòng "Tất cả nhân viên" để bỏ chọn nhanh.
   function renderNvPanel() {
     const rows = bassoStaff.map((u) => {
@@ -275,7 +286,7 @@
         <td class="cust">${c.zalo_name ? `<span class="cust-text" title="${App.esc(c.zalo_name)}">${App.esc(c.zalo_name)}</span>` : '—'}</td>
         <td class="center">${fbCell(c)}</td>
         <td class="center">${rtCell(c)}</td>
-        <td>${c.staff_id ? App.esc(staffName(c.staff_id)) : '<span class="muted">—</span>'}</td>
+        <td>${c.staff_id ? App.esc(staffName(c.staff_id)) : '<span class="muted">—</span>'}${c.kenh_sale ? `<br><span class="muted" style="font-size:11px;" title="Kênh sale (tài khoản Zalo cố định)">Kênh: ${App.esc(c.kenh_sale)}</span>` : ''}</td>
         <td class="zalo-note">${c.note ? `<span class="note-text" title="${App.esc(c.note)}">${App.esc(c.note)}</span>` : ''}</td>
         <td class="center"><span class="pill chua">${App.esc(SOURCE_LABEL[c.source] || c.source || '—')}</span></td>
         <td class="muted" style="font-size:12px;">${App.esc(App.fmtDateTime(c.updated_at))}</td>
@@ -365,7 +376,7 @@
   const modal = $('contactModal');
   const cmTitle = $('cmTitle'), cmPhone = $('cmPhone'), cmName = $('cmName'), cmNote = $('cmNote');
   const cmFbLink = $('cmFbLink'), cmStaff = $('cmStaff');
-  const cmReportTarget = $('cmReportTarget');
+  const cmReportTarget = $('cmReportTarget'), cmKenhSale = $('cmKenhSale');
   let editingPhone = null; // SĐT (đã chuẩn hoá) đang sửa; null = thêm mới
 
   function openModal(c) {
@@ -377,6 +388,7 @@
     cmFbLink.value = c ? (c.fb_link || '') : '';
     cmStaff.value = c && c.staff_id != null ? String(c.staff_id) : '';
     cmReportTarget.value = c && (c.report_target === 'personal' || c.report_target === 'group') ? c.report_target : '';
+    cmKenhSale.value = c ? (c.kenh_sale || '') : '';
     modal.classList.add('show');
     setTimeout(() => (c ? cmName : cmPhone).focus(), 30);
   }
@@ -405,6 +417,7 @@
           phone, zalo_name: name, note: cmNote.value.trim(),
           fb_link: fbLink, staff_id: cmStaff.value || '',
           report_target: cmReportTarget.value || '',
+          kenh_sale: cmKenhSale.value.trim(),
         }),
       });
       App.toast('Đã lưu');
@@ -415,4 +428,5 @@
 
   // ================= INIT =================
   loadBassoStaff().then(loadContacts); // nạp NV trước để hiển thị đúng tên "NV phụ trách"
+  loadKenhSaleList();
 })();
