@@ -138,7 +138,7 @@
     zaFbName = $('zaFbName'),
     zaEmail = $('zaEmail'), zaPassword = $('zaPassword'), zaPlatform = $('zaPlatform'),
     zaLoginUser = $('zaLoginUser'), zaLoginPass = $('zaLoginPass'),
-    zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
+    zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaShared = $('zaShared'), zaBrand = $('zaBrand'),
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
   let zEditing = null;   // key đang sửa, null = thêm mới
   let accountsAll = [];  // toàn bộ account (cả 2 kênh) lần tải gần nhất
@@ -176,6 +176,12 @@
   }
   function brandTag(b) {
     return b ? `<span class="acct-brand" title="Chỉ nhận đơn brand ${App.esc(b)}">${App.esc(b)}</span>` : '';
+  }
+  function sharedTag(a) {
+    const ids = a.sharedStaffIds || [];
+    if (!ids.length) return '';
+    const names = ids.map((id) => bassoNameOf(id)).join(', ');
+    return `<span class="acct-brand acct-shared" title="Dùng chung (không cần đăng nhập lại) với: ${App.esc(names)}">+${ids.length} NV dùng chung</span>`;
   }
   const platLabel = (p) => (p === 'facebook' ? 'Facebook' : 'Zalo');
   const findAcct = (key) => accountsAll.find((x) => x.key === key);
@@ -230,7 +236,7 @@
       : '';
     return `<tr class="acct-row ${healthClass(a)}${first ? ' grp-first' : ''}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
       <td class="acct-emp">${empCell}</td>
-      <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`}</td>
+      <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`} ${sharedTag(a)}</td>
       <td>${chanTag(a.platform)}</td>
       <td>${connBadge(a.connection)}</td>
       <td>${autoTgl(a)}</td>
@@ -280,6 +286,17 @@
     document.querySelectorAll('#zaloModal .pf-fb').forEach((el) => { el.style.display = fb ? '' : 'none'; });
   }
 
+  // Đổ danh sách NV vào ô "Dùng chung" — loại bỏ NV chủ hiện tại (zaStaffId, khỏi tự chọn mình),
+  // chọn sẵn các user_id trong `selectedIds`.
+  function refreshSharedOptions(selectedIds) {
+    const selected = new Set((selectedIds || []).map(String));
+    zaShared.innerHTML = bassoStaff
+      .filter((u) => String(u.user_id) !== String(zaStaffId.value).trim())
+      .map((u) => `<option value="${App.esc(u.user_id)}">${App.esc(u.name)} (#${App.esc(u.user_id)})</option>`)
+      .join('');
+    [...zaShared.options].forEach((o) => { o.selected = selected.has(o.value); });
+  }
+
   function openZalo(a, presets) {
     presets = presets || {};
     zEditing = a ? a.key : null;
@@ -301,6 +318,7 @@
     zaLoginPass.value = a ? (a.password || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
     zaStaffId.value = a ? (a.staffId || '') : (presets.staffId || '');
+    refreshSharedOptions((a && a.sharedStaffIds) || []);
     zaBrand.value = a ? (a.brand || '') : '';
     zaProxy.value = a ? (a.proxy || '') : '';
     zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
@@ -315,6 +333,7 @@
     const body = {
       name: zaName.value.trim(),
       phone: zaPhone.value.trim(), staffId: zaStaffId.value.trim(),
+      sharedStaffIds: [...zaShared.selectedOptions].map((o) => o.value),
       proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
     };
     if (platform === 'facebook') {
@@ -406,6 +425,7 @@
 
   $('addZaloBtn').addEventListener('click', () => openZalo(null, {}));
   zaPlatform.addEventListener('change', () => applyPlatformFields(zaPlatform.value));
+  zaStaffId.addEventListener('input', () => refreshSharedOptions([...zaShared.selectedOptions].map((o) => o.value)));
   $('zaCancel').addEventListener('click', closeZalo);
   $('zaSave').addEventListener('click', saveZalo);
   zm.addEventListener('click', (e) => { if (e.target === zm) closeZalo(); });

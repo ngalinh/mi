@@ -12,7 +12,8 @@ const { isFacebookOrder, findChannelAccount } = require('./db');
  *   1.5) opts.kenhSale (người dùng chọn Kênh sale cho lượt báo): tra bảng cấu hình (kênh sale +
  *      NV phụ trách đơn -> tài khoản Zalo, xem db.js findChannelAccount). Basso không trả field
  *      kênh sale trong dữ liệu đơn nên KHÔNG có nhánh tự nhận diện — chỉ áp dụng khi được chọn.
- *   2) accountsStore (runner): khớp đơn theo staffId (= order.userId) rồi tới tên NV (= order.staff).
+ *   2) accountsStore (runner): khớp đơn theo staffId (= order.userId, hoặc account được gắn DÙNG
+ *      CHUNG qua sharedStaffIds) rồi tới tên NV (= order.staff).
  *      - NV chỉ 1 account            -> dùng luôn (không tra API).
  *      - NV nhiều account + có gắn brand -> đọc mã đơn (getArrivedItems), chọn account có
  *        `brand` khớp PREFIX mã đơn (vd đơn "BS26052646" -> account brand "BS"). Vì mỗi dòng
@@ -26,6 +27,9 @@ const { isFacebookOrder, findChannelAccount } = require('./db');
  *   skip?:boolean, skipReason?:string, orderBrand?:string}>}
  */
 const norm = (s) => String(s == null ? '' : s).trim().toLowerCase();
+
+/** true nếu account thuộc về NV `uid` — chủ (staffId) hoặc được gắn DÙNG CHUNG (sharedStaffIds). */
+const ownedBy = (a, uid) => norm(a.staffId) === uid || (a.sharedStaffIds || []).some((s) => norm(s) === uid);
 
 /** Prefix chữ cái đầu của mã đơn -> brand (vd "BS26052646" -> "BS"). '' nếu không đọc được. */
 function brandOfCode(code) {
@@ -87,7 +91,7 @@ function resolveFacebook(order, accounts) {
   const fbAccounts = (accounts || []).filter((a) => a.platform === 'facebook');
   const uid = norm(order && order.userId);
   const staff = norm(order && order.staff);
-  let mine = uid ? fbAccounts.filter((a) => norm(a.staffId) === uid) : [];
+  let mine = uid ? fbAccounts.filter((a) => ownedBy(a, uid)) : [];
   if (!mine.length && staff) mine = fbAccounts.filter((a) => norm(a.name) === staff);
   // Không khớp NV -> chỉ dùng account FB "chung" (không gắn staffId) làm catch-all. KHÔNG lấy
   // đại account FB của NV khác (tránh gửi nhầm từ trang FB của người khác).
@@ -159,8 +163,8 @@ async function resolveForOrder(order, opts = {}) {
   if (Array.isArray(accounts) && accounts.length && order) {
     const uid = norm(order.userId);
     const staff = norm(order.staff);
-    // Tất cả account của NV này: ưu tiên khớp theo staffId, không có thì theo tên.
-    let mine = uid ? accounts.filter((a) => norm(a.staffId) === uid) : [];
+    // Tất cả account của NV này: ưu tiên khớp theo staffId (hoặc sharedStaffIds), không có thì theo tên.
+    let mine = uid ? accounts.filter((a) => ownedBy(a, uid)) : [];
     if (!mine.length && staff) mine = accounts.filter((a) => norm(a.name) === staff);
 
     if (mine.length === 1) {
