@@ -138,8 +138,13 @@
     zaFbName = $('zaFbName'),
     zaEmail = $('zaEmail'), zaPassword = $('zaPassword'), zaPlatform = $('zaPlatform'),
     zaLoginUser = $('zaLoginUser'), zaLoginPass = $('zaLoginPass'),
-    zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaShared = $('zaShared'), zaBrand = $('zaBrand'),
+    zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
+  // "Dùng chung với NV khác" — dropdown checkbox (giống bộ lọc NV ở trang Danh bạ), không phải
+  // <select multiple> để dễ dùng + đồng bộ giao diện toàn hệ.
+  const zaSharedMs = $('zaSharedMs'), zaSharedToggle = $('zaSharedToggle'),
+    zaSharedLabel = $('zaSharedLabel'), zaSharedPanel = $('zaSharedPanel');
+  const zaSharedSelected = new Set(); // user_id các NV đang được tick "dùng chung" trong modal
   let zEditing = null;   // key đang sửa, null = thêm mới
   let accountsAll = [];  // toàn bộ account (cả 2 kênh) lần tải gần nhất
   // Đang thêm tài khoản Zalo MỚI từ giữa popup "Kênh Sale" (NV chưa có account cho kênh này) ->
@@ -272,16 +277,37 @@
     document.querySelectorAll('#zaloModal .pf-fb').forEach((el) => { el.style.display = fb ? '' : 'none'; });
   }
 
-  // Đổ danh sách NV vào ô "Dùng chung" — loại bỏ NV chủ hiện tại (zaStaffId, khỏi tự chọn mình),
-  // chọn sẵn các user_id trong `selectedIds`.
-  function refreshSharedOptions(selectedIds) {
-    const selected = new Set((selectedIds || []).map(String));
-    zaShared.innerHTML = bassoStaff
-      .filter((u) => String(u.user_id) !== String(zaStaffId.value).trim())
-      .map((u) => `<option value="${App.esc(u.user_id)}">${App.esc(u.name)} (#${App.esc(u.user_id)})</option>`)
-      .join('');
-    [...zaShared.options].forEach((o) => { o.selected = selected.has(o.value); });
+  // Dựng panel checkbox "Dùng chung" — loại NV chủ hiện tại (zaStaffId, khỏi tự chọn mình) khỏi
+  // danh sách, tick sẵn theo zaSharedSelected. Gọi lại mỗi khi mở modal hoặc đổi zaStaffId/tick.
+  function renderSharedPanel() {
+    const selfId = String(zaStaffId.value).trim();
+    const rows = bassoStaff
+      .filter((u) => String(u.user_id) !== selfId)
+      .map((u) => {
+        const id = String(u.user_id);
+        const on = zaSharedSelected.has(id) ? ' checked' : '';
+        return `<label class="ms-opt"><input type="checkbox" value="${App.esc(id)}"${on}/><span>${App.esc(u.name)} (#${App.esc(id)})</span></label>`;
+      }).join('');
+    zaSharedPanel.innerHTML = rows || '<div class="muted" style="padding:8px 9px;">Không có NV khác</div>';
+    if (!zaSharedSelected.size) zaSharedLabel.textContent = '— Không dùng chung —';
+    else if (zaSharedSelected.size === 1) zaSharedLabel.textContent = bassoNameOf([...zaSharedSelected][0]);
+    else zaSharedLabel.textContent = `${zaSharedSelected.size} nhân viên`;
   }
+  function toggleZaShared(open) {
+    const willOpen = open != null ? open : zaSharedPanel.hidden;
+    zaSharedPanel.hidden = !willOpen;
+    zaSharedMs.classList.toggle('open', willOpen);
+    zaSharedToggle.setAttribute('aria-expanded', String(willOpen));
+  }
+  zaSharedToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleZaShared(); });
+  zaSharedPanel.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
+    if (cb.checked) zaSharedSelected.add(cb.value); else zaSharedSelected.delete(cb.value);
+    renderSharedPanel();
+  });
+  document.addEventListener('click', (e) => {
+    if (!zaSharedPanel.hidden && !zaSharedMs.contains(e.target)) toggleZaShared(false);
+  });
 
   function openZalo(a, presets) {
     presets = presets || {};
@@ -304,7 +330,10 @@
     zaLoginPass.value = a ? (a.password || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
     zaStaffId.value = a ? (a.staffId || '') : (presets.staffId || '');
-    refreshSharedOptions((a && a.sharedStaffIds) || []);
+    zaSharedSelected.clear();
+    ((a && a.sharedStaffIds) || []).forEach((id) => zaSharedSelected.add(String(id)));
+    toggleZaShared(false); // panel luôn đóng khi vừa mở modal
+    renderSharedPanel();
     zaBrand.value = a ? (a.brand || '') : '';
     zaProxy.value = a ? (a.proxy || '') : '';
     zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
@@ -319,7 +348,7 @@
     const body = {
       name: zaName.value.trim(),
       phone: zaPhone.value.trim(), staffId: zaStaffId.value.trim(),
-      sharedStaffIds: [...zaShared.selectedOptions].map((o) => o.value),
+      sharedStaffIds: [...zaSharedSelected],
       proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
     };
     if (platform === 'facebook') {
@@ -414,7 +443,11 @@
 
   $('addZaloBtn').addEventListener('click', () => openZalo(null, {}));
   zaPlatform.addEventListener('change', () => applyPlatformFields(zaPlatform.value));
-  zaStaffId.addEventListener('input', () => refreshSharedOptions([...zaShared.selectedOptions].map((o) => o.value)));
+  // Đổi Staff ID giữa lúc modal đang mở -> khỏi tự chọn mình: bỏ tick nếu trùng, vẽ lại panel.
+  zaStaffId.addEventListener('input', () => {
+    zaSharedSelected.delete(String(zaStaffId.value).trim());
+    renderSharedPanel();
+  });
   $('zaCancel').addEventListener('click', closeZalo);
   $('zaSave').addEventListener('click', saveZalo);
   zm.addEventListener('click', (e) => { if (e.target === zm) closeZalo(); });
