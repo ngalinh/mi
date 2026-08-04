@@ -186,19 +186,6 @@
   const platLabel = (p) => (p === 'facebook' ? 'Facebook' : 'Zalo');
   const findAcct = (key) => accountsAll.find((x) => x.key === key);
 
-  // Gom account về từng nhân viên: ưu tiên staffId, rồi tên, cuối cùng key.
-  function groupAccounts(list) {
-    const groups = new Map();
-    for (const a of (list || [])) {
-      const gk = a.staffId ? `s:${a.staffId}` : (a.name ? `n:${a.name.toLowerCase()}` : `k:${a.key}`);
-      if (!groups.has(gk)) groups.set(gk, { name: a.name || a.key, staffId: a.staffId || '', zalo: [], facebook: [] });
-      const g = groups.get(gk);
-      if (!g.name && a.name) g.name = a.name;
-      (a.platform === 'facebook' ? g.facebook : g.zalo).push(a);
-    }
-    return [...groups.values()];
-  }
-
   // Nhãn kênh (Zalo / Facebook) — thay cho 2 cột riêng, giúp gộp mọi tài khoản về 1 bảng phẳng.
   function chanTag(p) {
     return p === 'facebook'
@@ -206,16 +193,15 @@
       : '<span class="chan zalo">Zalo</span>';
   }
 
-  // Tóm tắt nhanh cho cột Nhân viên: tổng tài khoản + số kết nối / chưa kết nối.
-  function empMeta(g) {
-    const all = [...g.zalo, ...g.facebook];
-    if (!all.length) return '';
-    const off = all.filter((a) => a.connection !== 'connected').length;
-    const on = all.length - off;
-    const parts = [`${all.length} tài khoản`];
-    if (on) parts.push(`<span class="on">${on} kết nối</span>`);
-    if (off) parts.push(`<span class="off">${off} chưa/mất</span>`);
-    return `<div class="acct-emp-meta">${parts.join(' · ')}</div>`;
+  // Cột "Nhân viên" của 1 account: tên NV CHỦ (staffId) + mã NV, hoặc nhãn "Chung" nếu account
+  // không gắn staffId (account "chung toàn công ty" — xem accountResolver.js), cộng thêm nhãn
+  // NV dùng chung (sharedStaffIds) nếu có. Dùng tên thật từ bassoStaff thay vì field `name` tự do
+  // của account để không lệch khi account đổi tên hiển thị riêng.
+  function empCell(a) {
+    const owner = a.staffId
+      ? `<div class="emp-name">${App.esc(bassoNameOf(a.staffId))}</div><div class="emp-sub">NV Basso #${App.esc(a.staffId)}</div>`
+      : '<div class="emp-name emp-shared-all">Chung (mọi NV)</div>';
+    return owner + sharedTag(a);
   }
 
   // Vạch trạng thái trái mỗi dòng (đọc nhanh ở rìa mắt): đỏ = cần đăng nhập,
@@ -225,18 +211,15 @@
     return a.autoEnabled !== false ? 'st-live' : 'st-quiet';
   }
 
-  // 1 tài khoản = 1 dòng; các cột (kênh · trạng thái · tự động · đích báo · thao tác) thẳng hàng.
-  // Tên NV chỉ hiện ở dòng đầu của nhóm. Đăng nhập bung chữ (primary) khi CHƯA kết nối.
-  function acctRow(a, group, first) {
+  // 1 tài khoản = 1 dòng ĐỘC LẬP (không gom theo NV — 1 account có thể thuộc nhiều NV cùng lúc
+  // qua sharedStaffIds nên gom sẽ phải lặp dòng). Đăng nhập bung chữ (primary) khi CHƯA kết nối.
+  function acctRow(a) {
     const isFb = a.platform === 'facebook';
     const title = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName || a.name || a.key);
     const need = a.connection !== 'connected';
-    const empCell = first
-      ? `<div class="emp-name">${App.esc(group.name)}</div>${group.staffId ? `<div class="emp-sub">NV Basso #${App.esc(group.staffId)}</div>` : ''}${empMeta(group)}`
-      : '';
-    return `<tr class="acct-row ${healthClass(a)}${first ? ' grp-first' : ''}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
-      <td class="acct-emp">${empCell}</td>
-      <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`} ${sharedTag(a)}</td>
+    return `<tr class="acct-row ${healthClass(a)}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
+      <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`}</td>
+      <td class="acct-emp">${empCell(a)}</td>
       <td>${chanTag(a.platform)}</td>
       <td>${connBadge(a.connection)}</td>
       <td>${autoTgl(a)}</td>
@@ -244,31 +227,34 @@
       <td class="acct-act-cell"><div class="acct-acts">
         <button class="ibtn${need ? ' primary' : ''}" data-action="login" title="Mở Chromium trên local-runner để đăng nhập">${IC.login}${need ? '<span>Đăng nhập</span>' : ''}</button>
         <button class="ibtn" data-action="edit" title="Sửa thông tin tài khoản">${IC.edit}</button>
+        <button class="ibtn" data-action="dup" title="Thêm tài khoản khác, giữ sẵn NV chủ này">${IC.plus}</button>
         <button class="ibtn" data-action="check" title="Kiểm tra còn đăng nhập không">${IC.check}</button>
         <button class="ibtn danger" data-action="del" title="Xoá tài khoản">${IC.del}</button>
       </div></td>
     </tr>`;
   }
 
-  // Dòng "Thêm tài khoản" cuối mỗi nhóm — chọn Zalo/Facebook ngay trong popup.
-  function addRow(group) {
-    return `<tr class="acct-add-row">
-      <td></td>
-      <td colspan="6"><button class="acct-add-flat" data-action="add" data-name="${App.esc(group.name)}" data-staffid="${App.esc(group.staffId)}">${IC.plus}<span>Thêm tài khoản cho ${App.esc(group.name)}</span></button></td>
-    </tr>`;
+  // Sắp theo tên NV chủ (account "chung" đẩy xuống cuối) rồi tới kênh — dễ đọc dù không còn
+  // gom nhóm bằng dòng tiêu đề.
+  function sortAccounts(list) {
+    return [...list].sort((a, b) => {
+      // Account "chung" (không staffId) luôn xếp SAU mọi account có NV chủ cụ thể.
+      if (!!a.staffId !== !!b.staffId) return a.staffId ? -1 : 1;
+      const an = a.staffId ? bassoNameOf(a.staffId) : (a.name || a.key);
+      const bn = b.staffId ? bassoNameOf(b.staffId) : (b.name || b.key);
+      const c = an.localeCompare(bn, 'vi');
+      if (c) return c;
+      return a.platform === b.platform ? 0 : (a.platform === 'facebook' ? 1 : -1);
+    });
   }
 
   function renderAccounts(list) {
     accountsAll = list || [];
-    const groups = groupAccounts(accountsAll);
-    if (!groups.length) {
+    if (!accountsAll.length) {
       zaloRows.innerHTML = '<tr><td colspan="7" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
       return;
     }
-    zaloRows.innerHTML = groups.map((g) => {
-      const all = [...g.zalo, ...g.facebook];
-      return all.map((a, i) => acctRow(a, g, i === 0)).join('') + addRow(g);
-    }).join('');
+    zaloRows.innerHTML = sortAccounts(accountsAll).map((a) => acctRow(a)).join('');
   }
   async function loadZalo() {
     try {
@@ -381,6 +367,9 @@
     const a = findAcct(key);
     const platform = a ? a.platform : 'zalo';
     if (action === 'edit') return openZalo(a || { key });
+    // "dup": mở modal Thêm tài khoản MỚI, điền sẵn NV chủ của dòng này (đỡ gõ lại staffId khi
+    // 1 NV có nhiều account, vd theo brand khác nhau).
+    if (action === 'dup') return openZalo(null, { platform, name: a && a.staffId ? bassoNameOf(a.staffId) : (a ? a.name : ''), staffId: a ? a.staffId : '' });
     if (action === 'login') {
       try { const r = await App.api(`/api/accounts/${encodeURIComponent(key)}/login`, { method: 'POST' });
         App.toast(`🖥️ ${r.message || 'Đang mở Chromium trên máy local-runner'}`, 7000);
@@ -432,9 +421,6 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeZalo(); });
   zaloRows.addEventListener('click', (e) => {
     const b = e.target.closest('[data-action]'); if (!b) return;
-    if (b.dataset.action === 'add') {
-      return openZalo(null, { platform: b.dataset.platform, name: b.dataset.name, staffId: b.dataset.staffid });
-    }
     const block = b.closest('.acct-row'); if (!block) return undefined;
     return rowAction(b.dataset.action, block.dataset.key);
   });

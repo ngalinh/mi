@@ -878,32 +878,24 @@ td.staff-col { white-space: nowrap; }
 /* ============================================================
    Tài khoản nhân viên — bảng phẳng, mỗi tài khoản 1 dòng (settings)
    ============================================================ */
-/* Mỗi tài khoản 1 dòng; các cột thẳng hàng, canh giữa theo chiều dọc. */
+/* Mỗi tài khoản 1 dòng ĐỘC LẬP (không gom theo NV nữa — 1 account có thể thuộc nhiều NV cùng
+   lúc nên gom theo NV sẽ lặp dòng). Dùng viền ngang mặc định của <td> để tách từng dòng. */
 #zaloRows td { vertical-align: middle; }
-/* Vạch đậm ngăn giữa các nhóm nhân viên (không lặp ở dòng đầu ngay dưới header). */
-#zaloRows tr.grp-first td { border-top: 2px solid var(--border-strong); }
-#zaloRows tr.grp-first:first-child td { border-top: none; }
 #zaloRows tr.acct-row:hover td { background: var(--head-tint); }
-/* Bỏ kẻ ngang giữa các dòng cùng nhóm — mọi tài khoản của một nhân viên đọc như
-   một khối liền. Ranh giới giữa các nhóm vẫn do vạch 2px trên .grp-first đảm nhiệm,
-   còn trạng thái từng tài khoản vẫn hiện qua vạch màu bên trái cột nhân viên. */
-#zaloRows tr.acct-row td,
-#zaloRows tr.acct-add-row td { border-bottom: none; }
 
-/* Vạch trạng thái bên trái mỗi dòng — đọc nhanh ở rìa mắt, nền vẫn sạch.
+/* Vạch trạng thái bên trái mỗi dòng (cột Tài khoản — cột đầu tiên) — đọc nhanh ở rìa mắt.
    Đỏ = cần đăng nhập · xanh = đang chạy · xám = ổn nhưng tự động tắt. */
-#zaloRows tr.acct-row > td.acct-emp { box-shadow: inset 3px 0 0 var(--border-strong); }
-#zaloRows tr.st-alert > td.acct-emp { box-shadow: inset 3px 0 0 var(--red); }
-#zaloRows tr.st-live  > td.acct-emp { box-shadow: inset 3px 0 0 var(--green); }
-#zaloRows tr.st-quiet > td.acct-emp { box-shadow: inset 3px 0 0 var(--border-strong); }
+#zaloRows tr.acct-row > td.acct-cell { box-shadow: inset 3px 0 0 var(--border-strong); }
+#zaloRows tr.st-alert > td.acct-cell { box-shadow: inset 3px 0 0 var(--red); }
+#zaloRows tr.st-live  > td.acct-cell { box-shadow: inset 3px 0 0 var(--green); }
+#zaloRows tr.st-quiet > td.acct-cell { box-shadow: inset 3px 0 0 var(--border-strong); }
 
-/* Cột Nhân viên: tên + mã NV + tóm tắt kết nối (chỉ ở dòng đầu nhóm). */
+/* Cột Nhân viên: tên NV chủ + mã NV (nếu có) + nhãn NV dùng chung. */
 .acct-emp { vertical-align: top; white-space: normal; }
 .emp-name { font-weight: 700; color: var(--text); white-space: nowrap; }
 .emp-sub { margin-top: 2px; font-weight: 600; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
-.acct-emp-meta { margin-top: 6px; font-weight: 600; font-size: 12px; color: var(--muted); white-space: normal; max-width: 150px; }
-.acct-emp-meta .on { color: var(--green); }
-.acct-emp-meta .off { color: var(--red); }
+/* Account "chung toàn công ty" (không gắn NV chủ) — nhãn trung tính thay cho tên NV. */
+.emp-shared-all { font-weight: 700; color: var(--blue); }
 
 .acct-cell { font-weight: 700; color: var(--text); }
 .acct-brand {
@@ -963,16 +955,6 @@ td.staff-col { white-space: nowrap; }
 }
 .ibtn.primary:hover { background: var(--primary-dark); color: #fff; filter: brightness(1.12); }
 .ibtn.danger:hover { border-color: var(--red); color: var(--red); background: var(--red-soft); }
-
-/* Dòng "Thêm tài khoản" của mỗi nhân viên. */
-.acct-add-row td { padding-top: 4px; padding-bottom: 12px; border-top: none; }
-.acct-add-flat {
-  display: inline-flex; align-items: center; gap: 6px;
-  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
-  color: var(--primary); background: none; border: none; padding: 4px 2px;
-}
-.acct-add-flat .icon { width: 15px; height: 15px; }
-.acct-add-flat:hover { color: var(--primary-dark); }
 
 /* ============================================================
    Phân trang (dưới bảng danh sách)
