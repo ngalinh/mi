@@ -9,15 +9,16 @@
     { key: 'date', label: 'Ngày tạo vận đơn', n: 3 },
     { key: 'recipient', label: 'Người nhận', n: 4 },
     { key: 'staff', label: 'Nhân viên', n: 5 },
-    { key: 'code', label: 'Mã vận đơn', n: 6 },
-    { key: 'address', label: 'Địa chỉ', n: 7 },
-    { key: 'note', label: 'Ghi chú', n: 8 },
-    { key: 'cod', label: 'Thu COD', n: 9 },
-    { key: 'shipfee', label: 'Phí ship', n: 10 },
-    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 11 },
-    { key: 'status', label: 'Trạng thái', n: 12 },
-    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 13 },
-    { key: 'ndship', label: 'ND ship', n: 14 },
+    { key: 'channel', label: 'Kênh sale', n: 6 },
+    { key: 'code', label: 'Mã vận đơn', n: 7 },
+    { key: 'address', label: 'Địa chỉ', n: 8 },
+    { key: 'note', label: 'Ghi chú', n: 9 },
+    { key: 'cod', label: 'Thu COD', n: 10 },
+    { key: 'shipfee', label: 'Phí ship', n: 11 },
+    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 12 },
+    { key: 'status', label: 'Trạng thái', n: 13 },
+    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 14 },
+    { key: 'ndship', label: 'ND ship', n: 15 },
   ];
   const COLVIS_LS_KEY = 'mi.giaohang.hiddenCols';
   function loadHiddenCols() {
@@ -115,6 +116,13 @@
     return hit ? String(hit.approveUser).trim() : '';
   }
 
+  // Kênh sale mà vận đơn "thuộc về" (server enrich `kenhSaleList` theo NV duyệt đơn — xem
+  // enrichShippingOrders/db.getOrderKenhSales). NV thuộc nhiều kênh -> hiện đủ, cách nhau dấu phẩy.
+  function kenhSaleCell(o) {
+    const list = o.kenhSaleList || [];
+    return list.length ? App.esc(list.join(', ')) : '<span class="muted">—</span>';
+  }
+
   // Đơn có thể xem trước tin báo ship: đã có link, hoặc đã giao shipper/đã giao/lên đơn vận.
   function canPreviewMsg(o) {
     return !!o.shipperLink || ['exported', 'completed', 'carrier_submitted'].includes(o.statusCode);
@@ -196,7 +204,7 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="16" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="17" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
@@ -212,6 +220,7 @@
             ${o.phone ? `<div class="ship-sub gh-nowrap" title="${App.esc(o.phone)}">${App.esc(o.phone)}</div>` : ''}
           </td>
           <td class="gh-nowrap">${App.esc(orderStaff(o)) || '<span class="muted">—</span>'}</td>
+          <td>${kenhSaleCell(o)}</td>
           <td>
             <div class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</div>
             ${o.shipperLink ? `<a class="ship-link" href="${App.esc(o.shipperLink)}" target="_blank" rel="noopener" title="${App.esc(o.shipperLink)}">${App.icon('link')} ${App.esc(o.shipperLink)}</a>` : ''}
@@ -243,7 +252,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="16">
+    return `<tr class="ship-detail"><td colspan="17">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -325,7 +334,7 @@
   }
 
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="16" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="17" class="empty">Đang tải...</td></tr>';
     const channel = $('fChannel') ? $('fChannel').value : '';
     try {
       if (channel) {
@@ -352,7 +361,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="16" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="17" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
