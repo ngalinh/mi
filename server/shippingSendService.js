@@ -13,6 +13,7 @@ const { syncShipStatusByCode } = require('./bassoApi');
 const {
   addReport, updateReport, getZaloName, getFbLink,
   getShippingNotified, markShippingNotified, getShippingTemplates,
+  getContactReportTarget, getContactKenhSale,
 } = require('./db');
 const { delayBetweenCustomers } = require('./notifyService');
 
@@ -51,11 +52,27 @@ async function sendShippingOne(order, opts = {}) {
 
   const staff = firstApproveUser(order);
   const orderCode = firstOrderCode(order);
-  const resolved = await resolveForOrder({ staff, orderCode, phone: order.phone }, opts);
+  // KÊNH SALE THEO KHÁCH: như notifyService.js — nếu khách đã gắn sẵn kênh sale trong Danh bạ,
+  // dùng làm mặc định khi lượt gửi này không tự chọn kênh sale.
+  const kenhSale = opts.kenhSale || getContactKenhSale(order.phone);
+  const resolved = await resolveForOrder({ staff, orderCode, phone: order.phone }, { ...opts, kenhSale });
+  // NGOẠI LỆ THEO KHÁCH: "Kiểu báo riêng" trong Danh bạ ('personal'/'group') GHI ĐÈ kiểu báo mặc
+  // định của NV phụ trách (vd NV báo nhóm nhưng riêng khách này không có group Zalo, phải báo cá
+  // nhân). Thiếu bước này thì auto-ship luôn dùng kiểu báo của tài khoản Zalo (theo NV) bất kể
+  // Danh bạ cấu hình gì cho khách -> tìm sai hội thoại (KHONG_THAY_HOI_THOAI). Chỉ áp cho kênh
+  // Zalo — Facebook không có tab cá nhân/nhóm.
+  if (resolved.channel !== 'facebook') {
+    const override = getContactReportTarget(order.phone);
+    if (override) resolved.notifyTarget = override;
+  }
+  // LOG CHẨN ĐOÁN: account + kiểu báo đã chọn cho đơn này (đối chiếu khi khách báo gửi nhầm nhóm/cá nhân).
+  console.log(`[shipping-notify] ${order.recipient || order.phone || '?'} | staff=${staff || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
   if (resolved.skip) {
     const err = resolved.skipReason === 'fb_no_account'
       ? `Đơn cần báo qua Facebook nhưng NV ${staff || '—'} chưa có tài khoản Facebook.`
-      : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${staff || '—'}`;
+      : resolved.skipReason === 'channel_no_account'
+        ? `Chưa cấu hình kênh sale "${kenhSale}" cho NV ${staff || '—'}. Vào Cài đặt → Kênh Sale để thêm.`
+        : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${staff || '—'}`;
     return { ok: false, error: err };
   }
 
