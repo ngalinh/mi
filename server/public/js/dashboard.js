@@ -911,12 +911,16 @@
     } catch { zaloAccounts = []; }
     populateAccountSelect();
   }
-  function populateAccountSelect() {
+  function populateAccountSelect(rows) {
     const sel = $('modalAccount');
     if (!sel) return;
     const cur = sel.value;
+    // NV có kênh sale riêng (rows) -> chỉ hiện đúng (các) tài khoản Zalo gắn với NV đó, thay vì
+    // toàn bộ tài khoản của mọi NV trong hệ thống.
+    const keys = (rows && rows.length) ? new Set(rows.map((c) => c.zalo_account_key)) : null;
+    const list = keys ? zaloAccounts.filter((a) => keys.has(a.key)) : zaloAccounts;
     const opts = ['<option value="">Tự động (theo nhân viên)</option>'];
-    for (const a of zaloAccounts) {
+    for (const a of list) {
       const label = a.saleworkName ? `${a.name} — ${a.saleworkName}` : (a.name || a.key);
       const off = a.loggedIn === false ? ' (chưa đăng nhập)' : '';
       opts.push(`<option value="${App.esc(a.key)}">${App.esc(label)}${off}</option>`);
@@ -929,17 +933,40 @@
   // (kênh sale + NV phụ trách đơn) -> tài khoản Zalo, thay vì chọn tài khoản tay ở trên.
   // Basso không trả field kênh sale trong dữ liệu đơn nên người báo phải tự chọn cho lượt gửi này.
   let kenhSaleNames = [];
+  let channelAccountRows = []; // toàn bộ cấu hình Kênh Sale (kenh_sale + NV -> account) — dùng để
+                                // lọc kênh/tài khoản theo đúng NV phụ trách đơn khi mở modal gửi.
   async function loadKenhSaleOptions() {
     try {
       const r = await App.api('/api/channel-accounts');
-      kenhSaleNames = [...new Set((r.channelAccounts || []).map((c) => c.kenh_sale).filter(Boolean))];
-    } catch { kenhSaleNames = []; }
-    const sel = $('modalKenhSale');
-    if (sel) {
-      sel.innerHTML = '<option value="">— Không chọn —</option>'
-        + kenhSaleNames.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
-    }
+      channelAccountRows = r.channelAccounts || [];
+      kenhSaleNames = [...new Set(channelAccountRows.map((c) => c.kenh_sale).filter(Boolean))];
+    } catch { channelAccountRows = []; kenhSaleNames = []; }
+    populateKenhSaleSelect();
     renderChannelFilter();
+  }
+  // NV được phân đúng kênh sale nào -> chỉ hiện kênh (và tài khoản Zalo) của NV đó khi mở modal
+  // gửi cho đơn của NV này, thay vì hiện lẫn lộn kênh/tài khoản của mọi NV (dễ chọn nhầm tài khoản
+  // người khác). Khớp theo staffId (o.userId) trước, không có thì theo tên NV — cùng cách server
+  // đang khớp (xem db.js findChannelAccount). NV chưa có cấu hình kênh nào -> trả [] (giữ nguyên
+  // hành vi cũ: hiện đầy đủ danh sách toàn hệ thống).
+  function channelsForOrder(o) {
+    if (!o) return [];
+    const uid = String(o.userId == null ? '' : o.userId).trim();
+    const staff = String(o.staff || '').trim().toLowerCase();
+    let rows = uid ? channelAccountRows.filter((c) => String(c.staff_id || '').trim() === uid) : [];
+    if (!rows.length && staff) rows = channelAccountRows.filter((c) => String(c.staff_name || '').trim().toLowerCase() === staff);
+    return rows;
+  }
+  function populateKenhSaleSelect(rows) {
+    const sel = $('modalKenhSale');
+    if (!sel) return;
+    const cur = sel.value;
+    const names = (rows && rows.length)
+      ? [...new Set(rows.map((c) => c.kenh_sale).filter(Boolean))]
+      : kenhSaleNames;
+    sel.innerHTML = '<option value="">— Không chọn —</option>'
+      + names.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
+    sel.value = cur;
   }
   // Bộ lọc "Kênh" trên toolbar: cùng danh sách kênh sale đã cấu hình (Cài đặt → Kênh Sale).
   // Lọc theo NV phụ trách đơn có thuộc kênh đó không (server enrich `kenhSaleList`) — 1 NV thuộc
@@ -996,7 +1023,12 @@
           (isShip ? ' Gửi báo ship qua Zalo' : ' Gửi báo hàng qua Zalo');
         sendBtn.style.display = '';
       }
-      populateAccountSelect();
+      // Lọc kênh sale + tài khoản Zalo theo đúng NV phụ trách đơn (nếu NV đã được phân kênh) —
+      // vd NV Bình được phân 2 kênh "Linh Duong Us" và "Basso" thì 2 ô chọn bên dưới chỉ hiện
+      // đúng 2 kênh/tài khoản đó thay vì toàn bộ danh sách của mọi NV.
+      const chanRowsForOrder = channelsForOrder(o);
+      populateAccountSelect(chanRowsForOrder);
+      populateKenhSaleSelect(chanRowsForOrder);
       const acc = $('modalAccount');
       if (acc) acc.value = ''; // mặc định Tự động mỗi lần mở
       const ks = $('modalKenhSale');
