@@ -225,9 +225,10 @@ module.exports = {
   shippingAuto: {
     // Mặc định TẮT: chỉ admin bật tay trên trang Cài đặt mới chạy tự động (an toàn khi mới deploy).
     enabled: String(process.env.AUTO_SHIP2 || 'false').toLowerCase() === 'true',
-    // Chu kỳ quét (ms) đơn "Giao shipper" mới / có shipper_link mới. Mặc định 180s (nhẹ, giống
-    // cadence poller ship cũ) — có thể giãn nếu số vận đơn lớn.
-    intervalMs: Math.max(parseInt(process.env.AUTO_SHIP2_INTERVAL_MS || '180000', 10) || 180000, 30000),
+    // Chu kỳ quét (ms) đơn "Giao shipper" mới / có shipper_link mới. Mặc định 30s (sàn tối thiểu
+    // cho phép) để đơn có link được báo nhanh nhất — chỉnh qua AUTO_SHIP2_INTERVAL_MS nếu muốn
+    // giãn ra (VD số vận đơn lớn, muốn nhẹ tải API Basso hơn).
+    intervalMs: Math.max(parseInt(process.env.AUTO_SHIP2_INTERVAL_MS || '30000', 10) || 30000, 30000),
     // Cửa sổ NGÀY gần đây quét lại (theo ngày tạo vận đơn) — tránh kéo cả lịch sử mỗi lượt quét.
     // Mặc định 1 = CHỈ vận đơn tạo HÔM NAY (an toàn nhất khi mới bật: đơn cũ hơn — dù đã/chưa
     // "Giao shipper" — coi như ngoài tầm, KHÔNG BAO GIỜ tự gửi, kể cả sau này đổi trạng thái;
