@@ -20,7 +20,10 @@ const config = require('./config');
  *   - password    : (Facebook, tuỳ chọn) mật khẩu Facebook — dùng tự điền form login khi mở Chromium.
  *   - phone       : (tuỳ chọn) SĐT của tài khoản — chỉ để hiển thị
  *   - staffId     : (tuỳ chọn) user_id của NV phụ trách — để khớp đơn → account (ưu tiên hơn tên).
- *                   Cũng là khoá GOM tài khoản Zalo + Facebook về cùng 1 nhân viên trên UI.
+ *                   Cũng là khoá GOM tài khoản Zalo + Facebook về cùng 1 nhân viên trên UI. ĐỂ
+ *                   TRỐNG = account "CHUNG TOÀN CÔNG TY" (cả Zalo lẫn Facebook): NV nào không có
+ *                   account riêng (kể cả NV mới sau này) đều tự động dùng nhóm account này, chọn
+ *                   theo `brand` như bình thường — không cần khai báo tay từng NV.
  *   - sharedStaffIds : (tuỳ chọn) mảng user_id các NV KHÁC được DÙNG CHUNG account này để gửi báo,
  *                   ngoài NV chủ (staffId) — KHÔNG cần đăng nhập/kết nối lại (dùng chung session).
  *                   VD: account FB của Bình muốn Trân cũng gửi được -> thêm staffId của Trân vào
