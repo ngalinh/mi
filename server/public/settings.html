@@ -455,7 +455,15 @@
         <div class="field pf-fb"><label>Mật khẩu Facebook</label><input id="zaPassword" type="password" placeholder="mật khẩu" autocomplete="new-password" /></div>
         <div class="field pf-zalo"><label>SĐT (tuỳ chọn)</label><input id="zaPhone" type="text" placeholder="vd: 0985 093 767" /></div>
         <div class="field"><label>Staff ID (tuỳ chọn)</label><input id="zaStaffId" type="text" placeholder="khớp userId đơn" /></div>
-        <div class="field full"><label>Dùng chung với NV khác (không cần đăng nhập lại)</label><select id="zaShared" multiple size="4"></select></div>
+        <div class="field full"><label>Dùng chung với NV khác (không cần đăng nhập lại)</label>
+          <div class="ms" id="zaSharedMs">
+            <button type="button" class="ms-toggle" id="zaSharedToggle" aria-haspopup="true" aria-expanded="false">
+              <span class="ms-label" id="zaSharedLabel">— Không dùng chung —</span>
+              <svg class="ms-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="ms-panel" id="zaSharedPanel" hidden></div>
+          </div>
+        </div>
         <div class="field pf-zalo"><label>Brand (prefix mã đơn — tuỳ chọn)</label><input id="zaBrand" type="text" placeholder="vd: BS, SU, CO — để trống = mọi brand" /></div>
         <div class="field full"><label>Proxy (tuỳ chọn)</label><input id="zaProxy" type="text" placeholder="host:port hoặc user:pass@host:port" /></div>
         <div class="field"><label>Tự động báo</label><select id="zaAuto"><option value="true" selected>Bật</option><option value="false">Tắt</option></select></div>
