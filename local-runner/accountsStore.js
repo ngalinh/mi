@@ -20,7 +20,14 @@ const config = require('./config');
  *   - password    : (Facebook, tuỳ chọn) mật khẩu Facebook — dùng tự điền form login khi mở Chromium.
  *   - phone       : (tuỳ chọn) SĐT của tài khoản — chỉ để hiển thị
  *   - staffId     : (tuỳ chọn) user_id của NV phụ trách — để khớp đơn → account (ưu tiên hơn tên).
- *                   Cũng là khoá GOM tài khoản Zalo + Facebook về cùng 1 nhân viên trên UI.
+ *                   Cũng là khoá GOM tài khoản Zalo + Facebook về cùng 1 nhân viên trên UI. ĐỂ
+ *                   TRỐNG = account "CHUNG TOÀN CÔNG TY" (cả Zalo lẫn Facebook): NV nào không có
+ *                   account riêng (kể cả NV mới sau này) đều tự động dùng nhóm account này, chọn
+ *                   theo `brand` như bình thường — không cần khai báo tay từng NV.
+ *   - sharedStaffIds : (tuỳ chọn) mảng user_id các NV KHÁC được DÙNG CHUNG account này để gửi báo,
+ *                   ngoài NV chủ (staffId) — KHÔNG cần đăng nhập/kết nối lại (dùng chung session).
+ *                   VD: account FB của Bình muốn Trân cũng gửi được -> thêm staffId của Trân vào
+ *                   sharedStaffIds của account đó.
  *   - brand       : (Zalo, tuỳ chọn) prefix mã đơn của brand account này phụ trách (vd "BS", "SU", "CO").
  *                   1 NV có thể có NHIỀU account, mỗi account 1 brand → đơn được gửi bằng account
  *                   khớp prefix mã đơn. Để trống = account "chung", nhận mọi brand của NV đó.
@@ -64,6 +71,12 @@ function normalize(a) {
     password: String(a.password || ''),
     phone: String(a.phone || '').trim(),
     staffId: a.staffId != null ? String(a.staffId).trim() : '',
+    // Chấp nhận mảng hoặc chuỗi phân tách bởi dấu phẩy/khoảng trắng/; (tiện nhập từ ô text đơn).
+    sharedStaffIds: [...new Set(
+      (Array.isArray(a.sharedStaffIds) ? a.sharedStaffIds : String(a.sharedStaffIds || '').split(/[\s,;]+/))
+        .map((s) => String(s == null ? '' : s).trim())
+        .filter(Boolean),
+    )],
     // Prefix mã đơn (brand) — chuẩn hoá UPPERCASE để so khớp không phân biệt hoa/thường.
     brand: a.brand != null ? String(a.brand).trim().toUpperCase() : '',
     autoEnabled: a.autoEnabled === undefined ? true : !!a.autoEnabled,

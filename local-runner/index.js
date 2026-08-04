@@ -163,15 +163,15 @@ app.get('/api/accounts', (req, res) => {
 /**
  * POST /api/accounts — thêm tài khoản (Zalo hoặc Facebook) rồi mở Chromium để đăng nhập.
  * body: { type|platform:'zalo'|'facebook', key, name, saleworkName?, fbName?, phone?, staffId?,
- *         brand?, autoEnabled?, proxy?, notifyTarget? }
+ *         sharedStaffIds?, brand?, autoEnabled?, proxy?, notifyTarget? }
  */
 app.post('/api/accounts', (req, res) => {
-  const { type, platform: platformIn, key, name, saleworkName, fbName, email, password, phone, staffId, brand, autoEnabled, proxy, notifyTarget } = req.body || {};
+  const { type, platform: platformIn, key, name, saleworkName, fbName, email, password, phone, staffId, sharedStaffIds, brand, autoEnabled, proxy, notifyTarget } = req.body || {};
   const platform = (platformIn || type) === 'facebook' ? 'facebook' : 'zalo';
   const label = platform === 'facebook' ? 'Facebook' : 'Zalo';
   let account;
   try {
-    account = accountsStore.add({ platform, key, name, saleworkName, fbName, email, password, phone, staffId, brand, autoEnabled, proxy, notifyTarget });
+    account = accountsStore.add({ platform, key, name, saleworkName, fbName, email, password, phone, staffId, sharedStaffIds, brand, autoEnabled, proxy, notifyTarget });
   } catch (e) {
     return res.status(400).json({ ok: false, error: e.message });
   }
@@ -200,9 +200,9 @@ app.post('/api/accounts', (req, res) => {
 /** PUT /api/accounts/:key — sửa thông tin account (không đổi key/platform). */
 app.put('/api/accounts/:key', (req, res) => {
   const { key } = req.params;
-  const { name, saleworkName, fbName, email, password, phone, staffId, brand, autoEnabled, proxy, notifyTarget } = req.body || {};
+  const { name, saleworkName, fbName, email, password, phone, staffId, sharedStaffIds, brand, autoEnabled, proxy, notifyTarget } = req.body || {};
   const patch = {};
-  for (const [k, v] of Object.entries({ name, saleworkName, fbName, email, password, phone, staffId, brand, autoEnabled, proxy, notifyTarget })) {
+  for (const [k, v] of Object.entries({ name, saleworkName, fbName, email, password, phone, staffId, sharedStaffIds, brand, autoEnabled, proxy, notifyTarget })) {
     if (v !== undefined) patch[k] = v;
   }
   const updated = accountsStore.update(key, patch);
