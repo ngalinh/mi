@@ -198,30 +198,53 @@
       : '<span class="chan zalo">Zalo</span>';
   }
 
-  // Tài khoản -> danh sách "Kênh sale" (vd ShipUS, Basso, Linh Dương...) đang gán cho nó, suy ra
-  // từ cấu hình ở tab Kênh Sale (kenh_sale + NV -> zalo_account_key). Nạp lại mỗi lần loadZalo()
-  // để cột này luôn khớp cấu hình mới nhất; dùng để gom nhóm tài khoản cùng kênh sale cho gọn mắt.
-  let acctKenhMap = new Map(); // account key -> [kenh_sale,...]
+  // Tài khoản -> danh sách "Kênh sale" (vd ShipUS, Basso, Linh Dương...) đang gán cho nó. Cấu
+  // hình ở tab Kênh Sale (kenh_sale + NV -> zalo_account_key) chỉ CHỌN ĐƯỢC tài khoản Zalo (dùng
+  // để tự chọn account khi báo tay — xem accountResolver.js, cố tình không nhận account Facebook
+  // kẻo báo nhầm kênh khi tự động gửi đơn). Facebook không có cấu hình riêng nên KHÔNG khớp trực
+  // tiếp theo account key được — suy ra theo NV: tài khoản nào cùng staffId với 1 account đã gán
+  // kênh sale thì "thừa hưởng" kênh sale đó (đủ dùng cho mục đích gom nhóm hiển thị ở đây).
+  // Nạp lại mỗi lần loadZalo() để cột này luôn khớp cấu hình mới nhất.
+  let acctKenhMap = new Map();  // account key -> [kenh_sale,...] (cấu hình TRỰC TIẾP cho account)
+  let staffKenhMap = new Map(); // staffId -> [kenh_sale,...] (suy ra theo NV, dùng làm fallback)
   async function loadAcctKenhMap() {
     try {
       const r = await App.api('/api/channel-accounts');
       const map = new Map();
+      const staffMap = new Map();
       (r.channelAccounts || []).forEach((row) => {
-        if (!row.zalo_account_key || !row.kenh_sale) return;
-        const list = map.get(row.zalo_account_key) || [];
-        if (!list.includes(row.kenh_sale)) list.push(row.kenh_sale);
-        map.set(row.zalo_account_key, list);
+        if (!row.kenh_sale) return;
+        if (row.zalo_account_key) {
+          const list = map.get(row.zalo_account_key) || [];
+          if (!list.includes(row.kenh_sale)) list.push(row.kenh_sale);
+          map.set(row.zalo_account_key, list);
+        }
+        const sid = String(row.staff_id || '').trim();
+        if (sid) {
+          const list = staffMap.get(sid) || [];
+          if (!list.includes(row.kenh_sale)) list.push(row.kenh_sale);
+          staffMap.set(sid, list);
+        }
       });
       acctKenhMap = map;
-    } catch (e) { acctKenhMap = new Map(); }
+      staffKenhMap = staffMap;
+    } catch (e) { acctKenhMap = new Map(); staffKenhMap = new Map(); }
   }
-  function acctKenhList(a) {
-    return (acctKenhMap.get(a.key) || []).slice().sort((x, y) => x.localeCompare(y, 'vi'));
+  // { list, inherited } — inherited=true khi lấy từ staffKenhMap (không có cấu hình riêng cho
+  // CHÍNH account này) để phân biệt hiển thị (xem kenhSaleCell).
+  function acctKenhInfo(a) {
+    const own = acctKenhMap.get(a.key);
+    if (own && own.length) return { list: own.slice().sort((x, y) => x.localeCompare(y, 'vi')), inherited: false };
+    const sid = a.staffId ? String(a.staffId).trim() : '';
+    const byStaff = sid ? staffKenhMap.get(sid) : null;
+    return { list: (byStaff || []).slice().sort((x, y) => x.localeCompare(y, 'vi')), inherited: true };
   }
   function kenhSaleCell(a) {
-    const list = acctKenhList(a);
+    const { list, inherited } = acctKenhInfo(a);
     if (!list.length) return '<span class="muted">—</span>';
-    return list.map((k) => `<span class="acct-kenh">${App.esc(k)}</span>`).join(' ');
+    const title = inherited ? ' title="Suy ra theo kênh sale của NV — tài khoản này chưa có cấu hình riêng ở tab Kênh Sale"' : '';
+    const cls = inherited ? 'acct-kenh acct-kenh-inherit' : 'acct-kenh';
+    return list.map((k) => `<span class="${cls}"${title}>${App.esc(k)}</span>`).join(' ');
   }
 
   // Cột "Nhân viên" của 1 account: tên NV CHỦ (staffId) + mã NV, hoặc nhãn "Chung" nếu account
@@ -271,7 +294,7 @@
   // và kênh — dễ đọc dù không còn gom nhóm bằng dòng tiêu đề.
   function sortAccounts(list) {
     return [...list].sort((a, b) => {
-      const ak = acctKenhList(a).join(', '), bk = acctKenhList(b).join(', ');
+      const ak = acctKenhInfo(a).list.join(', '), bk = acctKenhInfo(b).list.join(', ');
       if (!!ak !== !!bk) return ak ? -1 : 1;
       const kc = ak.localeCompare(bk, 'vi');
       if (kc) return kc;
