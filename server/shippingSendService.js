@@ -54,8 +54,9 @@ async function sendShippingOne(order, opts = {}) {
   const orderCode = firstOrderCode(order);
   // KÊNH SALE THEO KHÁCH: như notifyService.js — nếu khách đã gắn sẵn kênh sale trong Danh bạ,
   // dùng làm mặc định khi lượt gửi này không tự chọn kênh sale.
+  const kenhSaleExplicit = !!(opts.kenhSale && String(opts.kenhSale).trim());
   const kenhSale = opts.kenhSale || getContactKenhSale(order.phone);
-  const resolved = await resolveForOrder({ staff, orderCode, phone: order.phone }, { ...opts, kenhSale });
+  const resolved = await resolveForOrder({ staff, orderCode, phone: order.phone }, { ...opts, kenhSale, kenhSaleExplicit });
   // NGOẠI LỆ THEO KHÁCH: "Kiểu báo riêng" trong Danh bạ ('personal'/'group') GHI ĐÈ kiểu báo mặc
   // định của NV phụ trách (vd NV báo nhóm nhưng riêng khách này không có group Zalo, phải báo cá
   // nhân). Thiếu bước này thì auto-ship luôn dùng kiểu báo của tài khoản Zalo (theo NV) bất kể
@@ -71,7 +72,7 @@ async function sendShippingOne(order, opts = {}) {
     const err = resolved.skipReason === 'fb_no_account'
       ? `Đơn cần báo qua Facebook nhưng NV ${staff || '—'} chưa có tài khoản Facebook.`
       : resolved.skipReason === 'channel_no_account'
-        ? `Chưa cấu hình kênh sale "${kenhSale}" cho NV ${staff || '—'}. Vào Cài đặt → Kênh Sale để thêm.`
+        ? `Đã chọn kênh sale "${kenhSale}" cho lượt báo này nhưng chưa có cấu hình (kênh sale + NV) -> tài khoản Zalo cho NV ${staff || '—'}.`
         : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${staff || '—'}`;
     return { ok: false, error: err };
   }

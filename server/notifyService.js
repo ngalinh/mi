@@ -180,8 +180,9 @@ async function notifyOne(order, opts = {}) {
   // Sửa liên hệ), dùng làm mặc định cho opts.kenhSale khi người gửi KHÔNG tự chọn kênh sale cho
   // lượt báo này — nhờ vậy đơn của khách thuộc kênh sale cố định luôn về đúng tài khoản Zalo mà
   // không cần chọn tay mỗi lần (xem cột kenh_sale trên zalo_contacts + channel_accounts).
+  const kenhSaleExplicit = !!(opts.kenhSale && String(opts.kenhSale).trim());
   const kenhSale = opts.kenhSale || getContactKenhSale(order.phone);
-  const resolved = await resolveForOrder(order, { ...opts, kenhSale });
+  const resolved = await resolveForOrder(order, { ...opts, kenhSale, kenhSaleExplicit });
   // NGOẠI LỆ THEO KHÁCH: nếu khách này có "Kiểu báo riêng" trong danh bạ ('personal'/'group'), nó
   // GHI ĐÈ kiểu báo của NV phụ trách (vd NV báo cá nhân nhưng riêng khách này báo vào group Zalo).
   // Chỉ áp cho kênh Zalo — kênh Facebook không có tab cá nhân/nhóm.
@@ -205,7 +206,7 @@ async function notifyOne(order, opts = {}) {
     const err = resolved.skipReason === 'fb_no_account'
       ? `Đơn cần báo qua Facebook nhưng NV ${order.staff || '—'} chưa có tài khoản Facebook. Vào Cài đặt → Tài khoản để thêm.`
       : resolved.skipReason === 'channel_no_account'
-        ? `Chưa cấu hình kênh sale "${kenhSale}" cho NV ${order.staff || '—'}. Vào Cài đặt → Kênh Sale để thêm.`
+        ? `Đã chọn kênh sale "${kenhSale}" cho lượt báo này nhưng chưa có cấu hình (kênh sale + NV) -> tài khoản Zalo cho NV ${order.staff || '—'}.`
         : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${order.staff || '—'}`;
     const report = addReport({
       orderId: meta.orderCode,
@@ -364,9 +365,10 @@ async function groupOrdersByProfile(orders, opts = {}) {
   for (let i = 0; i < list.length; i += 1) {
     let key = 'default';
     try {
+      const kenhSaleExplicit = !!(opts.kenhSale && String(opts.kenhSale).trim());
       // eslint-disable-next-line no-await-in-loop
       const kenhSale = opts.kenhSale || getContactKenhSale(list[i].phone);
-      const r = await resolveForOrder(list[i], { defaultAccount: opts.defaultAccount, profile: opts.profile, kenhSale });
+      const r = await resolveForOrder(list[i], { defaultAccount: opts.defaultAccount, profile: opts.profile, kenhSale, kenhSaleExplicit });
       key = r.profile || 'default';
     } catch { /* lỗi resolve -> gom vào 'default' */ }
     tagged.push({ order: list[i], key, i });
