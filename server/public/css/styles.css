@@ -918,6 +918,16 @@ td.staff-col { white-space: nowrap; }
 }
 .acct-shared { background: var(--blue-soft); color: var(--blue); }
 
+/* Cột Kênh sale: 1 tài khoản có thể gán nhiều kênh sale (nhiều dòng cấu hình) -> cho phép xuống
+   dòng, mỗi kênh sale 1 chip riêng để dễ quét mắt và gom nhóm bằng mắt khi bảng đã sort theo cột. */
+.acct-kenh-cell { vertical-align: top; white-space: normal; }
+.acct-kenh {
+  display: inline-block; margin: 1px 0;
+  font-size: 11px; font-weight: 700; letter-spacing: .3px;
+  padding: 2px 9px; border-radius: var(--radius-pill);
+  background: var(--green-soft); color: var(--green); white-space: nowrap;
+}
+
 /* Nhãn kênh */
 .chan {
   display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
