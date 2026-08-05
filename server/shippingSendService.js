@@ -7,7 +7,7 @@
  * (customerId/dateInventory). Đơn "Quản lý giao hàng" không có 2 field này.
  */
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
-const { resolveForOrder } = require('./accountResolver');
+const { resolveForOrder, isRetryableAccountError } = require('./accountResolver');
 const { buildDeliveryMessage, REASON_LABEL } = require('./shippingNotify');
 const { syncShipStatusByCode } = require('./bassoApi');
 const {
@@ -105,14 +105,35 @@ async function sendShippingOne(order, opts = {}) {
         });
       }
     } else {
-      result = await sendBaoHang({
-        profile: resolved.profile || 'default',
-        account: resolved.account,
-        keyword,
-        name: matchName,
-        message: built.message,
-        notifyTarget: resolved.notifyTarget,
-      });
+      // NV được gắn NHIỀU tài khoản Zalo không phân biệt được bằng brand (resolved.fallbackAccounts,
+      // xem accountResolver.js) -> thử lần lượt: account chính trước, "không thấy hội thoại" (khách
+      // có thể đang nằm ở tài khoản kia) thì thử account dự phòng kế tiếp.
+      const candidates = [resolved, ...(Array.isArray(resolved.fallbackAccounts) ? resolved.fallbackAccounts : [])];
+      for (let i = 0; i < candidates.length; i += 1) {
+        const cand = candidates[i];
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          result = await sendBaoHang({
+            profile: cand.profile || 'default',
+            account: cand.account,
+            keyword,
+            name: matchName,
+            message: built.message,
+            notifyTarget: cand.notifyTarget || resolved.notifyTarget,
+          });
+        } catch (err) {
+          result = { ok: false, error: err.message };
+        }
+        if (result.ok || i === candidates.length - 1 || !isRetryableAccountError(result.error)) {
+          if (cand !== resolved && result.ok) {
+            console.log(`[shipping-notify] account "${resolved.account || resolved.profile}" không thấy hội thoại -> gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
+            resolved.account = cand.account;
+            resolved.profile = cand.profile;
+          }
+          break;
+        }
+        console.log(`[shipping-notify] account "${cand.account || cand.profile}" không thấy hội thoại -> thử account dự phòng "${candidates[i + 1].account || candidates[i + 1].profile}"`);
+      }
     }
   } catch (err) {
     result = { ok: false, error: err.message };
@@ -122,6 +143,7 @@ async function sendShippingOne(order, opts = {}) {
     status: result.ok ? 'success' : 'failed',
     error: result.ok ? null : result.error,
     jobId: result.jobId,
+    zaloAccount: resolved.account || resolved.profile || null,
   });
 
   if (result.ok) {

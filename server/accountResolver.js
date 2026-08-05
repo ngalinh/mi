@@ -183,8 +183,14 @@ async function resolveForOrder(order, opts = {}) {
     if (mine.length) {
       const branded = mine.filter((a) => a.brand);
       if (!branded.length) {
-        // NV không cấu hình brand nào -> hành vi cũ: account đầu, nhận mọi đơn.
-        return fromStore(mine[0]);
+        // NV không cấu hình brand nào. 1 account -> dùng luôn. NHIỀU account (vd NV được gắn 2 tài
+        // khoản Zalo dùng chung, không phân biệt được bằng brand) -> vẫn ưu tiên account đầu, nhưng
+        // đính kèm các account còn lại làm FALLBACK: nếu account đầu gửi lỗi "không thấy hội thoại"
+        // (khách có thể đang nằm ở tài khoản kia), caller (notifyService/shippingSendService) sẽ tự
+        // thử lần lượt các account dự phòng này thay vì bỏ cuộc ngay.
+        const primary = fromStore(mine[0]);
+        if (mine.length > 1) primary.fallbackAccounts = mine.slice(1).map(fromStore);
+        return primary;
       }
       // NV có cấu hình brand -> BẮT BUỘC khớp prefix mã đơn (kể cả khi chỉ 1 account có brand).
       const code = await fetchOrderCode(order);
@@ -224,4 +230,13 @@ async function resolveForOrder(order, opts = {}) {
   return { channel: 'zalo', profile: opts.profile || 'default', account: opts.defaultAccount || undefined, autoEnabled: true, source: 'default' };
 }
 
-module.exports = { resolveForOrder, brandOfCode };
+/**
+ * true nếu lỗi gửi cho thấy "tài khoản này không có hội thoại của khách" (khách có thể nằm ở tài
+ * khoản Zalo KHÁC của NV) -> đáng thử tiếp fallbackAccounts. Các lỗi khác (chưa đăng nhập, chọn sai
+ * tài khoản, mạng...) KHÔNG thử tiếp vì thử account khác cũng sẽ lỗi y hệt hoặc gửi nhầm ngữ cảnh.
+ */
+function isRetryableAccountError(msg) {
+  return /^KHONG_THAY_HOI_THOAI/.test(String(msg || '').trim());
+}
+
+module.exports = { resolveForOrder, brandOfCode, isRetryableAccountError };
