@@ -136,11 +136,16 @@ async function resolveForOrder(order, opts = {}) {
   }
 
   // 1.5) KÊNH SALE: Basso có "Kênh Sale" hiển thị trên web nhưng Partner API KHÔNG trả field này
-  // (không có cách tự nhận diện kênh sale của 1 đơn) -> người gửi phải CHỌN kênh sale cho lượt báo
-  // (opts.kenhSale, UI báo tay). Có chọn thì tra bảng cấu hình (kênh sale + NV phụ trách đơn ->
-  // tài khoản Zalo). Đây là lựa chọn TƯỜNG MINH của người dùng nên ưu tiên hơn accountsStore/brand.
-  // Không tìm thấy cấu hình/account -> BÁO RÕ (skip), không âm thầm rơi về nhánh khác kẻo gửi
-  // nhầm tài khoản ngoài ý muốn khi người dùng đã chọn đích danh 1 kênh sale.
+  // (không có cách tự nhận diện kênh sale của 1 đơn) -> người gửi có thể CHỌN kênh sale cho lượt
+  // báo (opts.kenhSale, UI báo tay), hoặc nó được suy MẶC ĐỊNH từ kênh sale đã gắn cho khách trong
+  // Danh bạ (opts.kenhSaleExplicit=false — xem notifyService/shippingSendService). Có kênh sale thì
+  // tra bảng cấu hình (kênh sale + NV phụ trách đơn -> tài khoản Zalo, tab Kênh Sale cũ).
+  // Không tìm thấy cấu hình/account:
+  //   - opts.kenhSaleExplicit=true (người dùng TƯỜNG MINH chọn) -> BÁO RÕ (skip), không âm thầm rơi
+  //     về nhánh khác kẻo gửi nhầm tài khoản ngoài ý muốn.
+  //   - opts.kenhSaleExplicit=false (chỉ là MẶC ĐỊNH suy từ Danh bạ) -> ÂM THẦM rơi tiếp xuống nhánh
+  //     accountsStore bình thường bên dưới, KHÔNG skip — khách gắn kênh sale trong Danh bạ mà kênh đó
+  //     chưa/không còn cấu hình (vd tab Kênh Sale đã bỏ) không được vì thế mà mất báo hàng.
   if (opts.kenhSale && String(opts.kenhSale).trim()) {
     const row = findChannelAccount({
       kenhSale: opts.kenhSale,
@@ -153,10 +158,12 @@ async function resolveForOrder(order, opts = {}) {
       const resolved = fromChannelAccount(row, accounts);
       if (resolved) return resolved;
     }
-    return {
-      channel: 'zalo', profile: null, account: undefined, autoEnabled: true,
-      source: 'channel', skip: true, skipReason: 'channel_no_account',
-    };
+    if (opts.kenhSaleExplicit) {
+      return {
+        channel: 'zalo', profile: null, account: undefined, autoEnabled: true,
+        source: 'channel', skip: true, skipReason: 'channel_no_account',
+      };
+    }
   }
 
   // 2) accountsStore (Hướng B). Chỉ xét account ZALO ở nhánh này (FB đã xử lý ở trên).

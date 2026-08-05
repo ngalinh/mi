@@ -5,14 +5,13 @@
                           // false = fallback phân trang server (tập quá lớn / chưa kéo xong)
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
-  let currentChannel = ''; // kênh sale đang lọc ('' = tất cả) — xem zalo_contacts.kenh_sale
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
   let currentSendStatus = ''; // lọc theo TRẠNG THÁI GỬI TIN (lastReport): '' = tất cả | success | pending | failed | none
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 13;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 12; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 12;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 11; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -260,14 +259,6 @@
     return `<span class="acct-with-ic" title="${App.esc(acct)}">${chanTag(o.lastReport.channel)}<span class="acct-name">${App.esc(acct)}</span></span>`;
   }
 
-  // Kênh sale mà đơn "thuộc về" (server enrich `kenhSaleList` theo NV phụ trách — xem
-  // db.getOrderKenhSales). NV thuộc nhiều kênh -> hiện đủ, cách nhau dấu phẩy. Không có cấu hình
-  // nào cho NV này (chưa khai ở Cài đặt → Kênh Sale) -> "—".
-  function kenhSaleCell(o) {
-    const list = o.kenhSaleList || [];
-    return list.length ? App.esc(list.join(', ')) : '<span class="muted">—</span>';
-  }
-
   // Gom "Người gửi" + "Tài khoản" về 1 ô: người gửi ở trên, chip tài khoản Zalo/FB ở dòng dưới.
   // Đơn chưa từng báo -> 1 ô trống "—" (không hiện 2 dấu "—" chồng nhau).
   function senderAccountCell(o) {
@@ -508,7 +499,6 @@
       </div></td>
       <td class="center">${excludeCell}</td>
       <td class="staff-col">${App.esc(o.staff)}</td>
-      <td class="kenh-col">${kenhSaleCell(o)}</td>
       <td class="sender-col">${senderAccountCell(o)}</td>
     </tr>`;
 
@@ -670,10 +660,6 @@
     if (currentSendStatus === 'ship_pending') list = list.filter(hasUnsentShipContent);
     else if (currentSendStatus === 'ship_new_today') list = list.filter(isShipNewToday);
     else if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
-    // Kênh sale: đơn "thuộc" 1 kênh nếu NV phụ trách đơn có cấu hình kênh đó (server enrich
-    // `kenhSaleList` theo NV — 1 NV có thể thuộc nhiều kênh, xem db.getOrderKenhSales). Basso
-    // không trả field kênh sale theo đơn nên lọc CLIENT-SIDE như các bộ lọc trên.
-    if (currentChannel) list = list.filter((o) => (o.kenhSaleList || []).includes(currentChannel));
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -939,18 +925,6 @@
       sel.innerHTML = '<option value="">— Không chọn —</option>'
         + kenhSaleNames.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
     }
-    renderChannelFilter();
-  }
-  // Bộ lọc "Kênh" trên toolbar: cùng danh sách kênh sale đã cấu hình (Cài đặt → Kênh Sale).
-  // Lọc theo NV phụ trách đơn có thuộc kênh đó không (server enrich `kenhSaleList`) — 1 NV thuộc
-  // nhiều kênh thì đơn của NV đó khớp mọi kênh NV có mặt.
-  function renderChannelFilter() {
-    const sel = $('fChannel');
-    if (!sel) return;
-    const cur = currentChannel;
-    sel.innerHTML = '<option value="">Tất cả kênh</option>'
-      + kenhSaleNames.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
-    sel.value = cur;
   }
   // Chọn kênh sale hay chọn tài khoản tay là 2 cách LOẠI TRỪ NHAU (server ưu tiên tài khoản tay
   // nếu cả 2 cùng có) -> chọn cái này thì bỏ trống cái kia để tránh nhầm lẫn "đã chọn kênh sale
@@ -1532,7 +1506,7 @@
   // Có bất kỳ bộ lọc CLIENT-SIDE nào đang bật không? (gom nhóm, trạng thái gửi tin, hoặc
   // Loại trừ/Ghi chú trong popover). Các lọc này không làm được ở Basso -> phải lọc tại client.
   function hasClientFilter() {
-    return !!currentGroupBy || !!currentSendStatus || !!currentChannel || F.exclude !== 'all' || F.note !== 'all';
+    return !!currentGroupBy || !!currentSendStatus || F.exclude !== 'all' || F.note !== 'all';
   }
   // Đồng bộ chế độ theo bộ lọc client-side: nếu đang bật mà chưa kéo cả tập -> kéo cả tập rồi
   // lọc/phân trang tại client (để lọc trên TOÀN tập chứ không chỉ 20 đơn của trang đang xem);
@@ -1780,15 +1754,6 @@
     applyFilters({ keepPage: true });
   });
 
-  // Lọc theo Kênh sale (client-side — xem applyExcludeNote/hasClientFilter). Bật lọc -> kéo cả
-  // tập rồi lọc trên toàn tập (giống Trạng thái gửi tin/Loại trừ/Ghi chú).
-  const fChannelEl = $('fChannel');
-  if (fChannelEl) fChannelEl.addEventListener('change', (e) => {
-    currentChannel = e.target.value || '';
-    currentPage = 1;
-    syncClientFilterMode();
-  });
-
   $('pager').addEventListener('click', (e) => {
     const b = e.target.closest('.pg-btn');
     if (!b || b.disabled) return;
@@ -1941,7 +1906,6 @@
       <th>Ghi chú</th>
       <th class="center" style="width:64px" title="Tick để đánh dấu Delay — loại khỏi Báo hàng loạt">Delay</th>
       <th>Nhân viên</th>
-      <th title="Kênh sale mà đơn thuộc về, suy theo NV phụ trách (xem Cài đặt → Kênh Sale)">Kênh Sale</th>
       <th style="width:160px" title="Người đã gửi lượt báo (Bot/nhân viên) & tài khoản Zalo/FB đã dùng">Người gửi / TK</th>`;
   }
   renderHeader();

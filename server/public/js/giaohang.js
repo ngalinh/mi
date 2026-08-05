@@ -9,16 +9,15 @@
     { key: 'date', label: 'Ngày tạo vận đơn', n: 3 },
     { key: 'recipient', label: 'Người nhận', n: 4 },
     { key: 'staff', label: 'Nhân viên', n: 5 },
-    { key: 'channel', label: 'Kênh sale', n: 6 },
-    { key: 'code', label: 'Mã vận đơn', n: 7 },
-    { key: 'address', label: 'Địa chỉ', n: 8 },
-    { key: 'note', label: 'Ghi chú', n: 9 },
-    { key: 'cod', label: 'Thu COD', n: 10 },
-    { key: 'shipfee', label: 'Phí ship', n: 11 },
-    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 12 },
-    { key: 'status', label: 'Trạng thái', n: 13 },
-    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 14 },
-    { key: 'ndship', label: 'ND ship', n: 15 },
+    { key: 'code', label: 'Mã vận đơn', n: 6 },
+    { key: 'address', label: 'Địa chỉ', n: 7 },
+    { key: 'note', label: 'Ghi chú', n: 8 },
+    { key: 'cod', label: 'Thu COD', n: 9 },
+    { key: 'shipfee', label: 'Phí ship', n: 10 },
+    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 11 },
+    { key: 'status', label: 'Trạng thái', n: 12 },
+    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 13 },
+    { key: 'ndship', label: 'ND ship', n: 14 },
   ];
   const COLVIS_LS_KEY = 'mi.giaohang.hiddenCols';
   function loadHiddenCols() {
@@ -116,13 +115,6 @@
     return hit ? String(hit.approveUser).trim() : '';
   }
 
-  // Kênh sale mà vận đơn "thuộc về" (server enrich `kenhSaleList` theo NV duyệt đơn — xem
-  // enrichShippingOrders/db.getOrderKenhSales). NV thuộc nhiều kênh -> hiện đủ, cách nhau dấu phẩy.
-  function kenhSaleCell(o) {
-    const list = o.kenhSaleList || [];
-    return list.length ? App.esc(list.join(', ')) : '<span class="muted">—</span>';
-  }
-
   // Đơn có thể xem trước tin báo ship: đã có link, hoặc đã giao shipper/đã giao/lên đơn vận.
   function canPreviewMsg(o) {
     return !!o.shipperLink || ['exported', 'completed', 'carrier_submitted'].includes(o.statusCode);
@@ -204,7 +196,7 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="17" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="16" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
@@ -220,7 +212,6 @@
             ${o.phone ? `<div class="ship-sub gh-nowrap" title="${App.esc(o.phone)}">${App.esc(o.phone)}</div>` : ''}
           </td>
           <td class="gh-nowrap">${App.esc(orderStaff(o)) || '<span class="muted">—</span>'}</td>
-          <td>${kenhSaleCell(o)}</td>
           <td>
             <div class="gh-nowrap" title="${App.esc(o.trackingCode)}">${App.esc(o.trackingCode) || '<span class="muted">—</span>'}</div>
             ${o.shipperLink ? `<a class="ship-link" href="${App.esc(o.shipperLink)}" target="_blank" rel="noopener" title="${App.esc(o.shipperLink)}">${App.icon('link')} ${App.esc(o.shipperLink)}</a>` : ''}
@@ -252,7 +243,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="17">
+    return `<tr class="ship-detail"><td colspan="16">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -265,24 +256,6 @@
         </table>
       </div>
     </td></tr>`;
-  }
-
-  // ---- Kênh sale (dropdown filter) ---------------------------------------
-  // Cùng danh sách kênh sale đã cấu hình ở Cài đặt → Kênh Sale (dùng chung cho trang Hàng về VN).
-  // Vận đơn "thuộc" 1 kênh nếu NV duyệt đơn (firstApproveUser phía server) có cấu hình kênh đó
-  // (server enrich `kenhSaleList`) — 1 NV thuộc nhiều kênh thì khớp mọi kênh NV có mặt.
-  async function loadChannelOptions() {
-    try {
-      const r = await App.api('/api/channel-accounts');
-      const names = [...new Set((r.channelAccounts || []).map((c) => c.kenh_sale).filter(Boolean))];
-      const sel = $('fChannel');
-      if (sel) {
-        const cur = sel.value;
-        sel.innerHTML = '<option value="">Tất cả kênh</option>'
-          + names.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
-        sel.value = cur;
-      }
-    } catch (_) { /* lỗi -> giữ nguyên option tĩnh */ }
   }
 
   // ---- Meta (dropdown filter) -------------------------------------------
@@ -320,8 +293,6 @@
   }
 
   // ---- Load list --------------------------------------------------------
-  // Bộ lọc chung (trừ page/kênh) dùng cho cả 2 đường: phân trang server (mặc định) và
-  // kéo-toàn-bộ (khi đang lọc theo Kênh — xem nhánh channel bên dưới).
   function baseParams() {
     const p = new URLSearchParams();
     p.set('shipping_id', $('fCarrier').value || 0);
@@ -334,34 +305,21 @@
   }
 
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="17" class="empty">Đang tải...</td></tr>';
-    const channel = $('fChannel') ? $('fChannel').value : '';
+    $('rows').innerHTML = '<tr><td colspan="16" class="empty">Đang tải...</td></tr>';
     try {
-      if (channel) {
-        // Kênh sale: Partner API không trả field này theo vận đơn -> không lọc được ở server.
-        // Kéo TOÀN BỘ vận đơn khớp các bộ lọc còn lại rồi lọc + phân trang tại client.
-        const r = await App.api('/api/shipping/all?' + baseParams().toString());
-        const all = (r.orders || []).filter((o) => (o.kenhSaleList || []).includes(channel));
-        state.pageSize = 20;
-        state.total = all.length;
-        const start = (state.page - 1) * state.pageSize;
-        state.orders = all.slice(start, start + state.pageSize);
-        state.mock = r.source === 'mock';
-      } else {
-        const params = baseParams();
-        params.set('page', state.page);
-        const r = await App.api('/api/shipping?' + params.toString());
-        state.orders = r.orders || [];
-        state.total = r.total || 0;
-        state.pageSize = r.pageSize || 20;
-        state.mock = r.source === 'mock';
-      }
+      const params = baseParams();
+      params.set('page', state.page);
+      const r = await App.api('/api/shipping?' + params.toString());
+      state.orders = r.orders || [];
+      state.total = r.total || 0;
+      state.pageSize = r.pageSize || 20;
+      state.mock = r.source === 'mock';
       $('mockBadge').style.display = state.mock ? '' : 'none';
       $('countInfo').textContent = `${state.total} đơn · trang ${state.page}/${Math.max(1, Math.ceil(state.total / state.pageSize))}`;
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="17" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="16" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -580,7 +538,7 @@
     $('btnBulkNotify').onclick = bulkNotify;
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
-    ['fCarrier', 'fStatus', 'fDate', 'fStaff', 'fChannel'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
+    ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
     $('fDate').addEventListener('change', syncTodayBtn);
     $('btnToday').onclick = () => {
       $('fDate').value = $('fDate').value === todayStr() ? '' : todayStr();
@@ -651,6 +609,5 @@
 
   bind();
   loadMeta();
-  loadChannelOptions();
   load();
 })();
