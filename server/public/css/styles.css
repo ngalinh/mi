@@ -927,6 +927,12 @@ td.staff-col { white-space: nowrap; }
   padding: 2px 9px; border-radius: var(--radius-pill);
   background: var(--green-soft); color: var(--green); white-space: nowrap;
 }
+/* Kênh sale SUY RA theo NV (account này chưa có cấu hình riêng, vd tài khoản Facebook đi kèm 1
+   NV đã gán Zalo cho kênh sale) — viền đứt để phân biệt với kênh sale cấu hình trực tiếp. */
+.acct-kenh-inherit {
+  background: transparent; color: var(--green);
+  border: 1px dashed var(--green);
+}
 
 /* Nhãn kênh */
 .chan {
