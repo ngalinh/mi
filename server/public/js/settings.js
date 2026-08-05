@@ -198,6 +198,32 @@
       : '<span class="chan zalo">Zalo</span>';
   }
 
+  // Tài khoản -> danh sách "Kênh sale" (vd ShipUS, Basso, Linh Dương...) đang gán cho nó, suy ra
+  // từ cấu hình ở tab Kênh Sale (kenh_sale + NV -> zalo_account_key). Nạp lại mỗi lần loadZalo()
+  // để cột này luôn khớp cấu hình mới nhất; dùng để gom nhóm tài khoản cùng kênh sale cho gọn mắt.
+  let acctKenhMap = new Map(); // account key -> [kenh_sale,...]
+  async function loadAcctKenhMap() {
+    try {
+      const r = await App.api('/api/channel-accounts');
+      const map = new Map();
+      (r.channelAccounts || []).forEach((row) => {
+        if (!row.zalo_account_key || !row.kenh_sale) return;
+        const list = map.get(row.zalo_account_key) || [];
+        if (!list.includes(row.kenh_sale)) list.push(row.kenh_sale);
+        map.set(row.zalo_account_key, list);
+      });
+      acctKenhMap = map;
+    } catch (e) { acctKenhMap = new Map(); }
+  }
+  function acctKenhList(a) {
+    return (acctKenhMap.get(a.key) || []).slice().sort((x, y) => x.localeCompare(y, 'vi'));
+  }
+  function kenhSaleCell(a) {
+    const list = acctKenhList(a);
+    if (!list.length) return '<span class="muted">—</span>';
+    return list.map((k) => `<span class="acct-kenh">${App.esc(k)}</span>`).join(' ');
+  }
+
   // Cột "Nhân viên" của 1 account: tên NV CHỦ (staffId) + mã NV, hoặc nhãn "Chung" nếu account
   // không gắn staffId (account "chung toàn công ty" — xem accountResolver.js), cộng thêm nhãn
   // NV dùng chung (sharedStaffIds) nếu có. Dùng tên thật từ bassoStaff thay vì field `name` tự do
@@ -226,6 +252,7 @@
       <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`}</td>
       <td class="acct-emp">${empCell(a)}</td>
       <td>${chanTag(a.platform)}</td>
+      <td class="acct-kenh-cell">${kenhSaleCell(a)}</td>
       <td>${connBadge(a.connection)}</td>
       <td>${autoTgl(a)}</td>
       <td>${isFb ? '<span class="muted">—</span>' : targetTgl(a)}</td>
@@ -239,10 +266,15 @@
     </tr>`;
   }
 
-  // Sắp theo tên NV chủ (account "chung" đẩy xuống cuối) rồi tới kênh — dễ đọc dù không còn
-  // gom nhóm bằng dòng tiêu đề.
+  // Sắp theo Kênh sale trước (gom các tài khoản cùng kênh sale lại gần nhau, tài khoản chưa gán
+  // kênh sale nào đẩy xuống cuối), rồi trong cùng nhóm mới tới tên NV chủ ("chung" đẩy xuống cuối)
+  // và kênh — dễ đọc dù không còn gom nhóm bằng dòng tiêu đề.
   function sortAccounts(list) {
     return [...list].sort((a, b) => {
+      const ak = acctKenhList(a).join(', '), bk = acctKenhList(b).join(', ');
+      if (!!ak !== !!bk) return ak ? -1 : 1;
+      const kc = ak.localeCompare(bk, 'vi');
+      if (kc) return kc;
       // Account "chung" (không staffId) luôn xếp SAU mọi account có NV chủ cụ thể.
       if (!!a.staffId !== !!b.staffId) return a.staffId ? -1 : 1;
       const an = a.staffId ? bassoNameOf(a.staffId) : (a.name || a.key);
@@ -256,17 +288,17 @@
   function renderAccounts(list) {
     accountsAll = list || [];
     if (!accountsAll.length) {
-      zaloRows.innerHTML = '<tr><td colspan="7" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
+      zaloRows.innerHTML = '<tr><td colspan="8" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
       return;
     }
     zaloRows.innerHTML = sortAccounts(accountsAll).map((a) => acctRow(a)).join('');
   }
   async function loadZalo() {
     try {
-      const r = await App.api('/api/accounts');
+      const [r] = await Promise.all([App.api('/api/accounts'), loadAcctKenhMap()]);
       renderAccounts(r.accounts || r.zalo || []);
     } catch (e) {
-      zaloRows.innerHTML = `<tr><td colspan="7" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+      zaloRows.innerHTML = `<tr><td colspan="8" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
     }
   }
 
