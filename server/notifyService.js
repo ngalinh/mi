@@ -5,7 +5,7 @@ const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
 const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, autoKeyShip, getFbLink, getZaloName, getContactReportTarget, getContactKenhSale } = require('./db');
 const { withLock } = require('./lock');
-const { resolveForOrder } = require('./accountResolver');
+const { resolveForOrder, isRetryableAccountError } = require('./accountResolver');
 
 // Marker lỗi "chưa đăng nhập Zalo" do runner (salework.ensureLoggedIn) ném ra khi mở trình duyệt
 // mà thấy trang login. Dùng để DỪNG NGAY báo loạt thay vì để mọi đơn còn lại failed như nhau.
@@ -275,16 +275,38 @@ async function notifyOne(order, opts = {}) {
         });
       }
     } else {
-      result = await sendBaoHang({
-        profile: resolved.profile || 'default',
-        account: resolved.account,
-        keyword,
-        name: matchName,
-        message,
-        strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
-        notifyTarget: resolved.notifyTarget,     // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
-        keepContext: opts.keepContext === true,  // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
-      });
+      // NV được gắn NHIỀU tài khoản Zalo không phân biệt được bằng brand (resolved.fallbackAccounts,
+      // xem accountResolver.js) -> thử lần lượt: account chính trước, "không thấy hội thoại" (khách
+      // có thể đang nằm ở tài khoản kia) thì thử account dự phòng kế tiếp. Lỗi khác (chưa đăng nhập,
+      // v.v.) DỪNG ngay, không thử tiếp.
+      const candidates = [resolved, ...(Array.isArray(resolved.fallbackAccounts) ? resolved.fallbackAccounts : [])];
+      for (let i = 0; i < candidates.length; i += 1) {
+        const cand = candidates[i];
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          result = await sendBaoHang({
+            profile: cand.profile || 'default',
+            account: cand.account,
+            keyword,
+            name: matchName,
+            message,
+            strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
+            notifyTarget: cand.notifyTarget || resolved.notifyTarget, // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
+            keepContext: opts.keepContext === true,  // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
+          });
+        } catch (err) {
+          result = { ok: false, error: err.message };
+        }
+        if (result.ok || i === candidates.length - 1 || !isRetryableAccountError(result.error)) {
+          if (cand !== resolved && result.ok) {
+            console.log(`[notify] account "${resolved.account || resolved.profile}" không thấy hội thoại -> gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
+            resolved.account = cand.account; // để log + báo cáo phản ánh đúng account đã gửi
+            resolved.profile = cand.profile;
+          }
+          break;
+        }
+        console.log(`[notify] account "${cand.account || cand.profile}" không thấy hội thoại -> thử account dự phòng "${candidates[i + 1].account || candidates[i + 1].profile}"`);
+      }
     }
   } catch (err) {
     result = { ok: false, error: err.message };
@@ -316,6 +338,9 @@ async function notifyOne(order, opts = {}) {
     status: result.ok ? (updateError ? 'sent_check' : 'success') : 'failed',
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
+    // resolved.account/profile được cập nhật lại nếu gửi thành công qua account DỰ PHÒNG (fallback)
+    // -> Lịch sử báo phản ánh đúng account đã thực sự gửi, không phải account chính lúc đầu.
+    zaloAccount: resolved.account || resolved.profile || null,
   });
 
   // loginRequired: Zalo hiện trang login (chưa đăng nhập). Caller (notifyOrders) dùng cờ này để
