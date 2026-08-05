@@ -139,6 +139,7 @@
     zaEmail = $('zaEmail'), zaPassword = $('zaPassword'), zaPlatform = $('zaPlatform'),
     zaLoginUser = $('zaLoginUser'), zaLoginPass = $('zaLoginPass'),
     zaPhone = $('zaPhone'), zaStaffId = $('zaStaffId'), zaBrand = $('zaBrand'),
+    zaKenhSale = $('zaKenhSale'),
     zaProxy = $('zaProxy'), zaAuto = $('zaAuto'), zaTarget = $('zaTarget');
   // "Dùng chung với NV khác" — dropdown checkbox (giống bộ lọc NV ở trang Danh bạ), không phải
   // <select multiple> để dễ dùng + đồng bộ giao diện toàn hệ.
@@ -231,8 +232,13 @@
     } catch (e) { acctKenhMap = new Map(); staffKenhMap = new Map(); }
   }
   // { list, inherited } — inherited=true khi lấy từ staffKenhMap (không có cấu hình riêng cho
-  // CHÍNH account này) để phân biệt hiển thị (xem kenhSaleCell).
+  // CHÍNH account này) để phân biệt hiển thị (xem kenhSaleCell). Ưu tiên:
+  // 1) a.kenhSale — nhãn gõ trực tiếp trong modal Sửa tài khoản (mọi platform, kể cả Facebook).
+  // 2) acctKenhMap — cấu hình ở tab Kênh Sale (chỉ Zalo, khớp theo account key).
+  // 3) staffKenhMap — suy ra theo NV khi account chưa có cấu hình riêng ở (1) lẫn (2).
   function acctKenhInfo(a) {
+    const direct = String(a.kenhSale || '').split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
+    if (direct.length) return { list: [...new Set(direct)].sort((x, y) => x.localeCompare(y, 'vi')), inherited: false };
     const own = acctKenhMap.get(a.key);
     if (own && own.length) return { list: own.slice().sort((x, y) => x.localeCompare(y, 'vi')), inherited: false };
     const sid = a.staffId ? String(a.staffId).trim() : '';
@@ -385,6 +391,7 @@
     zaLoginPass.value = a ? (a.password || '') : '';
     zaPhone.value = a ? (a.phone || '') : '';
     zaStaffId.value = a ? (a.staffId || '') : (presets.staffId || '');
+    zaKenhSale.value = a ? (a.kenhSale || '') : '';
     zaSharedSelected.clear();
     ((a && a.sharedStaffIds) || []).forEach((id) => zaSharedSelected.add(String(id)));
     toggleZaShared(false); // panel luôn đóng khi vừa mở modal
@@ -404,6 +411,7 @@
       name: zaName.value.trim(),
       phone: zaPhone.value.trim(), staffId: zaStaffId.value.trim(),
       sharedStaffIds: [...zaSharedSelected],
+      kenhSale: zaKenhSale.value.trim(),
       proxy: zaProxy.value.trim(), autoEnabled: zaAuto.value === 'true',
     };
     if (platform === 'facebook') {

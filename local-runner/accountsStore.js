@@ -31,6 +31,11 @@ const config = require('./config');
  *   - brand       : (Zalo, tuỳ chọn) prefix mã đơn của brand account này phụ trách (vd "BS", "SU", "CO").
  *                   1 NV có thể có NHIỀU account, mỗi account 1 brand → đơn được gửi bằng account
  *                   khớp prefix mã đơn. Để trống = account "chung", nhận mọi brand của NV đó.
+ *   - kenhSale    : (tuỳ chọn, mọi platform) nhãn "Kênh sale" (vd "Basso", "ShipUS", "Linh Dương")
+ *                   GÁN TRỰC TIẾP cho account này — CHỈ để hiển thị/gom nhóm ở dashboard (cột Kênh
+ *                   sale, xem settings.js). KHÔNG dùng để tự chọn account khi gửi đơn — luồng đó
+ *                   vẫn qua bảng channel_accounts bên server (server/db.js), vốn chỉ nhận account
+ *                   Zalo. Field này bù chỗ trống đó cho Facebook (và account chưa cấu hình ở đó).
  *   - autoEnabled : có cho luồng TỰ ĐỘNG gửi bằng account này không (mặc định true)
  *   - proxy       : (tuỳ chọn) "host:port" hoặc "user:pass@host:port" — ÁP DỤNG khi mở Chromium cho profile này
  *
@@ -79,6 +84,8 @@ function normalize(a) {
     )],
     // Prefix mã đơn (brand) — chuẩn hoá UPPERCASE để so khớp không phân biệt hoa/thường.
     brand: a.brand != null ? String(a.brand).trim().toUpperCase() : '',
+    // Nhãn Kênh sale gán trực tiếp cho account (mọi platform) — xem chú thích đầu file.
+    kenhSale: String(a.kenhSale || '').trim(),
     autoEnabled: a.autoEnabled === undefined ? true : !!a.autoEnabled,
     // Mốc ISO khi account được BẬT "Tự động báo" (dùng để bot chỉ gửi đơn về từ đây trở đi,
     // bỏ qua tồn đọng cũ). Trống = chưa từng đóng dấu -> không lọc theo ngày (hành vi cũ).
