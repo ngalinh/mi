@@ -709,6 +709,15 @@ tbody tr.main-row td:last-child { white-space: nowrap; }
 .status-sel[data-code="send_failed"], .status-sel[data-code="error"] { color: var(--red); background: color-mix(in srgb, var(--red-soft) 55%, #fff); border-color: color-mix(in srgb, var(--red) 32%, transparent); }
 /* "Chưa báo" trước đây để trung tính (chữ xám/nền trắng) nên chìm — đổi sang tông cam "cần xử lý" cho dễ nhìn. */
 .status-sel[data-code="not_sent"] { color: var(--amber); background: color-mix(in srgb, var(--amber-soft) 55%, #fff); border-color: color-mix(in srgb, var(--amber) 32%, transparent); }
+/* Chọn tay tài khoản Zalo/FB để gửi (cột "Tài khoản gửi") — nhỏ gọn, không chiếm nhiều chỗ như
+   .status-sel vì đây chỉ là lựa chọn phụ (mặc định "Tự động"). */
+.row-account-sel {
+  width: 100%; max-width: 150px; padding: 6px 8px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: #fff; font-size: 12px; font-family: inherit;
+  cursor: pointer; color: var(--muted);
+}
+.row-account-sel:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
+
 /* Dropdown lý do delay — nhỏ, tông đỏ để báo "tạm hoãn". */
 .delay-reason {
   padding: 4px 8px; border: 1px dashed var(--red); border-radius: var(--radius-sm);

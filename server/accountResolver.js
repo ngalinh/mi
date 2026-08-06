@@ -8,7 +8,9 @@ const { isFacebookOrder, findChannelAccount } = require('./db');
  * Quyết định gửi đơn bằng tài khoản Zalo nào (MÔ HÌNH B: mỗi account 1 profile riêng).
  *
  * Thứ tự ưu tiên:
- *   1) opts.account truyền thẳng (người dùng chọn cụ thể trên UI) — dùng kèm opts.profile.
+ *   1) opts.account truyền thẳng (người dùng chọn cụ thể trên UI, Zalo lẫn Facebook) — dùng kèm
+ *      opts.profile. Đứng TRƯỚC cả định tuyến Facebook tự động (đơn thuộc diện auto-route FB vẫn
+ *      gửi đúng account người dùng chọn tay). Kênh gửi suy từ platform của account được chọn.
  *   1.5) opts.kenhSale (người dùng chọn Kênh sale cho lượt báo): tra bảng cấu hình (kênh sale +
  *      NV phụ trách đơn -> tài khoản Zalo, xem db.js findChannelAccount). Basso không trả field
  *      kênh sale trong dữ liệu đơn nên KHÔNG có nhánh tự nhận diện — chỉ áp dụng khi được chọn.
@@ -116,6 +118,27 @@ function resolveFacebook(order, accounts) {
 }
 
 async function resolveForOrder(order, opts = {}) {
+  // 1) Chọn cụ thể từ UI/lệnh (cột "Tài khoản gửi" / modal báo tay) — ƯU TIÊN CAO NHẤT, đứng TRƯỚC
+  // cả định tuyến FB tự động bên dưới: người dùng đã tự chọn đúng tài khoản (Zalo hoặc Facebook)
+  // muốn gửi thì dùng luôn account đó, không để logic auto-route ghi đè. Kênh gửi (Zalo/Facebook)
+  // suy từ chính account được chọn (`platform`), KHÔNG còn ép cứng về Zalo như trước — account chọn
+  // là Facebook (khớp theo fbName) thì gửi qua Facebook. Vẫn tra "Kiểu báo" (notifyTarget) của
+  // account để không bị mất kiểu báo cá nhân -> mặc định 'group'.
+  if (opts.account) {
+    let notifyTarget = 'group';
+    let channel = 'zalo';
+    try {
+      const accts = await getAccountsCached();
+      const found = (accts || []).find((a) =>
+        norm(a.saleworkName) === norm(opts.account) || norm(a.fbName) === norm(opts.account) || norm(a.name) === norm(opts.account));
+      if (found) {
+        if (found.notifyTarget === 'personal') notifyTarget = 'personal';
+        if (found.platform === 'facebook') channel = 'facebook';
+      }
+    } catch { /* không tra được -> giữ mặc định zalo/group */ }
+    return { channel, profile: opts.profile || 'default', account: opts.account, autoEnabled: true, notifyTarget, source: 'explicit' };
+  }
+
   // KÊNH gửi: mặc định Zalo. Chuyển sang Facebook khi ép qua opts.channel='facebook' (nút báo tay),
   // hoặc đơn thuộc diện định tuyến FB (SĐT khách / NV được gắn FB). Chọn account trước, mọi logic
   // Zalo bên dưới bỏ qua khi đã ở kênh FB.
@@ -124,17 +147,6 @@ async function resolveForOrder(order, opts = {}) {
     let accounts = [];
     try { accounts = await getAccountsCached(); } catch { accounts = []; }
     return resolveFacebook(order, accounts);
-  }
-  // 1) Chọn cụ thể từ UI/lệnh. Vẫn tra "Kiểu báo" (notifyTarget) của account được chọn (khớp theo
-  // tên dropdown/tên NV) để báo tay chọn account cụ thể KHÔNG bị mất kiểu báo cá nhân -> mặc định 'group'.
-  if (opts.account) {
-    let notifyTarget = 'group';
-    try {
-      const accts = await getAccountsCached();
-      const found = (accts || []).find((a) => norm(a.saleworkName) === norm(opts.account) || norm(a.name) === norm(opts.account));
-      if (found && found.notifyTarget === 'personal') notifyTarget = 'personal';
-    } catch { /* không tra được -> giữ 'group' */ }
-    return { channel: 'zalo', profile: opts.profile || 'default', account: opts.account, autoEnabled: true, notifyTarget, source: 'explicit' };
   }
 
   // 1.5) KÊNH SALE: Basso có "Kênh Sale" hiển thị trên web nhưng Partner API KHÔNG trả field này
