@@ -949,12 +949,14 @@ app.post('/api/shipping/templates/preview', (req, res) => {
   }
 });
 
-// (Pha 1) Gửi THẬT báo ship qua Zalo/Facebook cho 1 đơn. body: { order, force? }
+// (Pha 1) Gửi THẬT báo ship qua Zalo/Facebook cho 1 đơn.
+// body: { order, force?, profile?, account? } — profile/account = tài khoản Zalo/FB chọn TAY
+// trên cột "Tài khoản gửi" (Quản lý giao hàng); để trống thì accountResolver tự chọn theo NV.
 app.post('/api/shipping/send', async (req, res) => {
   try {
-    const { order, force } = req.body || {};
+    const { order, force, profile, account } = req.body || {};
     if (!order || order.id == null) return res.status(400).json({ ok: false, error: 'Thiếu order' });
-    const r = await shippingSendService.sendShippingOne(order, { actor: getActor(req), force: !!force });
+    const r = await shippingSendService.sendShippingOne(order, { actor: getActor(req), force: !!force, profile, account });
     res.json({ ok: r.ok, error: r.error || null, alreadySent: !!r.alreadySent, sentAt: r.sentAt || null });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
