@@ -84,16 +84,17 @@ const MESSAGE_BUTTON_SELECTORS = [
   'a[aria-label="Nhắn tin"]',
 ];
 // Spinner "đang tải" của FB khi khung chat CHƯA hiển thị xong nội dung (đang tải lịch sử tin
-// nhắn với khách). Đây là mẫu accessibility chung Meta dùng khắp facebook.com/messenger.com nên
-// an toàn hơn đoán selector riêng cho khung tin nhắn (khung này đổi cấu trúc DOM liên tục theo
-// A/B test của FB). Còn thấy spinner -> CHƯA được coi là khung chat đã hiển thị.
+// nhắn với khách). GIỮ làm lớp kiểm tra phụ (nếu FB đúng dùng mẫu này thì bắt được ngay), nhưng
+// KHÔNG được là điều kiện DUY NHẤT: nếu FB đổi tên/không dùng đúng các nhãn này, hàm sẽ không
+// thấy spinner nào ngay từ đầu và trả về true NGAY LẬP TỨC -> coi như không chờ gì cả. Vì vậy
+// bên dưới còn có waitDomSettled() làm lớp chờ CHÍNH, không phụ thuộc đoán đúng tên selector.
 const LOADING_SPINNER_SELECTORS = [
   '[aria-label="Loading..."]',
   '[aria-label="Đang tải..."]',
   'div[role="progressbar"]',
 ];
 
-/** Chờ tới khi KHÔNG còn spinner tải nào hiển thị -> coi như khung chat đã hiển thị xong nội dung. */
+/** Chờ tới khi KHÔNG còn spinner tải nào hiển thị (nếu có dùng đúng mẫu trên). */
 async function waitChatLoaded(page, timeout = 10000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -107,6 +108,33 @@ async function waitChatLoaded(page, timeout = 10000) {
     await page.waitForTimeout(300);
   }
   return false;
+}
+
+/**
+ * Chờ DOM của trang NGỪNG THAY ĐỔI (không còn mutation nào trong `quietMs` liên tục) — dấu hiệu
+ * Messenger đã render xong khung chat, bất kể FB đặt tên class/aria-label gì (không phải đoán
+ * selector như waitChatLoaded ở trên nên đáng tin hơn). Có `timeout` chặn trên để không treo vô
+ * hạn nếu trang có mutation nền liên tục (đồng hồ tin nhắn, trạng thái online...).
+ */
+async function waitDomSettled(page, { quietMs = 900, timeout = 8000 } = {}) {
+  try {
+    await page.evaluate(({ quietMs, timeout }) => new Promise((resolve) => {
+      let last = Date.now();
+      const start = Date.now();
+      const obs = new MutationObserver(() => { last = Date.now(); });
+      obs.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+      const tick = () => {
+        const now = Date.now();
+        if (now - last >= quietMs || now - start >= timeout) {
+          obs.disconnect();
+          resolve(null);
+          return;
+        }
+        setTimeout(tick, 100);
+      };
+      tick();
+    }), { quietMs, timeout });
+  } catch { /* trang điều hướng giữa chừng (context bị huỷ) -> bỏ qua, các bước sau vẫn còn poll lại */ }
 }
 
 /**
@@ -180,8 +208,10 @@ async function waitComposeBox(page, label) {
   if (!box) {
     throw new Error(`FB: không mở được khung soạn tin (${label}). Kiểm tra link, khách có thể đã chặn/không nhắn được, hoặc Messenger đổi giao diện.`);
   }
-  // Khung chat CÒN spinner "đang tải" -> lịch sử tin nhắn với khách chưa hiển thị xong, chưa
-  // được vội gõ/gửi dù ô soạn đã hiện (ô soạn có thể hiện trước nội dung chat vài trăm ms).
+  // Ô soạn có thể hiện ra TRƯỚC khi khung chat (lịch sử tin với khách) render xong -> chờ DOM
+  // ngừng thay đổi (lớp chờ chính, không phụ thuộc đoán tên selector) rồi mới chờ tiếp spinner
+  // (nếu FB có dùng đúng mẫu) trước khi coi là khung chat đã hiển thị xong.
+  await waitDomSettled(page, { quietMs: 900, timeout: 8000 });
   await waitChatLoaded(page, 10000);
   for (let i = 0; i < 5; i += 1) {
     const before = await box.getAttribute('aria-label').catch(() => null);
