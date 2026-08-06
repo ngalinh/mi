@@ -9,7 +9,7 @@
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { resolveForOrder, isRetryableAccountError } = require('./accountResolver');
 const { buildDeliveryMessage, REASON_LABEL } = require('./shippingNotify');
-const { syncShipStatusByCode } = require('./bassoApi');
+const { syncShipStatusByCode, getTabUsers } = require('./bassoApi');
 const {
   addReport, updateReport, getZaloName, getFbLink,
   getShippingNotified, markShippingNotified, getShippingTemplates,
@@ -29,6 +29,26 @@ function firstOrderCode(order) {
   const items = Array.isArray(order.items) ? order.items : [];
   const hit = items.find((it) => it && it.orderCode && String(it.orderCode).trim());
   return hit ? String(hit.orderCode).trim() : '';
+}
+
+/**
+ * Tra `user_id` Basso của NV duyệt theo TÊN (API "Quản lý giao hàng" chỉ trả tên `approve_user`,
+ * không có id). accountResolver.js khớp tài khoản "dùng chung" (sharedStaffIds) theo user_id —
+ * thiếu bước này thì NV được share tài khoản của người khác sẽ KHÔNG bao giờ khớp được (rơi về
+ * account "chung toàn công ty"), dù đã cấu hình share đúng ở Cài đặt. Chỉ nhận khi khớp DUY NHẤT
+ * 1 NV (giống pattern /api/me) — trùng tên nhiều NV thì bỏ qua, để accountResolver tự khớp tiếp
+ * theo TÊN như trước (không id).
+ */
+async function staffUserIdByName(name) {
+  if (!name) return undefined;
+  try {
+    const { tabUsers } = await getTabUsers();
+    const norm = (s) => String(s || '').trim().toLowerCase();
+    const hit = (tabUsers || []).filter((u) => norm(u.name) === norm(name));
+    return hit.length === 1 ? String(hit[0].user_id) : undefined;
+  } catch {
+    return undefined; // Basso lỗi -> bỏ qua, để accountResolver khớp theo tên như cũ.
+  }
 }
 
 /**
@@ -52,11 +72,17 @@ async function sendShippingOne(order, opts = {}) {
 
   const staff = firstApproveUser(order);
   const orderCode = firstOrderCode(order);
+  // user_id Basso của NV duyệt (nếu tra được) — để accountResolver khớp được tài khoản "dùng
+  // chung" (sharedStaffIds) như flow "Hàng về VN", thay vì chỉ khớp theo tên.
+  const staffUserId = await staffUserIdByName(staff);
   // KÊNH SALE THEO KHÁCH: như notifyService.js — nếu khách đã gắn sẵn kênh sale trong Danh bạ,
   // dùng làm mặc định khi lượt gửi này không tự chọn kênh sale.
   const kenhSaleExplicit = !!(opts.kenhSale && String(opts.kenhSale).trim());
   const kenhSale = opts.kenhSale || getContactKenhSale(order.phone);
-  const resolved = await resolveForOrder({ staff, orderCode, phone: order.phone }, { ...opts, kenhSale, kenhSaleExplicit });
+  const resolved = await resolveForOrder(
+    { staff, userId: staffUserId, orderCode, phone: order.phone },
+    { ...opts, kenhSale, kenhSaleExplicit },
+  );
   // NGOẠI LỆ THEO KHÁCH: "Kiểu báo riêng" trong Danh bạ ('personal'/'group') GHI ĐÈ kiểu báo mặc
   // định của NV phụ trách (vd NV báo nhóm nhưng riêng khách này không có group Zalo, phải báo cá
   // nhân). Thiếu bước này thì auto-ship luôn dùng kiểu báo của tài khoản Zalo (theo NV) bất kể
@@ -67,7 +93,7 @@ async function sendShippingOne(order, opts = {}) {
     if (override) resolved.notifyTarget = override;
   }
   // LOG CHẨN ĐOÁN: account + kiểu báo đã chọn cho đơn này (đối chiếu khi khách báo gửi nhầm nhóm/cá nhân).
-  console.log(`[shipping-notify] ${order.recipient || order.phone || '?'} | staff=${staff || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
+  console.log(`[shipping-notify] ${order.recipient || order.phone || '?'} | staff=${staff || '-'} userId=${staffUserId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
   if (resolved.skip) {
     const err = resolved.skipReason === 'fb_no_account'
       ? `Đơn cần báo qua Facebook nhưng NV ${staff || '—'} chưa có tài khoản Facebook.`
