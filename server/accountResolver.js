@@ -19,9 +19,11 @@ const { isFacebookOrder, findChannelAccount } = require('./db');
  *      - Chỉ 1 account khớp (riêng hoặc chung)  -> dùng luôn (không tra API).
  *      - Nhiều account khớp + có gắn brand -> đọc mã đơn (getArrivedItems), chọn account có
  *        `brand` khớp PREFIX mã đơn (vd đơn "BS26052646" -> account brand "BS"). Vì mỗi dòng
- *        hàng về chỉ thuộc 1 brand nên chỉ cần đọc 1 mã.
- *      - Không khớp brand nào (HƯỚNG A): nếu có account KHÔNG gắn brand thì dùng làm "catch-all",
- *        không thì BỎ QUA (skip=true) -> luồng gọi tự quyết (auto bỏ đơn, tay báo lỗi rõ ràng).
+ *        hàng về chỉ thuộc 1 brand nên chỉ cần đọc 1 mã. Các account còn lại trong rổ (khác brand
+ *        hoặc không brand) được đính kèm làm FALLBACK — xem chú thích `fallbackAccounts` bên dưới.
+ *      - Không khớp brand nào (HƯỚNG A): nếu có account KHÔNG gắn brand thì dùng làm "catch-all"
+ *        (các account còn lại làm fallback), không thì BỎ QUA (skip=true) -> luồng gọi tự quyết
+ *        (auto bỏ đơn, tay báo lỗi rõ ràng).
  *   3) Legacy ZALO_ACCOUNT_MAP (env): map NV -> tên account, gửi qua profile mặc định.
  *   4) Mặc định: profile 'default' + opts.defaultAccount.
  *
@@ -206,11 +208,22 @@ async function resolveForOrder(order, opts = {}) {
       // 1 account có thể gắn NHIỀU brand, ngăn cách bằng phẩy/khoảng trắng/;/ (vd "BS, SU").
       // Tách ra rồi khớp nếu mã đơn bắt đầu bằng BẤT KỲ brand nào -> hỗ trợ account đa-brand.
       const brandsOf = (a) => String(a.brand || '').split(/[\s,;/|]+/).map((b) => b.trim().toUpperCase()).filter(Boolean);
+      // Đính kèm các account CÒN LẠI trong rổ (khác account vừa chọn) làm FALLBACK — đối xứng với
+      // nhánh "không brand" ở trên: nếu account chọn theo brand gửi lỗi "không thấy hội thoại"
+      // (mã đơn khớp brand nhưng khách thực tế lại đang chat ở tài khoản Zalo KHÁC của NV — vd
+      // NV dùng chung nhiều account, brand không phản ánh đúng account nào giữ hội thoại), caller
+      // (notifyService/shippingSendService) sẽ tự thử lần lượt các account dự phòng thay vì bỏ cuộc.
+      const withFallback = (chosen) => {
+        const primary = { ...fromStore(chosen), orderBrand };
+        const rest = mine.filter((a) => a !== chosen);
+        if (rest.length) primary.fallbackAccounts = rest.map(fromStore);
+        return primary;
+      };
       const match = mine.find((a) => brandsOf(a).some((b) => codeU.startsWith(b)));
-      if (match) return { ...fromStore(match), orderBrand };
+      if (match) return withFallback(match);
       // Không khớp brand nào: account "chung" (không brand) làm catch-all nếu có.
       const catchAll = mine.find((a) => !a.brand);
-      if (catchAll) return { ...fromStore(catchAll), orderBrand };
+      if (catchAll) return withFallback(catchAll);
       // HƯỚNG A: NV chưa có Zalo cho brand này -> bỏ qua (không gửi nhầm brand).
       const first = mine[0];
       return {
