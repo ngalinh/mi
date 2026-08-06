@@ -2,7 +2,7 @@
 const config = require('./config');
 const { getAccountsCached } = require('./playwrightProxy');
 const { getArrivedItems } = require('./bassoApi');
-const { isFacebookOrder, findChannelAccount, getContactStaffIds } = require('./db');
+const { isFacebookOrder, findChannelAccount } = require('./db');
 
 /**
  * Quyết định gửi đơn bằng tài khoản Zalo nào (MÔ HÌNH B: mỗi account 1 profile riêng).
@@ -13,11 +13,9 @@ const { isFacebookOrder, findChannelAccount, getContactStaffIds } = require('./d
  *      NV phụ trách đơn -> tài khoản Zalo, xem db.js findChannelAccount). Basso không trả field
  *      kênh sale trong dữ liệu đơn nên KHÔNG có nhánh tự nhận diện — chỉ áp dụng khi được chọn.
  *   2) accountsStore (runner): khớp đơn theo staffId (= order.userId, hoặc account được gắn DÙNG
- *      CHUNG qua sharedStaffIds) rồi tới tên NV (= order.staff), không khớp thì tới NV phụ trách
- *      gán tay cho khách trong Danh bạ (zalo_contacts.staff_id — xem myAccounts). NV không khớp
- *      account riêng nào qua cả 3 cách (kể cả NV mới chưa từng cấu hình) -> rơi về nhóm account
- *      "CHUNG TOÀN CÔNG TY" (không gắn staffId) — áp dụng đúng luật brand bên dưới, y hệt như
- *      đang xét account của 1 NV.
+ *      CHUNG qua sharedStaffIds) rồi tới tên NV (= order.staff). NV không khớp account riêng nào
+ *      (kể cả NV mới chưa từng cấu hình) -> rơi về nhóm account "CHUNG TOÀN CÔNG TY" (không gắn
+ *      staffId) — áp dụng đúng luật brand bên dưới, y hệt như đang xét account của 1 NV.
  *      - Chỉ 1 account khớp (riêng hoặc chung)  -> dùng luôn (không tra API).
  *      - Nhiều account khớp + có gắn brand -> đọc mã đơn (getArrivedItems), chọn account có
  *        `brand` khớp PREFIX mã đơn (vd đơn "BS26052646" -> account brand "BS"). Vì mỗi dòng
@@ -36,28 +34,6 @@ const norm = (s) => String(s == null ? '' : s).trim().toLowerCase();
 
 /** true nếu account thuộc về NV `uid` — chủ (staffId) hoặc được gắn DÙNG CHUNG (sharedStaffIds). */
 const ownedBy = (a, uid) => norm(a.staffId) === uid || (a.sharedStaffIds || []).some((s) => norm(s) === uid);
-
-/**
- * Rổ account (trong `pool`, đã lọc platform từ trước) thuộc về NV phụ trách đơn `order`. Thứ tự:
- *   1) order.userId (staffId/sharedStaffIds) — dữ liệu Basso, đáng tin nhất khi có.
- *   2) order.staff (tên) — khi Basso không trả userId.
- *   3) NV phụ trách gán TAY cho khách trong Danh bạ (zalo_contacts.staff_id, hỗ trợ nhiều NV) —
- *      DỰ PHÒNG khi (1)/(2) không khớp account nào: đơn có thể do NV khác duyệt/tạo hộ, nhưng
- *      khách vẫn có 1 NV chăm sóc cố định đã gán trong Danh bạ -> ưu tiên gửi qua account NV đó
- *      thay vì rơi thẳng xuống nhóm "chung toàn công ty".
- * Trả [] nếu không khớp gì — caller tự quyết fallback tiếp theo (thường là nhóm chung).
- */
-function myAccounts(pool, order) {
-  const uid = norm(order && order.userId);
-  const staff = norm(order && order.staff);
-  let mine = uid ? pool.filter((a) => ownedBy(a, uid)) : [];
-  if (!mine.length && staff) mine = pool.filter((a) => norm(a.name) === staff);
-  if (!mine.length && order && order.phone != null) {
-    const ids = getContactStaffIds(order.phone);
-    if (ids.length) mine = pool.filter((a) => ids.some((cid) => ownedBy(a, norm(cid))));
-  }
-  return mine;
-}
 
 /** Prefix chữ cái đầu của mã đơn -> brand (vd "BS26052646" -> "BS"). '' nếu không đọc được. */
 function brandOfCode(code) {
@@ -117,9 +93,12 @@ function fromStore(acct) {
  */
 function resolveFacebook(order, accounts) {
   const fbAccounts = (accounts || []).filter((a) => a.platform === 'facebook');
-  let mine = myAccounts(fbAccounts, order);
-  // Không khớp NV (kể cả qua Danh bạ) -> chỉ dùng account FB "chung" (không gắn staffId) làm
-  // catch-all. KHÔNG lấy đại account FB của NV khác (tránh gửi nhầm từ trang FB của người khác).
+  const uid = norm(order && order.userId);
+  const staff = norm(order && order.staff);
+  let mine = uid ? fbAccounts.filter((a) => ownedBy(a, uid)) : [];
+  if (!mine.length && staff) mine = fbAccounts.filter((a) => norm(a.name) === staff);
+  // Không khớp NV -> chỉ dùng account FB "chung" (không gắn staffId) làm catch-all. KHÔNG lấy
+  // đại account FB của NV khác (tránh gửi nhầm từ trang FB của người khác).
   if (!mine.length) mine = fbAccounts.filter((a) => !norm(a.staffId));
   const acct = mine[0];
   if (!acct) {
@@ -193,12 +172,14 @@ async function resolveForOrder(order, opts = {}) {
   let accounts = [];
   try { accounts = (await getAccountsCached()).filter((a) => a.platform !== 'facebook'); } catch { accounts = []; }
   if (Array.isArray(accounts) && accounts.length && order) {
-    // Tất cả account của NV này: ưu tiên khớp theo staffId (hoặc sharedStaffIds)/tên từ đơn Basso,
-    // dự phòng NV phụ trách gán trong Danh bạ (xem myAccounts).
-    let mine = myAccounts(accounts, order);
-    // NV không có Zalo riêng (không khớp staffId/sharedStaffIds/tên/Danh bạ) -> dùng nhóm account
-    // "CHUNG TOÀN CÔNG TY" (không gắn staffId), chọn theo brand y như 1 NV bình thường. Áp dụng
-    // cho MỌI NV kể cả NV mới sau này chưa từng cấu hình riêng (đối xứng với resolveFacebook).
+    const uid = norm(order.userId);
+    const staff = norm(order.staff);
+    // Tất cả account của NV này: ưu tiên khớp theo staffId (hoặc sharedStaffIds), không có thì theo tên.
+    let mine = uid ? accounts.filter((a) => ownedBy(a, uid)) : [];
+    if (!mine.length && staff) mine = accounts.filter((a) => norm(a.name) === staff);
+    // NV không có Zalo riêng (không khớp staffId/sharedStaffIds/tên) -> dùng nhóm account "CHUNG
+    // TOÀN CÔNG TY" (không gắn staffId), chọn theo brand y như 1 NV bình thường. Áp dụng cho MỌI
+    // NV kể cả NV mới sau này chưa từng cấu hình riêng (đối xứng với resolveFacebook ở trên).
     if (!mine.length) mine = accounts.filter((a) => !norm(a.staffId));
 
     if (mine.length === 1) {

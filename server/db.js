@@ -937,19 +937,6 @@ function getContactKenhSale(phone) {
   return (r && String(r.kenh_sale || '').trim()) || '';
 }
 
-/**
- * NV phụ trách (có thể NHIỀU) đã gán tay cho 1 SĐT khách trong Danh bạ (cột staff_id, xem
- * splitStaffIds ở danhba.js) — mảng user_id, [] nếu chưa gắn. Dùng làm tín hiệu DỰ PHÒNG để
- * accountResolver khớp đúng NV/tài khoản khi đơn từ Basso không có/khớp sai NV phụ trách (vd
- * SĐT khách chăm sóc cố định bởi 1 NV nhưng đơn cụ thể lại được người khác duyệt/tạo).
- */
-function getContactStaffIds(phone) {
-  const p = normPhone(phone);
-  if (!p) return [];
-  const r = getZaloContactStmt.get({ phone: p });
-  return r && r.staff_id ? String(r.staff_id).split(',').map((s) => s.trim()).filter(Boolean) : [];
-}
-
 const getZaloContactStmt = db.prepare('SELECT * FROM zalo_contacts WHERE phone = @phone');
 const listZaloContactsStmt = db.prepare('SELECT * FROM zalo_contacts ORDER BY updated_at DESC');
 const countZaloContactsStmt = db.prepare('SELECT COUNT(*) AS n FROM zalo_contacts');
@@ -1187,6 +1174,6 @@ module.exports = {
   getFbRouting, setFbRouting, getFbLink, isFacebookOrder,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
-  getContactReportTarget, getContactKenhSale, getContactStaffIds,
+  getContactReportTarget, getContactKenhSale,
   listChannelAccounts, upsertChannelAccount, deleteChannelAccount, findChannelAccount, getOrderKenhSales,
 };
