@@ -83,6 +83,31 @@ const MESSAGE_BUTTON_SELECTORS = [
   'a[aria-label="Message"]',
   'a[aria-label="Nhắn tin"]',
 ];
+// Spinner "đang tải" của FB khi khung chat CHƯA hiển thị xong nội dung (đang tải lịch sử tin
+// nhắn với khách). Đây là mẫu accessibility chung Meta dùng khắp facebook.com/messenger.com nên
+// an toàn hơn đoán selector riêng cho khung tin nhắn (khung này đổi cấu trúc DOM liên tục theo
+// A/B test của FB). Còn thấy spinner -> CHƯA được coi là khung chat đã hiển thị.
+const LOADING_SPINNER_SELECTORS = [
+  '[aria-label="Loading..."]',
+  '[aria-label="Đang tải..."]',
+  'div[role="progressbar"]',
+];
+
+/** Chờ tới khi KHÔNG còn spinner tải nào hiển thị -> coi như khung chat đã hiển thị xong nội dung. */
+async function waitChatLoaded(page, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    let anyVisible = false;
+    for (const sel of LOADING_SPINNER_SELECTORS) {
+      // eslint-disable-next-line no-await-in-loop
+      try { if (await page.locator(sel).first().isVisible()) { anyVisible = true; break; } } catch { /* ignore */ }
+    }
+    if (!anyVisible) return true;
+    // eslint-disable-next-line no-await-in-loop
+    await page.waitForTimeout(300);
+  }
+  return false;
+}
 
 /**
  * Phân loại link FB của khách thành 2 loại để mở đúng cách:
@@ -155,6 +180,9 @@ async function waitComposeBox(page, label) {
   if (!box) {
     throw new Error(`FB: không mở được khung soạn tin (${label}). Kiểm tra link, khách có thể đã chặn/không nhắn được, hoặc Messenger đổi giao diện.`);
   }
+  // Khung chat CÒN spinner "đang tải" -> lịch sử tin nhắn với khách chưa hiển thị xong, chưa
+  // được vội gõ/gửi dù ô soạn đã hiện (ô soạn có thể hiện trước nội dung chat vài trăm ms).
+  await waitChatLoaded(page, 10000);
   for (let i = 0; i < 5; i += 1) {
     const before = await box.getAttribute('aria-label').catch(() => null);
     // eslint-disable-next-line no-await-in-loop
