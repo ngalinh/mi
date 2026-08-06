@@ -138,6 +138,40 @@ async function waitDomSettled(page, { quietMs = 900, timeout = 8000 } = {}) {
 }
 
 /**
+ * Chờ tới khi KHÔNG còn icon spinner (vòng tròn xoay "đang tải") nào đang chạy animation trên
+ * trang. QUAN TRỌNG: waitDomSettled() ở trên KHÔNG bắt được spinner này vì nó xoay bằng CSS
+ * @keyframes/transform — không tạo ra mutation DOM nào để MutationObserver thấy, dù icon vẫn
+ * đang xoay rõ trên màn hình (khung chat thực tế chưa load xong). Vì FB dùng class CSS bị mã
+ * hoá (atomic CSS) nên không đoán được tên class -> thay vào đó quét mọi <svg> có phần tử
+ * <circle>/<path> (hình dạng spinner tròn thường gặp) VÀ đang có CSS animation chạy thật sự.
+ */
+async function waitSpinnerGone(page, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line no-await-in-loop
+    const spinning = await page.evaluate(() => {
+      const isAnimating = (el) => {
+        const cs = getComputedStyle(el);
+        return !!cs.animationName && cs.animationName !== 'none';
+      };
+      const svgs = document.querySelectorAll('svg');
+      for (const svg of svgs) {
+        if (!svg.querySelector('circle, path')) continue;
+        if (isAnimating(svg)) return true;
+        for (const child of svg.querySelectorAll('*')) {
+          if (isAnimating(child)) return true;
+        }
+      }
+      return false;
+    }).catch(() => false);
+    if (!spinning) return true;
+    // eslint-disable-next-line no-await-in-loop
+    await page.waitForTimeout(300);
+  }
+  return false;
+}
+
+/**
  * Phân loại link FB của khách thành 2 loại để mở đúng cách:
  *  - 'message': link trỏ THẲNG vào 1 hội thoại Messenger có sẵn
  *      .../messages/t/<id>  |  .../messages/e2ee/t/<id>  |  m.me/<slug>  |  messenger.com/t/<id>
@@ -208,10 +242,12 @@ async function waitComposeBox(page, label) {
   if (!box) {
     throw new Error(`FB: không mở được khung soạn tin (${label}). Kiểm tra link, khách có thể đã chặn/không nhắn được, hoặc Messenger đổi giao diện.`);
   }
-  // Ô soạn có thể hiện ra TRƯỚC khi khung chat (lịch sử tin với khách) render xong -> chờ DOM
-  // ngừng thay đổi (lớp chờ chính, không phụ thuộc đoán tên selector) rồi mới chờ tiếp spinner
-  // (nếu FB có dùng đúng mẫu) trước khi coi là khung chat đã hiển thị xong.
+  // Ô soạn có thể hiện ra TRƯỚC khi khung chat (lịch sử tin với khách) render xong -> chờ theo
+  // thứ tự: DOM ngừng thay đổi -> icon spinner xoay tròn biến mất -> spinner theo selector đoán
+  // (nếu FB dùng đúng mẫu). waitSpinnerGone bắt được trường hợp icon xoay bằng CSS animation mà
+  // waitDomSettled bỏ sót (xoay CSS không tạo mutation DOM).
   await waitDomSettled(page, { quietMs: 900, timeout: 8000 });
+  await waitSpinnerGone(page, 10000);
   await waitChatLoaded(page, 10000);
   for (let i = 0; i < 5; i += 1) {
     const before = await box.getAttribute('aria-label').catch(() => null);
