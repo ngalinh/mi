@@ -10,8 +10,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 12;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 11; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 13;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 12; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -34,6 +34,9 @@
   // Ghi chú đã GÕ nhưng CHƯA bấm lưu (id -> text). Giữ lại để auto-sync/đồng bộ
   // từ Basso không xoá mất phần đang soạn dở. Xoá khỏi map ngay khi lưu thành công.
   const dirtyNotes = new Map();
+  // Tài khoản Zalo/FB người dùng CHỌN TAY cho từng dòng (id -> account key), để bấm nút Gửi ở
+  // dòng đó gửi qua đúng account đã chọn thay vì để hệ thống tự chọn theo nhân viên. '' = Tự động.
+  const rowAccounts = new Map();
 
   // Bộ lọc nâng cao (popover): khoảng ngày + loại trừ/ghi chú (client-side).
   const F = { from: '', to: '', exclude: 'all', note: 'all' };
@@ -484,12 +487,16 @@
         <button class="btn small icon-only send-zalo" data-id="${App.esc(o.id)}" data-kind="ship" ${hasShip ? '' : 'disabled'} aria-label="Báo ship" title="${hasShip ? 'Gửi báo ship qua Zalo' : 'Chưa có nội dung báo ship'}">${App.icon('truck')}</button>
       </div>
     </div>`;
+    // Chọn tay tài khoản Zalo/FB để gửi qua đúng account đó (thay vì để hệ thống tự chọn theo
+    // nhân viên) — chọn ở đây rồi bấm nút Gửi hộp/xe cạnh bên vẫn dùng account vừa chọn.
+    const rowAccountCell = `<select class="row-account-sel" data-id="${App.esc(o.id)}" title="Chọn tài khoản Zalo/FB để gửi tay — để trống thì gửi tự động theo nhân viên">${accountOptionsHtml('Tự động', rowAccounts.get(String(o.id)) || '')}</select>`;
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
       <td class="cust">${customerNameCell(o)}</td>
       <td class="center content-col">${contentCombinedCell(o)}</td>
+      <td class="center">${rowAccountCell}</td>
       <td>${actionsCell}</td>
       <td><div class="status-cell">${statusSelect(o)}${reportMetaCell(o)}</div></td>
       <td>${sendStatusCell(o)}</td>
@@ -887,27 +894,51 @@
   let modalId = null;
   let modalKind = 'hang';
 
-  // Danh sách tài khoản Zalo (để CHỌN account khi gửi thử). Nạp 1 lần; runner offline ->
-  // chỉ còn "Tự động (theo nhân viên)" như mặc định.
+  // Danh sách tài khoản Zalo + Facebook (để CHỌN account khi gửi thử/gửi tay). Nạp 1 lần; runner
+  // offline -> chỉ còn "Tự động (theo nhân viên)" như mặc định. Ưu tiên `accounts` (runner mới,
+  // gộp cả 2 kênh + có `platform`); fallback `zalo` cho runner cũ (chỉ Zalo).
   let zaloAccounts = [];
   async function loadZaloAccounts() {
     try {
       const r = await App.api('/api/accounts');
-      zaloAccounts = (r && Array.isArray(r.zalo)) ? r.zalo : [];
+      zaloAccounts = (r && Array.isArray(r.accounts)) ? r.accounts : (r && Array.isArray(r.zalo)) ? r.zalo : [];
     } catch { zaloAccounts = []; }
     populateAccountSelect();
+    populateRowAccountSelects(); // các dòng đã vẽ trước khi tải xong -> nạp lại option account
+  }
+  // Nhãn hiển thị 1 account, kèm chip kênh Zalo/FB — dùng chung cho modal + select mỗi dòng.
+  function acctOptionLabel(a) {
+    const isFb = a.platform === 'facebook';
+    const name = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName ? `${a.name} — ${a.saleworkName}` : (a.name || a.key));
+    const off = a.loggedIn === false ? ' (chưa đăng nhập)' : '';
+    return `${isFb ? 'FB' : 'Zalo'} · ${name}${off}`;
+  }
+  // value account của 1 account (khớp với opts.account bên server: saleworkName cho Zalo, fbName
+  // cho Facebook) — dùng để build override khi gửi qua account chọn tay.
+  function acctSendName(a) {
+    return (a.platform === 'facebook' ? a.fbName : a.saleworkName) || a.name || a.key;
+  }
+  function accountOptionsHtml(autoLabel, selectedKey) {
+    const opts = [`<option value="">${App.esc(autoLabel)}</option>`];
+    for (const a of zaloAccounts) {
+      const sel = String(selectedKey || '') === String(a.key) ? ' selected' : '';
+      opts.push(`<option value="${App.esc(a.key)}"${sel}>${App.esc(acctOptionLabel(a))}</option>`);
+    }
+    return opts.join('');
+  }
+  // Cập nhật LẠI option của mọi select tài khoản đang có trong bảng (không render lại cả bảng) —
+  // dùng khi danh sách account vừa tải xong sau khi các dòng đã được vẽ.
+  function populateRowAccountSelects() {
+    rowsEl.querySelectorAll('.row-account-sel').forEach((sel) => {
+      const id = sel.dataset.id;
+      sel.innerHTML = accountOptionsHtml('Tự động', rowAccounts.get(String(id)) || '');
+    });
   }
   function populateAccountSelect() {
     const sel = $('modalAccount');
     if (!sel) return;
     const cur = sel.value;
-    const opts = ['<option value="">Tự động (theo nhân viên)</option>'];
-    for (const a of zaloAccounts) {
-      const label = a.saleworkName ? `${a.name} — ${a.saleworkName}` : (a.name || a.key);
-      const off = a.loggedIn === false ? ' (chưa đăng nhập)' : '';
-      opts.push(`<option value="${App.esc(a.key)}">${App.esc(label)}${off}</option>`);
-    }
-    sel.innerHTML = opts.join('');
+    sel.innerHTML = accountOptionsHtml('Tự động (theo nhân viên)');
     sel.value = cur; // giữ lựa chọn cũ nếu populate lại
   }
 
@@ -1042,11 +1073,12 @@
 
   async function sendFromModal() {
     if (!modalId) return;
-    // Chọn account cụ thể -> ép gửi qua account đó (profile=key, account=saleworkName);
-    // để trống = Tự động (resolver tự khớp theo nhân viên như thường).
+    // Chọn account cụ thể (Zalo hoặc Facebook) -> ép gửi qua account đó (profile=key,
+    // account=saleworkName/fbName tuỳ kênh — resolver tự suy kênh từ đó); để trống = Tự động
+    // (resolver tự khớp theo nhân viên như thường).
     const acctKey = $('modalAccount').value;
     const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
-    const override = acct ? { profile: acct.key, account: acct.saleworkName } : null;
+    const override = acct ? { profile: acct.key, account: acctSendName(acct) } : null;
     const ksEl = $('modalKenhSale');
     const kenhSale = ksEl ? ksEl.value : '';
     await sendZalo(modalId, $('modalMsg').value.trim(), $('modalSend'), modalKind, override, { kenhSale });
@@ -1066,12 +1098,18 @@
     const o = byId(id);
     const who = (o && o.customerName) ? o.customerName : `đơn ${id}`;
     const kindLabel = kind === 'ship' ? 'báo ship' : 'báo hàng';
+    // Đã chọn tài khoản tay ở cột "Tài khoản gửi" -> ép gửi qua đúng account đó (Zalo hoặc
+    // Facebook — resolver tự suy kênh từ account); để trống = Tự động như cũ.
+    const acctKey = rowAccounts.get(String(id));
+    const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
+    const override = acct ? { profile: acct.key, account: acctSendName(acct) } : null;
     const reason = o ? notifiedReason(o, kind) : '';
+    const acctNote = acct ? ` — qua tài khoản ${acctOptionLabel(acct)}` : '';
     const msg = reason
-      ? `Đơn của ${who} ${reason}. Vẫn gửi lại?`
-      : `Gửi ${kindLabel} cho ${who}?`;
+      ? `Đơn của ${who} ${reason}. Vẫn gửi lại${acctNote}?`
+      : `Gửi ${kindLabel} cho ${who}${acctNote}?`;
     if (!confirm(msg)) return;
-    return sendZalo(id, undefined, sz, kind, null, { skipConfirm: true });
+    return sendZalo(id, undefined, sz, kind, override, { skipConfirm: true });
   }
 
   // override (tuỳ chọn) = { profile, account } để ép gửi qua 1 tài khoản Zalo cụ thể (gửi thử).
@@ -1848,6 +1886,12 @@
     if (other) return saveDelayReason(other.dataset.id, other.value.trim());
     const cb = e.target.closest('.excl-cb');
     if (cb) return toggleDelay(cb);
+    const ra = e.target.closest('.row-account-sel');
+    if (ra) {
+      const id = String(ra.dataset.id);
+      if (ra.value) rowAccounts.set(id, ra.value); else rowAccounts.delete(id);
+      return;
+    }
   });
 
   $('modalCancel').addEventListener('click', closeModal);
@@ -1900,6 +1944,7 @@
       <th title="Ngày nhập kho">Ngày về</th>
       <th>Khách hàng</th>
       <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
+      <th class="center" style="width:150px" title="Chọn tài khoản Zalo/FB để gửi tay qua đúng account đó — để trống thì gửi tự động theo nhân viên">Tài khoản gửi</th>
       <th class="center" style="width:120px" title="Gửi báo hàng / báo ship qua Zalo">Gửi</th>
       <th>Trạng thái</th>
       <th style="width:120px" title="Kết quả gửi tin của lượt báo gần nhất">Kết quả gửi</th>
