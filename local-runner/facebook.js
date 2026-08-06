@@ -83,6 +83,31 @@ const MESSAGE_BUTTON_SELECTORS = [
   'a[aria-label="Message"]',
   'a[aria-label="Nhắn tin"]',
 ];
+// Spinner "đang tải" của FB khi khung chat CHƯA hiển thị xong nội dung (đang tải lịch sử tin
+// nhắn với khách). Đây là mẫu accessibility chung Meta dùng khắp facebook.com/messenger.com nên
+// an toàn hơn đoán selector riêng cho khung tin nhắn (khung này đổi cấu trúc DOM liên tục theo
+// A/B test của FB). Còn thấy spinner -> CHƯA được coi là khung chat đã hiển thị.
+const LOADING_SPINNER_SELECTORS = [
+  '[aria-label="Loading..."]',
+  '[aria-label="Đang tải..."]',
+  'div[role="progressbar"]',
+];
+
+/** Chờ tới khi KHÔNG còn spinner tải nào hiển thị -> coi như khung chat đã hiển thị xong nội dung. */
+async function waitChatLoaded(page, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    let anyVisible = false;
+    for (const sel of LOADING_SPINNER_SELECTORS) {
+      // eslint-disable-next-line no-await-in-loop
+      try { if (await page.locator(sel).first().isVisible()) { anyVisible = true; break; } } catch { /* ignore */ }
+    }
+    if (!anyVisible) return true;
+    // eslint-disable-next-line no-await-in-loop
+    await page.waitForTimeout(300);
+  }
+  return false;
+}
 
 /**
  * Phân loại link FB của khách thành 2 loại để mở đúng cách:
@@ -141,11 +166,37 @@ function normalizeMessengerUrl(link) {
   return info.messengerUrl || String(link || '').trim();
 }
 
-/** Mở hội thoại rồi chờ ô soạn tin xuất hiện, ném lỗi rõ ràng nếu không thấy. */
+/**
+ * Mở hội thoại rồi chờ ô soạn tin xuất hiện VÀ ỔN ĐỊNH, ném lỗi rõ ràng nếu không thấy.
+ * Messenger là SPA: khi vừa điều hướng sang hội thoại mới, khung soạn tin của hội thoại CŨ
+ * có thể còn hiển thị vài trăm ms trước khi bị thay bằng khung của hội thoại MỚI (cùng
+ * selector nên `findVisible` vẫn coi là "thấy"). Gõ/gửi ngay lúc đó dễ gửi nhầm hội thoại
+ * hoặc gửi vào lúc trang chưa gắn xong -> Enter không "ăn" nhưng code vẫn báo đã gửi.
+ * Nên sau khi thấy khung, đợi thêm và xác nhận aria-label ("Write to <Tên>"/"Nhắn tin cho
+ * <Tên>") KHÔNG đổi qua 2 lần kiểm liên tiếp mới coi là hội thoại đã load xong.
+ */
 async function waitComposeBox(page, label) {
-  const box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
+  let box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
   if (!box) {
     throw new Error(`FB: không mở được khung soạn tin (${label}). Kiểm tra link, khách có thể đã chặn/không nhắn được, hoặc Messenger đổi giao diện.`);
+  }
+  // Khung chat CÒN spinner "đang tải" -> lịch sử tin nhắn với khách chưa hiển thị xong, chưa
+  // được vội gõ/gửi dù ô soạn đã hiện (ô soạn có thể hiện trước nội dung chat vài trăm ms).
+  await waitChatLoaded(page, 10000);
+  for (let i = 0; i < 5; i += 1) {
+    const before = await box.getAttribute('aria-label').catch(() => null);
+    // eslint-disable-next-line no-await-in-loop
+    await page.waitForTimeout(600);
+    // eslint-disable-next-line no-await-in-loop
+    const again = await findVisible(page, COMPOSE_BOX_SELECTORS, 4000);
+    if (!again) continue; // khung biến mất giữa chừng -> FB đang chuyển trang, chờ tiếp rồi thử lại
+    box = again;
+    // eslint-disable-next-line no-await-in-loop
+    const after = await box.getAttribute('aria-label').catch(() => null);
+    if (before && after && before === after) break; // ổn định 2 lần liên tiếp -> coi như load xong
+  }
+  if (!box) {
+    throw new Error(`FB: khung soạn tin biến mất trong lúc chờ hội thoại load xong (${label}).`);
   }
   await shot(page, '02-conversation');
   return box;
@@ -237,7 +288,22 @@ async function typeAndSend(page, box, message) {
   await shot(page, '03-typed');
   await page.keyboard.press('Enter'); // gửi
   await page.waitForTimeout(1500);
+
+  // Xác nhận ĐÃ GỬI: Messenger tự xoá sạch ô soạn khi gửi thành công. Nếu ô soạn vẫn còn
+  // y nguyên nội dung vừa gõ, Enter chưa "ăn" (thường do trang còn đang load/chuyển hội
+  // thoại làm mất focus) -> thử bấm lại 1 lần; vẫn còn thì KHÔNG được báo đã gửi (tránh
+  // hiện tượng báo giả trong khi khách chưa nhận được tin).
+  let remaining = (await box.innerText().catch(() => '')).trim();
+  if (remaining) {
+    await box.click().catch(() => {});
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1500);
+    remaining = (await box.innerText().catch(() => '')).trim();
+  }
   await shot(page, '04-sent');
+  if (remaining) {
+    throw new Error('FB: có vẻ CHƯA gửi được tin (ô soạn vẫn còn nội dung sau khi bấm Gửi) — có thể trang chưa load xong hội thoại khách, thử lại.');
+  }
 }
 
 /**
