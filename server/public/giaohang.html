@@ -15,7 +15,7 @@
        width:100% + min-width = TỔNG bề rộng khai báo của các cột ĐANG HIỆN (JS cập nhật mỗi lần
        ẩn/hiện) -> màn rộng thì các cột còn lại tự giãn lấp khung; màn hẹp hơn tổng đó thì
        .table-wrap tự cuộn ngang như cũ (xem styles.css), không bị bóp méo cột. */
-    .gh-table{table-layout:fixed;width:100%;min-width:1940px}
+    .gh-table{table-layout:fixed;width:100%;min-width:2090px}
     .gh-table th,.gh-table td{padding:12px 10px;word-break:break-word;overflow-wrap:anywhere;vertical-align:top}
     .table-wrap .gh-table thead th{white-space:normal;line-height:1.25}
     .gh-table td{font-size:13px}
@@ -188,6 +188,7 @@
                 <col style="width:100px"><col style="width:100px">
                 <col style="width:140px"><col style="width:120px">
                 <col style="width:120px"><col style="width:100px">
+                <col style="width:150px">
                 <col style="width:150px"><col style="width:90px">
               </colgroup>
               <thead>
@@ -206,11 +207,12 @@
                   <th>Trạng thái</th>
                   <th>Thời gian soạn hàng</th>
                   <th class="center">ND ship</th>
+                  <th class="center" title="Chọn tài khoản Zalo/FB để gửi tay — để trống thì gửi tự động theo nhân viên">Tài khoản gửi</th>
                   <th class="center"></th>
                   <th class="center">Loại trừ</th>
                 </tr>
               </thead>
-              <tbody id="rows"><tr><td colspan="16" class="empty">Đang tải...</td></tr></tbody>
+              <tbody id="rows"><tr><td colspan="17" class="empty">Đang tải...</td></tr></tbody>
             </table>
           </div>
           <div class="pager hidden" id="pager"></div>

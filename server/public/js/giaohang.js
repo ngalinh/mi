@@ -35,7 +35,52 @@
     expanded: new Set(),
     addrExpanded: new Set(), // id vận đơn đang mở rộng xem đầy đủ địa chỉ
     hiddenCols: loadHiddenCols(), // Set các key cột đang ẨN (xem "Cột hiển thị" bên dưới)
+    rowAccounts: new Map(), // tài khoản Zalo/FB CHỌN TAY cho từng vận đơn (id -> account key), cột "Tài khoản gửi"
   };
+
+  // ---- Danh sách tài khoản Zalo + Facebook (cột "Tài khoản gửi") — giống dashboard.js. Nạp 1 lần;
+  // runner offline -> chỉ còn "Tự động (theo nhân viên)" như mặc định.
+  let zaloAccounts = [];
+  async function loadZaloAccounts() {
+    try {
+      const r = await App.api('/api/accounts');
+      zaloAccounts = (r && Array.isArray(r.accounts)) ? r.accounts : (r && Array.isArray(r.zalo)) ? r.zalo : [];
+    } catch { zaloAccounts = []; }
+    populateRowAccountSelects(); // các dòng đã vẽ trước khi tải xong -> nạp lại option account
+  }
+  // Nhãn hiển thị 1 account, kèm chip kênh Zalo/FB.
+  function acctOptionLabel(a) {
+    const isFb = a.platform === 'facebook';
+    const name = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName ? `${a.name} — ${a.saleworkName}` : (a.name || a.key));
+    const off = a.loggedIn === false ? ' (chưa đăng nhập)' : '';
+    return `${isFb ? 'FB' : 'Zalo'} · ${name}${off}`;
+  }
+  // value account của 1 account (khớp với opts.account bên server: saleworkName cho Zalo, fbName
+  // cho Facebook) — dùng để build override khi gửi qua account chọn tay.
+  function acctSendName(a) {
+    return (a.platform === 'facebook' ? a.fbName : a.saleworkName) || a.name || a.key;
+  }
+  function accountOptionsHtml(selectedKey) {
+    const opts = ['<option value="">Tự động</option>'];
+    for (const a of zaloAccounts) {
+      const sel = String(selectedKey || '') === String(a.key) ? ' selected' : '';
+      opts.push(`<option value="${App.esc(a.key)}"${sel}>${App.esc(acctOptionLabel(a))}</option>`);
+    }
+    return opts.join('');
+  }
+  function populateRowAccountSelects() {
+    document.querySelectorAll('.row-account-sel').forEach((sel) => {
+      const id = sel.dataset.id;
+      sel.innerHTML = accountOptionsHtml(state.rowAccounts.get(String(id)) || '');
+    });
+  }
+  // override (tuỳ chọn) = { profile, account } cho 1 vận đơn — dùng để ép gửi qua tài khoản đã chọn
+  // tay ở cột "Tài khoản gửi"; không có lựa chọn -> undefined (gửi tự động theo nhân viên như cũ).
+  function acctOverride(id) {
+    const acctKey = state.rowAccounts.get(String(id));
+    const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
+    return acct ? { profile: acct.key, account: acctSendName(acct) } : null;
+  }
 
   // "DD/MM/YYYY HH:MM" -> ngày trên, giờ dưới (mờ) cho cột hẹp.
   function splitDateTime(s) {
@@ -140,6 +185,14 @@
       </div>`;
   }
 
+  // Chọn tay tài khoản Zalo/FB để gửi báo ship qua đúng account đó (thay vì để hệ thống tự chọn
+  // theo NV phụ trách) — chọn ở đây rồi bấm nút Xem/Gửi ở cột "ND ship" hoặc nút "Gửi Zalo" trong
+  // modal xem trước vẫn dùng account vừa chọn. Ẩn nếu đơn không thể báo ship (giống cột ND ship).
+  function renderAccountSelect(o) {
+    if (!canPreviewMsg(o)) return '<span class="muted">—</span>';
+    return `<select class="row-account-sel" data-id="${App.esc(o.id)}" title="Chọn tài khoản Zalo/FB để gửi tay — để trống thì gửi tự động theo nhân viên">${accountOptionsHtml(state.rowAccounts.get(String(o.id)) || '')}</select>`;
+  }
+
   // Tick "Loại trừ" 1 vận đơn khỏi tự động báo ship (Pha 2) — giống Delay bên Hàng về VN, KHÔNG
   // ảnh hưởng gửi tay (nút Xem/Gửi vẫn gửi bình thường). Ẩn nếu đã gửi rồi (loại trừ hết ý nghĩa).
   function renderExclude(o) {
@@ -196,7 +249,7 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="16" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="17" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
@@ -224,6 +277,7 @@
           <td>${statusBadge(o)}</td>
           <td class="gh-datecell">${splitDateTime(o.preparedAt)}</td>
           <td class="center">${renderNdShip(o)}</td>
+          <td class="center">${renderAccountSelect(o)}</td>
           <td><div class="ship-actions">${actionButtons(o)}</div></td>
           <td class="center">${renderExclude(o)}</td>
         </tr>`);
@@ -243,7 +297,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="16">
+    return `<tr class="ship-detail"><td colspan="17">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -305,7 +359,7 @@
   }
 
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="16" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="17" class="empty">Đang tải...</td></tr>';
     try {
       const params = baseParams();
       params.set('page', state.page);
@@ -319,7 +373,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="16" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="17" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -440,9 +494,10 @@
     const sendBtn = $('msgSend');
     sendBtn.disabled = true; sendBtn.textContent = 'Đang gửi...';
     try {
+      const override = acctOverride(id);
       const r = await App.api('/api/shipping/send', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: toApiOrder(o) }),
+        body: JSON.stringify({ order: toApiOrder(o), profile: override && override.profile, account: override && override.account }),
       });
       if (r.ok) {
         App.toast('✅ Đã gửi báo ship.');
@@ -464,13 +519,19 @@
   async function quickSend(id, btn) {
     const o = state.orders.find((x) => String(x.id) === String(id));
     if (!o) return;
-    if (!confirm(`Gửi báo ship qua Zalo cho ${o.recipient}?`)) return;
+    // Đã chọn tài khoản tay ở cột "Tài khoản gửi" -> ép gửi qua đúng account đó (Zalo hoặc
+    // Facebook — resolver tự suy kênh từ account); để trống = Tự động như cũ.
+    const acctKey = state.rowAccounts.get(String(id));
+    const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
+    const override = acct ? { profile: acct.key, account: acctSendName(acct) } : null;
+    const acctNote = acct ? ` — qua tài khoản ${acctOptionLabel(acct)}` : '';
+    if (!confirm(`Gửi báo ship qua Zalo cho ${o.recipient}${acctNote}?`)) return;
     const orig = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
       const r = await App.api('/api/shipping/send', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order: toApiOrder(o) }),
+        body: JSON.stringify({ order: toApiOrder(o), profile: override && override.profile, account: override && override.account }),
       });
       if (r.ok) {
         App.toast('✅ Đã gửi báo ship.');
@@ -604,10 +665,16 @@
     $('rows').addEventListener('change', (e) => {
       const cb = e.target.closest('.excl-cb');
       if (cb) toggleExclude(cb.dataset.id, cb.checked, cb);
+      const ra = e.target.closest('.row-account-sel');
+      if (ra) {
+        const id = String(ra.dataset.id);
+        if (ra.value) state.rowAccounts.set(id, ra.value); else state.rowAccounts.delete(id);
+      }
     });
   }
 
   bind();
   loadMeta();
+  loadZaloAccounts();
   load();
 })();
