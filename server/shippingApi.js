@@ -103,6 +103,11 @@ function normalizeShipping(raw) {
     carrierCode: raw.carrier_partner_code || '',
     carrierTrackingId: raw.carrier_tracking_id || '',
     items: Array.isArray(raw.items) ? raw.items.map(normalizeItem) : [],
+    // Kênh sale THẬT của vận đơn — cùng quy ước field với getArrivedVnList (xem bassoApi.js
+    // normalizeOrder). Chưa xác nhận getShippingOrderList có trả field này hay không; map lạc
+    // quan, vô hại nếu API không có (chỉ ra rỗng -> cột hiện "—" như cũ).
+    saleChannel: raw.sale_channel || '',
+    saleChannelLabel: raw.sale_channel_label || raw.sale_channel || '',
   };
 }
 

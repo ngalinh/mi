@@ -241,6 +241,10 @@ function normalizeOrder(raw) {
     note: raw.note || '',
     staff: raw.employee_name || '',
     userId: raw.user_id,
+    // Kênh sale THẬT của đơn (Basso mới bổ sung field này vào getArrivedVnList — trước đây
+    // web Basso có hiện nhưng API không trả, nay đã trả thẳng, không cần suy đoán qua NV nữa).
+    saleChannel: raw.sale_channel || '',
+    saleChannelLabel: raw.sale_channel_label || raw.sale_channel || '',
   };
 }
 

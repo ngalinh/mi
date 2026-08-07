@@ -876,11 +876,9 @@ function upsertChannelAccount({ id, kenhSale, staffId, staffName, zaloAccountKey
     const rid = parseInt(id, 10);
     if (!getChanStmt.get({ id: rid })) { const err = new Error('Không tìm thấy cấu hình để sửa'); err.code = 'BAD_INPUT'; throw err; }
     updateChanStmt.run({ id: rid, kenh_sale: kenh, staff_id: sid, staff_name: name, zalo_account_key: acctKey, now });
-    getStaffChannelMap.invalidate(); // cấu hình NV<->kênh đổi -> làm mới cache lọc "Kênh" trên UI
     return getChanStmt.get({ id: rid });
   }
   const info = insertChanStmt.run({ kenh_sale: kenh, staff_id: sid, staff_name: name, zalo_account_key: acctKey, now });
-  getStaffChannelMap.invalidate();
   return getChanStmt.get({ id: info.lastInsertRowid });
 }
 
@@ -888,9 +886,7 @@ function upsertChannelAccount({ id, kenhSale, staffId, staffName, zaloAccountKey
 function deleteChannelAccount(id) {
   const rid = parseInt(id, 10);
   if (!Number.isFinite(rid)) return false;
-  const removed = delChanStmt.run({ id: rid }).changes > 0;
-  if (removed) getStaffChannelMap.invalidate();
-  return removed;
+  return delChanStmt.run({ id: rid }).changes > 0;
 }
 
 /**
@@ -1005,51 +1001,6 @@ const getZaloMap = makeCachedMap(() => {
   for (const r of listZaloContactsStmt.all()) m.set(r.phone, r.zalo_name);
   return m;
 });
-
-/**
- * { byStaffId: Map(userId -> Set(kenhSale)), byStaffName: Map(tên NV đã lowercase/trim -> Set(kenhSale)) }
- * dựng từ bảng channel_accounts (Cài đặt → Kênh Sale) — 1 NV có thể có NHIỀU dòng cấu hình (thuộc
- * nhiều kênh sale, vd Trần vừa ở "Linh Dương" vừa ở "Basso"). Dùng cho bộ lọc "Kênh" trên Hàng về
- * VN/Quản lý giao hàng (xem getOrderKenhSales) — KHÔNG dùng để chọn tài khoản Zalo khi gửi tin
- * (accountResolver.js vẫn tra thẳng findChannelAccount + opts.kenhSale tường minh như cũ).
- */
-const getStaffChannelMap = makeCachedMap(() => {
-  const byStaffId = new Map();
-  const byStaffName = new Map();
-  for (const r of listChanStmt.all()) {
-    const kenh = String(r.kenh_sale || '').trim();
-    if (!kenh) continue;
-    const sid = r.staff_id != null ? String(r.staff_id).trim() : '';
-    if (sid) {
-      if (!byStaffId.has(sid)) byStaffId.set(sid, new Set());
-      byStaffId.get(sid).add(kenh);
-    }
-    const name = String(r.staff_name || '').trim().toLowerCase();
-    if (name) {
-      if (!byStaffName.has(name)) byStaffName.set(name, new Set());
-      byStaffName.get(name).add(kenh);
-    }
-  }
-  return { byStaffId, byStaffName };
-});
-
-/**
- * Danh sách kênh sale mà 1 đơn "thuộc về", suy theo NV phụ trách đơn (khớp userId VÀ/HOẶC tên NV
- * trong bảng channel_accounts, gộp cả 2 nguồn khớp) — vd đơn của Trần khớp cả "Linh Dương" lẫn
- * "Basso" vì Trần có mặt ở cả 2 dòng cấu hình. Chỉ dùng cho HIỂN THỊ/LỌC trên UI danh sách; việc
- * chọn tài khoản Zalo thật khi gửi tin vẫn qua findChannelAccount (opts.kenhSale tường minh).
- * @param {{staffId?:string|number, staffName?:string}} p
- * @returns {string[]}
- */
-function getOrderKenhSales({ staffId, staffName } = {}) {
-  const { byStaffId, byStaffName } = getStaffChannelMap();
-  const out = new Set();
-  const sid = staffId != null ? String(staffId).trim() : '';
-  if (sid && byStaffId.has(sid)) for (const k of byStaffId.get(sid)) out.add(k);
-  const name = staffName ? String(staffName).trim().toLowerCase() : '';
-  if (name && byStaffName.has(name)) for (const k of byStaffName.get(name)) out.add(k);
-  return [...out];
-}
 
 /** Lấy TÊN Zalo/FB đã lưu cho 1 SĐT (khớp sau chuẩn hoá). '' nếu chưa có. */
 function getZaloName(phone) {
@@ -1218,5 +1169,5 @@ module.exports = {
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
   normPhone, listZaloContacts, zaloContactsCount, getZaloName, getZaloMap, upsertZaloContact, importZaloContacts, deleteZaloContact,
   getContactReportTarget, getContactKenhSale,
-  listChannelAccounts, upsertChannelAccount, deleteChannelAccount, findChannelAccount, getOrderKenhSales,
+  listChannelAccounts, upsertChannelAccount, deleteChannelAccount, findChannelAccount,
 };
