@@ -583,6 +583,48 @@ function markShippingAutoSeen(shippingId) {
   insShippingAutoSeenStmt.run({ shipping_id: String(shippingId), seen_at: new Date().toISOString() });
 }
 
+// ---- Đếm số lần THỬ LỖI của tự động báo ship (Pha 2) — chặn vòng lặp gửi lại vô hạn ----
+// Khác `shipping_auto_seen` (đánh dấu tồn cũ lúc BẬT) — bảng này đếm số lần poller ĐÃ THỬ GỬI
+// nhưng LỖI cho 1 vận đơn CÒN MỚI (đủ điều kiện sau khi bật). Không giới hạn -> mỗi chu kỳ quét
+// (mặc định 30s) sẽ gửi lại đơn lỗi mãi mãi, dội cả Basso lẫn runner. Đạt `cfg.maxRetries` (xem
+// classify() trong shippingAutoNotify.js) -> KHÔNG tự thử nữa; NV vẫn gửi tay bình thường qua nút
+// Xem/Gửi (không đọc bảng này) — gửi tay thành công thì đơn rơi vào `shipping_notified`, bảng này
+// hết tác dụng (đã bị loại khỏi vòng quét từ bước lọc `getShippingNotified` trước cả `classify()`).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS shipping_auto_fail (
+    shipping_id     TEXT PRIMARY KEY,
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    last_attempt_at TEXT NOT NULL           -- ISO string
+  );
+`);
+const getShippingAutoFailStmt = db.prepare('SELECT attempts, last_error, last_attempt_at FROM shipping_auto_fail WHERE shipping_id = @shipping_id');
+const upsertShippingAutoFailStmt = db.prepare(`
+  INSERT INTO shipping_auto_fail (shipping_id, attempts, last_error, last_attempt_at)
+  VALUES (@shipping_id, 1, @last_error, @last_attempt_at)
+  ON CONFLICT(shipping_id) DO UPDATE SET
+    attempts = attempts + 1, last_error = @last_error, last_attempt_at = @last_attempt_at
+`);
+
+/** Số lần poller Pha 2 đã thử gửi LỖI cho vận đơn này -> {attempts, lastError, lastAttemptAt} hoặc null. */
+function getShippingAutoFail(shippingId) {
+  const row = getShippingAutoFailStmt.get({ shipping_id: String(shippingId) });
+  return row ? { attempts: row.attempts, lastError: row.last_error, lastAttemptAt: row.last_attempt_at } : null;
+}
+
+/**
+ * Ghi nhận 1 lần thử gửi LỖI cho vận đơn (tăng attempts, gọi sau mỗi lượt sendShippingOne thất
+ * bại). Trả về số attempts SAU khi tăng — dùng để phát hiện đúng thời điểm chạm trần maxRetries
+ * (cảnh báo NV đúng 1 lần, không lặp lại mỗi chu kỳ sau khi đã bỏ qua).
+ */
+function recordShippingAutoFail(shippingId, error) {
+  upsertShippingAutoFailStmt.run({
+    shipping_id: String(shippingId), last_error: error || null, last_attempt_at: new Date().toISOString(),
+  });
+  const row = getShippingAutoFailStmt.get({ shipping_id: String(shippingId) });
+  return row ? row.attempts : 1;
+}
+
 // ---- Loại trừ khỏi tự động báo ship (Pha 2) — NV tick tay, giống "Delay" bên Hàng về VN ----
 // Cờ lưu bền theo id vận đơn: khi bật, poller Pha 2 (shippingAutoNotify.js/classify()) BỎ QUA
 // đơn này (không tự gửi) cho tới khi NV bỏ tick. KHÔNG ảnh hưởng gửi tay (nút Xem/Gửi vẫn gửi
@@ -1168,6 +1210,7 @@ module.exports = {
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified, markShippingNotified,
   isShippingAutoSeen, markShippingAutoSeen,
+  getShippingAutoFail, recordShippingAutoFail,
   isShippingExcluded, setShippingExcluded,
   getShippingTemplates, setShippingTemplate,
   getSetting, setSetting,
