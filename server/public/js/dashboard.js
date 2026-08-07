@@ -217,12 +217,12 @@
     const fb = channel === 'facebook';
     return `<span class="chan-tag ${fb ? 'fb' : 'zalo'}" title="${fb ? 'Facebook' : 'Zalo'}">${fb ? 'FB' : 'Zalo'}</span>`;
   }
-  // Kênh sale mà đơn "thuộc về" (server suy theo NV phụ trách đơn, xem enrichOrders ở index.js) —
-  // 1 đơn có thể khớp nhiều kênh nên hiện mỗi kênh 1 chip, giống cột Kênh sale ở Cài đặt → Kênh Sale.
+  // Kênh sale THẬT của đơn — field Partner API trả thẳng (saleChannelLabel/saleChannel, xem
+  // bassoApi.normalizeOrder), không còn suy đoán theo NV như trước.
   function channelCell(o) {
-    const list = Array.isArray(o.kenhSaleList) ? o.kenhSaleList : [];
-    if (!list.length) return '<span class="muted">—</span>';
-    return list.map((k) => `<span class="acct-kenh">${App.esc(k)}</span>`).join(' ');
+    const label = String(o.saleChannelLabel || o.saleChannel || '').trim();
+    if (!label) return '<span class="muted">—</span>';
+    return `<span class="acct-kenh">${App.esc(label)}</span>`;
   }
   // Người gửi: 'bot' = luồng tự động; chuỗi khác = danh tính nhân viên (email do gateway forward).
   // Text dài (email) rút gọn 1 dòng bằng ellipsis, xem đầy đủ qua tooltip.

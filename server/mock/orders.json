@@ -10,6 +10,8 @@
     "status": "not_sent",
     "note": null,
     "has_zalo": true,
+    "sale_channel": "basso",
+    "sale_channel_label": "Basso",
     "content": "Dạ Khách Hàng A ơi, đơn 2 áo + 1 túi của mình đã về kho VN ngày 04/06/2026 ạ. Shop ship cho mình nhé!",
     "content_ship": "Dạ Khách Hàng A ơi, shop đã gửi đơn đi giao qua GHTK, mã vận đơn S123456 ạ 🚚",
     "items": [
@@ -28,6 +30,8 @@
     "status": "not_sent",
     "note": null,
     "has_zalo": true,
+    "sale_channel": "linh_duong",
+    "sale_channel_label": "Linh Dương",
     "content": "Dạ Khách Hàng B ơi, đơn giày của mình đã về kho VN ngày 04/06/2026 ạ.",
     "content_ship": null
   },

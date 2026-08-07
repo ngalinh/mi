@@ -20,7 +20,7 @@ const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoM
   isShippingExcluded, setShippingExcluded,
   getFbRouting, setFbRouting,
   listStaff, getStaffByEmail, upsertStaff, deleteStaff, staffCount, activeAdminCount, normEmail,
-  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, getOrderKenhSales, normPhone,
+  listZaloContacts, zaloContactsCount, upsertZaloContact, importZaloContacts, deleteZaloContact, getZaloMap, normPhone,
   listChannelAccounts, upsertChannelAccount, deleteChannelAccount } = require('./db');
 const { notifyMany, notifyOrders, requestStopBulk, isBulkRunning } = require('./notifyService');
 const { getLocalHealth, effectiveBaseUrl, forwardAccounts, invalidateAccountsCache, getAccountsCached } = require('./playwrightProxy');
@@ -413,8 +413,9 @@ app.delete('/api/staff/:email', async (req, res) => {
 });
 
 // ---- Cấu hình Kênh Sale: kênh sale + nhân viên -> tài khoản Zalo (xem accountResolver.js) ----
-// Partner API getArrivedVnList KHÔNG trả field kênh sale nên mi không tự nhận diện được — người
-// gửi CHỌN kênh sale cho lượt báo (opts.kenhSale ở /api/notify), mi tra bảng này để chọn account.
+// Partner API nay đã trả field kênh sale (sale_channel/sale_channel_label) để HIỂN THỊ, nhưng
+// không cho biết nên gửi bằng TÀI KHOẢN ZALO nào — người gửi vẫn CHỌN kênh sale cho lượt báo
+// (opts.kenhSale ở /api/notify), mi tra bảng này để chọn đúng account.
 app.get('/api/channel-accounts', (req, res) => res.json({ ok: true, channelAccounts: listChannelAccounts() }));
 
 async function saveChannelAccount(req, res) {
@@ -559,18 +560,12 @@ function enrichOrders(orders) {
       : withLast;
     const zaloName = o.phone ? zaloMap.get(normPhone(o.phone)) : '';
     const withZalo = zaloName ? { ...withDelay, zaloName } : withDelay;
-    // Kênh sale mà đơn "thuộc về", suy theo NV phụ trách đơn (userId + tên) trong bảng
-    // channel_accounts (Cài đặt → Kênh Sale) — 1 NV có thể thuộc nhiều kênh (xem getOrderKenhSales).
-    // Chỉ dùng cho bộ lọc "Kênh" hiển thị; chọn tài khoản Zalo khi gửi tin KHÔNG đổi (vẫn qua
-    // findChannelAccount + opts.kenhSale tường minh như cũ).
-    const kenhSaleList = getOrderKenhSales({ staffId: o.userId, staffName: o.staff });
-    const withKenh = kenhSaleList.length ? { ...withZalo, kenhSaleList } : withZalo;
     // Mốc "mới hôm nay": chỉ áp cho đơn ĐANG có ND ship. Chưa có mốc -> lần đầu thấy = now.
     const hasShip = o.noiDungBaoShip && String(o.noiDungBaoShip).trim();
-    if (!hasShip) return withKenh;
+    if (!hasShip) return withZalo;
     let firstSeen = shipSeenMap.get(String(key));
     if (!firstSeen) { firstSeen = nowIso; newShipKeys.push(String(key)); }
-    return { ...withKenh, shipFirstSeen: firstSeen };
+    return { ...withZalo, shipFirstSeen: firstSeen };
   });
   if (newShipKeys.length) { try { recordShipSeen(newShipKeys, nowIso); } catch (_) { /* ghi mốc lỗi -> bỏ qua, lần sau ghi lại */ } }
   return enriched;
@@ -765,20 +760,15 @@ app.get('/api/shipping/meta', async (req, res) => {
   }
 });
 
-// Gắn dấu local (mi) lên danh sách vận đơn: mốc "đã gửi báo ship" (Pha 1/2), cờ loại trừ tự động,
-// và danh sách Kênh sale mà vận đơn "thuộc về" — suy theo NV duyệt đơn (firstApproveUser, cùng logic
-// shippingSendService dùng để chọn tài khoản gửi thật) khớp trong bảng channel_accounts (Cài đặt →
-// Kênh Sale). Dùng cho bộ lọc "Kênh" trên trang Quản lý giao hàng; KHÔNG đổi cách chọn tài khoản
-// Zalo khi gửi tin (vẫn qua accountResolver + opts.kenhSale tường minh như cũ).
+// Gắn dấu local (mi) lên danh sách vận đơn: mốc "đã gửi báo ship" (Pha 1/2) + cờ loại trừ tự động.
+// Kênh sale hiển thị trên bảng lấy THẲNG từ field saleChannel/saleChannelLabel (Partner API, xem
+// shippingApi.normalizeShipping) — không còn suy đoán theo NV như trước.
 function enrichShippingOrders(orders) {
   if (!Array.isArray(orders)) return orders;
   for (const o of orders) {
     const seen = o.id != null ? getShippingNotified(o.id) : null;
     o.shipSentAt = seen ? seen.sentAt : null;
     o.autoExcluded = o.id != null ? isShippingExcluded(o.id) : false;
-    const staffName = shippingSendService.firstApproveUser(o);
-    const kenhSaleList = staffName ? getOrderKenhSales({ staffName }) : [];
-    if (kenhSaleList.length) o.kenhSaleList = kenhSaleList;
   }
   return orders;
 }

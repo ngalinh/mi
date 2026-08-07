@@ -102,13 +102,13 @@
       </div>`;
   }
 
-  // Kênh sale mà vận đơn "thuộc về" (server suy theo NV duyệt đơn, xem enrichShippingOrders ở
-  // index.js) — 1 vận đơn có thể khớp nhiều kênh nên hiện mỗi kênh 1 chip, giống cột Kênh sale
-  // ở tab Cài đặt → Kênh Sale.
+  // Kênh sale THẬT của vận đơn — field Partner API trả thẳng (saleChannelLabel/saleChannel, xem
+  // shippingApi.normalizeShipping). Chưa xác nhận getShippingOrderList có trả field này hay
+  // không (Hàng về VN thì có) — chưa có thì cột hiện "—" như cũ, không suy đoán theo NV nữa.
   function renderChannel(o) {
-    const list = Array.isArray(o.kenhSaleList) ? o.kenhSaleList : [];
-    if (!list.length) return '<span class="muted">—</span>';
-    return list.map((k) => `<span class="acct-kenh">${App.esc(k)}</span>`).join(' ');
+    const label = String(o.saleChannelLabel || o.saleChannel || '').trim();
+    if (!label) return '<span class="muted">—</span>';
+    return `<span class="acct-kenh">${App.esc(label)}</span>`;
   }
 
   const pad2 = (n) => String(n).padStart(2, '0');

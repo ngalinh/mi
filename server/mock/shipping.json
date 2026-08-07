@@ -6,7 +6,7 @@
     "status": "waiting", "shipped_time": null, "total": "1529500", "is_prepared": "1",
     "branch": "ha-noi", "waiting_prepared_at": "1785143181", "carrier_partner_code": "viettelpost",
     "carrier_tracking_id": "147928260778", "carrier_status": "100", "ship_payer": "company",
-    "shipping": "Viettel Post",
+    "shipping": "Viettel Post", "sale_channel": "linh_duong", "sale_channel_label": "Linh Dương",
     "items": [
       { "id": "255548", "order_item_id": "626017", "name": "Calvin Klein Men's Elern Slip-On Casual Sandals", "quantity": "1", "approve_user": "Thảo", "order_code": "SU09072630", "variations": [{"name":"Size","value":"12"},{"name":"Color","value":"Black"}], "item_unit_weight": "0.88", "image_path": "" }
     ]

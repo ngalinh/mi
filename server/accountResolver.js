@@ -149,9 +149,9 @@ async function resolveForOrder(order, opts = {}) {
     return resolveFacebook(order, accounts);
   }
 
-  // 1.5) KÊNH SALE: Basso có "Kênh Sale" hiển thị trên web nhưng Partner API KHÔNG trả field này
-  // (không có cách tự nhận diện kênh sale của 1 đơn) -> người gửi có thể CHỌN kênh sale cho lượt
-  // báo (opts.kenhSale, UI báo tay), hoặc nó được suy MẶC ĐỊNH từ kênh sale đã gắn cho khách trong
+  // 1.5) KÊNH SALE: Partner API đã trả field kênh sale (sale_channel/sale_channel_label) để
+  // HIỂN THỊ, nhưng không nói nên gửi bằng tài khoản Zalo nào -> người gửi có thể CHỌN kênh sale
+  // cho lượt báo (opts.kenhSale, UI báo tay), hoặc nó được suy MẶC ĐỊNH từ kênh sale đã gắn cho khách trong
   // Danh bạ (opts.kenhSaleExplicit=false — xem notifyService/shippingSendService). Có kênh sale thì
   // tra bảng cấu hình (kênh sale + NV phụ trách đơn -> tài khoản Zalo, tab Kênh Sale cũ).
   // Không tìm thấy cấu hình/account:
