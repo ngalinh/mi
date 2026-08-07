@@ -10,8 +10,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 13;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 12; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 14;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 13; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -216,6 +216,13 @@
   function chanTag(channel) {
     const fb = channel === 'facebook';
     return `<span class="chan-tag ${fb ? 'fb' : 'zalo'}" title="${fb ? 'Facebook' : 'Zalo'}">${fb ? 'FB' : 'Zalo'}</span>`;
+  }
+  // Kênh sale mà đơn "thuộc về" (server suy theo NV phụ trách đơn, xem enrichOrders ở index.js) —
+  // 1 đơn có thể khớp nhiều kênh nên hiện mỗi kênh 1 chip, giống cột Kênh sale ở Cài đặt → Kênh Sale.
+  function channelCell(o) {
+    const list = Array.isArray(o.kenhSaleList) ? o.kenhSaleList : [];
+    if (!list.length) return '<span class="muted">—</span>';
+    return list.map((k) => `<span class="acct-kenh">${App.esc(k)}</span>`).join(' ');
   }
   // Người gửi: 'bot' = luồng tự động; chuỗi khác = danh tính nhân viên (email do gateway forward).
   // Text dài (email) rút gọn 1 dòng bằng ellipsis, xem đầy đủ qua tooltip.
@@ -495,6 +502,7 @@
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
       <td class="cust">${customerNameCell(o)}</td>
+      <td>${channelCell(o)}</td>
       <td class="center content-col">${contentCombinedCell(o)}</td>
       <td class="center">${rowAccountCell}</td>
       <td>${actionsCell}</td>
@@ -1943,6 +1951,7 @@
       <th class="center" style="width:50px">STT</th>
       <th title="Ngày nhập kho">Ngày về</th>
       <th>Khách hàng</th>
+      <th title="Kênh sale mà đơn thuộc về (suy theo nhân viên phụ trách — xem Cài đặt → Kênh Sale)">Kênh sale</th>
       <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
       <th class="center" style="width:150px" title="Chọn tài khoản Zalo/FB để gửi tay qua đúng account đó — để trống thì gửi tự động theo nhân viên">Tài khoản gửi</th>
       <th class="center" style="width:120px" title="Gửi báo hàng / báo ship qua Zalo">Gửi</th>
