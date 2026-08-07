@@ -12,12 +12,13 @@
     { key: 'code', label: 'Mã vận đơn', n: 6 },
     { key: 'address', label: 'Địa chỉ', n: 7 },
     { key: 'note', label: 'Ghi chú', n: 8 },
-    { key: 'cod', label: 'Thu COD', n: 9 },
-    { key: 'shipfee', label: 'Phí ship', n: 10 },
-    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 11 },
-    { key: 'status', label: 'Trạng thái', n: 12 },
-    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 13 },
-    { key: 'ndship', label: 'ND ship', n: 14 },
+    { key: 'channel', label: 'Kênh sale', n: 9 },
+    { key: 'cod', label: 'Thu COD', n: 10 },
+    { key: 'shipfee', label: 'Phí ship', n: 11 },
+    { key: 'carrier', label: 'Đơn vị vận chuyển', n: 12 },
+    { key: 'status', label: 'Trạng thái', n: 13 },
+    { key: 'preparedAt', label: 'Thời gian soạn hàng', n: 14 },
+    { key: 'ndship', label: 'ND ship', n: 15 },
   ];
   const COLVIS_LS_KEY = 'mi.giaohang.hiddenCols';
   function loadHiddenCols() {
@@ -99,6 +100,15 @@
         <span class="gh-addr${open ? '' : ' gh-addr-clamped'}" title="${addr}">${addr}</span>
         <button type="button" class="gh-addr-toggle${open ? ' open' : ''}" data-addr="${o.id}" title="${open ? 'Thu gọn địa chỉ' : 'Xem đầy đủ địa chỉ'}">${App.icon('chevron')}</button>
       </div>`;
+  }
+
+  // Kênh sale mà vận đơn "thuộc về" (server suy theo NV duyệt đơn, xem enrichShippingOrders ở
+  // index.js) — 1 vận đơn có thể khớp nhiều kênh nên hiện mỗi kênh 1 chip, giống cột Kênh sale
+  // ở tab Cài đặt → Kênh Sale.
+  function renderChannel(o) {
+    const list = Array.isArray(o.kenhSaleList) ? o.kenhSaleList : [];
+    if (!list.length) return '<span class="muted">—</span>';
+    return list.map((k) => `<span class="acct-kenh">${App.esc(k)}</span>`).join(' ');
   }
 
   const pad2 = (n) => String(n).padStart(2, '0');
@@ -249,7 +259,7 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="17" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="18" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
@@ -271,6 +281,7 @@
           </td>
           <td>${renderAddress(o)}</td>
           <td>${App.esc(o.note) || ''}</td>
+          <td>${renderChannel(o)}</td>
           <td class="center">${App.fmtVnd(o.codAmount) || '0₫'}</td>
           <td class="center">${App.fmtVnd(o.shipFee) || '0₫'}${codPayer}</td>
           <td><span class="ship-carrier">${App.icon('truck')} ${App.esc(o.shipping)}</span></td>
@@ -297,7 +308,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="17">
+    return `<tr class="ship-detail"><td colspan="18">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -359,7 +370,7 @@
   }
 
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="17" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="18" class="empty">Đang tải...</td></tr>';
     try {
       const params = baseParams();
       params.set('page', state.page);
@@ -373,7 +384,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="17" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="18" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
