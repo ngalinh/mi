@@ -212,6 +212,23 @@ async function fetchAllShippingOrders(filters = {}) {
   return { orders: all, source };
 }
 
+/**
+ * DEBUG (read-only): raw rows THẬT từ getShippingOrderList, BỎ QUA chuẩn hoá, để soi đúng tên
+ * field thô Basso trả (vd kiểm tra có field kênh sale hay không, tên gì) — giống bassoApi.debugRawRows
+ * dùng cho "Hàng về VN". Không đổi dữ liệu.
+ * @param {{key?:string, filterDate?:string, limit?:number}} p
+ */
+async function debugRawShippingRows({ key, filterDate, limit = 5 } = {}) {
+  if (config.basso.useMock) {
+    const rows = loadMock();
+    return { source: 'mock', total: rows.length, sampleKeys: Object.keys(rows[0] || {}), rows: rows.slice(0, limit) };
+  }
+  const query = { page: 1, key: key || undefined, filter_date: filterDate || undefined };
+  const data = await partnerApiFetch('/partner/getShippingOrderList', { query });
+  const items = data.items || data.rows || [];
+  return { source: 'api', total: data.total ?? items.length, sampleKeys: Object.keys(items[0] || {}), rows: items.slice(0, limit) };
+}
+
 /** Chi tiết 1 vận đơn (kèm items). */
 async function getShippingOrder(id) {
   if (config.basso.useMock) {
@@ -269,6 +286,7 @@ module.exports = {
   getShippingMeta,
   getShippingOrders,
   fetchAllShippingOrders,
+  debugRawShippingRows,
   getShippingOrder,
   getShippingInvoice,
   updateShippingOrder,

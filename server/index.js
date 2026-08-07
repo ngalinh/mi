@@ -527,6 +527,23 @@ app.get('/api/basso/debug-list', async (req, res) => {
   }
 });
 
+// ---- DEBUG (read-only): soi raw response THẬT của getShippingOrderList (Quản lý giao hàng) ----
+// Dùng chẩn đoán "field kênh sale có ở API vận đơn không, tên gì": mở
+//   /api/basso/debug-shipping?q=<mã đơn/khách/sđt>
+// rồi xem `sampleKeys` có field kiểu sale_channel/sale_channel_label không. Không đổi dữ liệu.
+app.get('/api/basso/debug-shipping', async (req, res) => {
+  try {
+    const { q, filter_date, limit } = req.query;
+    const data = await shippingApi.debugRawShippingRows({
+      key: q, filterDate: filter_date,
+      limit: limit ? Math.min(parseInt(limit, 10) || 5, 50) : 5,
+    });
+    res.json({ ok: true, ...data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Gắn dấu local (mi) lên danh sách đơn: "bot đã tự gửi"/"đã báo tay" (autoNotified) + cờ
 // Delay/Loại trừ — để dashboard phân biệt kể cả khi không cập nhật trạng thái về web Basso.
 function enrichOrders(orders) {
