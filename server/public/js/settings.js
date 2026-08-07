@@ -691,6 +691,9 @@
     if (r && (r.sent || r.failed)) {
       const at = a.lastRun ? new Date(a.lastRun).toLocaleString('vi-VN') : '';
       parts.push(`Lần quét gần nhất${at ? ` (${App.esc(at)})` : ''}: ${r.sent || 0} ✅ / ${r.failed || 0} ❌`);
+      if (r.gaveUp) {
+        parts.push(`<span style="color:var(--danger,#d33)">⚠️ ${r.gaveUp} đơn lỗi ${a.maxRetries || 2} lần liên tiếp, đã ngừng tự thử — gửi tay ở Quản lý giao hàng.</span>`);
+      }
     } else if (r && r.skipped && r.reason) {
       parts.push(`Lượt gần nhất bỏ qua: ${App.esc(r.reason)}`);
     }

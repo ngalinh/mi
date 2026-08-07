@@ -238,6 +238,12 @@ module.exports = {
     // Chu kỳ (ms) kiểm tra đồng hồ cho lưới an toàn 17:00 — tái dùng CHUNG giờ hẹn với báo hàng
     // (đọc app_settings key 'autoNotify.scheduleTime', mặc định env AUTO_NOTIFY_SCHEDULE_TIME).
     safetyCheckMs: Math.max(parseInt(process.env.AUTO_SHIP2_SAFETY_CHECK_MS || '60000', 10) || 60000, 15000),
+    // Số lần TỐI ĐA poller tự thử gửi LỖI cho 1 vận đơn trước khi NGỪNG thử lại (giống
+    // autoNotify.maxRetries bên Hàng về VN) — không có trần thì đơn lỗi bị quét & gửi lại MỖI
+    // chu kỳ (intervalMs) MÃI MÃI, dội cả Basso lẫn local-runner vô ích. Đạt trần -> poller bỏ
+    // qua vĩnh viễn đơn đó (đếm ở db.shipping_auto_fail); NV vẫn gửi tay bình thường qua nút
+    // Xem/Gửi (gửi tay không đọc bảng đếm này).
+    maxRetries: Math.max(parseInt(process.env.AUTO_SHIP2_MAX_RETRIES || '2', 10) || 2, 1),
   },
   // Báo hàng loạt (áp dụng cho CẢ báo tay lẫn bot tự động): nghỉ một khoảng NGẪU NHIÊN giữa 2
   // khách LIÊN TIẾP để tránh gửi dồn quá nhanh -> giảm rủi ro chạm ngưỡng chống spam của Zalo/FB.
