@@ -51,6 +51,10 @@
     .ship-toptabs button.active{color:var(--primary,#e05c8a);border-bottom-color:var(--primary,#e05c8a);font-weight:600}
     /* Nút "Hôm nay" cạnh bộ lọc ngày — bật màu khi #fDate đang đúng ngày hôm nay */
     #btnToday.active{background:var(--primary-soft,#fde3ee);color:var(--primary,#e05c8a);border-color:var(--primary,#e05c8a)}
+    /* Nút "Soạn hôm nay" cạnh #fPreparedDate — cùng kiểu bật màu; #fDate bị khoá (mờ) khi đang lọc
+       theo ngày soạn hàng vì 2 bộ lọc ngày dùng đồng thời không có nghĩa (xem syncFDateDisabled). */
+    #btnPreparedToday.active{background:var(--primary-soft,#fde3ee);color:var(--primary,#e05c8a);border-color:var(--primary,#e05c8a)}
+    #fDate:disabled,#btnToday:disabled{opacity:.45;cursor:not-allowed}
     /* Panel bung sản phẩm của đơn — dạng LIST/bảng gọn đẹp */
     .ship-detail > td{background:#f7f8fb;padding:0;border-bottom:1px solid #e5e9f0}
     .ship-detail-wrap{padding:14px 20px 16px}
@@ -147,6 +151,8 @@
             </select>
             <input type="date" id="fDate" class="tb-date" title="Ngày tạo vận đơn" />
             <button class="btn secondary small" id="btnToday" type="button">Hôm nay</button>
+            <input type="date" id="fPreparedDate" class="tb-date" title="Thời gian soạn hàng — quét TOÀN BỘ vận đơn bất kể ngày tạo, khác với bộ lọc &quot;Ngày tạo vận đơn&quot;" />
+            <button class="btn secondary small" id="btnPreparedToday" type="button" title="Soạn hàng hôm nay">Soạn hôm nay</button>
             <select id="fStaff" class="tb-select" title="Nhân viên phụ trách"><option value="">Tất cả nhân viên</option></select>
             <div class="tb-filter-wrap">
               <button class="btn secondary small tb-filter" id="colVisBtn" type="button">
