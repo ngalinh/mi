@@ -122,6 +122,19 @@
   function syncTodayBtn() {
     $('btnToday').classList.toggle('active', $('fDate').value === todayStr());
   }
+  // Bật màu nút "Soạn hôm nay" khi #fPreparedDate đang đúng ngày hôm nay.
+  function syncPreparedTodayBtn() {
+    $('btnPreparedToday').classList.toggle('active', $('fPreparedDate').value === todayStr());
+  }
+  // #fPreparedDate lọc theo NGÀY SOẠN HÀNG, quét TOÀN BỘ vận đơn bất kể ngày tạo (xem
+  // loadByPreparedDate) -> dùng cùng lúc với #fDate (ngày tạo) không có nghĩa, nên khoá #fDate lại
+  // khi đang lọc theo ngày soạn hàng để khỏi gây hiểu nhầm "đang lọc cả 2".
+  function syncFDateDisabled() {
+    const active = !!$('fPreparedDate').value;
+    $('fDate').disabled = active;
+    $('btnToday').disabled = active;
+    if (active && $('fDate').value) { $('fDate').value = ''; syncTodayBtn(); }
+  }
 
   // ISO string (server) -> "HH:MM" — dùng cho dòng nhỏ dưới nút "Xem" (cột hẹp, tránh vỡ dòng).
   // Xem ngày đầy đủ qua tooltip (fmtSentAtFull) khi hover.
@@ -369,18 +382,56 @@
     return p;
   }
 
+  // "YYYY-MM-DD" (input date) -> "DD/MM/YYYY" để so khớp CHÍNH XÁC phần ngày trong o.preparedAt
+  // (server đã format sẵn "DD/MM/YYYY HH:MM", xem shippingApi.fmtUnix) -> khớp đúng những gì cột
+  // "Thời gian soạn hàng" đang hiển thị trên bảng, khỏi phải tự quy đổi timezone lại lần 2 ở client.
+  function ymdToDmy(s) {
+    const [y, m, d] = String(s || '').split('-');
+    return `${d}/${m}/${y}`;
+  }
+
+  // Lọc theo NGÀY SOẠN HÀNG: Partner API không hỗ trợ filter theo field này (chỉ filter_date lọc
+  // theo ngày TẠO vận đơn, xem docs/basso-shipping-api.md) -> phải kéo TOÀN BỘ vận đơn khớp các bộ
+  // lọc khác (ĐVVC/trạng thái/NV/tìm/chi nhánh) qua /api/shipping/all (bỏ phân trang server, bỏ
+  // qua filter_date — xem syncFDateDisabled), rồi tự lọc theo preparedAt + tự phân trang ở client.
+  // Cố ý bỏ qua filter_date vì mục đích bộ lọc này là bắt cả đơn TẠO khác ngày nhưng soạn ĐÚNG
+  // ngày đang lọc (vd tạo hôm 07 nhưng mãi hôm 10 mới soạn/giao shipper).
+  async function loadByPreparedDate(ymd) {
+    const target = ymdToDmy(ymd);
+    const p = new URLSearchParams();
+    p.set('shipping_id', $('fCarrier').value || 0);
+    p.set('status', $('fStatus').value || 'all');
+    if ($('fStaff').value) p.set('user_approve', $('fStaff').value);
+    if ($('fQ').value.trim()) p.set('key', $('fQ').value.trim());
+    if (state.branch) p.set('branch', state.branch);
+    const r = await App.api('/api/shipping/all?' + p.toString());
+    const matched = (r.orders || []).filter((o) => String(o.preparedAt || '').startsWith(target));
+    state.mock = r.source === 'mock';
+    $('mockBadge').style.display = state.mock ? '' : 'none';
+    state.total = matched.length;
+    state.pageSize = 20;
+    const start = (state.page - 1) * state.pageSize;
+    state.orders = matched.slice(start, start + state.pageSize);
+    $('countInfo').textContent = `${state.total} đơn soạn ngày ${target} · trang ${state.page}/${Math.max(1, Math.ceil(state.total / state.pageSize))}`;
+  }
+
   async function load() {
     $('rows').innerHTML = '<tr><td colspan="18" class="empty">Đang tải...</td></tr>';
     try {
-      const params = baseParams();
-      params.set('page', state.page);
-      const r = await App.api('/api/shipping?' + params.toString());
-      state.orders = r.orders || [];
-      state.total = r.total || 0;
-      state.pageSize = r.pageSize || 20;
-      state.mock = r.source === 'mock';
-      $('mockBadge').style.display = state.mock ? '' : 'none';
-      $('countInfo').textContent = `${state.total} đơn · trang ${state.page}/${Math.max(1, Math.ceil(state.total / state.pageSize))}`;
+      const preparedDate = $('fPreparedDate').value;
+      if (preparedDate) {
+        await loadByPreparedDate(preparedDate);
+      } else {
+        const params = baseParams();
+        params.set('page', state.page);
+        const r = await App.api('/api/shipping?' + params.toString());
+        state.orders = r.orders || [];
+        state.total = r.total || 0;
+        state.pageSize = r.pageSize || 20;
+        state.mock = r.source === 'mock';
+        $('mockBadge').style.display = state.mock ? '' : 'none';
+        $('countInfo').textContent = `${state.total} đơn · trang ${state.page}/${Math.max(1, Math.ceil(state.total / state.pageSize))}`;
+      }
       render();
       renderPager();
     } catch (e) {
@@ -618,6 +669,19 @@
       state.page = 1; load();
     };
     syncTodayBtn();
+    $('fPreparedDate').addEventListener('change', () => {
+      syncPreparedTodayBtn();
+      syncFDateDisabled();
+      state.page = 1; load();
+    });
+    $('btnPreparedToday').onclick = () => {
+      $('fPreparedDate').value = $('fPreparedDate').value === todayStr() ? '' : todayStr();
+      syncPreparedTodayBtn();
+      syncFDateDisabled();
+      state.page = 1; load();
+    };
+    syncPreparedTodayBtn();
+    syncFDateDisabled();
     $('branchTabs').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       state.branch = b.dataset.branch; state.page = 1;
