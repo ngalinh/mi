@@ -230,11 +230,13 @@ module.exports = {
     // giãn ra (VD số vận đơn lớn, muốn nhẹ tải API Basso hơn).
     intervalMs: Math.max(parseInt(process.env.AUTO_SHIP2_INTERVAL_MS || '30000', 10) || 30000, 30000),
     // Cửa sổ NGÀY gần đây quét lại (theo ngày tạo vận đơn) — tránh kéo cả lịch sử mỗi lượt quét.
-    // Mặc định 1 = CHỈ vận đơn tạo HÔM NAY (an toàn nhất khi mới bật: đơn cũ hơn — dù đã/chưa
-    // "Giao shipper" — coi như ngoài tầm, KHÔNG BAO GIỜ tự gửi, kể cả sau này đổi trạng thái;
-    // NV gửi tay qua nút Xem/Gửi nếu cần). Đặt AUTO_SHIP2_LOOKBACK_DAYS lớn hơn nếu muốn bắt cả
-    // đơn tạo vài ngày trước mới "Giao shipper" (đánh đổi: seed lúc bật cũng quét xa hơn).
-    lookbackDays: Math.max(parseInt(process.env.AUTO_SHIP2_LOOKBACK_DAYS ?? '1', 10) || 1, 1),
+    // Mặc định 3 = vận đơn tạo trong 3 ngày gần nhất (kể cả hôm nay) — bắt được ca soạn hàng/"Giao
+    // shipper" trễ vài ngày so với lúc tạo (vd tạo 07/08, mãi 10/08 mới soạn). Đơn cũ hơn cửa sổ
+    // này — dù đã/chưa "Giao shipper" — coi như ngoài tầm, KHÔNG BAO GIỜ tự gửi, kể cả sau này đổi
+    // trạng thái; NV gửi tay qua nút Xem/Gửi nếu cần. Đặt AUTO_SHIP2_LOOKBACK_DAYS lớn hơn nếu
+    // muốn bắt cả đơn trễ lâu hơn (đánh đổi: seed lúc bật cũng quét xa hơn, mỗi lượt quét kéo
+    // nhiều vận đơn hơn).
+    lookbackDays: Math.max(parseInt(process.env.AUTO_SHIP2_LOOKBACK_DAYS ?? '3', 10) || 3, 1),
     // Chu kỳ (ms) kiểm tra đồng hồ cho lưới an toàn 17:00 — tái dùng CHUNG giờ hẹn với báo hàng
     // (đọc app_settings key 'autoNotify.scheduleTime', mặc định env AUTO_NOTIFY_SCHEDULE_TIME).
     safetyCheckMs: Math.max(parseInt(process.env.AUTO_SHIP2_SAFETY_CHECK_MS || '60000', 10) || 60000, 15000),

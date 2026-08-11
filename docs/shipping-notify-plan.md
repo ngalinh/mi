@@ -23,15 +23,19 @@ gửi hay không, whitelist) vẫn CỐ ĐỊNH trong `server/shippingNotify.js`
 - **Viettel/GHTK (nhóm tracking):** gửi khi **bấm "Giao shipper"** (status → `exported`) — không dựa vào mã vận đơn (mã có thể tạo trước lúc bàn giao).
 - Dedup theo id vận đơn (`ship_seen`) → dù kiểm nhiều lần vẫn gửi đúng 1 lần.
 
-## Cửa sổ quét (lookbackDays) — mặc định CHỈ HÔM NAY
-> **Quyết định sản phẩm (2026-08-03):** poller + seed lúc bật chỉ quét vận đơn **TẠO trong
-> ngày hôm nay** (`AUTO_SHIP2_LOOKBACK_DAYS` mặc định `1`, tính theo giờ VN) — vận đơn tạo
-> trước hôm nay bị coi là ngoài tầm quét **vĩnh viễn**: dù đã hay chưa "Giao shipper", dù
-> sau này có đổi trạng thái, **không bao giờ** được Pha 2 tự gửi. Mục đích: khi bật tính
-> năng, các đơn cũ đã "Giao shipper" từ trước không bị gửi lại/gửi lần đầu ngoài ý muốn. NV
-> vẫn gửi tay được cho đơn cũ qua nút Xem/Gửi ở "Quản lý giao hàng". Có thể chỉnh
-> `AUTO_SHIP2_LOOKBACK_DAYS` lớn hơn nếu muốn bắt cả đơn tạo vài ngày trước mới "Giao
-> shipper" (đánh đổi: seed lúc bật cũng quét xa hơn, có thể seed nhiều đơn tồn cũ hơn).
+## Cửa sổ quét (lookbackDays) — mặc định 3 NGÀY gần nhất
+> **Quyết định sản phẩm (2026-08-03, nới lại 2026-08-11):** poller + seed lúc bật quét vận đơn
+> **TẠO trong `AUTO_SHIP2_LOOKBACK_DAYS` ngày gần nhất** (mặc định `3`, tính theo giờ VN) — vận
+> đơn tạo trước cửa sổ này bị coi là ngoài tầm quét **vĩnh viễn**: dù đã hay chưa "Giao shipper",
+> dù sau này có đổi trạng thái, **không bao giờ** được Pha 2 tự gửi. Mục đích ban đầu (khi mặc
+> định là `1` = chỉ hôm nay): khi bật tính năng, các đơn cũ đã "Giao shipper" từ trước không bị
+> gửi lại/gửi lần đầu ngoài ý muốn — vẫn giữ nguyên với `3`, chỉ seed quét xa hơn 1 chút. Đổi từ
+> `1` lên `3` vì gặp thực tế đơn tạo 1-3 ngày trước mới soạn hàng/có `shipper_link` (NV để tồn đơn
+> vài ngày mới soạn) — với cửa sổ 1 ngày cũ, các đơn này rớt khỏi tầm quét ngay hôm sau lúc tạo và
+> không bao giờ được tự gửi. NV vẫn gửi tay được cho đơn ngoài cửa sổ qua nút Xem/Gửi ở "Quản lý
+> giao hàng", hoặc dùng bộ lọc "Thời gian soạn hàng" để tìm lại. Có thể chỉnh
+> `AUTO_SHIP2_LOOKBACK_DAYS` lớn hơn nữa nếu muốn bắt cả đơn trễ lâu hơn (đánh đổi: seed lúc bật
+> cũng quét xa hơn, mỗi lượt quét kéo nhiều vận đơn hơn).
 
 ## Loại trừ tay khỏi tự động báo ship
 Cột **"Loại trừ"** ở cuối bảng "Quản lý giao hàng" (giống checkbox "Delay" bên Hàng về VN) —

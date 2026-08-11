@@ -10,11 +10,12 @@
  *
  * 2 cơ chế:
  *   1) Poller (interval cfg.shippingAuto.intervalMs) — quét vận đơn TẠO trong `lookbackDays`
- *      ngày gần đây (mặc định 1 = CHỈ hôm nay), gửi ngay khi AhaMove/Grab có shipper_link, hoặc
- *      Viettel/GHTK đã "Giao shipper". Đây là trigger DUY NHẤT đang hoạt động: Viettel/GHTK BẮT
- *      BUỘC NV bấm "Giao shipper" mới gửi. Vận đơn tạo TRƯỚC hôm nay luôn nằm ngoài cửa sổ quét
- *      — dù đã hay chưa "Giao shipper" — nên KHÔNG BAO GIỜ được tự gửi (kể cả sau này đổi trạng
- *      thái); NV gửi tay qua nút Xem/Gửi nếu cần bắt kịp đơn cũ.
+ *      ngày gần đây (mặc định 3), gửi ngay khi AhaMove/Grab có shipper_link, hoặc Viettel/GHTK đã
+ *      "Giao shipper". Đây là trigger DUY NHẤT đang hoạt động: Viettel/GHTK BẮT BUỘC NV bấm
+ *      "Giao shipper" mới gửi. Vận đơn tạo TRƯỚC cửa sổ `lookbackDays` ngày luôn nằm ngoài tầm
+ *      quét — dù đã hay chưa "Giao shipper" — nên KHÔNG BAO GIỜ được tự gửi (kể cả sau này đổi
+ *      trạng thái); NV gửi tay qua nút Xem/Gửi (hoặc tìm bằng bộ lọc "Thời gian soạn hàng") nếu
+ *      cần bắt kịp đơn ngoài cửa sổ.
  *   2) Lưới an toàn 17:00 (đơn "Đã soạn hàng" trong ngày quên bấm "Giao shipper" vẫn được báo) —
  *      code còn nguyên (runSafetyNet, route /api/shipping-auto/run-safety) nhưng trigger TỰ ĐỘNG
  *      theo giờ ĐANG TẮT (quyết định sản phẩm — xem startShippingAutoNotify()) để Viettel/GHTK
@@ -124,9 +125,10 @@ function readScheduleTime() {
  * Lấy vận đơn TẠO trong `days` ngày gần đây (mọi trạng thái), qua hết các trang. Cửa sổ ngày
  * để không kéo cả lịch sử mỗi lượt quét — vận đơn tồn quá lâu mới "Giao shipper" (hiếm) sẽ được
  * lưới an toàn 17:00 (quét theo ngày SOẠN HÀNG) hoặc gửi tay bắt kịp.
- * `days <= 1` (mặc định) = CHỈ hôm nay: dùng `start = end` để filterDate/filterDateEnd cùng quy
- * về 1 ngày dương lịch (giờ VN) — tránh trường hợp "24h trước" lỡ lấn sang ngày hôm qua tuỳ giờ
- * chạy, khiến đơn cũ hơn hôm nay bị quét/seed nhầm.
+ * `days <= 1` = CHỈ hôm nay: dùng `start = end` để filterDate/filterDateEnd cùng quy về 1 ngày
+ * dương lịch (giờ VN) — tránh trường hợp "24h trước" lỡ lấn sang ngày hôm qua tuỳ giờ chạy, khiến
+ * đơn cũ hơn hôm nay bị quét/seed nhầm. Mặc định `days=3` (`AUTO_SHIP2_LOOKBACK_DAYS`) nên nhánh
+ * này chỉ chạy khi admin tự đặt env về `1`.
  */
 async function fetchRecentOrders(days) {
   const end = new Date();
