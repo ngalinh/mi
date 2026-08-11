@@ -1273,6 +1273,17 @@ td.staff-col { white-space: nowrap; }
 }
 .modal textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(232,76,142,.18); }
 .modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+/* Nút sao chép nội dung, đặt nổi ở góc trên-phải ô soạn tin. */
+.msg-field { position: relative; }
+.msg-copy-btn {
+  position: absolute; top: 10px; right: 10px; z-index: 1;
+  width: 32px; height: 32px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong); background: #fff; color: var(--text-soft);
+  display: grid; place-items: center; cursor: pointer;
+  box-shadow: var(--shadow-sm); transition: .15s var(--ease);
+}
+.msg-copy-btn:hover { color: var(--text); border-color: var(--primary); }
+.msg-copy-btn.copied { color: #1a9e5c; border-color: #1a9e5c; }
 /* Cảnh báo "ND lệch": nội dung trên Basso đã đổi so với bản đang hiển thị (khách về thêm SP…). */
 .stale-warn {
   margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius-sm);

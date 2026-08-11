@@ -1908,6 +1908,17 @@
     if (b.dataset.stop) stopManualSend(b); else sendFromModal();
   });
   $('modalMsg').addEventListener('input', autoGrowMsg);
+  $('modalCopy').addEventListener('click', () => {
+    const t = $('modalMsg');
+    const btn = $('modalCopy');
+    const done = () => {
+      App.toast('Đã sao chép nội dung');
+      btn.classList.add('copied');
+      setTimeout(() => btn.classList.remove('copied'), 1200);
+    };
+    if (navigator.clipboard) navigator.clipboard.writeText(t.value).then(done).catch(() => { t.select(); document.execCommand('copy'); done(); });
+    else { t.select(); document.execCommand('copy'); done(); }
+  });
   $('modalBg').addEventListener('click', (e) => { if (e.target.id === 'modalBg') closeModal(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeModal(); closeBulkModal(); } });
 

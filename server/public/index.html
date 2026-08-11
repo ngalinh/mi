@@ -186,7 +186,12 @@
       <!-- Cảnh báo "ND lệch": nội dung trên Basso đã đổi so với bản đang hiển thị (vd khách về
            thêm sản phẩm) — hiện khi mở modal phát hiện lệch, đã tự cập nhật ô soạn bên dưới. -->
       <div id="modalStale" class="stale-warn" style="display:none"></div>
-      <textarea id="modalMsg"></textarea>
+      <div class="msg-field">
+        <textarea id="modalMsg"></textarea>
+        <button type="button" class="msg-copy-btn" id="modalCopy" title="Sao chép nội dung" aria-label="Sao chép nội dung">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        </button>
+      </div>
       <div class="field" style="margin-top:10px">
         <label for="modalKenhSale">Kênh sale (tuỳ chọn — xem Cài đặt → Kênh Sale)</label>
         <select id="modalKenhSale"><option value="">— Không chọn —</option></select>
