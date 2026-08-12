@@ -771,21 +771,23 @@ async function typeAndSend(page, message, imagePaths = []) {
   // ----- 2. TEXT: nhập vào textarea.msg-textarea rồi gửi -----
   // XÁC NHẬN tin đã thực sự lên hội thoại (đếm text trước/sau bấm Gửi) thay vì chỉ tin vào việc
   // bấm nút thành công: khi Zalo Basso bị lag, Playwright vẫn bấm được nút Gửi nhưng tin không
-  // lên hội thoại -> khách không nhận được dù trước đây hàm này vẫn báo "gửi thành công". Không
-  // xác nhận được sau vài lần thử -> NÉM LỖI để job này bị đánh dấu 'failed' (không phải 'success'
-  // giả), nhờ đó cơ chế "Thử lại"/tự động thử lại đã có sẵn ở tầng notifyService sẽ gửi lại đúng
-  // đơn này thay vì âm thầm bỏ sót khách.
+  // lên hội thoại -> khách không nhận được dù trước đây hàm này vẫn báo "gửi thành công".
+  //
+  // QUAN TRỌNG: nút Gửi CHỈ được bấm ĐÚNG 1 LẦN (đã ăn). Không bấm lại để "thử gửi lần nữa" khi
+  // chưa xác nhận được, vì rất có thể tin ĐÃ thực sự gửi và chỉ đang hiển thị chậm — bấm lại dễ
+  // gửi TRÙNG cho khách (còn tệ hơn triệu chứng ban đầu). Nếu bấm nút chưa hề ăn (nút chưa kịp bật/
+  // click bị nuốt) thì được thử bấm lại — lúc đó chắc chắn chưa có tin nào rời đi.
   if (message) {
     const ta = page.locator('textarea.msg-textarea, textarea[placeholder*="Nhập tin nhắn"], textarea:visible').first();
     if (!(await ta.isVisible().catch(() => false))) {
       throw new Error('KHONG_THAY_O_NHAP: Không tìm thấy ô nhập tin nhắn.');
     }
-    const maxAttempts = 3;
-    let confirmed = false;
-    for (let attempt = 1; attempt <= maxAttempts && !confirmed; attempt += 1) {
-      const beforeCount = await countTextOccurrences(page, message);
+    const beforeCount = await countTextOccurrences(page, message);
+
+    // (a) Bấm nút Gửi — được thử lại TỐI ĐA 3 lần CHỈ KHI click chưa hề ăn (chưa có tin nào gửi).
+    let clicked = false;
+    for (let attempt = 1; attempt <= 3 && !clicked; attempt += 1) {
       await ta.click({ timeout: 5000 });
-      // Điền lại mỗi lần thử: nếu lần trước gửi lỗi, Vue có thể đã tự xoá ô soạn dù tin chưa lên.
       await ta.fill(message);
       await ta.evaluate((el, val) => {
         el.value = val;
@@ -793,20 +795,21 @@ async function typeAndSend(page, message, imagePaths = []) {
         el.dispatchEvent(new Event('change', { bubbles: true }));
       }, message);
       await shot(page, `05-message-typed-a${attempt}`);
-      const clicked = await clickSend(page);
-      if (!clicked) { await sleep(page, 800); continue; }
-      // Lần đầu chờ ngắn (trường hợp thường), các lần thử lại chờ lâu hơn phòng khi mạng đang chậm.
-      confirmed = await waitForSendConfirmed(page, message, beforeCount, attempt === 1 ? 6000 : 10000);
-      if (confirmed) {
-        sentAny = true;
-      } else {
-        console.warn(`[salework] gửi text lần ${attempt}/${maxAttempts} không thấy tin xuất hiện trong hội thoại (nghi lag) — ${attempt < maxAttempts ? 'thử lại' : 'dừng, báo lỗi'}.`);
-        await shot(page, `05-message-unconfirmed-a${attempt}`);
-      }
+      clicked = await clickSend(page);
+      if (!clicked) await sleep(page, 800);
     }
+    if (!clicked) {
+      throw new Error('KHONG_GUI_DUOC: bấm nút Gửi không ăn (nút không bật được sau nhiều lần thử).');
+    }
+
+    // (b) Đã bấm Gửi 1 lần thành công -> CHỜ DÀI để xác định tin có thực sự hiển thị trong hội
+    // thoại không (nghi lag nên chờ lâu, tuyệt đối KHÔNG bấm Gửi lại ở bước này).
+    const confirmed = await waitForSendConfirmed(page, message, beforeCount, 15000);
     if (!confirmed) {
-      throw new Error('KHONG_XAC_NHAN_DA_GUI: đã bấm Gửi nhưng không thấy tin nhắn xuất hiện trong hội thoại sau khi chờ + thử lại (nghi Zalo Basso bị lag/mất kết nối). KHÔNG tính là gửi thành công — bấm "Thử lại" để gửi lại cho khách.');
+      await shot(page, '05-message-unconfirmed');
+      throw new Error('KHONG_XAC_NHAN_DA_GUI: đã bấm Gửi nhưng không thấy tin nhắn xuất hiện trong hội thoại sau khi chờ (nghi Zalo Basso bị lag/mất kết nối). KHÔNG tính là gửi thành công — bấm "Thử lại" để kiểm tra và gửi lại cho khách.');
     }
+    sentAny = true;
   }
 
   await page.waitForTimeout(1500);
