@@ -626,6 +626,32 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   await shot(page, '04-conversation-opened');
 }
 
+// Đếm số lần đoạn text xuất hiện trong toàn trang (innerText). Dùng để XÁC NHẬN tin nhắn đã
+// thực sự lên hội thoại: đếm TRƯỚC khi bấm Gửi, rồi so sánh SAU khi bấm — count không tăng
+// nghĩa là bấm Gửi "trôi" (bị lag/mất kết nối) dù Playwright thao tác click vẫn thành công.
+async function countTextOccurrences(page, text) {
+  if (!text) return 0;
+  return page.evaluate((t) => {
+    const body = document.body.innerText || '';
+    let count = 0;
+    let idx = 0;
+    while ((idx = body.indexOf(t, idx)) !== -1) { count += 1; idx += t.length; }
+    return count;
+  }, text).catch(() => 0);
+}
+
+// Chờ tới khi số lần xuất hiện của `text` trên trang TĂNG so với `beforeCount` (tin đã lên
+// hội thoại), tối đa `timeoutMs`. Trả false nếu hết giờ mà vẫn chưa thấy — nghi ngờ gửi lag/lỗi.
+async function waitForSendConfirmed(page, text, beforeCount, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const count = await countTextOccurrences(page, text);
+    if (count > beforeCount) return true;
+    await page.waitForTimeout(400);
+  }
+  return (await countTextOccurrences(page, text)) > beforeCount;
+}
+
 // Bấm nút Gửi (.send-btn) — Playwright tự chờ tới khi hết disabled (nút bật khi ô soạn có
 // nội dung/ảnh). Fallback nút theo chữ "Gửi"/"Send". Trả false nếu không bấm được.
 async function clickSend(page) {
@@ -743,20 +769,47 @@ async function typeAndSend(page, message, imagePaths = []) {
   }
 
   // ----- 2. TEXT: nhập vào textarea.msg-textarea rồi gửi -----
+  // XÁC NHẬN tin đã thực sự lên hội thoại (đếm text trước/sau bấm Gửi) thay vì chỉ tin vào việc
+  // bấm nút thành công: khi Zalo Basso bị lag, Playwright vẫn bấm được nút Gửi nhưng tin không
+  // lên hội thoại -> khách không nhận được dù trước đây hàm này vẫn báo "gửi thành công".
+  //
+  // QUAN TRỌNG: nút Gửi CHỈ được bấm ĐÚNG 1 LẦN (đã ăn). Không bấm lại để "thử gửi lần nữa" khi
+  // chưa xác nhận được, vì rất có thể tin ĐÃ thực sự gửi và chỉ đang hiển thị chậm — bấm lại dễ
+  // gửi TRÙNG cho khách (còn tệ hơn triệu chứng ban đầu). Nếu bấm nút chưa hề ăn (nút chưa kịp bật/
+  // click bị nuốt) thì được thử bấm lại — lúc đó chắc chắn chưa có tin nào rời đi.
   if (message) {
     const ta = page.locator('textarea.msg-textarea, textarea[placeholder*="Nhập tin nhắn"], textarea:visible').first();
     if (!(await ta.isVisible().catch(() => false))) {
       throw new Error('KHONG_THAY_O_NHAP: Không tìm thấy ô nhập tin nhắn.');
     }
-    await ta.click({ timeout: 5000 });
-    await ta.fill(message);
-    await ta.evaluate((el, val) => {
-      el.value = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    }, message);
-    await shot(page, '05-message-typed');
-    if (await clickSend(page)) sentAny = true;
+    const beforeCount = await countTextOccurrences(page, message);
+
+    // (a) Bấm nút Gửi — được thử lại TỐI ĐA 3 lần CHỈ KHI click chưa hề ăn (chưa có tin nào gửi).
+    let clicked = false;
+    for (let attempt = 1; attempt <= 3 && !clicked; attempt += 1) {
+      await ta.click({ timeout: 5000 });
+      await ta.fill(message);
+      await ta.evaluate((el, val) => {
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, message);
+      await shot(page, `05-message-typed-a${attempt}`);
+      clicked = await clickSend(page);
+      if (!clicked) await sleep(page, 800);
+    }
+    if (!clicked) {
+      throw new Error('KHONG_GUI_DUOC: bấm nút Gửi không ăn (nút không bật được sau nhiều lần thử).');
+    }
+
+    // (b) Đã bấm Gửi 1 lần thành công -> CHỜ DÀI để xác định tin có thực sự hiển thị trong hội
+    // thoại không (nghi lag nên chờ lâu, tuyệt đối KHÔNG bấm Gửi lại ở bước này).
+    const confirmed = await waitForSendConfirmed(page, message, beforeCount, 15000);
+    if (!confirmed) {
+      await shot(page, '05-message-unconfirmed');
+      throw new Error('KHONG_XAC_NHAN_DA_GUI: đã bấm Gửi nhưng không thấy tin nhắn xuất hiện trong hội thoại sau khi chờ (nghi Zalo Basso bị lag/mất kết nối). KHÔNG tính là gửi thành công — bấm "Thử lại" để kiểm tra và gửi lại cho khách.');
+    }
+    sentAny = true;
   }
 
   await page.waitForTimeout(1500);
