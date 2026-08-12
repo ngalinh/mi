@@ -51,16 +51,19 @@
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return { from: ymd(first), to: ymd(last) };
   }
+  // Khoảng ngày của HÔM NAY (from = to = ngày hiện tại), dùng cho preset "Hôm nay".
+  function todayRange() { const d = ymd(new Date()); return { from: d, to: d }; }
 
   // Phạm vi thời gian chọn qua selector #fScope trên toolbar (đầu ô tìm kiếm).
   // scopeDays = số ngày gần đây; 0 = "Tất cả". Khoảng ngày tường minh (F.from/F.to)
   // trong Bộ lọc nâng cao sẽ ghi đè scope.
-  // Mặc định "Tháng này": mở dashboard là thấy đúng đơn của tháng hiện tại (cửa sổ gọn
+  // Mặc định "Hôm nay": mở dashboard là thấy đúng đơn của ngày hiện tại (cửa sổ gọn nhất
   // -> Basso không phải quét cả kho lịch sử như all-time). Cần xem khác thì chọn
-  // 7/30/90 ngày, "Tất cả", hoặc "Tuỳ chỉnh" trên selector #fScope.
-  let scopeDays = 0;      // 0 = không dùng cửa sổ N ngày (đang dùng from/to theo tháng)
-  let scopeMonth = true;  // true = preset "Tháng này" đang bật (F.from/F.to = tháng hiện tại)
-  { const r = monthRange(); F.from = r.from; F.to = r.to; }
+  // "Tháng này", 7/30/90 ngày, "Tất cả", hoặc "Tuỳ chỉnh" trên selector #fScope.
+  let scopeDays = 0;      // 0 = không dùng cửa sổ N ngày (đang dùng from/to theo ngày/tháng)
+  let scopeMonth = false; // true = preset "Tháng này" đang bật (F.from/F.to = tháng hiện tại)
+  let scopeToday = true;  // true = preset "Hôm nay" đang bật (F.from/F.to = ngày hiện tại)
+  { const r = todayRange(); F.from = r.from; F.to = r.to; }
 
   // Gắn phạm vi ngày vào query gửi server: ưu tiên khoảng ngày tường minh (F.from/F.to);
   // nếu không có thì gửi ?days=scopeDays (bỏ qua khi =0 -> all-time).
@@ -81,7 +84,7 @@
     const sc = $('fScope');
     if (!sc) return;
     const want = [
-      ['month', 'Tháng này'], ['0', 'Tất cả thời gian'], ['7', '7 ngày gần đây'],
+      ['today', 'Hôm nay'], ['month', 'Tháng này'], ['0', 'Tất cả thời gian'], ['7', '7 ngày gần đây'],
       ['30', '30 ngày gần đây'], ['90', '90 ngày gần đây'], ['custom', 'Tuỳ chỉnh…'],
     ];
     const have = new Set(Array.from(sc.options, (o) => o.value));
@@ -1675,9 +1678,19 @@
   const fScopeEl = $('fScope');
   if (fScopeEl) fScopeEl.addEventListener('change', (e) => {
     const val = e.target.value;
+    if (val === 'today') {
+      // "Hôm nay" -> đặt from/to = ngày hiện tại, ẩn ô ngày inline.
+      scopeToday = true; scopeMonth = false; scopeDays = 0;
+      const r = todayRange(); F.from = r.from; F.to = r.to;
+      showCustomRange(false);
+      syncDateInputs();
+      currentPage = 1;
+      reloadScope();
+      return;
+    }
     if (val === 'month') {
       // "Tháng này" -> đặt from/to = tháng hiện tại, ẩn ô ngày inline.
-      scopeMonth = true; scopeDays = 0;
+      scopeToday = false; scopeMonth = true; scopeDays = 0;
       const r = monthRange(); F.from = r.from; F.to = r.to;
       showCustomRange(false);
       syncDateInputs();
@@ -1688,7 +1701,7 @@
     if (val === 'custom') {
       // "Tuỳ chỉnh" -> hiện 2 ô ngày NGAY tại toolbar. Mồi sẵn theo THÁNG HIỆN TẠI để
       // người dùng chỉ cần chỉnh lại nếu muốn; tải luôn theo khoảng vừa mồi.
-      scopeMonth = false; scopeDays = 0;
+      scopeToday = false; scopeMonth = false; scopeDays = 0;
       if (!F.from && !F.to) { const r = monthRange(); F.from = r.from; F.to = r.to; }
       $('fFrom').value = F.from; $('fTo').value = F.to;
       showCustomRange(true);
@@ -1698,6 +1711,7 @@
       reloadScope();
       return;
     }
+    scopeToday = false;
     scopeMonth = false;
     F.from = ''; F.to = '';               // bỏ khoảng ngày tuỳ chỉnh để preset có hiệu lực
     scopeDays = parseInt(val, 10) || 0;
@@ -1710,7 +1724,7 @@
   ['fFrom', 'fTo'].forEach((id) => {
     const el = $(id);
     if (el) el.addEventListener('change', () => {
-      scopeMonth = false;               // sửa tay -> thành khoảng tuỳ chỉnh, không còn preset tháng
+      scopeToday = false; scopeMonth = false; // sửa tay -> thành khoảng tuỳ chỉnh, không còn preset ngày/tháng
       F.from = $('fFrom').value; F.to = $('fTo').value;
       updateFilterBadge();
       currentPage = 1;
@@ -1941,11 +1955,11 @@
     $('fFrom').value = F.from || '';
     $('fTo').value = F.to || '';
     const st = $('fStatus'); if (st) { st.value = currentGroup || ''; st.dataset.v = st.value; }
-    // "Tháng này" (scopeMonth): có from/to nhưng KHÔNG phải khoảng tuỳ chỉnh -> selector
-    // hiện "Tháng này", ẩn ô ngày inline. Ngược lại có from/to = tuỳ chỉnh.
-    const custom = !scopeMonth && !!(F.from || F.to);
+    // "Hôm nay" / "Tháng này" (scopeToday/scopeMonth): có from/to nhưng KHÔNG phải khoảng
+    // tuỳ chỉnh -> selector hiện đúng preset, ẩn ô ngày inline. Ngược lại có from/to = tuỳ chỉnh.
+    const custom = !scopeToday && !scopeMonth && !!(F.from || F.to);
     const sc = $('fScope');
-    if (sc) sc.value = scopeMonth ? 'month' : (custom ? 'custom' : String(scopeDays));
+    if (sc) sc.value = scopeToday ? 'today' : (scopeMonth ? 'month' : (custom ? 'custom' : String(scopeDays)));
     showCustomRange(custom);
     updateFilterBadge();
   }
@@ -1986,12 +2000,12 @@
     const sec = Number(di);
     if (Number.isFinite(sec) && sec > 0) {
       const d = new Date(sec * 1000);
-      if (!isNaN(d.getTime())) { const s = ymd(d); F.from = s; F.to = s; scopeMonth = false; }
+      if (!isNaN(d.getTime())) { const s = ymd(d); F.from = s; F.to = s; scopeToday = false; scopeMonth = false; }
     }
   })();
 
-  // Khởi tạo: mặc định phạm vi "Tháng này" (F.from/F.to = tháng hiện tại). Sync để toolbar
-  // hiện đúng "Tháng này" (ẩn ô ngày inline) và popover phản ánh đúng khoảng đang áp dụng.
+  // Khởi tạo: mặc định phạm vi "Hôm nay" (F.from/F.to = ngày hiện tại). Sync để toolbar
+  // hiện đúng "Hôm nay" (ẩn ô ngày inline) và popover phản ánh đúng khoảng đang áp dụng.
   syncDateInputs();
 
   // Tải danh sách nhân viên không lọc status ngay khi khởi tạo -> tab staff luôn đầy đủ.
