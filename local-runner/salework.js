@@ -626,18 +626,32 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   await shot(page, '04-conversation-opened');
 }
 
-// Đếm số lần đoạn text xuất hiện trong toàn trang (innerText). Dùng để XÁC NHẬN tin nhắn đã
-// thực sự lên hội thoại: đếm TRƯỚC khi bấm Gửi, rồi so sánh SAU khi bấm — count không tăng
-// nghĩa là bấm Gửi "trôi" (bị lag/mất kết nối) dù Playwright thao tác click vẫn thành công.
+// Bỏ emoji + gộp khoảng trắng/xuống dòng liên tiếp thành 1 dấu cách trước khi so khớp. Zalo
+// Basso có thể vẽ lại emoji bằng ảnh (mất khỏi innerText) hoặc render xuống dòng/khoảng trắng
+// khác với chuỗi gốc -> so khớp NGUYÊN VĂN thất bại dù tin đã thực sự lên hội thoại, khiến
+// waitForSendConfirmed báo "chưa xác nhận" oan dù khách đã nhận được tin (đã xảy ra thực tế).
+function normalizeForMatch(text) {
+  return String(text || '')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Đếm số lần đoạn text (đã chuẩn hoá) xuất hiện trong toàn trang (innerText). Dùng để XÁC NHẬN
+// tin nhắn đã thực sự lên hội thoại: đếm TRƯỚC khi bấm Gửi, rồi so sánh SAU khi bấm — count
+// không tăng nghĩa là bấm Gửi "trôi" (bị lag/mất kết nối) dù Playwright thao tác click vẫn thành công.
 async function countTextOccurrences(page, text) {
-  if (!text) return 0;
+  const needle = normalizeForMatch(text);
+  if (!needle) return 0;
   return page.evaluate((t) => {
-    const body = document.body.innerText || '';
+    const body = (document.body.innerText || '')
+      .replace(/\p{Extended_Pictographic}/gu, '')
+      .replace(/\s+/g, ' ');
     let count = 0;
     let idx = 0;
     while ((idx = body.indexOf(t, idx)) !== -1) { count += 1; idx += t.length; }
     return count;
-  }, text).catch(() => 0);
+  }, needle).catch(() => 0);
 }
 
 // Chờ tới khi số lần xuất hiện của `text` trên trang TĂNG so với `beforeCount` (tin đã lên
