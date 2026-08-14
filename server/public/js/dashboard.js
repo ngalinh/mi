@@ -146,6 +146,7 @@
     customerName: o.customerName, phone: o.phone, note: o.note, staff: o.staff,
     warehouseDate: o.warehouseDate, orderCode: orderCodeOf(o),
     noiDungBaoHang: o.noiDungBaoHang, noiDungBaoShip: o.noiDungBaoShip,
+    saleChannel: o.saleChannel, saleChannelLabel: o.saleChannelLabel,
   });
 
   // ---------------- Tabs nhân viên ----------------

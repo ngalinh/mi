@@ -204,8 +204,8 @@ try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN report_target TEXT'); } catc
 // KÊNH SALE riêng cho khách này (vd "Basso", "ShipUS", "Linh Dương" — xem bảng channel_accounts).
 // Rỗng = không gắn, resolve tài khoản Zalo như cũ theo NV phụ trách/brand. Có giá trị -> tra
 // channel_accounts (kênh sale + NV phụ trách đơn) để lấy THẲNG tài khoản Zalo cố định của kênh
-// này, không cần người gửi chọn tay mỗi lượt báo (xem accountResolver.resolveForOrder nhánh 1.5
-// và notifyService.notifyOne dùng getContactKenhSale làm mặc định cho opts.kenhSale).
+// này, không cần người gửi chọn tay mỗi lượt báo — chỉ dùng khi đơn KHÔNG có kênh sale thật (xem
+// accountResolver.resolveForOrder nhánh 1.5, hàm này được gọi làm nguồn dự phòng cuối cùng).
 try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN kenh_sale TEXT'); } catch (_) { /* đã có cột */ }
 
 const insertStmt = db.prepare(`

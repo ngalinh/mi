@@ -510,6 +510,7 @@
       id: o.id, recipient: o.recipient, phone: o.phone, shipping: o.shipping, shippingId: o.shippingId,
       trackingCode: o.trackingCode, codAmount: o.codAmount, shipperLink: o.shipperLink,
       shipFee: o.shipFee, shipPayer: o.shipPayer,
+      saleChannel: o.saleChannel, saleChannelLabel: o.saleChannelLabel,
       items: (o.items || []).map((it) => ({ approveUser: it.approveUser, orderCode: it.orderCode })),
     };
   }

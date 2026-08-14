@@ -2,7 +2,7 @@
 const config = require('./config');
 const { getAccountsCached } = require('./playwrightProxy');
 const { getArrivedItems } = require('./bassoApi');
-const { isFacebookOrder, findChannelAccount } = require('./db');
+const { isFacebookOrder, findChannelAccount, getContactKenhSale } = require('./db');
 
 /**
  * Quyết định gửi đơn bằng tài khoản Zalo nào (MÔ HÌNH B: mỗi account 1 profile riêng).
@@ -11,9 +11,11 @@ const { isFacebookOrder, findChannelAccount } = require('./db');
  *   1) opts.account truyền thẳng (người dùng chọn cụ thể trên UI, Zalo lẫn Facebook) — dùng kèm
  *      opts.profile. Đứng TRƯỚC cả định tuyến Facebook tự động (đơn thuộc diện auto-route FB vẫn
  *      gửi đúng account người dùng chọn tay). Kênh gửi suy từ platform của account được chọn.
- *   1.5) opts.kenhSale (người dùng chọn Kênh sale cho lượt báo): tra bảng cấu hình (kênh sale +
- *      NV phụ trách đơn -> tài khoản Zalo, xem db.js findChannelAccount). Basso không trả field
- *      kênh sale trong dữ liệu đơn nên KHÔNG có nhánh tự nhận diện — chỉ áp dụng khi được chọn.
+ *   1.5) KÊNH SALE: nguồn kenhSale theo thứ tự ưu tiên — a) opts.kenhSale (người dùng CHỌN TAY cho
+ *      lượt báo này); b) kênh sale THẬT của đơn (order.saleChannelLabel/saleChannel — Partner API
+ *      trả thẳng, xem cột "Kênh sale" trên Hàng về VN/Quản lý giao hàng); c) kênh sale đã gắn riêng
+ *      cho khách trong Danh bạ (db.getContactKenhSale). Có kenhSale thì tra bảng cấu hình (kênh sale
+ *      + NV phụ trách đơn -> tài khoản Zalo, xem db.js findChannelAccount).
  *   2) accountsStore (runner): khớp đơn theo staffId (= order.userId, hoặc account được gắn DÙNG
  *      CHUNG qua sharedStaffIds) rồi tới tên NV (= order.staff). NV không khớp account riêng nào
  *      (kể cả NV mới chưa từng cấu hình) -> rơi về nhóm account "CHUNG TOÀN CÔNG TY" (không gắn
@@ -41,6 +43,12 @@ const ownedBy = (a, uid) => norm(a.staffId) === uid || (a.sharedStaffIds || []).
 function brandOfCode(code) {
   const m = /^[A-Za-z]+/.exec(String(code == null ? '' : code).trim());
   return m ? m[0].toUpperCase() : '';
+}
+
+/** Kênh sale THẬT của 1 đơn — field Partner API trả thẳng (sale_channel/sale_channel_label, đã
+ * chuẩn hoá thành saleChannelLabel/saleChannel ở bassoApi.js/shippingApi.js). '' nếu đơn không có. */
+function orderKenhSale(order) {
+  return String((order && (order.saleChannelLabel || order.saleChannel)) || '').trim();
 }
 
 /** Lấy 1 mã đơn (orderCode) của dòng hàng về — ưu tiên client gửi sẵn, không thì tra Basso (cache). */
@@ -149,20 +157,25 @@ async function resolveForOrder(order, opts = {}) {
     return resolveFacebook(order, accounts);
   }
 
-  // 1.5) KÊNH SALE: Partner API đã trả field kênh sale (sale_channel/sale_channel_label) để
-  // HIỂN THỊ, nhưng không nói nên gửi bằng tài khoản Zalo nào -> người gửi có thể CHỌN kênh sale
-  // cho lượt báo (opts.kenhSale, UI báo tay), hoặc nó được suy MẶC ĐỊNH từ kênh sale đã gắn cho khách trong
-  // Danh bạ (opts.kenhSaleExplicit=false — xem notifyService/shippingSendService). Có kênh sale thì
-  // tra bảng cấu hình (kênh sale + NV phụ trách đơn -> tài khoản Zalo, tab Kênh Sale cũ).
+  // 1.5) KÊNH SALE: nguồn kenhSale theo thứ tự ưu tiên — a) opts.kenhSale nếu người gửi TƯỜNG MINH
+  // chọn cho lượt báo này (UI báo tay); không thì SUY MẶC ĐỊNH (kenhSaleExplicit=false) từ b) kênh
+  // sale THẬT của đơn (order.saleChannelLabel/saleChannel — Partner API trả thẳng, xem cột "Kênh
+  // sale" trên Hàng về VN/Quản lý giao hàng), rồi c) kênh sale đã gắn riêng cho khách trong Danh bạ
+  // (db.getContactKenhSale — khách đặc thù không theo kênh sale thật của đơn). Có kenhSale thì tra
+  // bảng cấu hình (kênh sale + NV phụ trách đơn -> tài khoản Zalo, tab Kênh Sale).
   // Không tìm thấy cấu hình/account:
-  //   - opts.kenhSaleExplicit=true (người dùng TƯỜNG MINH chọn) -> BÁO RÕ (skip), không âm thầm rơi
+  //   - kenhSaleExplicit=true (người dùng TƯỜNG MINH chọn) -> BÁO RÕ (skip), không âm thầm rơi
   //     về nhánh khác kẻo gửi nhầm tài khoản ngoài ý muốn.
-  //   - opts.kenhSaleExplicit=false (chỉ là MẶC ĐỊNH suy từ Danh bạ) -> ÂM THẦM rơi tiếp xuống nhánh
-  //     accountsStore bình thường bên dưới, KHÔNG skip — khách gắn kênh sale trong Danh bạ mà kênh đó
-  //     chưa/không còn cấu hình (vd tab Kênh Sale đã bỏ) không được vì thế mà mất báo hàng.
-  if (opts.kenhSale && String(opts.kenhSale).trim()) {
+  //   - kenhSaleExplicit=false (chỉ là MẶC ĐỊNH suy từ đơn/Danh bạ) -> ÂM THẦM rơi tiếp xuống nhánh
+  //     accountsStore bình thường bên dưới, KHÔNG skip — đơn/khách có kênh sale mà kênh đó chưa/không
+  //     còn cấu hình (vd tab Kênh Sale chưa thêm) không được vì thế mà mất báo hàng.
+  const kenhSaleExplicit = !!String(opts.kenhSale || '').trim();
+  const kenhSale = String(opts.kenhSale || '').trim()
+    || orderKenhSale(order)
+    || getContactKenhSale(order && order.phone);
+  if (kenhSale) {
     const row = findChannelAccount({
-      kenhSale: opts.kenhSale,
+      kenhSale,
       staffId: order && order.userId,
       staffName: order && order.staff,
     });
@@ -172,7 +185,7 @@ async function resolveForOrder(order, opts = {}) {
       const resolved = fromChannelAccount(row, accounts);
       if (resolved) return resolved;
     }
-    if (opts.kenhSaleExplicit) {
+    if (kenhSaleExplicit) {
       return {
         channel: 'zalo', profile: null, account: undefined, autoEnabled: true,
         source: 'channel', skip: true, skipReason: 'channel_no_account',
