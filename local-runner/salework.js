@@ -631,13 +631,19 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
 // nghĩa là bấm Gửi "trôi" (bị lag/mất kết nối) dù Playwright thao tác click vẫn thành công.
 async function countTextOccurrences(page, text) {
   if (!text) return 0;
-  return page.evaluate((t) => {
-    const body = document.body.innerText || '';
+  // Chuẩn hoá NFC cả 2 vế trước khi so khớp: tin nhắn có dấu tiếng Việt có thể tới dưới dạng
+  // NFD (tổ hợp dấu rời) từ nguồn dữ liệu upstream, trong khi Zalo Basso render/lưu NFC — 2
+  // chuỗi NHÌN GIỐNG HỆT nhau nhưng indexOf() không khớp -> báo nhầm KHONG_XAC_NHAN_DA_GUI dù
+  // tin đã thực sự hiển thị trong hội thoại (giống norm()/ACC_NORM() ở trên cùng file).
+  const t = norm(text);
+  if (!t) return 0;
+  return page.evaluate((needle) => {
+    const body = (document.body.innerText || '').normalize('NFC');
     let count = 0;
     let idx = 0;
-    while ((idx = body.indexOf(t, idx)) !== -1) { count += 1; idx += t.length; }
+    while ((idx = body.indexOf(needle, idx)) !== -1) { count += 1; idx += needle.length; }
     return count;
-  }, text).catch(() => 0);
+  }, t).catch(() => 0);
 }
 
 // Chờ tới khi số lần xuất hiện của `text` trên trang TĂNG so với `beforeCount` (tin đã lên
