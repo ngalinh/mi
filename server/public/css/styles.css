@@ -957,6 +957,11 @@ td.staff-col { white-space: nowrap; }
   border: 1px dashed var(--green);
 }
 
+/* Cột Nhân viên ẩn mặc định (Kênh sale giờ là cách chính chọn account) — bấm "Hiện cột Nhân
+   viên" để bật lại khi cần tra cứu/cấu hình theo NV. */
+#zaloTable.hide-emp-col .th-emp,
+#zaloTable.hide-emp-col .acct-emp { display: none; }
+
 /* Nhãn kênh */
 .chan {
   display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;

@@ -86,20 +86,23 @@
         <div class="card hidden" data-panel-content="zalo" style="margin-top:14px;">
           <div class="card-header">
             <h2>Tài khoản nhân viên</h2>
-            <button class="btn small" id="addZaloBtn">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-              Thêm tài khoản
-            </button>
+            <div style="display:flex; gap:8px;">
+              <button class="btn small secondary" id="toggleEmpCol" title="Cột Nhân viên chỉ còn cần khi tài khoản KHÔNG dùng Kênh sale — ẩn bớt cho gọn, bấm để hiện lại">Hiện cột Nhân viên</button>
+              <button class="btn small" id="addZaloBtn">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Thêm tài khoản
+              </button>
+            </div>
           </div>
           <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Điền <strong>Kênh sale</strong> khi sửa tài khoản (đúng tên kênh sale trên Basso, áp dụng cho cả <strong>Zalo</strong> lẫn <strong>Facebook</strong>) để đơn thuộc kênh đó tự gửi bằng đúng tài khoản này — không cần biết NV phụ trách đơn. Để trống thì tự suy theo kênh sale đã cấu hình cho tài khoản khác của cùng nhân viên (viền đứt = suy ra, không phải gõ tay). Bảng tự gom các tài khoản cùng kênh sale lại gần nhau cho gọn mắt. Mục <strong>"Nâng cao"</strong> trong popup sửa tài khoản (Staff ID/Brand/Dùng chung) chỉ cần khi đơn KHÔNG xác định được kênh sale — hệ thống sẽ rơi về xét theo NV phụ trách như trước. Khách cần báo qua Facebook được bật ở trang <strong>Danh bạ</strong> (theo SĐT + link).</div>
           <div class="table-wrap">
-            <table>
+            <table id="zaloTable" class="hide-emp-col">
               <thead>
                 <tr>
                   <th>Tài khoản</th>
-                  <th style="min-width:140px">Nhân viên</th>
-                  <th>Kênh</th>
                   <th>Kênh sale</th>
+                  <th>Kênh</th>
+                  <th class="th-emp" style="min-width:140px">Nhân viên</th>
                   <th>Trạng thái</th>
                   <th>Tự động</th>
                   <th>Đích báo</th>

@@ -275,9 +275,9 @@
     const need = a.connection !== 'connected';
     return `<tr class="acct-row ${healthClass(a)}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
       <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`}</td>
-      <td class="acct-emp">${empCell(a)}</td>
-      <td>${chanTag(a.platform)}</td>
       <td class="acct-kenh-cell">${kenhSaleCell(a)}</td>
+      <td>${chanTag(a.platform)}</td>
+      <td class="acct-emp">${empCell(a)}</td>
       <td>${connBadge(a.connection)}</td>
       <td>${autoTgl(a)}</td>
       <td>${isFb ? '<span class="muted">—</span>' : targetTgl(a)}</td>
@@ -505,6 +505,22 @@
     }
     return undefined;
   }
+
+  // Ẩn/hiện cột Nhân viên trong bảng Tài khoản (Kênh sale giờ là cách chính chọn account — xem
+  // cột Kênh sale). Nhớ lựa chọn qua localStorage để không phải bấm lại mỗi lần vào Cài đặt.
+  const EMP_COL_LS_KEY = 'mi.settings.showEmpCol';
+  const zaloTable = $('zaloTable');
+  const toggleEmpColBtn = $('toggleEmpCol');
+  function applyEmpColVis(show) {
+    zaloTable.classList.toggle('hide-emp-col', !show);
+    toggleEmpColBtn.textContent = show ? 'Ẩn cột Nhân viên' : 'Hiện cột Nhân viên';
+  }
+  applyEmpColVis(localStorage.getItem(EMP_COL_LS_KEY) === '1');
+  toggleEmpColBtn.addEventListener('click', () => {
+    const show = zaloTable.classList.contains('hide-emp-col');
+    applyEmpColVis(show);
+    try { localStorage.setItem(EMP_COL_LS_KEY, show ? '1' : '0'); } catch (_) { /* private mode -> bỏ qua */ }
+  });
 
   $('addZaloBtn').addEventListener('click', () => openZalo(null, {}));
   zaPlatform.addEventListener('change', () => applyPlatformFields(zaPlatform.value));
