@@ -677,6 +677,7 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
       .sort((a, b) => (rank.get(a.profileKey) - rank.get(b.profileKey)) || (a._i - b._i));
     summary.candidates = ordered.length;
 
+    const gaveUp = []; // đơn VỪA chạm trần maxRetries ở lượt này -> cảnh báo Zalo, kèm lý do lỗi
     for (let i = 0; i < ordered.length; i += 1) {
       const { order, profileKey } = ordered[i];
       // Giữ context nếu đơn kế cùng profile (đã gom) -> tái dùng browser, đóng ở đơn cuối mỗi profile.
@@ -720,8 +721,14 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
         break;
       } else {
         // Lỗi cấp-đơn (runner vẫn sống): tính 1 lượt thử, ĐI TIẾP đơn khác. Hết maxRetries thì thôi.
-        recordAutoNotified(key, 'failed', (prev ? prev.attempts : 0) + 1);
+        const attempts = (prev ? prev.attempts : 0) + 1;
+        recordAutoNotified(key, 'failed', attempts);
         summary.failed += 1;
+        // VỪA chạm trần maxRetries ở lượt NÀY (không cảnh báo lặp lại ở các lượt sau — classify()
+        // đã tự bỏ qua đơn này rồi, "chạm trần" chỉ xảy ra đúng 1 lần) -> gom cảnh báo Zalo bên dưới,
+        // kèm lý do lỗi cụ thể (KHONG_THAY_HOI_THOAI/chưa đăng nhập account khác/…) để người trực biết
+        // ngay mà xử lý tay, không phải tự mò "Lịch sử báo" mỗi ngày.
+        if (attempts >= cfg.maxRetries) gaveUp.push({ order, error: r.error });
       }
       summary.results.push({
         orderId: key,
@@ -734,6 +741,27 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
         // eslint-disable-next-line no-await-in-loop
         await delayBetweenCustomers();
       }
+    }
+
+    // CẢNH BÁO ZALO cho người trực: đơn nào vừa NGỪNG tự thử lại (chạm trần maxRetries lỗi liên
+    // tiếp — không tìm thấy hội thoại, account chưa đăng nhập, v.v.) cần gửi tay, không thì nằm im
+    // vô thời hạn. Gộp 1 tin/lượt kèm lý do lỗi rút gọn từng đơn (giống lưới an toàn báo ship —
+    // shippingAutoNotify.js). Không phụ thuộc state.alertEnabled (khác tin tổng kết/nhắc soạn ND):
+    // đây là cảnh báo LỖI THẬT SỰ cần xử lý tay, không phải tin thông tin định kỳ nên luôn bắn nếu
+    // đã cấu hình SĐT nhận nhắc.
+    if (gaveUp.length) {
+      const noun = kind === 'ship' ? 'báo ship' : 'báo hàng';
+      const lines = [`⚠️ [mi] Tự động ${noun} — ${gaveUp.length} đơn gửi lỗi ${cfg.maxRetries} lần liên tiếp, đã NGỪNG tự thử lại:`];
+      const rows = gaveUp.slice(0, 15).map(({ order, error }) => {
+        const label = order.customerName || order.phone || '?';
+        const reason = String(error || '').split('\n')[0].slice(0, 70);
+        return `- ${label}: ${reason || 'lỗi không rõ'}`;
+      }).join('\n');
+      lines.push(rows + (gaveUp.length > 15 ? '\n…' : ''));
+      lines.push(kind === 'ship' ? 'Vào Hàng về VN, gửi tay ND ship cho các đơn này.' : 'Vào Hàng về VN, gửi tay cho các đơn này.');
+      try {
+        await dispatchAlert(lines.join('\n'));
+      } catch (_) { /* kênh nhắc chưa cấu hình / lỗi gửi -> nuốt, không chặn lượt */ }
     }
 
     // Log tổng kết. Với báo ship, phần lớn đơn "notified_arrival" chưa có ND ship -> KHÔNG log khi
