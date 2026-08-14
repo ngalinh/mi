@@ -535,6 +535,20 @@ a { color: var(--primary); text-decoration: none; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 0 4px; }
 .form-grid .full { grid-column: 1 / -1; }
 
+/* "Nâng cao" gấp gọn nhóm field ít dùng trong popup (vd phân bổ theo NV) — cùng kiểu ▸ với .mode-more. */
+.form-more { grid-column: 1 / -1; margin: 2px 0; }
+.form-more > summary {
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 13px; font-weight: 700; color: var(--primary);
+}
+.form-more > summary::-webkit-details-marker { display: none; }
+.form-more > summary::before { content: "▸"; font-size: 10px; transition: transform .15s var(--ease); }
+.form-more[open] > summary::before { transform: rotate(90deg); }
+.form-more > .form-more-body {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px;
+}
+.form-more > .form-more-body .full { grid-column: 1 / -1; }
+
 /* ============================================================
    Bot bar (legacy)
    ============================================================ */

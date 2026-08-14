@@ -599,10 +599,11 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // CẢ 2 kiểu báo (cá nhân/nhóm) đều CHỈ chọn trong mục "Trò chuyện" — hội thoại có sẵn của khách.
   // Loại "Người dùng Zalo" (click vào mở chat 1-1 MỚI -> sai chỗ) và "Tin nhắn"; không có -> DỪNG.
   const primary = 'Trò chuyện';
-  // Có SĐT -> CHỈ tìm theo SĐT (duy nhất, khớp chính xác hơn tên). KHÔNG fallback sang tìm
-  // theo TÊN khi SĐT không ra kết quả: tên có thể trùng khách khác không nằm trong whitelist
-  // -> fallback dễ mở NHẦM hội thoại của người khác. Chỉ dùng TÊN để tìm khi hoàn toàn không có SĐT.
-  if (phone) rect = await attempt(phone, [phone, name].filter(Boolean), primary);
+  // Có SĐT -> CHỈ tìm theo SĐT (duy nhất, khớp chính xác hơn tên). KHÔNG được lẫn TÊN vào
+  // matchTerms ở đây: tên có thể trùng/là tiền tố của khách khác không nằm trong whitelist
+  // (vd "Nguyễn Anh" khớp nhầm "Nguyễn Anh Kiệt" — 2 SĐT khác nhau) -> gửi nhầm người. Chỉ
+  // dùng TÊN để tìm khi hoàn toàn không có SĐT.
+  if (phone) rect = await attempt(phone, [phone], primary);
   else if (name) rect = await attempt(name, [name], primary);
 
   // Không khớp chắc trong "Trò chuyện" -> DỪNG LUÔN (cả tay & bot): KHÔNG lấy đại hàng trên cùng,

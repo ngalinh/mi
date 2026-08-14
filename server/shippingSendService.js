@@ -13,7 +13,7 @@ const { syncShipStatusByCode, getTabUsers } = require('./bassoApi');
 const {
   addReport, updateReport, getZaloName, getFbLink,
   getShippingNotified, markShippingNotified, getShippingTemplates,
-  getContactReportTarget, getContactKenhSale,
+  getContactReportTarget,
 } = require('./db');
 const { delayBetweenCustomers } = require('./notifyService');
 
@@ -75,13 +75,16 @@ async function sendShippingOne(order, opts = {}) {
   // user_id Basso của NV duyệt (nếu tra được) — để accountResolver khớp được tài khoản "dùng
   // chung" (sharedStaffIds) như flow "Hàng về VN", thay vì chỉ khớp theo tên.
   const staffUserId = await staffUserIdByName(staff);
-  // KÊNH SALE THEO KHÁCH: như notifyService.js — nếu khách đã gắn sẵn kênh sale trong Danh bạ,
-  // dùng làm mặc định khi lượt gửi này không tự chọn kênh sale.
-  const kenhSaleExplicit = !!(opts.kenhSale && String(opts.kenhSale).trim());
-  const kenhSale = opts.kenhSale || getContactKenhSale(order.phone);
+  // KÊNH SALE: resolver tự suy opts.kenhSale (nếu không tự chọn tay) từ kênh sale THẬT của vận đơn
+  // (order.saleChannelLabel/saleChannel) rồi tới kênh sale gắn cho khách trong Danh bạ — xem
+  // accountResolver.resolveForOrder. Phải truyền kèm saleChannelLabel/saleChannel vì object đơn
+  // dựng riêng ở đây (khác shape "Hàng về VN") không tự mang theo 2 field đó.
   const resolved = await resolveForOrder(
-    { staff, userId: staffUserId, orderCode, phone: order.phone },
-    { ...opts, kenhSale, kenhSaleExplicit },
+    {
+      staff, userId: staffUserId, orderCode, phone: order.phone,
+      saleChannel: order.saleChannel, saleChannelLabel: order.saleChannelLabel,
+    },
+    opts,
   );
   // NGOẠI LỆ THEO KHÁCH: "Kiểu báo riêng" trong Danh bạ ('personal'/'group') GHI ĐÈ kiểu báo mặc
   // định của NV phụ trách (vd NV báo nhóm nhưng riêng khách này không có group Zalo, phải báo cá
@@ -98,7 +101,7 @@ async function sendShippingOne(order, opts = {}) {
     const err = resolved.skipReason === 'fb_no_account'
       ? `Đơn cần báo qua Facebook nhưng NV ${staff || '—'} chưa có tài khoản Facebook.`
       : resolved.skipReason === 'channel_no_account'
-        ? `Đã chọn kênh sale "${kenhSale}" cho lượt báo này nhưng chưa có cấu hình (kênh sale + NV) -> tài khoản Zalo cho NV ${staff || '—'}.`
+        ? `Đã chọn kênh sale "${opts.kenhSale}" cho lượt báo này nhưng chưa có cấu hình (kênh sale + NV) -> tài khoản Zalo cho NV ${staff || '—'}.`
         : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${staff || '—'}`;
     return { ok: false, error: err };
   }

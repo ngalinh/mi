@@ -402,6 +402,9 @@
     toggleZaShared(false); // panel luôn đóng khi vừa mở modal
     renderSharedPanel();
     zaBrand.value = a ? (a.brand || '') : '';
+    // Mở sẵn khối "Nâng cao" nếu tài khoản đang sửa ĐÃ có cấu hình NV/brand (đỡ tưởng mất khi ẩn đi);
+    // tài khoản mới hoặc không có gì ở đây thì gấp gọn mặc định.
+    $('zaAdvanced').open = !!(a && (a.staffId || a.brand || (a.sharedStaffIds && a.sharedStaffIds.length)));
     zaProxy.value = a ? (a.proxy || '') : '';
     zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
     zaTarget.value = a && a.notifyTarget === 'personal' ? 'personal' : 'group';

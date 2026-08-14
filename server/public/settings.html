@@ -91,7 +91,7 @@
               Thêm tài khoản
             </button>
           </div>
-          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Mỗi nhân viên gán được cả <strong>Zalo</strong> lẫn <strong>Facebook</strong> — mặc định báo hàng qua Zalo. Khách cần báo qua Facebook được bật ở trang <strong>Danh bạ</strong> (theo SĐT + link) và sẽ gửi bằng tài khoản Facebook của NV phụ trách. Mỗi tài khoản là 1 profile trình duyệt riêng; NV có thể có nhiều tài khoản Zalo theo <strong>brand</strong> (prefix mã đơn như <code>BS</code>, <code>SU</code>). Để trống <strong>Staff ID</strong> khi sửa = tài khoản "chung toàn công ty", NV nào không có tài khoản riêng cũng tự dùng được. Sửa tài khoản để thêm NV khác được <strong>dùng chung</strong> (không cần đăng nhập lại). Thêm/đăng nhập sẽ mở Chromium trên máy local-runner để đăng nhập, xong thì đóng cửa sổ. Điền <strong>Kênh sale</strong> khi sửa tài khoản (áp dụng mọi tài khoản, kể cả Facebook) để gắn nhãn hiển thị ở cột <strong>Kênh sale</strong>; để trống thì tự suy theo kênh sale đã cấu hình cho tài khoản Zalo khác của cùng nhân viên (viền đứt = suy ra, không phải gõ tay). Bảng tự gom các tài khoản cùng kênh sale lại gần nhau cho gọn mắt.</div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Điền <strong>Kênh sale</strong> khi sửa tài khoản (đúng tên kênh sale trên Basso, áp dụng cho cả <strong>Zalo</strong> lẫn <strong>Facebook</strong>) để đơn thuộc kênh đó tự gửi bằng đúng tài khoản này — không cần biết NV phụ trách đơn. Để trống thì tự suy theo kênh sale đã cấu hình cho tài khoản khác của cùng nhân viên (viền đứt = suy ra, không phải gõ tay). Bảng tự gom các tài khoản cùng kênh sale lại gần nhau cho gọn mắt. Mục <strong>"Nâng cao"</strong> trong popup sửa tài khoản (Staff ID/Brand/Dùng chung) chỉ cần khi đơn KHÔNG xác định được kênh sale — hệ thống sẽ rơi về xét theo NV phụ trách như trước. Khách cần báo qua Facebook được bật ở trang <strong>Danh bạ</strong> (theo SĐT + link).</div>
           <div class="table-wrap">
             <table>
               <thead>
@@ -220,7 +220,7 @@
             <div class="mode-row" id="alertRow">
               <div class="mode-info">
                 <div class="mode-title">Nhắc ra Zalo (nội bộ)</div>
-                <div class="mode-desc">Tới giờ nhắc và sau khi gửi xong, bot nhắn 1 tin Zalo cho người trực để biết mà <strong>không cần mở Mi</strong>. Gửi từ 1 tài khoản Zalo đã đăng nhập (vd Bụt Ai) tới SĐT của bạn.</div>
+                <div class="mode-desc">Tới giờ nhắc và sau khi gửi xong, bot nhắn 1 tin Zalo cho người trực để biết mà <strong>không cần mở Mi</strong>. Gửi từ 1 tài khoản Zalo đã đăng nhập (vd Bụt Ai) tới SĐT của bạn. Đơn nào gửi lỗi liên tục (vd <strong>không tìm thấy hội thoại Zalo của khách</strong>, hoặc bất kỳ lỗi nào khác) và bot đã NGỪNG tự thử lại cũng nhắn ngay ra đây kèm lý do, để gửi tay kịp thời thay vì phải tự vào "Lịch sử báo" kiểm tra.</div>
                 <div class="mode-controls">
                   <input class="note-input" id="alertAccount" placeholder="Tài khoản gửi (vd Bụt Ai)" style="max-width:190px;" />
                   <input class="note-input" id="alertPhone" placeholder="SĐT nhận (của bạn)" style="max-width:170px;" />
@@ -428,18 +428,23 @@
         <div class="field pf-fb"><label>Email / SĐT Facebook</label><input id="zaEmail" type="text" placeholder="email hoặc số điện thoại" autocomplete="off" /></div>
         <div class="field pf-fb"><label>Mật khẩu Facebook</label><input id="zaPassword" type="password" placeholder="mật khẩu" autocomplete="new-password" /></div>
         <div class="field pf-zalo"><label>SĐT (tuỳ chọn)</label><input id="zaPhone" type="text" placeholder="vd: 0985 093 767" /></div>
-        <div class="field"><label>Staff ID (tuỳ chọn)</label><input id="zaStaffId" type="text" placeholder="khớp userId đơn" /></div>
         <div class="field full"><label>Kênh sale (tuỳ chọn — để trống thì tự suy theo NV)</label><input id="zaKenhSale" type="text" list="zaKenhSaleList" placeholder="vd: Basso, ShipUS, Linh Dương, Linh Thảo, Cty, Kênh CO" /><datalist id="zaKenhSaleList"></datalist></div>
-        <div class="field full"><label>Dùng chung với NV khác (không cần đăng nhập lại)</label>
-          <div class="ms" id="zaSharedMs">
-            <button type="button" class="ms-toggle" id="zaSharedToggle" aria-haspopup="true" aria-expanded="false">
-              <span class="ms-label" id="zaSharedLabel">— Không dùng chung —</span>
-              <svg class="ms-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-            <div class="ms-panel" id="zaSharedPanel" hidden></div>
+        <details class="form-more" id="zaAdvanced">
+          <summary>Nâng cao — phân bổ theo nhân viên (chỉ cần khi KHÔNG dùng Kênh sale ở trên)</summary>
+          <div class="form-more-body">
+            <div class="field"><label>Staff ID (tuỳ chọn)</label><input id="zaStaffId" type="text" placeholder="khớp userId đơn" /></div>
+            <div class="field pf-zalo"><label>Brand (prefix mã đơn — tuỳ chọn)</label><input id="zaBrand" type="text" placeholder="vd: BS, SU, CO — để trống = mọi brand" /></div>
+            <div class="field full"><label>Dùng chung với NV khác (không cần đăng nhập lại)</label>
+              <div class="ms" id="zaSharedMs">
+                <button type="button" class="ms-toggle" id="zaSharedToggle" aria-haspopup="true" aria-expanded="false">
+                  <span class="ms-label" id="zaSharedLabel">— Không dùng chung —</span>
+                  <svg class="ms-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div class="ms-panel" id="zaSharedPanel" hidden></div>
+              </div>
+            </div>
           </div>
-        </div>
-        <div class="field pf-zalo"><label>Brand (prefix mã đơn — tuỳ chọn)</label><input id="zaBrand" type="text" placeholder="vd: BS, SU, CO — để trống = mọi brand" /></div>
+        </details>
         <div class="field full"><label>Proxy (tuỳ chọn)</label><input id="zaProxy" type="text" placeholder="host:port hoặc user:pass@host:port" /></div>
         <div class="field"><label>Tự động báo</label><select id="zaAuto"><option value="true" selected>Bật</option><option value="false">Tắt</option></select></div>
         <div class="field pf-zalo"><label>Kiểu báo</label><select id="zaTarget"><option value="group" selected>Nhóm</option><option value="personal">Cá nhân</option></select></div>
