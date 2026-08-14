@@ -18,6 +18,9 @@ const { isFacebookOrder, findChannelAccount, getContactKenhSale } = require('./d
  *      sale đó, KHÔNG CẦN biết NV phụ trách đơn — ưu tiên account (Zalo hoặc Facebook) gán TRỰC TIẾP
  *      nhãn kênh sale này ("Sửa tài khoản", xem findAccountByKenhSale), fallback cấu hình CŨ (kênh
  *      sale + NV -> tài khoản Zalo, xem db.js findChannelAccount) nếu chưa gán trực tiếp.
+ *   1.8) Tự nhận diện Facebook: kênh sale ở trên KHÔNG chọn được account nào, và khách đã có sẵn
+ *      link Facebook trong Danh bạ (db.isFacebookOrder) -> định tuyến Facebook theo NV phụ trách
+ *      (resolveFacebook). Đứng SAU kênh sale có chủ đích — xem chú thích tại chỗ gọi.
  *   2) accountsStore (runner): khớp đơn theo staffId (= order.userId, hoặc account được gắn DÙNG
  *      CHUNG qua sharedStaffIds) rồi tới tên NV (= order.staff). NV không khớp account riêng nào
  *      (kể cả NV mới chưa từng cấu hình) -> rơi về nhóm account "CHUNG TOÀN CÔNG TY" (không gắn
@@ -182,11 +185,10 @@ async function resolveForOrder(order, opts = {}) {
     return { channel, profile: opts.profile || 'default', account: opts.account, autoEnabled: true, notifyTarget, source: 'explicit' };
   }
 
-  // KÊNH gửi: mặc định Zalo. Chuyển sang Facebook khi ép qua opts.channel='facebook' (nút báo tay),
-  // hoặc đơn thuộc diện định tuyến FB (SĐT khách / NV được gắn FB). Chọn account trước, mọi logic
-  // Zalo bên dưới bỏ qua khi đã ở kênh FB.
-  const wantFb = opts.channel === 'facebook' || (opts.channel !== 'zalo' && isFacebookOrder(order));
-  if (wantFb) {
+  // KÊNH gửi ép THẲNG qua nút "Báo qua Facebook" (opts.channel='facebook', người gửi TƯỜNG MINH bấm
+  // cho lượt báo này) — đứng TRÊN CẢ kênh sale/tự nhận diện Facebook bên dưới vì đây là lựa chọn rõ
+  // ràng của người gửi, không được ghi đè.
+  if (opts.channel === 'facebook') {
     let accounts = [];
     try { accounts = await getAccountsCached(); } catch { accounts = []; }
     return resolveFacebook(order, accounts);
@@ -202,12 +204,18 @@ async function resolveForOrder(order, opts = {}) {
   // Facebook, xem findAccountByKenhSale). Không có account nào gán trực tiếp thì thử tiếp cấu hình
   // CŨ (kênh sale + NV -> tài khoản Zalo, bảng channel_accounts) để không phá vỡ cấu hình từ trước
   // khi field account.kenhSale chưa có.
+  // ĐỨNG TRƯỚC bước tự nhận diện Facebook theo Danh bạ bên dưới (isFacebookOrder) — CỐ Ý: nếu để
+  // sau, isFacebookOrder chỉ true khi khách ĐÃ CÓ link Facebook trong Danh bạ, tức tới lượt kênh sale
+  // xét thì chắc chắn khách CHƯA có link -> account Facebook chọn theo kênh sale (nếu có) sẽ LUÔN văng
+  // lỗi "chưa có link Facebook" (nhánh kênh sale không bao giờ dùng được). Kênh sale khi đã cấu hình
+  // là NGUỒN QUYẾT ĐỊNH kênh + tài khoản gửi — kể cả khi khách cũng có sẵn link Facebook (đổi ưu tiên
+  // so với trước, nhất quán với việc "không quan trọng NV/đường đi cũ nữa, chỉ theo kênh sale").
   // Không tìm thấy cấu hình/account nào ở cả 2 nguồn trên:
   //   - kenhSaleExplicit=true (người dùng TƯỜNG MINH chọn) -> BÁO RÕ (skip), không âm thầm rơi
   //     về nhánh khác kẻo gửi nhầm tài khoản ngoài ý muốn.
-  //   - kenhSaleExplicit=false (chỉ là MẶC ĐỊNH suy từ đơn/Danh bạ) -> ÂM THẦM rơi tiếp xuống nhánh
-  //     accountsStore bình thường bên dưới, KHÔNG skip — đơn/khách có kênh sale mà kênh đó chưa/không
-  //     còn cấu hình không được vì thế mà mất báo hàng.
+  //   - kenhSaleExplicit=false (chỉ là MẶC ĐỊNH suy từ đơn/Danh bạ) -> ÂM THẦM rơi tiếp xuống bước
+  //     tự nhận diện Facebook rồi accountsStore bên dưới, KHÔNG skip — đơn/khách có kênh sale mà
+  //     kênh đó chưa/không còn cấu hình không được vì thế mà mất báo hàng.
   const kenhSaleExplicit = !!String(opts.kenhSale || '').trim();
   const kenhSale = String(opts.kenhSale || '').trim()
     || orderKenhSale(order)
@@ -233,6 +241,14 @@ async function resolveForOrder(order, opts = {}) {
         source: 'channel', skip: true, skipReason: 'channel_no_account',
       };
     }
+  }
+
+  // KÊNH gửi TỰ NHẬN DIỆN: khách đã có sẵn link Facebook trong Danh bạ (isFacebookOrder) và kênh sale
+  // ở trên KHÔNG tự chọn được account nào -> định tuyến Facebook theo NV phụ trách như trước đây.
+  if (opts.channel !== 'zalo' && isFacebookOrder(order)) {
+    let accounts = [];
+    try { accounts = await getAccountsCached(); } catch { accounts = []; }
+    return resolveFacebook(order, accounts);
   }
 
   // 2) accountsStore (Hướng B). Chỉ xét account ZALO ở nhánh này (FB đã xử lý ở trên).
