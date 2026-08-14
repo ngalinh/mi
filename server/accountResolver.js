@@ -14,8 +14,10 @@ const { isFacebookOrder, findChannelAccount, getContactKenhSale } = require('./d
  *   1.5) KÊNH SALE: nguồn kenhSale theo thứ tự ưu tiên — a) opts.kenhSale (người dùng CHỌN TAY cho
  *      lượt báo này); b) kênh sale THẬT của đơn (order.saleChannelLabel/saleChannel — Partner API
  *      trả thẳng, xem cột "Kênh sale" trên Hàng về VN/Quản lý giao hàng); c) kênh sale đã gắn riêng
- *      cho khách trong Danh bạ (db.getContactKenhSale). Có kenhSale thì tra bảng cấu hình (kênh sale
- *      + NV phụ trách đơn -> tài khoản Zalo, xem db.js findChannelAccount).
+ *      cho khách trong Danh bạ (db.getContactKenhSale). Có kenhSale thì chọn account theo ĐÚNG kênh
+ *      sale đó, KHÔNG CẦN biết NV phụ trách đơn — ưu tiên account (Zalo hoặc Facebook) gán TRỰC TIẾP
+ *      nhãn kênh sale này ("Sửa tài khoản", xem findAccountByKenhSale), fallback cấu hình CŨ (kênh
+ *      sale + NV -> tài khoản Zalo, xem db.js findChannelAccount) nếu chưa gán trực tiếp.
  *   2) accountsStore (runner): khớp đơn theo staffId (= order.userId, hoặc account được gắn DÙNG
  *      CHUNG qua sharedStaffIds) rồi tới tên NV (= order.staff). NV không khớp account riêng nào
  *      (kể cả NV mới chưa từng cấu hình) -> rơi về nhóm account "CHUNG TOÀN CÔNG TY" (không gắn
@@ -76,6 +78,39 @@ function fromChannelAccount(row, accounts) {
     channel: 'zalo',
     profile: acct.key,
     account: acct.saleworkName || undefined,
+    autoEnabled: acct.autoEnabled !== false,
+    autoEnabledAt: acct.autoEnabledAt || null,
+    notifyTarget: acct.notifyTarget === 'personal' ? 'personal' : 'group',
+    source: 'channel',
+  };
+}
+
+/**
+ * Tìm account (Zalo HOẶC Facebook) được gán TRỰC TIẾP nhãn kênh sale này (field account.kenhSale,
+ * xem local-runner/accountsStore.js) — không cần biết NV phụ trách đơn. Khớp không phân biệt hoa/
+ * thường/khoảng trắng thừa; 1 account có thể nhận nhiều kênh sale (tách bởi dấu phẩy/chấm phẩy).
+ * Nhiều account cùng nhận 1 kênh sale (cấu hình trùng) -> lấy account ĐẦU TIÊN, ghi log cảnh báo
+ * để admin sửa lại ở Cài đặt → Sửa tài khoản (tránh 2 account cùng khớp -> gửi lúc account này lúc
+ * account kia, khó lường).
+ */
+function findAccountByKenhSale(accounts, kenhSale) {
+  const want = norm(kenhSale);
+  if (!want) return null;
+  const matches = (accounts || []).filter((a) =>
+    String(a.kenhSale || '').split(/[,;]+/).map((s) => norm(s)).includes(want));
+  if (matches.length > 1) {
+    console.warn(`[accountResolver] Kênh sale "${kenhSale}" đang gán cho ${matches.length} tài khoản (${matches.map((a) => a.key).join(', ')}) -> dùng tài khoản đầu "${matches[0].key}", sửa lại ở Cài đặt cho hết trùng.`);
+  }
+  return matches[0] || null;
+}
+
+/** Đóng gói 1 account (Zalo/Facebook) tìm theo kênh sale -> shape resolved. */
+function fromKenhSaleAccount(acct) {
+  const isFb = acct.platform === 'facebook';
+  return {
+    channel: isFb ? 'facebook' : 'zalo',
+    profile: acct.key,
+    account: (isFb ? acct.fbName : acct.saleworkName) || undefined,
     autoEnabled: acct.autoEnabled !== false,
     autoEnabledAt: acct.autoEnabledAt || null,
     notifyTarget: acct.notifyTarget === 'personal' ? 'personal' : 'group',
@@ -161,28 +196,35 @@ async function resolveForOrder(order, opts = {}) {
   // chọn cho lượt báo này (UI báo tay); không thì SUY MẶC ĐỊNH (kenhSaleExplicit=false) từ b) kênh
   // sale THẬT của đơn (order.saleChannelLabel/saleChannel — Partner API trả thẳng, xem cột "Kênh
   // sale" trên Hàng về VN/Quản lý giao hàng), rồi c) kênh sale đã gắn riêng cho khách trong Danh bạ
-  // (db.getContactKenhSale — khách đặc thù không theo kênh sale thật của đơn). Có kenhSale thì tra
-  // bảng cấu hình (kênh sale + NV phụ trách đơn -> tài khoản Zalo, tab Kênh Sale).
-  // Không tìm thấy cấu hình/account:
+  // (db.getContactKenhSale — khách đặc thù không theo kênh sale thật của đơn).
+  // Có kenhSale thì chọn account KHÔNG CẦN BIẾT NV phụ trách đơn — chỉ cần account nào đang gán
+  // TRỰC TIẾP nhãn kênh sale này (field account.kenhSale, "Sửa tài khoản" — mọi kênh Zalo lẫn
+  // Facebook, xem findAccountByKenhSale). Không có account nào gán trực tiếp thì thử tiếp cấu hình
+  // CŨ (kênh sale + NV -> tài khoản Zalo, bảng channel_accounts) để không phá vỡ cấu hình từ trước
+  // khi field account.kenhSale chưa có.
+  // Không tìm thấy cấu hình/account nào ở cả 2 nguồn trên:
   //   - kenhSaleExplicit=true (người dùng TƯỜNG MINH chọn) -> BÁO RÕ (skip), không âm thầm rơi
   //     về nhánh khác kẻo gửi nhầm tài khoản ngoài ý muốn.
   //   - kenhSaleExplicit=false (chỉ là MẶC ĐỊNH suy từ đơn/Danh bạ) -> ÂM THẦM rơi tiếp xuống nhánh
   //     accountsStore bình thường bên dưới, KHÔNG skip — đơn/khách có kênh sale mà kênh đó chưa/không
-  //     còn cấu hình (vd tab Kênh Sale chưa thêm) không được vì thế mà mất báo hàng.
+  //     còn cấu hình không được vì thế mà mất báo hàng.
   const kenhSaleExplicit = !!String(opts.kenhSale || '').trim();
   const kenhSale = String(opts.kenhSale || '').trim()
     || orderKenhSale(order)
     || getContactKenhSale(order && order.phone);
   if (kenhSale) {
+    let accounts = [];
+    try { accounts = await getAccountsCached(); } catch { accounts = []; }
+    const direct = findAccountByKenhSale(accounts, kenhSale);
+    if (direct) return fromKenhSaleAccount(direct);
+
     const row = findChannelAccount({
       kenhSale,
       staffId: order && order.userId,
       staffName: order && order.staff,
     });
     if (row) {
-      let accounts = [];
-      try { accounts = (await getAccountsCached()).filter((a) => a.platform !== 'facebook'); } catch { accounts = []; }
-      const resolved = fromChannelAccount(row, accounts);
+      const resolved = fromChannelAccount(row, accounts.filter((a) => a.platform !== 'facebook'));
       if (resolved) return resolved;
     }
     if (kenhSaleExplicit) {
