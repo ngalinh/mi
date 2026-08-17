@@ -75,10 +75,11 @@ async function sendShippingOne(order, opts = {}) {
   // user_id Basso của NV duyệt (nếu tra được) — để accountResolver khớp được tài khoản "dùng
   // chung" (sharedStaffIds) như flow "Hàng về VN", thay vì chỉ khớp theo tên.
   const staffUserId = await staffUserIdByName(staff);
-  // KÊNH SALE: resolver tự suy opts.kenhSale (nếu không tự chọn tay) từ kênh sale THẬT của vận đơn
-  // (order.saleChannelLabel/saleChannel) rồi tới kênh sale gắn cho khách trong Danh bạ — xem
-  // accountResolver.resolveForOrder. Phải truyền kèm saleChannelLabel/saleChannel vì object đơn
-  // dựng riêng ở đây (khác shape "Hàng về VN") không tự mang theo 2 field đó.
+  // KÊNH SALE: chỉ còn vai trò PHỤ — khi NV duyệt có ≥2 tài khoản mà brand không phân biệt được,
+  // resolver dùng kênh sale (thật của vận đơn rồi tới gắn trong Danh bạ) để chọn đúng tài khoản
+  // trong số đó, KHÔNG tự chọn account độc lập với NV — xem accountResolver.resolveForOrder. Phải
+  // truyền kèm saleChannelLabel/saleChannel vì object đơn dựng riêng ở đây (khác shape "Hàng về
+  // VN") không tự mang theo 2 field đó.
   const resolved = await resolveForOrder(
     {
       staff, userId: staffUserId, orderCode, phone: order.phone,

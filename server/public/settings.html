@@ -94,7 +94,7 @@
               </button>
             </div>
           </div>
-          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Hệ thống chọn tài khoản gửi theo <strong>Nhân viên phụ trách đơn</strong>: điền <strong>Staff ID</strong> (và Brand/Dùng chung nếu cần) ở mục <strong>"Nâng cao"</strong> khi sửa tài khoản — đơn của NV nào sẽ tự gửi bằng đúng tài khoản gắn cho NV đó. <strong>Kênh sale</strong> giờ chỉ để hiển thị/gom nhóm các tài khoản lại gần nhau cho gọn mắt, KHÔNG còn ảnh hưởng tới việc chọn tài khoản khi gửi. Khách cần báo qua Facebook được bật ở trang <strong>Danh bạ</strong> (theo SĐT + link).</div>
+          <div class="muted" style="font-size:13px; margin:-10px 0 18px;">Hệ thống chọn tài khoản gửi theo <strong>Nhân viên phụ trách đơn</strong>: điền <strong>Staff ID</strong> (và Brand/Dùng chung nếu cần) ở mục <strong>"Nâng cao"</strong> khi sửa tài khoản — đơn của NV nào sẽ tự gửi bằng đúng tài khoản gắn cho NV đó. <strong>Kênh sale</strong> chủ yếu để hiển thị/gom nhóm cho gọn mắt; chỉ có tác dụng chọn tài khoản khi 1 NV có từ <strong>2 tài khoản trở lên</strong> mà Brand không phân biệt được — lúc đó hệ thống mới soi tiếp Kênh sale của đơn/khách để chọn đúng cái. Khách cần báo qua Facebook được bật ở trang <strong>Danh bạ</strong> (theo SĐT + link).</div>
           <div class="table-wrap">
             <table id="zaloTable" class="hide-emp-col">
               <thead>
@@ -430,7 +430,7 @@
         <div class="field pf-fb"><label>Email / SĐT Facebook</label><input id="zaEmail" type="text" placeholder="email hoặc số điện thoại" autocomplete="off" /></div>
         <div class="field pf-fb"><label>Mật khẩu Facebook</label><input id="zaPassword" type="password" placeholder="mật khẩu" autocomplete="new-password" /></div>
         <div class="field pf-zalo"><label>SĐT (tuỳ chọn)</label><input id="zaPhone" type="text" placeholder="vd: 0985 093 767" /></div>
-        <div class="field full"><label>Kênh sale (tuỳ chọn — chỉ để hiển thị/gom nhóm, không ảnh hưởng tài khoản gửi)</label><input id="zaKenhSale" type="text" list="zaKenhSaleList" placeholder="vd: Basso, ShipUS, Linh Dương, Linh Thảo, Cty, Kênh CO" /><datalist id="zaKenhSaleList"></datalist></div>
+        <div class="field full"><label>Kênh sale (tuỳ chọn — hiển thị/gom nhóm; chỉ dùng để chọn tài khoản khi NV có ≥2 tài khoản)</label><input id="zaKenhSale" type="text" list="zaKenhSaleList" placeholder="vd: Basso, ShipUS, Linh Dương, Linh Thảo, Cty, Kênh CO" /><datalist id="zaKenhSaleList"></datalist></div>
         <details class="form-more" id="zaAdvanced">
           <summary>Phân bổ theo nhân viên — quyết định tài khoản gửi đơn</summary>
           <div class="form-more-body">

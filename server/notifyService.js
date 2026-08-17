@@ -183,8 +183,10 @@ async function notifyOne(order, opts = {}) {
 
   // MÔ HÌNH B: mỗi tài khoản Zalo 1 profile riêng. Resolver quyết định profile + saleworkName
   // theo NV phụ trách đơn (accountsStore trên runner), fallback ZALO_ACCOUNT_MAP / mặc định.
-  // KÊNH SALE: resolver tự suy opts.kenhSale (nếu người gửi không tự chọn tay) từ kênh sale THẬT
-  // của đơn rồi tới kênh sale đã gắn cho khách trong Danh bạ — xem accountResolver.resolveForOrder.
+  // KÊNH SALE: chỉ còn vai trò PHỤ — khi NV phụ trách có ≥2 tài khoản (Zalo lẫn Facebook) mà
+  // brand không phân biệt được, resolver dùng kênh sale (chọn tay > thật của đơn > gắn trong Danh
+  // bạ) để chọn đúng tài khoản trong số đó, KHÔNG tự chọn account độc lập với NV — xem
+  // accountResolver.resolveForOrder.
   const resolved = await resolveForOrder(order, opts);
   // NGOẠI LỆ THEO KHÁCH: nếu khách này có "Kiểu báo riêng" trong danh bạ ('personal'/'group'), nó
   // GHI ĐÈ kiểu báo của NV phụ trách (vd NV báo cá nhân nhưng riêng khách này báo vào group Zalo).
