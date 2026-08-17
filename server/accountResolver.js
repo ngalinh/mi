@@ -175,8 +175,16 @@ async function resolveForOrder(order, opts = {}) {
     let channel = 'zalo';
     try {
       const accts = await getAccountsCached();
-      const found = (accts || []).find((a) =>
-        norm(a.saleworkName) === norm(opts.account) || norm(a.fbName) === norm(opts.account) || norm(a.name) === norm(opts.account));
+      // Ưu tiên khớp CHÍNH XÁC theo profile (account.key, UI luôn gửi kèm opts.profile = acct.key
+      // khi người dùng chọn tay — xem giaohang.js/dashboard.js acctOverride). Khớp theo key trước
+      // để tránh nhầm platform khi 1 Zalo và 1 Facebook account TRÙNG tên hiển thị (vd NV "Thuỳ
+      // Trang" có cả Zalo lẫn FB) — so khớp mập mờ theo tên bên dưới có thể vớ nhầm account KHÁC
+      // platform với cái người dùng vừa chọn trên UI (chọn FB Thuỳ Trang lại resolve ra Zalo).
+      let found = opts.profile ? (accts || []).find((a) => a.key === opts.profile) : null;
+      if (!found) {
+        found = (accts || []).find((a) =>
+          norm(a.saleworkName) === norm(opts.account) || norm(a.fbName) === norm(opts.account) || norm(a.name) === norm(opts.account));
+      }
       if (found) {
         if (found.notifyTarget === 'personal') notifyTarget = 'personal';
         if (found.platform === 'facebook') channel = 'facebook';
