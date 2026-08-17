@@ -1215,6 +1215,16 @@
   }
   function closeBulkModal() { $('bulkModalBg').classList.remove('show'); }
 
+  // Gắn tài khoản Zalo/FB CHỌN TAY (cột "Tài khoản gửi") của 1 đơn vào payload gửi server, nếu có
+  // -> báo loạt cũng tôn trọng đúng lựa chọn tay như khi gửi từng dòng, thay vì luôn tự động theo
+  // NV. Đơn để "Tự động" (không có trong rowAccounts) -> trả nguyên payload, server tự suy như cũ.
+  function withRowAccountOverride(payload, id) {
+    const acctKey = rowAccounts.get(String(id));
+    const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
+    if (acct) { payload.profile = acct.key; payload.account = acctSendName(acct); }
+    return payload;
+  }
+
   // Danh sách đơn "Chưa báo" hiện tại (theo NV + tìm kiếm) để gửi loạt. Client-mode đã có sẵn
   // cả tập nên gửi THẲNG danh sách này lên -> server khỏi phải kéo lại từ Basso (tránh timeout
   // khi Basso chậm). Đơn đã Delay / đã báo sẽ do server tự lọc bỏ như cũ.
@@ -1224,7 +1234,7 @@
       .filter((o) => !currentStaff || String(o.userId) === String(currentStaff))
       .filter((o) => !q || `${o.customerName} ${o.phone}`.toLowerCase().includes(q))
       .filter((o) => groupOf(o) === 'todo')
-      .map(orderPayload);
+      .map((o) => withRowAccountOverride(orderPayload(o), o.id));
   }
 
   // Nhãn/nút mặc định của nút báo loạt (khi rảnh). Dùng lại ở nhiều nơi để khỏi lệch chữ.

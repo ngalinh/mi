@@ -205,8 +205,14 @@ async function sendShippingBulk(orders, opts = {}) {
   const results = [];
   for (let i = 0; i < list.length; i += 1) {
     const order = list[i];
+    // Tài khoản CHỌN TAY riêng cho đơn này (cột "Tài khoản gửi" trên Quản lý giao hàng, gắn kèm
+    // mỗi đơn khi báo loạt qua bulkNotify) -> ưu tiên hơn opts chung (vốn không có account/profile
+    // khi gửi loạt, chỉ có actor) để KHÔNG bị resolver tự suy đè lên lựa chọn tay.
+    const orderOpts = (order.account || order.profile)
+      ? { ...opts, account: order.account || opts.account, profile: order.profile || opts.profile }
+      : opts;
     // eslint-disable-next-line no-await-in-loop
-    const r = await sendShippingOne(order, opts);
+    const r = await sendShippingOne(order, orderOpts);
     results.push({ id: order.id, ok: r.ok, error: r.error || null, alreadySent: !!r.alreadySent });
     if (i + 1 < list.length) {
       // eslint-disable-next-line no-await-in-loop

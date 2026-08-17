@@ -122,6 +122,13 @@ async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
 
+  // Tài khoản CHỌN TAY riêng cho đơn này (cột "Tài khoản gửi" trên dashboard, gắn kèm mỗi đơn khi
+  // báo LOẠT — khác với opts.account/opts.profile vốn chỉ áp dụng khi gửi 1 đơn từ modal/nút icon
+  // từng dòng). order-level được ưu tiên hơn opts-level nếu cả 2 cùng có.
+  if (order.account || order.profile) {
+    opts = { ...opts, account: order.account || opts.account, profile: order.profile || opts.profile };
+  }
+
   // ÂN HẠN HỦY (chỉ gửi tay 1 đơn — route /api/notify truyền graceMs): chờ ngắn cho người dùng kịp
   // bấm Dừng nếu lỡ click. Bấm Dừng trong lúc này -> HỦY SẠCH: chưa gọi Basso, chưa ghi Lịch sử báo,
   // chưa đẩy job xuống runner nên tin CHẮC CHẮN chưa đi. `stopped` báo cho notifyOrders bỏ qua đơn này.
@@ -361,8 +368,11 @@ async function groupOrdersByProfile(orders, opts = {}) {
   for (let i = 0; i < list.length; i += 1) {
     let key = 'default';
     try {
+      // Đơn CÓ tài khoản chọn tay riêng (list[i].account/profile — báo loạt gắn kèm mỗi đơn) ->
+      // gom đúng theo profile đó thay vì để resolver tự suy theo NV, tránh xen kẽ browser sai.
+      const orderOpts = { defaultAccount: opts.defaultAccount, profile: list[i].profile || opts.profile, account: list[i].account, kenhSale: opts.kenhSale };
       // eslint-disable-next-line no-await-in-loop
-      const r = await resolveForOrder(list[i], { defaultAccount: opts.defaultAccount, profile: opts.profile, kenhSale: opts.kenhSale });
+      const r = await resolveForOrder(list[i], orderOpts);
       key = r.profile || 'default';
     } catch { /* lỗi resolve -> gom vào 'default' */ }
     tagged.push({ order: list[i], key, i });

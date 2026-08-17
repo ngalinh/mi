@@ -628,10 +628,19 @@
   }
 
   // ---- Gửi báo ship hàng loạt (tick nhiều) --------------------------------
+  // Gắn tài khoản Zalo/FB CHỌN TAY (cột "Tài khoản gửi") của 1 đơn vào payload, nếu có -> báo loạt
+  // cũng tôn trọng đúng lựa chọn tay như khi gửi từng dòng thay vì luôn tự động theo NV.
+  function withRowAccountOverride(payload, id) {
+    const acctKey = state.rowAccounts.get(String(id));
+    const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
+    if (acct) { payload.profile = acct.key; payload.account = acctSendName(acct); }
+    return payload;
+  }
   async function bulkNotify() {
     const ids = checkedIds();
     if (!ids.length) { App.toast('Chưa chọn đơn nào.'); return; }
-    const orders = state.orders.filter((o) => ids.includes(String(o.id))).map(toApiOrder);
+    const orders = state.orders.filter((o) => ids.includes(String(o.id)))
+      .map((o) => withRowAccountOverride(toApiOrder(o), o.id));
     if (!confirm(`Gửi báo ship qua Zalo cho ${orders.length} đơn đã tick?`)) return;
     try {
       const r = await App.api('/api/shipping/send-bulk', {
