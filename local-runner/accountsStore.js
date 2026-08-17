@@ -32,11 +32,10 @@ const config = require('./config');
  *                   1 NV có thể có NHIỀU account, mỗi account 1 brand → đơn được gửi bằng account
  *                   khớp prefix mã đơn. Để trống = account "chung", nhận mọi brand của NV đó.
  *   - kenhSale    : (tuỳ chọn, mọi platform) nhãn "Kênh sale" (vd "Basso", "ShipUS", "Linh Dương")
- *                   GÁN TRỰC TIẾP cho account này. Dùng để: (1) hiển thị/gom nhóm ở dashboard (cột
- *                   Kênh sale, xem settings.js); (2) TỰ CHỌN account khi gửi đơn theo kênh sale —
- *                   server/accountResolver.js khớp thẳng field này (findAccountByKenhSale), không
- *                   cần biết NV phụ trách đơn, áp dụng cho cả Zalo lẫn Facebook. 1 account có thể
- *                   nhận nhiều kênh sale (tách bởi dấu phẩy/chấm phẩy).
+ *                   GÁN TRỰC TIẾP cho account này — CHỈ để hiển thị/gom nhóm ở dashboard (cột Kênh
+ *                   sale, xem settings.js). KHÔNG còn dùng để chọn account khi gửi đơn — từ nay
+ *                   server/accountResolver.js chỉ xét NV phụ trách + tài khoản chọn tay, bỏ hẳn định
+ *                   tuyến theo kênh sale.
  *   - autoEnabled : có cho luồng TỰ ĐỘNG gửi bằng account này không (mặc định true)
  *   - proxy       : (tuỳ chọn) "host:port" hoặc "user:pass@host:port" — ÁP DỤNG khi mở Chromium cho profile này
  *
