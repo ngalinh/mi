@@ -627,19 +627,36 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   await shot(page, '04-conversation-opened');
 }
 
+// Chuẩn hoá "lỏng" để so khớp tin nhắn: NFC (khác NFD, xem norm() ở trên) + gộp MỌI khoảng
+// trắng liên tiếp (space/tab/xuống dòng) thành 1 space. Tin nhiều dòng (báo hàng nhiều SP) khi
+// Zalo Basso render có thể co giãn dòng trắng khác với nguồn (CSS white-space collapse, dấu
+// cách kép trong ND Basso...) — so khớp NGUYÊN VĂN (chỉ NFC) vẫn báo nhầm KHONG_XAC_NHAN_DA_GUI
+// dù tin đã lên hội thoại. Áp CÙNG 1 kiểu chuẩn hoá cho cả 2 vế (needle & haystack) nên vẫn an
+// toàn (không nới lỏng match sai khách khác, chỉ bỏ qua khác biệt whitespace thuần tuý).
+const normLoose = (s) => norm(s).replace(/\s+/g, ' ');
+
+// Số ký tự ĐẦU tin dùng làm neo dự phòng khi không khớp được toàn văn (xem countTextOccurrences).
+// Đủ dài để gần như không trùng ngẫu nhiên với nội dung khác trên trang, đủ ngắn để vẫn khớp được
+// khi Zalo cắt bớt tin dài sau vài dòng (nút "Xem thêm") — khi đó chỉ phần ĐẦU tin nằm sẵn trong
+// DOM, phần đuôi chỉ hiện ra khi bấm mở rộng.
+const CONFIRM_ANCHOR_LEN = 100;
+
 // Đếm số lần đoạn text xuất hiện trong toàn trang (innerText). Dùng để XÁC NHẬN tin nhắn đã
 // thực sự lên hội thoại: đếm TRƯỚC khi bấm Gửi, rồi so sánh SAU khi bấm — count không tăng
 // nghĩa là bấm Gửi "trôi" (bị lag/mất kết nối) dù Playwright thao tác click vẫn thành công.
-async function countTextOccurrences(page, text) {
+// `full=false` (mặc định) tự rút gọn tin dài về neo CONFIRM_ANCHOR_LEN ký tự đầu — dùng khi so
+// khớp toàn văn có thể trượt do UI cắt bớt tin dài ("Xem thêm") dù tin đã thực sự gửi.
+async function countTextOccurrences(page, text, { full = false } = {}) {
   if (!text) return 0;
-  // Chuẩn hoá NFC cả 2 vế trước khi so khớp: tin nhắn có dấu tiếng Việt có thể tới dưới dạng
-  // NFD (tổ hợp dấu rời) từ nguồn dữ liệu upstream, trong khi Zalo Basso render/lưu NFC — 2
-  // chuỗi NHÌN GIỐNG HỆT nhau nhưng indexOf() không khớp -> báo nhầm KHONG_XAC_NHAN_DA_GUI dù
-  // tin đã thực sự hiển thị trong hội thoại (giống norm()/ACC_NORM() ở trên cùng file).
-  const t = norm(text);
+  // Chuẩn hoá NFC + gộp whitespace cả 2 vế trước khi so khớp: tin nhắn có dấu tiếng Việt có thể
+  // tới dưới dạng NFD (tổ hợp dấu rời) từ nguồn dữ liệu upstream, trong khi Zalo Basso render/lưu
+  // NFC — 2 chuỗi NHÌN GIỐNG HỆT nhau nhưng indexOf() không khớp -> báo nhầm
+  // KHONG_XAC_NHAN_DA_GUI dù tin đã thực sự hiển thị trong hội thoại (giống ACC_NORM() ở trên).
+  let t = normLoose(text);
+  if (!full && t.length > CONFIRM_ANCHOR_LEN) t = t.slice(0, CONFIRM_ANCHOR_LEN);
   if (!t) return 0;
   return page.evaluate((needle) => {
-    const body = (document.body.innerText || '').normalize('NFC');
+    const body = (document.body.innerText || '').normalize('NFC').replace(/\s+/g, ' ');
     let count = 0;
     let idx = 0;
     while ((idx = body.indexOf(needle, idx)) !== -1) { count += 1; idx += needle.length; }
