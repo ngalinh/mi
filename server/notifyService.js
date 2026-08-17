@@ -122,6 +122,13 @@ async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
 
+  // Tài khoản CHỌN TAY riêng cho đơn này (cột "Tài khoản gửi" trên dashboard, gắn kèm mỗi đơn khi
+  // báo LOẠT — khác với opts.account/opts.profile vốn chỉ áp dụng khi gửi 1 đơn từ modal/nút icon
+  // từng dòng). order-level được ưu tiên hơn opts-level nếu cả 2 cùng có.
+  if (order.account || order.profile) {
+    opts = { ...opts, account: order.account || opts.account, profile: order.profile || opts.profile };
+  }
+
   // ÂN HẠN HỦY (chỉ gửi tay 1 đơn — route /api/notify truyền graceMs): chờ ngắn cho người dùng kịp
   // bấm Dừng nếu lỡ click. Bấm Dừng trong lúc này -> HỦY SẠCH: chưa gọi Basso, chưa ghi Lịch sử báo,
   // chưa đẩy job xuống runner nên tin CHẮC CHẮN chưa đi. `stopped` báo cho notifyOrders bỏ qua đơn này.
@@ -176,8 +183,10 @@ async function notifyOne(order, opts = {}) {
 
   // MÔ HÌNH B: mỗi tài khoản Zalo 1 profile riêng. Resolver quyết định profile + saleworkName
   // theo NV phụ trách đơn (accountsStore trên runner), fallback ZALO_ACCOUNT_MAP / mặc định.
-  // KÊNH SALE: resolver tự suy opts.kenhSale (nếu người gửi không tự chọn tay) từ kênh sale THẬT
-  // của đơn rồi tới kênh sale đã gắn cho khách trong Danh bạ — xem accountResolver.resolveForOrder.
+  // KÊNH SALE: chỉ còn vai trò PHỤ — khi NV phụ trách có ≥2 tài khoản (Zalo lẫn Facebook) mà
+  // brand không phân biệt được, resolver dùng kênh sale (chọn tay > thật của đơn > gắn trong Danh
+  // bạ) để chọn đúng tài khoản trong số đó, KHÔNG tự chọn account độc lập với NV — xem
+  // accountResolver.resolveForOrder.
   const resolved = await resolveForOrder(order, opts);
   // NGOẠI LỆ THEO KHÁCH: nếu khách này có "Kiểu báo riêng" trong danh bạ ('personal'/'group'), nó
   // GHI ĐÈ kiểu báo của NV phụ trách (vd NV báo cá nhân nhưng riêng khách này báo vào group Zalo).
@@ -361,8 +370,11 @@ async function groupOrdersByProfile(orders, opts = {}) {
   for (let i = 0; i < list.length; i += 1) {
     let key = 'default';
     try {
+      // Đơn CÓ tài khoản chọn tay riêng (list[i].account/profile — báo loạt gắn kèm mỗi đơn) ->
+      // gom đúng theo profile đó thay vì để resolver tự suy theo NV, tránh xen kẽ browser sai.
+      const orderOpts = { defaultAccount: opts.defaultAccount, profile: list[i].profile || opts.profile, account: list[i].account, kenhSale: opts.kenhSale };
       // eslint-disable-next-line no-await-in-loop
-      const r = await resolveForOrder(list[i], { defaultAccount: opts.defaultAccount, profile: opts.profile, kenhSale: opts.kenhSale });
+      const r = await resolveForOrder(list[i], orderOpts);
       key = r.profile || 'default';
     } catch { /* lỗi resolve -> gom vào 'default' */ }
     tagged.push({ order: list[i], key, i });

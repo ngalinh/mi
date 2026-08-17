@@ -45,13 +45,18 @@
     renderCmStaffPanel();
   }
 
-  // Gợi ý "Kênh sale" trong modal thêm/sửa liên hệ = danh sách kênh sale đã cấu hình ở
-  // Cài đặt → Kênh Sale (bảng channel_accounts) — mỗi kênh gắn sẵn 1 tài khoản Zalo cố định.
+  // Gợi ý "Kênh sale" trong modal thêm/sửa liên hệ = danh sách kênh sale đã GÁN TRỰC TIẾP trên
+  // từng tài khoản (Cài đặt → Tài khoản), KHÔNG phải bảng channel_accounts cũ (đã bỏ dùng để chọn
+  // account). Gắn khách vào 1 kênh sale ở đây chỉ có tác dụng PHÂN BIỆT khi NV phụ trách đơn của
+  // khách có từ 2 tài khoản trở lên mà Brand không phân biệt được — không tự chọn tài khoản Zalo
+  // cố định bỏ qua NV phụ trách.
   async function loadKenhSaleList() {
     try {
-      const r = await App.api('/api/channel-accounts');
-      const rows = (r && r.channelAccounts) || [];
-      const kenhSet = [...new Set(rows.map((row) => row.kenh_sale).filter(Boolean))];
+      const r = await App.api('/api/accounts');
+      const rows = (r && r.accounts) || (r && r.zalo) || [];
+      const kenhSet = [...new Set(
+        rows.flatMap((a) => String(a.kenhSale || '').split(/[,;]+/).map((s) => s.trim())).filter(Boolean),
+      )].sort((a, b) => a.localeCompare(b, 'vi'));
       $('cmKenhSaleList').innerHTML = kenhSet.map((k) => `<option value="${App.esc(k)}"></option>`).join('');
     } catch { /* không tải được -> chỉ mất gợi ý, vẫn gõ tay được */ }
   }

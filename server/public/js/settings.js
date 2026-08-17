@@ -166,11 +166,6 @@
     const m = connMeta(c);
     return `<span class="acct-conn ${m.cls}">${m.label}</span>`;
   }
-  // Chip điều khiển CÓ NHÃN: nhãn mờ + giá trị đậm màu theo NGHĨA (không mượn đỏ/vàng "cảnh báo").
-  function autoTgl(a) {
-    const on = a.autoEnabled !== false;
-    return `<button class="tgl ${on ? 'is-on' : 'is-off'}" data-action="auto" title="Tự động báo hàng — bấm để ${on ? 'tắt' : 'bật'}"><span class="tgl-label">Tự động</span><span class="tgl-val">${on ? 'Bật' : 'Tắt'}</span></button>`;
-  }
   // Đích báo: 'personal' = nhắn cá nhân, mặc định = nhóm. Cả hai đều hợp lệ → dùng tông trung tính.
   function targetTgl(a) {
     const personal = a.notifyTarget === 'personal';
@@ -178,12 +173,6 @@
   }
   function brandTag(b) {
     return b ? `<span class="acct-brand" title="Chỉ nhận đơn brand ${App.esc(b)}">${App.esc(b)}</span>` : '';
-  }
-  function sharedTag(a) {
-    const ids = a.sharedStaffIds || [];
-    if (!ids.length) return '';
-    const names = ids.map((id) => bassoNameOf(id)).join(', ');
-    return `<span class="acct-brand acct-shared" title="Dùng chung (không cần đăng nhập lại) với: ${App.esc(names)}">+${ids.length} NV dùng chung</span>`;
   }
   const platLabel = (p) => (p === 'facebook' ? 'Facebook' : 'Zalo');
   const findAcct = (key) => accountsAll.find((x) => x.key === key);
@@ -228,7 +217,7 @@
     } catch (e) { acctKenhMap = new Map(); staffKenhMap = new Map(); }
   }
   // { list, inherited } — inherited=true khi lấy từ staffKenhMap (không có cấu hình riêng cho
-  // CHÍNH account này) để phân biệt hiển thị (xem kenhSaleCell). Ưu tiên:
+  // CHÍNH account này). Ưu tiên:
   // 1) a.kenhSale — nhãn gõ trực tiếp trong modal Sửa tài khoản (mọi platform, kể cả Facebook).
   // 2) acctKenhMap — cấu hình ở tab Kênh Sale (chỉ Zalo, khớp theo account key).
   // 3) staffKenhMap — suy ra theo NV khi account chưa có cấu hình riêng ở (1) lẫn (2).
@@ -241,23 +230,29 @@
     const byStaff = sid ? staffKenhMap.get(sid) : null;
     return { list: (byStaff || []).slice().sort((x, y) => x.localeCompare(y, 'vi')), inherited: true };
   }
-  function kenhSaleCell(a) {
-    const { list, inherited } = acctKenhInfo(a);
-    if (!list.length) return '<span class="muted">—</span>';
-    const title = inherited ? ' title="Suy ra theo kênh sale của NV — tài khoản này chưa có cấu hình riêng ở tab Kênh Sale"' : '';
-    const cls = inherited ? 'acct-kenh acct-kenh-inherit' : 'acct-kenh';
-    return list.map((k) => `<span class="${cls}"${title}>${App.esc(k)}</span>`).join(' ');
+  // Nhãn Kênh sale cho CẢ 1 NHÓM tài khoản gộp lại (xem renderAccounts) — mọi tài khoản trong
+  // nhóm đã cùng chung 1 danh sách kênh sale (đó là tiêu chí gộp nhóm) nên chỉ cần render 1 lần.
+  function kenhGroupLabel(list) {
+    if (!list.length) return '<span class="muted">— (chưa gán)</span>';
+    return list.map((k) => `<span class="acct-kenh">${App.esc(k)}</span>`).join(' ');
   }
 
-  // Cột "Nhân viên" của 1 account: tên NV CHỦ (staffId) + mã NV, hoặc nhãn "Chung" nếu account
-  // không gắn staffId (account "chung toàn công ty" — xem accountResolver.js), cộng thêm nhãn
-  // NV dùng chung (sharedStaffIds) nếu có. Dùng tên thật từ bassoStaff thay vì field `name` tự do
-  // của account để không lệch khi account đổi tên hiển thị riêng.
+  // Cột "Nhân viên" của 1 account: liệt kê RÕ TỪNG NV được dùng account này — NV chủ (staffId)
+  // trước, rồi tới từng NV dùng chung (sharedStaffIds) — mỗi người 1 dòng tên + mã NV riêng, KHÔNG
+  // gộp NV dùng chung vào 1 nhãn "+N NV dùng chung" nữa (phải mở tooltip mới thấy tên là ai).
+  // Dùng tên thật từ bassoStaff thay vì field `name` tự do của account để không lệch khi account
+  // đổi tên hiển thị riêng.
   function empCell(a) {
-    const owner = a.staffId
-      ? `<div class="emp-name">${App.esc(bassoNameOf(a.staffId))}</div><div class="emp-sub">NV Basso #${App.esc(a.staffId)}</div>`
-      : '<div class="emp-name emp-shared-all">Chung (mọi NV)</div>';
-    return owner + sharedTag(a);
+    const rows = [];
+    if (a.staffId) {
+      rows.push(`<div class="emp-name">${App.esc(bassoNameOf(a.staffId))}</div><div class="emp-sub">NV Basso #${App.esc(a.staffId)}</div>`);
+    } else {
+      rows.push('<div class="emp-name emp-shared-all">Chung (mọi NV)</div>');
+    }
+    (a.sharedStaffIds || []).forEach((id) => {
+      rows.push(`<div class="emp-name emp-shared-name">${App.esc(bassoNameOf(id))}</div><div class="emp-sub">NV Basso #${App.esc(id)} · dùng chung</div>`);
+    });
+    return rows.join('');
   }
 
   // Vạch trạng thái trái mỗi dòng (đọc nhanh ở rìa mắt): đỏ = cần đăng nhập,
@@ -268,18 +263,20 @@
   }
 
   // 1 tài khoản = 1 dòng ĐỘC LẬP (không gom theo NV — 1 account có thể thuộc nhiều NV cùng lúc
-  // qua sharedStaffIds nên gom sẽ phải lặp dòng). Đăng nhập bung chữ (primary) khi CHƯA kết nối.
-  function acctRow(a) {
+  // qua sharedStaffIds nên gom sẽ phải lặp dòng). Cột Kênh sale KHÔNG lặp lại theo dòng nữa — được
+  // gom thành 1 ô lớn cho cả nhóm (rowspan), render riêng bởi renderAccounts() và truyền vào đây
+  // qua `kenhTdHtml` (chuỗi rỗng '' ở các dòng không phải dòng đầu nhóm). Đăng nhập bung chữ
+  // (primary) khi CHƯA kết nối.
+  function acctRow(a, kenhTdHtml) {
     const isFb = a.platform === 'facebook';
     const title = isFb ? (a.fbName || a.name || a.key) : (a.saleworkName || a.name || a.key);
     const need = a.connection !== 'connected';
     return `<tr class="acct-row ${healthClass(a)}" data-key="${App.esc(a.key)}" data-platform="${a.platform}">
+      ${kenhTdHtml}
       <td class="acct-cell">${App.esc(title)}${isFb || !a.brand ? '' : ` ${brandTag(a.brand)}`}</td>
-      <td class="acct-kenh-cell">${kenhSaleCell(a)}</td>
       <td>${chanTag(a.platform)}</td>
       <td class="acct-emp">${empCell(a)}</td>
       <td>${connBadge(a.connection)}</td>
-      <td>${autoTgl(a)}</td>
       <td>${isFb ? '<span class="muted">—</span>' : targetTgl(a)}</td>
       <td class="acct-act-cell"><div class="acct-acts">
         <button class="ibtn${need ? ' primary' : ''}" data-action="login" title="Mở Chromium trên local-runner để đăng nhập">${IC.login}${need ? '<span>Đăng nhập</span>' : ''}</button>
@@ -318,21 +315,36 @@
     const names = [...new Set(accountsAll.map((a) => String(a.kenhSale || '').trim()).filter(Boolean))];
     list.innerHTML = names.map((k) => `<option value="${App.esc(k)}"></option>`).join('');
   }
+  // Gom các tài khoản CÙNG kênh sale lại thành 1 ô "Kênh sale" lớn dùng rowspan, thay vì lặp lại
+  // nhãn ở mỗi dòng. sortAccounts() đã xếp các tài khoản cùng nhóm kênh sale NẰM LIỀN NHAU nên chỉ
+  // cần gom theo khối liên tiếp (không cần group-by toàn bảng).
   function renderAccounts(list) {
     accountsAll = list || [];
     refreshKenhSaleDatalist();
     if (!accountsAll.length) {
-      zaloRows.innerHTML = '<tr><td colspan="8" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
+      zaloRows.innerHTML = '<tr><td colspan="7" class="muted" style="padding:16px;">Chưa có tài khoản nào. Bấm “Thêm tài khoản”.</td></tr>';
       return;
     }
-    zaloRows.innerHTML = sortAccounts(accountsAll).map((a) => acctRow(a)).join('');
+    const sorted = sortAccounts(accountsAll);
+    const html = [];
+    let i = 0;
+    while (i < sorted.length) {
+      const key = acctKenhInfo(sorted[i]).list.join(', ');
+      let j = i;
+      while (j < sorted.length && acctKenhInfo(sorted[j]).list.join(', ') === key) j += 1;
+      const groupSize = j - i;
+      const kenhTd = `<td class="acct-kenh-cell" rowspan="${groupSize}">${kenhGroupLabel(acctKenhInfo(sorted[i]).list)}</td>`;
+      for (let r = i; r < j; r += 1) html.push(acctRow(sorted[r], r === i ? kenhTd : ''));
+      i = j;
+    }
+    zaloRows.innerHTML = html.join('');
   }
   async function loadZalo() {
     try {
       const [r] = await Promise.all([App.api('/api/accounts'), loadAcctKenhMap()]);
       renderAccounts(r.accounts || r.zalo || []);
     } catch (e) {
-      zaloRows.innerHTML = `<tr><td colspan="8" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
+      zaloRows.innerHTML = `<tr><td colspan="7" class="muted" style="padding:16px;">Không tải được danh sách (local-runner offline?): ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -402,9 +414,9 @@
     toggleZaShared(false); // panel luôn đóng khi vừa mở modal
     renderSharedPanel();
     zaBrand.value = a ? (a.brand || '') : '';
-    // Mở sẵn khối "Nâng cao" nếu tài khoản đang sửa ĐÃ có cấu hình NV/brand (đỡ tưởng mất khi ẩn đi);
-    // tài khoản mới hoặc không có gì ở đây thì gấp gọn mặc định.
-    $('zaAdvanced').open = !!(a && (a.staffId || a.brand || (a.sharedStaffIds && a.sharedStaffIds.length)));
+    // Luôn mở sẵn khối "Phân bổ theo nhân viên" — đây là cơ chế QUYẾT ĐỊNH tài khoản gửi (không còn
+    // là mục "nâng cao" tuỳ chọn như trước), kể cả khi thêm tài khoản mới.
+    $('zaAdvanced').open = true;
     zaProxy.value = a ? (a.proxy || '') : '';
     zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
     zaTarget.value = a && a.notifyTarget === 'personal' ? 'personal' : 'group';
@@ -485,15 +497,6 @@
       } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
       return undefined;
     }
-    if (action === 'auto') {
-      const next = !(a && a.autoEnabled !== false);
-      try { await App.api(`/api/accounts/${encodeURIComponent(key)}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ autoEnabled: next }),
-        });
-        App.toast(next ? 'Đã BẬT tự động báo cho tài khoản này' : 'Đã TẮT tự động báo cho tài khoản này');
-        loadZalo();
-      } catch (e) { App.toast(`❌ ${e.message}`, 6000); }
-    }
     if (action === 'target') {
       const next = a && a.notifyTarget === 'personal' ? 'group' : 'personal';
       try { await App.api(`/api/accounts/${encodeURIComponent(key)}`, {
@@ -506,8 +509,9 @@
     return undefined;
   }
 
-  // Ẩn/hiện cột Nhân viên trong bảng Tài khoản (Kênh sale giờ là cách chính chọn account — xem
-  // cột Kênh sale). Nhớ lựa chọn qua localStorage để không phải bấm lại mỗi lần vào Cài đặt.
+  // Ẩn/hiện cột Nhân viên trong bảng Tài khoản. NV phụ trách là yếu tố QUYẾT ĐỊNH tài khoản gửi
+  // (Kênh sale chỉ còn để hiển thị/gom nhóm) nên mặc định HIỆN cột này. Nhớ lựa chọn qua
+  // localStorage để không phải bấm lại mỗi lần vào Cài đặt.
   const EMP_COL_LS_KEY = 'mi.settings.showEmpCol';
   const zaloTable = $('zaloTable');
   const toggleEmpColBtn = $('toggleEmpCol');
@@ -515,7 +519,7 @@
     zaloTable.classList.toggle('hide-emp-col', !show);
     toggleEmpColBtn.textContent = show ? 'Ẩn cột Nhân viên' : 'Hiện cột Nhân viên';
   }
-  applyEmpColVis(localStorage.getItem(EMP_COL_LS_KEY) === '1');
+  applyEmpColVis(localStorage.getItem(EMP_COL_LS_KEY) !== '0');
   toggleEmpColBtn.addEventListener('click', () => {
     const show = zaloTable.classList.contains('hide-emp-col');
     applyEmpColVis(show);

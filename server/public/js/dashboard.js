@@ -917,6 +917,7 @@
     } catch { zaloAccounts = []; }
     populateAccountSelect();
     populateRowAccountSelects(); // các dòng đã vẽ trước khi tải xong -> nạp lại option account
+    populateKenhSaleOptions(); // nạp lại gợi ý Kênh sale theo đúng tài khoản vừa tải
   }
   // Nhãn hiển thị 1 account, kèm chip kênh Zalo/FB — dùng chung cho modal + select mỗi dòng.
   function acctOptionLabel(a) {
@@ -954,19 +955,20 @@
     sel.value = cur; // giữ lựa chọn cũ nếu populate lại
   }
 
-  // Danh sách Kênh sale đã cấu hình (Cài đặt → Kênh Sale). Chọn kênh sale ép mi tra bảng
-  // (kênh sale + NV phụ trách đơn) -> tài khoản Zalo, thay vì chọn tài khoản tay ở trên.
-  // Basso không trả field kênh sale trong dữ liệu đơn nên người báo phải tự chọn cho lượt gửi này.
-  let kenhSaleNames = [];
-  async function loadKenhSaleOptions() {
-    try {
-      const r = await App.api('/api/channel-accounts');
-      kenhSaleNames = [...new Set((r.channelAccounts || []).map((c) => c.kenh_sale).filter(Boolean))];
-    } catch { kenhSaleNames = []; }
+  // Danh sách Kênh sale để gợi ý trong modal — lấy từ field "Kênh sale" GÁN TRỰC TIẾP trên từng
+  // tài khoản (Cài đặt → Tài khoản, xem accountResolver.js), KHÔNG phải bảng channel_accounts cũ
+  // (đã bỏ dùng để chọn account). Chọn kênh sale ở đây chỉ có tác dụng PHÂN BIỆT khi NV phụ trách
+  // đơn có từ 2 tài khoản trở lên mà Brand không phân biệt được — không tự chọn account bỏ qua NV.
+  function populateKenhSaleOptions() {
+    const names = [...new Set(
+      zaloAccounts.flatMap((a) => String(a.kenhSale || '').split(/[,;]+/).map((s) => s.trim())).filter(Boolean),
+    )].sort((a, b) => a.localeCompare(b, 'vi'));
     const sel = $('modalKenhSale');
     if (sel) {
+      const cur = sel.value;
       sel.innerHTML = '<option value="">— Không chọn —</option>'
-        + kenhSaleNames.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
+        + names.map((k) => `<option value="${App.esc(k)}">${App.esc(k)}</option>`).join('');
+      sel.value = names.includes(cur) ? cur : '';
     }
   }
   // Chọn kênh sale hay chọn tài khoản tay là 2 cách LOẠI TRỪ NHAU (server ưu tiên tài khoản tay
@@ -1215,6 +1217,16 @@
   }
   function closeBulkModal() { $('bulkModalBg').classList.remove('show'); }
 
+  // Gắn tài khoản Zalo/FB CHỌN TAY (cột "Tài khoản gửi") của 1 đơn vào payload gửi server, nếu có
+  // -> báo loạt cũng tôn trọng đúng lựa chọn tay như khi gửi từng dòng, thay vì luôn tự động theo
+  // NV. Đơn để "Tự động" (không có trong rowAccounts) -> trả nguyên payload, server tự suy như cũ.
+  function withRowAccountOverride(payload, id) {
+    const acctKey = rowAccounts.get(String(id));
+    const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
+    if (acct) { payload.profile = acct.key; payload.account = acctSendName(acct); }
+    return payload;
+  }
+
   // Danh sách đơn "Chưa báo" hiện tại (theo NV + tìm kiếm) để gửi loạt. Client-mode đã có sẵn
   // cả tập nên gửi THẲNG danh sách này lên -> server khỏi phải kéo lại từ Basso (tránh timeout
   // khi Basso chậm). Đơn đã Delay / đã báo sẽ do server tự lọc bỏ như cũ.
@@ -1224,7 +1236,7 @@
       .filter((o) => !currentStaff || String(o.userId) === String(currentStaff))
       .filter((o) => !q || `${o.customerName} ${o.phone}`.toLowerCase().includes(q))
       .filter((o) => groupOf(o) === 'todo')
-      .map(orderPayload);
+      .map((o) => withRowAccountOverride(orderPayload(o), o.id));
   }
 
   // Nhãn/nút mặc định của nút báo loạt (khi rảnh). Dùng lại ở nhiều nơi để khỏi lệch chữ.
@@ -1977,7 +1989,7 @@
       <th class="center" style="width:50px">STT</th>
       <th title="Ngày nhập kho">Ngày về</th>
       <th>Khách hàng</th>
-      <th title="Kênh sale mà đơn thuộc về (suy theo nhân viên phụ trách — xem Cài đặt → Kênh Sale)">Kênh sale</th>
+      <th title="Kênh sale THẬT của đơn — Partner API trả thẳng, không suy đoán; trống nếu Basso chưa gán">Kênh sale</th>
       <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
       <th class="center" style="width:150px" title="Chọn tài khoản Zalo/FB để gửi tay qua đúng account đó — để trống thì gửi tự động theo nhân viên">Tài khoản gửi</th>
       <th class="center" style="width:120px" title="Gửi báo hàng / báo ship qua Zalo">Gửi</th>
@@ -2020,8 +2032,7 @@
   }).catch(() => {});
 
   loadHealth();
-  loadZaloAccounts();
-  loadKenhSaleOptions();
+  loadZaloAccounts(); // gợi ý Kênh sale trong modal cũng được nạp kèm ở đây (populateKenhSaleOptions)
   setInterval(loadHealth, 15000);
   setInterval(autoSync, AUTO_SYNC_MS);
   // Khởi động: mặc định lọc theo NV ĐANG ĐĂNG NHẬP (nếu Admin đã gán user_id trong Cài đặt)
