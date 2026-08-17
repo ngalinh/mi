@@ -402,9 +402,9 @@
     toggleZaShared(false); // panel luôn đóng khi vừa mở modal
     renderSharedPanel();
     zaBrand.value = a ? (a.brand || '') : '';
-    // Mở sẵn khối "Nâng cao" nếu tài khoản đang sửa ĐÃ có cấu hình NV/brand (đỡ tưởng mất khi ẩn đi);
-    // tài khoản mới hoặc không có gì ở đây thì gấp gọn mặc định.
-    $('zaAdvanced').open = !!(a && (a.staffId || a.brand || (a.sharedStaffIds && a.sharedStaffIds.length)));
+    // Luôn mở sẵn khối "Phân bổ theo nhân viên" — đây là cơ chế QUYẾT ĐỊNH tài khoản gửi (không còn
+    // là mục "nâng cao" tuỳ chọn như trước), kể cả khi thêm tài khoản mới.
+    $('zaAdvanced').open = true;
     zaProxy.value = a ? (a.proxy || '') : '';
     zaAuto.value = a && a.autoEnabled === false ? 'false' : 'true';
     zaTarget.value = a && a.notifyTarget === 'personal' ? 'personal' : 'group';
@@ -506,8 +506,9 @@
     return undefined;
   }
 
-  // Ẩn/hiện cột Nhân viên trong bảng Tài khoản (Kênh sale giờ là cách chính chọn account — xem
-  // cột Kênh sale). Nhớ lựa chọn qua localStorage để không phải bấm lại mỗi lần vào Cài đặt.
+  // Ẩn/hiện cột Nhân viên trong bảng Tài khoản. NV phụ trách là yếu tố QUYẾT ĐỊNH tài khoản gửi
+  // (Kênh sale chỉ còn để hiển thị/gom nhóm) nên mặc định HIỆN cột này. Nhớ lựa chọn qua
+  // localStorage để không phải bấm lại mỗi lần vào Cài đặt.
   const EMP_COL_LS_KEY = 'mi.settings.showEmpCol';
   const zaloTable = $('zaloTable');
   const toggleEmpColBtn = $('toggleEmpCol');
@@ -515,7 +516,7 @@
     zaloTable.classList.toggle('hide-emp-col', !show);
     toggleEmpColBtn.textContent = show ? 'Ẩn cột Nhân viên' : 'Hiện cột Nhân viên';
   }
-  applyEmpColVis(localStorage.getItem(EMP_COL_LS_KEY) === '1');
+  applyEmpColVis(localStorage.getItem(EMP_COL_LS_KEY) !== '0');
   toggleEmpColBtn.addEventListener('click', () => {
     const show = zaloTable.classList.contains('hide-emp-col');
     applyEmpColVis(show);
