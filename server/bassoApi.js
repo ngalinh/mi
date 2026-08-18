@@ -660,6 +660,60 @@ async function syncShipStatusByCode({ phone, code }) {
   return { matched, matches };
 }
 
+/** Chạy predicate(item) cho từng phần tử với concurrency giới hạn, DỪNG NGAY khi có kết quả trúng. */
+async function scanWithEarlyExit(items, limit, predicate) {
+  let found = null;
+  let idx = 0;
+  async function worker() {
+    while (idx < items.length && !found) {
+      const i = idx; idx += 1;
+      // eslint-disable-next-line no-await-in-loop
+      const hit = await predicate(items[i]);
+      if (hit) found = hit;
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return found;
+}
+
+/**
+ * Tra ngược 1 mã đơn (item.orderCode, dạng SU0...) sang khách hàng THẬT bên "Hàng về VN" —
+ * dùng khi báo ship theo SĐT người nhận (Quản lý giao hàng) không tìm thấy Zalo, để thử lại
+ * bằng SĐT khách hàng thật đặt đơn (xem shippingSendService.js + docs/shipping-notify-plan.md).
+ *
+ * CHỈ gọi khi cần (1 vận đơn lỗi cụ thể) — KHÔNG quét toàn bộ danh sách mỗi lần hiển thị, vì
+ * "Hàng về VN" không có endpoint tra thẳng theo mã đơn: phải quét items[] (lazy) của từng dòng.
+ * Giới hạn qua config.basso.orderCodeLookup* để chặn trần số lượt gọi Basso.
+ * @param {string} orderCode
+ * @returns {Promise<{customerName:string, phone:string, customerId, dateInventory}|null>}
+ */
+async function findCustomerByOrderCode(orderCode) {
+  const code = String(orderCode || '').trim();
+  if (!code) return null;
+
+  if (config.basso.useMock) {
+    const rows = loadMock();
+    for (const r of rows) {
+      const items = Array.isArray(r.items) ? r.items : [];
+      if (items.some((it) => String(it.orderCode || '').trim() === code)) {
+        return {
+          customerName: r.customer_name || '', phone: r.customer_phone || '',
+          customerId: r.customer_id, dateInventory: r.date_inventory,
+        };
+      }
+    }
+    return null;
+  }
+
+  const { orders } = await getAllOrders({ days: config.basso.orderCodeLookupDays });
+  const scanList = orders.slice(0, config.basso.orderCodeLookupMaxRows);
+  return scanWithEarlyExit(scanList, config.basso.orderCodeLookupConcurrency, async (o) => {
+    const { items } = await getArrivedItems({ id: o.id, customerId: o.customerId, dateInventory: o.dateInventory });
+    const hit = (items || []).some((it) => String(it.orderCode || '').trim() === code);
+    return hit ? { customerName: o.customerName, phone: o.phone, customerId: o.customerId, dateInventory: o.dateInventory } : null;
+  });
+}
+
 // Nhóm trạng thái trên dashboard -> mã trạng thái Basso (để đếm & lọc server-side).
 const GROUP_STATUS = [
   ['todo', 'not_sent'],
@@ -760,7 +814,7 @@ async function fetchAllOrders(filters = {}) {
   return all;
 }
 
-module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, syncShipStatusByCode, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS,
+module.exports = { getOrders, getAllOrders, getStatusCounts, getTabUsers, fetchAllOrders, getArrivedItems, getOrderContent, updateOrderStatus, syncShipStatusByCode, findCustomerByOrderCode, invalidateOrdersCache, debugRawRows, normalizeOrder, normalizeItem, STATUS_LABELS,
   // Dùng chung cho module khác (vd shippingApi.js) — gọi Partner API có sẵn xác thực
   // (X-Partner-Api-Key + Bearer, tự login/refresh token, retry 401, timeout). Trả về json.data.
   partnerApiFetch: apiFetch };
