@@ -9,7 +9,7 @@
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { resolveForOrder, isRetryableAccountError } = require('./accountResolver');
 const { buildDeliveryMessage, REASON_LABEL } = require('./shippingNotify');
-const { syncShipStatusByCode, getTabUsers } = require('./bassoApi');
+const { syncShipStatusByCode, getTabUsers, findCustomerByOrderCode } = require('./bassoApi');
 const {
   addReport, updateReport, getZaloName, getFbLink,
   getShippingNotified, markShippingNotified, getShippingTemplates,
@@ -49,6 +49,60 @@ async function staffUserIdByName(name) {
   } catch {
     return undefined; // Basso lỗi -> bỏ qua, để accountResolver khớp theo tên như cũ.
   }
+}
+
+/**
+ * Gửi Zalo thử lần lượt account chính + fallbackAccounts (khách có thể nằm ở tài khoản khác của
+ * cùng NV) — tách riêng để gọi lại được với keyword/tên khác khi fallback SĐT khách hàng (bên dưới).
+ */
+async function trySendZalo(resolved, keyword, matchName, message) {
+  let result;
+  const candidates = [resolved, ...(Array.isArray(resolved.fallbackAccounts) ? resolved.fallbackAccounts : [])];
+  for (let i = 0; i < candidates.length; i += 1) {
+    const cand = candidates[i];
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      result = await sendBaoHang({
+        profile: cand.profile || 'default',
+        account: cand.account,
+        keyword,
+        name: matchName,
+        message,
+        notifyTarget: cand.notifyTarget || resolved.notifyTarget,
+      });
+    } catch (err) {
+      result = { ok: false, error: err.message };
+    }
+    if (result.ok || i === candidates.length - 1 || !isRetryableAccountError(result.error)) {
+      if (cand !== resolved && result.ok) {
+        console.log(`[shipping-notify] account "${resolved.account || resolved.profile}" không thấy hội thoại -> gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
+        resolved.account = cand.account;
+        resolved.profile = cand.profile;
+      }
+      break;
+    }
+    console.log(`[shipping-notify] account "${cand.account || cand.profile}" không thấy hội thoại -> thử account dự phòng "${candidates[i + 1].account || candidates[i + 1].profile}"`);
+  }
+  return result;
+}
+
+/**
+ * SĐT người nhận trên vận đơn (Quản lý giao hàng) đôi khi KHÁC SĐT khách hàng thật đặt đơn (vd
+ * người nhận hộ) -> tìm không ra hội thoại Zalo dù khách có Zalo thật. Tra ngược từng mã đơn
+ * trong vận đơn sang "Hàng về VN" (bassoApi.findCustomerByOrderCode) để lấy SĐT khách hàng thật,
+ * thử mã đầu tiên khớp được. CHỈ gọi khi lần gửi đầu đã thất bại vì "không có hội thoại"
+ * (xem sendShippingOne) — không tính sẵn cho toàn bộ danh sách.
+ * @returns {Promise<{customerName:string, phone:string}|null>}
+ */
+async function findFallbackCustomer(order) {
+  const items = Array.isArray(order.items) ? order.items : [];
+  const codes = [...new Set(items.map((it) => it && it.orderCode && String(it.orderCode).trim()).filter(Boolean))];
+  for (const code of codes) {
+    // eslint-disable-next-line no-await-in-loop
+    const hit = await findCustomerByOrderCode(code);
+    if (hit && hit.phone) return hit;
+  }
+  return null;
 }
 
 /**
@@ -139,35 +193,34 @@ async function sendShippingOne(order, opts = {}) {
       // NV được gắn NHIỀU tài khoản Zalo không phân biệt được bằng brand (resolved.fallbackAccounts,
       // xem accountResolver.js) -> thử lần lượt: account chính trước, "không thấy hội thoại" (khách
       // có thể đang nằm ở tài khoản kia) thì thử account dự phòng kế tiếp.
-      const candidates = [resolved, ...(Array.isArray(resolved.fallbackAccounts) ? resolved.fallbackAccounts : [])];
-      for (let i = 0; i < candidates.length; i += 1) {
-        const cand = candidates[i];
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          result = await sendBaoHang({
-            profile: cand.profile || 'default',
-            account: cand.account,
-            keyword,
-            name: matchName,
-            message: built.message,
-            notifyTarget: cand.notifyTarget || resolved.notifyTarget,
-          });
-        } catch (err) {
-          result = { ok: false, error: err.message };
-        }
-        if (result.ok || i === candidates.length - 1 || !isRetryableAccountError(result.error)) {
-          if (cand !== resolved && result.ok) {
-            console.log(`[shipping-notify] account "${resolved.account || resolved.profile}" không thấy hội thoại -> gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
-            resolved.account = cand.account;
-            resolved.profile = cand.profile;
-          }
-          break;
-        }
-        console.log(`[shipping-notify] account "${cand.account || cand.profile}" không thấy hội thoại -> thử account dự phòng "${candidates[i + 1].account || candidates[i + 1].profile}"`);
-      }
+      result = await trySendZalo(resolved, keyword, matchName, built.message);
     }
   } catch (err) {
     result = { ok: false, error: err.message };
+  }
+
+  // FALLBACK SĐT NGƯỜI NHẬN -> SĐT KHÁCH HÀNG THẬT: chỉ khi lần gửi trên thất bại đúng vì "không
+  // có hội thoại Zalo" (KHONG_THAY_HOI_THOAI) — các lỗi khác (chưa đăng nhập, mạng...) thử số khác
+  // cũng không giải quyết được. SĐT người nhận trên vận đơn có thể khác SĐT khách đặt đơn (người
+  // nhận hộ) -> tra ngược mã đơn sang "Hàng về VN" rồi thử gửi lại 1 lần (docs/shipping-notify-plan.md).
+  let fallback = null;
+  if (!result.ok && resolved.channel !== 'facebook' && isRetryableAccountError(result.error)) {
+    fallback = await findFallbackCustomer(order).catch(() => null);
+    if (fallback && fallback.phone && fallback.phone !== order.phone) {
+      const fbZaloName = getZaloName(fallback.phone);
+      const fbMatchName = fbZaloName || fallback.customerName || matchName;
+      console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có hội thoại Zalo -> tra mã đơn ra khách hàng "${fallback.customerName || '?'}" (${fallback.phone}) -> thử gửi lại.`);
+      const retryResult = await trySendZalo(resolved, fallback.phone, fbMatchName, built.message);
+      if (retryResult.ok) {
+        result = retryResult;
+      } else {
+        console.log(`[shipping-notify] SĐT khách hàng ${fallback.phone} cũng không có hội thoại Zalo -> giữ nguyên lỗi.`);
+        result = { ...result, error: `${result.error} — đã tra ra khách hàng "${fallback.customerName || '?'}" (${fallback.phone}) và thử lại nhưng cũng không có hội thoại Zalo.` };
+        fallback = null; // không override phone trên report vì cuối cùng vẫn gửi thất bại bằng SĐT gốc
+      }
+    } else {
+      fallback = null;
+    }
   }
 
   let report = updateReport(pending.id, {
@@ -175,13 +228,22 @@ async function sendShippingOne(order, opts = {}) {
     error: result.ok ? null : result.error,
     jobId: result.jobId,
     zaloAccount: resolved.account || resolved.profile || null,
+    ...(fallback ? {
+      phone: fallback.phone,
+      customerName: fallback.customerName || undefined,
+      phoneSource: 'fallback_customer',
+      phoneOriginal: order.phone,
+    } : {}),
   });
 
   if (result.ok) {
-    markShippingNotified(order.id, order.phone);
+    // Đồng bộ theo SĐT khách hàng THẬT khi đã fallback — "Hàng về VN" lưu customer_phone, tìm
+    // theo order.phone (người nhận) trong trường hợp này sẽ không khớp được dòng nào.
+    const syncPhone = fallback ? fallback.phone : order.phone;
+    markShippingNotified(order.id, syncPhone);
     // Đồng bộ "Đã báo ship" về Hàng về VN — best-effort, KHÔNG chặn kết quả gửi (tin đã đi rồi).
     try {
-      const sync = await syncShipStatusByCode({ phone: order.phone, code: order.trackingCode });
+      const sync = await syncShipStatusByCode({ phone: syncPhone, code: order.trackingCode });
       // Gắn customerId/dateInventory của dòng vừa khớp vào report -> Hàng về VN hiện được
       // "Người gửi/Tài khoản" ngay trên dòng đơn (getLastReportMap/getSentTimesMap khớp theo
       // 2 khoá này). Nhiều dòng khớp (hiếm) -> lấy dòng ĐẦU làm đại diện, đủ cho mục đích hiển thị.

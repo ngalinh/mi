@@ -121,6 +121,16 @@ module.exports = {
     // list cache 30s / dashboard cầm bản cũ. Tắt bằng BASSO_REFRESH_CONTENT_BEFORE_SEND=false nếu
     // muốn ưu tiên tốc độ báo loạt hơn (mỗi đơn tốn thêm 1 call Basso).
     refreshContentBeforeSend: String(process.env.BASSO_REFRESH_CONTENT_BEFORE_SEND || 'true').toLowerCase() === 'true',
+    // Tra ngược mã đơn (SU0...) sang khách hàng thật bên "Hàng về VN" — CHỈ dùng khi báo ship
+    // theo SĐT người nhận (Quản lý giao hàng) không tìm thấy Zalo (KHONG_THAY_HOI_THOAI), để thử
+    // lại bằng SĐT khách hàng thật đặt đơn (xem shippingSendService.js + docs/shipping-notify-plan.md).
+    // days: chỉ quét đơn "Hàng về VN" trong N ngày gần đây (hàng phải về kho TRƯỚC khi được ship
+    // đi nên không cần quét all-time). maxRows/concurrency: chặn trần số lượt gọi getArrivedItems
+    // (mỗi dòng 1 call) — vì đây là fallback HIẾM gặp (số ít đơn lệch SĐT), không phải quét mỗi lần
+    // hiển thị danh sách, nên chấp nhận vài giây cho 1 lượt tra.
+    orderCodeLookupDays: Math.max(parseInt(process.env.BASSO_ORDER_CODE_LOOKUP_DAYS || '45', 10) || 45, 1),
+    orderCodeLookupMaxRows: Math.max(parseInt(process.env.BASSO_ORDER_CODE_LOOKUP_MAX_ROWS || '300', 10) || 300, 1),
+    orderCodeLookupConcurrency: Math.min(Math.max(parseInt(process.env.BASSO_ORDER_CODE_LOOKUP_CONCURRENCY || '6', 10) || 6, 1), 16),
   },
   // Tự động báo hàng: cứ có đơn "Chưa báo" (đã về kho) là tự gửi tin, không cần bấm tay.
   autoNotify: {

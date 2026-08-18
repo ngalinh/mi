@@ -77,6 +77,14 @@ try { db.exec('ALTER TABLE reports ADD COLUMN kind TEXT'); } catch (_) { /* đã
 // Report cũ thiếu cột (null) -> coi như 'zalo' (kênh mặc định, FB là ngoại lệ mới).
 try { db.exec('ALTER TABLE reports ADD COLUMN channel TEXT'); } catch (_) { /* đã có cột */ }
 
+// Migration: TRA NGƯỢC SĐT — khi báo ship theo SĐT người nhận (Quản lý giao hàng) không tìm
+// thấy Zalo, hệ thống tự tra mã đơn sang SĐT khách hàng thật (Hàng về VN) rồi gửi lại. Ghi vết
+// lại để "Lịch sử báo" phân biệt được lượt nào đã tự đổi số. null/'order' = gửi bằng SĐT trên
+// vận đơn như bình thường (đa số). 'fallback_customer' = đã tự đổi sang SĐT khách hàng thật;
+// khi đó `phone` là SĐT ĐÃ GỬI (khách hàng), `phone_original` là SĐT người nhận gốc trên vận đơn.
+try { db.exec('ALTER TABLE reports ADD COLUMN phone_source TEXT'); } catch (_) { /* đã có cột */ }
+try { db.exec('ALTER TABLE reports ADD COLUMN phone_original TEXT'); } catch (_) { /* đã có cột */ }
+
 // Index gộp-theo-đơn cho getSentTimesMap / getLastReportMap — 2 hàm chạy trên MỌI request
 // /api/orders* (qua enrichOrders). Không có index này, SQLite phải FULL-SCAN + SORT toàn bộ bảng
 // `reports` mỗi lần (ORDER BY / GROUP BY theo customer_id, date_inventory) -> chậm dần khi bảng
@@ -209,8 +217,8 @@ try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN report_target TEXT'); } catc
 try { db.exec('ALTER TABLE zalo_contacts ADD COLUMN kenh_sale TEXT'); } catch (_) { /* đã có cột */ }
 
 const insertStmt = db.prepare(`
-  INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, zalo_account, customer_id, date_inventory, user_id, kind, channel, created_at)
-  VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @images, @sent_by, @zalo_account, @customer_id, @date_inventory, @user_id, @kind, @channel, @created_at)
+  INSERT INTO reports (order_id, customer_name, phone, staff, message, status, error, job_id, images, sent_by, zalo_account, customer_id, date_inventory, user_id, kind, channel, phone_source, phone_original, created_at)
+  VALUES (@order_id, @customer_name, @phone, @staff, @message, @status, @error, @job_id, @images, @sent_by, @zalo_account, @customer_id, @date_inventory, @user_id, @kind, @channel, @phone_source, @phone_original, @created_at)
 `);
 
 function addReport(row) {
@@ -234,6 +242,8 @@ function addReport(row) {
     kind: row.kind === 'ship' ? 'ship' : 'hang',
     // Kênh gửi: 'facebook' khi báo qua FB, còn lại 'zalo'.
     channel: row.channel === 'facebook' ? 'facebook' : 'zalo',
+    phone_source: row.phoneSource ?? null,
+    phone_original: row.phoneOriginal ?? null,
     created_at: new Date().toISOString(),
   };
   const info = insertStmt.run(data);
@@ -246,7 +256,8 @@ function addReport(row) {
 const updateStmt = db.prepare(`
   UPDATE reports
      SET status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id,
-         customer_id = @customer_id, date_inventory = @date_inventory
+         customer_id = @customer_id, date_inventory = @date_inventory, phone = @phone,
+         customer_name = @customer_name, phone_source = @phone_source, phone_original = @phone_original
    WHERE id = @id
 `);
 const getReportStmt = db.prepare('SELECT * FROM reports WHERE id = @id');
@@ -273,6 +284,12 @@ function updateReport(id, fields = {}) {
     // không có sẵn lúc addReport (chỉ biết sau khi syncShipStatusByCode tra ra), nên set SAU qua đây.
     customer_id: fields.customerId != null ? String(fields.customerId) : cur.customer_id,
     date_inventory: fields.dateInventory != null ? String(fields.dateInventory) : cur.date_inventory,
+    // Đổi SĐT/tên khách khi báo ship tự FALLBACK sang SĐT khách hàng thật (xem shippingSendService.js).
+    // Không truyền -> giữ nguyên giá trị lúc addReport (đa số các lượt gửi bình thường).
+    phone: fields.phone !== undefined ? fields.phone : cur.phone,
+    customer_name: fields.customerName !== undefined ? fields.customerName : cur.customer_name,
+    phone_source: fields.phoneSource !== undefined ? fields.phoneSource : cur.phone_source,
+    phone_original: fields.phoneOriginal !== undefined ? fields.phoneOriginal : cur.phone_original,
   };
   updateStmt.run(next);
   // Trạng thái/nội dung report đổi (pending -> success/failed) -> làm mới cache map dẫn xuất.
