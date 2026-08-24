@@ -441,9 +441,12 @@ const clickPersonalTab = (page) => clickFilterTab(page, 'cá nhân', 2,
  *  - 'personal': BẤM TAB "CÁ NHÂN" trước.
  * Nếu mục "Trò chuyện" có CẢ chat 1-1 lẫn nhóm cho cùng khách (Zalo hay liệt kê cá nhân TRƯỚC nhóm),
  * chọn đúng hàng theo kiểu báo: nhóm -> hàng có avatar GHÉP nhiều thành viên (collage); cá nhân ->
- * hàng 1 avatar. Chỉ phân giải khi có >1 hàng khớp (1 hàng thì lấy luôn).
+ * hàng 1 avatar. Chỉ phân giải khi có >1 hàng khớp (1 hàng thì lấy luôn) — nhưng dù chỉ 1 hàng, hàng
+ * đó vẫn phải ĐÚNG loại đang cần (xem kiểm tra `rect.isGroup` ngay dưới).
  * KHÔNG khớp được trong "Trò chuyện" -> DỪNG (ném lỗi): KHÔNG lấy đại hàng trên cùng, KHÔNG fallback
- * sang "Người dùng Zalo"/"Tin nhắn" -> tránh mở chat mới / gửi nhầm người.
+ * sang "Người dùng Zalo"/"Tin nhắn" -> tránh mở chat mới / gửi nhầm người. Khớp được nhưng SAI LOẠI
+ * (vd cần Nhóm mà hàng khớp duy nhất lại là chat 1-1) -> CŨNG DỪNG (ném lỗi `SAI_LOAI_HOI_THOAI`) —
+ * tránh âm thầm gửi nhầm loại hội thoại so với "Kiểu báo riêng" đã cấu hình cho khách.
  *
  * Gõ THẲNG SĐT vào ô tìm (SĐT duy nhất, khớp chính xác hơn tên). Có SĐT mà KHÔNG khớp được
  * hội thoại -> DỪNG LUÔN, KHÔNG fallback sang tìm theo TÊN (tránh khớp nhầm hội thoại của
@@ -612,6 +615,17 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     await shot(page, '03b-conversation-notfound');
     const tag = strictMatch ? 'KHONG_THAY_HOI_THOAI (strict)' : 'KHONG_THAY_HOI_THOAI';
     throw new Error(`${tag}: không tìm thấy hội thoại cho "${phone || name}" trong mục "Trò chuyện". Kiểm tra khách đã có hội thoại (đặt tên sẵn) trong "Trò chuyện" trên tài khoản này chưa.`);
+  }
+  // Tìm được hội thoại nhưng SAI LOẠI (cần Nhóm mà chỉ ra Cá nhân, hoặc ngược lại) — thường gặp khi
+  // khách chỉ có ĐÚNG 1 hội thoại khớp trong "Trò chuyện" nên bước phân giải nhóm/cá nhân ở scan()
+  // (chỉ chạy khi có >1 hàng khớp) không có gì để chọn. KHÔNG được âm thầm gửi nhầm loại (vd khách
+  // cấu hình "Kiểu báo riêng = Nhóm" trong Danh bạ nhưng tài khoản này chỉ có sẵn chat 1-1) -> DỪNG,
+  // ném lỗi rõ để NV biết tạo/kiểm tra đúng loại hội thoại hoặc đổi tài khoản gửi.
+  if (rect.isGroup !== !isPersonal) {
+    await shot(page, '03c-conversation-wrong-type');
+    const wantLabel = isPersonal ? 'CÁ NHÂN' : 'NHÓM';
+    const gotLabel = rect.isGroup ? 'NHÓM' : 'CÁ NHÂN';
+    throw new Error(`SAI_LOAI_HOI_THOAI: cần hội thoại ${wantLabel} cho "${phone || name}" nhưng tài khoản này chỉ có hội thoại ${gotLabel} trong mục "Trò chuyện". Kiểm tra/tạo đúng loại hội thoại cho khách trên tài khoản này, hoặc xem lại "Kiểu báo riêng" trong Danh bạ.`);
   }
   // Ưu tiên click bằng element đã đánh dấu (Playwright tự cuộn tới + chờ actionable),
   // dự phòng click theo toạ độ chuột nếu Vue đã render lại làm mất cờ.

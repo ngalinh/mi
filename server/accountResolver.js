@@ -44,6 +44,22 @@ const norm = (s) => String(s == null ? '' : s).trim().toLowerCase();
 /** true nếu account thuộc về NV `uid` — chủ (staffId) hoặc được gắn DÙNG CHUNG (sharedStaffIds). */
 const ownedBy = (a, uid) => norm(a.staffId) === uid || (a.sharedStaffIds || []).some((s) => norm(s) === uid);
 
+/**
+ * Suy ra staffId của NV theo TÊN khi đơn KHÔNG có `userId` (Basso đôi khi không trả `user_id` cho
+ * 1 đơn) — tra trong TOÀN BỘ account đã cấu hình (mọi platform): account nào có `name` khớp đúng
+ * tên NV và có gắn `staffId` thì dùng luôn ID đó làm uid dự phòng. Cần thiết vì `sharedStaffIds`
+ * (DÙNG CHUNG account) lưu staffId (số), không lưu tên -> nếu không có uid, `ownedBy()` không bao
+ * giờ khớp được quan hệ dùng chung, dù NV có tên đúng account chủ khác đã gắn sharedStaffIds cho cô
+ * ấy (vd account FB "Linh Dương" của Bình dùng chung cho Trân qua sharedStaffIds=[id của Trân] —
+ * không có uid thì không tra ra được). '' nếu không tra được NV nào có staffId khớp tên.
+ */
+function inferStaffIdByName(accounts, staffName) {
+  const staff = norm(staffName);
+  if (!staff) return '';
+  const found = (accounts || []).find((a) => norm(a.name) === staff && norm(a.staffId));
+  return found ? norm(found.staffId) : '';
+}
+
 /** Kênh sale THẬT của 1 đơn — field Partner API trả thẳng (sale_channel/sale_channel_label, đã
  * chuẩn hoá thành saleChannelLabel/saleChannel ở bassoApi.js/shippingApi.js). '' nếu đơn không có. */
 function orderKenhSale(order) {
@@ -110,7 +126,9 @@ function fromStore(acct) {
  */
 function resolveFacebook(order, accounts, kenhSale) {
   const fbAccounts = (accounts || []).filter((a) => a.platform === 'facebook');
-  const uid = norm(order && order.userId);
+  // Đơn thiếu userId -> tra staffId theo tên qua toàn bộ account (mọi platform) để không bỏ sót
+  // quan hệ DÙNG CHUNG (sharedStaffIds) — xem inferStaffIdByName().
+  const uid = norm(order && order.userId) || inferStaffIdByName(accounts, order && order.staff);
   const staff = norm(order && order.staff);
   let mine = uid ? fbAccounts.filter((a) => ownedBy(a, uid)) : [];
   if (!mine.length && staff) mine = fbAccounts.filter((a) => norm(a.name) === staff);
@@ -180,10 +198,13 @@ async function resolveForOrder(order, opts = {}) {
   }
 
   // 2) accountsStore (Hướng B). Chỉ xét account ZALO ở nhánh này (FB đã xử lý ở trên).
-  let accounts = [];
-  try { accounts = (await getAccountsCached()).filter((a) => a.platform !== 'facebook'); } catch { accounts = []; }
+  let allAccounts = [];
+  try { allAccounts = await getAccountsCached(); } catch { allAccounts = []; }
+  const accounts = allAccounts.filter((a) => a.platform !== 'facebook');
   if (Array.isArray(accounts) && accounts.length && order) {
-    const uid = norm(order.userId);
+    // Đơn thiếu userId -> tra staffId theo tên qua TOÀN BỘ account (mọi platform, `allAccounts`)
+    // để không bỏ sót quan hệ DÙNG CHUNG (sharedStaffIds) gắn cho NV này — xem inferStaffIdByName().
+    const uid = norm(order.userId) || inferStaffIdByName(allAccounts, order.staff);
     const staff = norm(order.staff);
     // Tất cả account của NV này: ưu tiên khớp theo staffId (hoặc sharedStaffIds), không có thì theo tên.
     let mine = uid ? accounts.filter((a) => ownedBy(a, uid)) : [];
