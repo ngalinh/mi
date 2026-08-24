@@ -6,7 +6,6 @@
   let tabUsers = [];
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
-  let currentSendStatus = ''; // lọc theo TRẠNG THÁI GỬI TIN (lastReport): '' = tất cả | success | pending | failed | none
   let currentChannel = ''; // lọc theo KÊNH SALE THẬT của đơn (saleChannelLabel/saleChannel): '' = tất cả
   const knownChannels = new Set(); // gom dần tên kênh sale gặp được (không bao giờ mất, giống tabUsers) để đổ vào #fChannel
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
@@ -277,17 +276,6 @@
     }
     return `<span class="pill failed">${App.icon('alert')} Lỗi</span>`;
   }
-  // Gom trạng thái GỬI TIN của lượt báo đại diện về nhãn để LỌC (khớp sendStatusCell ở trên):
-  // none = chưa từng báo · pending = đang gửi · success = đã gửi · sent_check = đã gửi cần KT · failed = lỗi.
-  function sendStatusOf(o) {
-    const s = o.lastReport && o.lastReport.status;
-    if (!s) return 'none';
-    if (s === 'pending') return 'pending';
-    if (s === 'success') return 'success';
-    if (s === 'sent_check') return 'sent_check';
-    return 'failed';
-  }
-
   // Tài khoản Zalo/FB đã dùng để gửi, kèm chip kênh trước tên (tên dài -> ellipsis + tooltip).
   function accountCell(o) {
     const acct = String((o.lastReport && o.lastReport.account) || '').trim();
@@ -670,37 +658,9 @@
   // (không còn 4 call /api/order-counts mỗi lần tải). Giữ hàm rỗng để các nơi gọi khỏi lỗi.
   function renderStatusTabs() { /* no-op */ }
 
-  // Bộ lọc client-side (Trạng thái gửi tin + Loại trừ/Ghi chú) — tách riêng để dùng được cả khi
-  // lọc cả tập (client-mode, trước khi phân trang) lẫn trong phạm vi 1 trang (server-mode).
-  // Khách có ND báo ship nhưng CHƯA gửi báo ship lần nào (kể cả 'sent_check' tính là đã gửi vì tin
-  // đã tới khách). Dùng cho bộ lọc "Có ND ship chưa gửi" -> soi nhanh đơn cần bấm 🚚.
-  function hasUnsentShipContent(o) {
-    const has = o.noiDungBaoShip && String(o.noiDungBaoShip).trim();
-    const shipSent = o.sentAt && o.sentAt.ship;
-    return !!has && !shipSent;
-  }
-
-  // ISO time có rơi vào HÔM NAY (giờ máy người xem) không? Dùng cho lọc "ND ship mới hôm nay".
-  function isSameDayToday(iso) {
-    if (!iso) return false;
-    const d = new Date(iso);
-    if (isNaN(d)) return false;
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear()
-      && d.getMonth() === now.getMonth()
-      && d.getDate() === now.getDate();
-  }
-
-  // Đơn có ND ship VỪA MỚI NHẬP HÔM NAY & chưa gửi báo ship -> danh sách cần đi báo ship trong ngày.
-  // `shipFirstSeen` do server ghi lần đầu Mi thấy đơn có ND ship (Basso không có mốc giờ nhập ND ship).
-  function isShipNewToday(o) {
-    return hasUnsentShipContent(o) && isSameDayToday(o.shipFirstSeen);
-  }
-
+  // Bộ lọc client-side (Kênh sale + Loại trừ/Ghi chú) — tách riêng để dùng được cả khi lọc cả
+  // tập (client-mode, trước khi phân trang) lẫn trong phạm vi 1 trang (server-mode).
   function applyExcludeNote(list) {
-    if (currentSendStatus === 'ship_pending') list = list.filter(hasUnsentShipContent);
-    else if (currentSendStatus === 'ship_new_today') list = list.filter(isShipNewToday);
-    else if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
     if (currentChannel) list = list.filter((o) => saleChannelOf(o) === currentChannel);
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
@@ -1592,10 +1552,10 @@
   // trang cả tập (giữ gom đúng qua mọi trang); server-mode chỉ render lại trang hiện tại.
   function rerender() { if (clientMode) applyView({ keepPage: true }); else render(); }
 
-  // Có bất kỳ bộ lọc CLIENT-SIDE nào đang bật không? (gom nhóm, trạng thái gửi tin, kênh sale, hoặc
-  // Loại trừ/Ghi chú trong popover). Các lọc này không làm được ở Basso -> phải lọc tại client.
+  // Có bất kỳ bộ lọc CLIENT-SIDE nào đang bật không? (gom nhóm, kênh sale, hoặc Loại trừ/Ghi chú
+  // trong popover). Các lọc này không làm được ở Basso -> phải lọc tại client.
   function hasClientFilter() {
-    return !!currentGroupBy || !!currentSendStatus || !!currentChannel || F.exclude !== 'all' || F.note !== 'all';
+    return !!currentGroupBy || !!currentChannel || F.exclude !== 'all' || F.note !== 'all';
   }
   // Đồng bộ chế độ theo bộ lọc client-side: nếu đang bật mà chưa kéo cả tập -> kéo cả tập rồi
   // lọc/phân trang tại client (để lọc trên TOÀN tập chứ không chỉ 20 đơn của trang đang xem);
@@ -1784,33 +1744,17 @@
     reloadScope();
   });
 
-  // Bơm ô lọc "Trạng thái gửi tin" + gỡ option "Lỗi - Báo lại" cũ bằng JS nếu trình duyệt/gateway
-  // còn giữ index.html BẢN CŨ trong cache (giống renderHeader — miễn nhiễm HTML cache cũ). HTML mới
-  // đã có sẵn ô này thì hàm thành no-op.
-  function ensureSendStatusFilter() {
+  // Gỡ option "failed" cũ (bộ lọc Trạng thái gửi tin đã bỏ hẳn) khỏi #fStatus bằng JS nếu trình
+  // duyệt/gateway còn giữ index.html BẢN CŨ trong cache (giống renderHeader — miễn nhiễm HTML cache cũ).
+  (function cleanupLegacyFailedStatusOption() {
     const st = $('fStatus');
     if (st) { const old = st.querySelector('option[value="failed"]'); if (old) old.remove(); }
-    if ($('fSendStatus') || !st) return;
-    const sel = document.createElement('select');
-    sel.id = 'fSendStatus';
-    sel.className = 'tb-select';
-    sel.title = 'Lọc theo trạng thái gửi tin';
-    sel.innerHTML = '<option value="" selected>Tất cả gửi tin</option>'
-      + '<option value="ship_new_today">🚚 ND ship mới hôm nay</option>'
-      + '<option value="ship_pending">Có ND ship chưa gửi</option>'
-      + '<option value="success">Đã gửi</option>'
-      + '<option value="sent_check">Đã gửi · cần kiểm tra</option>'
-      + '<option value="pending">Đang gửi</option>'
-      + '<option value="failed">Lỗi gửi</option>'
-      + '<option value="none">Chưa gửi</option>';
-    st.insertAdjacentElement('afterend', sel);
-  }
-  ensureSendStatusFilter();
+  })();
 
   // Bơm ô lọc "Kênh sale" bằng JS nếu trình duyệt/gateway còn giữ index.html BẢN CŨ trong cache
-  // (giống ensureSendStatusFilter ở trên). HTML mới đã có sẵn ô này thì hàm thành no-op.
+  // (giống cleanupLegacyFailedStatusOption ở trên). HTML mới đã có sẵn ô này thì hàm thành no-op.
   function ensureChannelFilter() {
-    const anchor = $('fSendStatus') || $('fStatus');
+    const anchor = $('fStatus');
     if ($('fChannel') || !anchor) return;
     const sel = document.createElement('select');
     sel.id = 'fChannel';
@@ -1820,32 +1764,6 @@
     anchor.insertAdjacentElement('afterend', sel);
   }
   ensureChannelFilter();
-
-  // Lọc theo TRẠNG THÁI GỬI TIN (toolbar, kế bên trạng thái đơn): '' = tất cả, hoặc
-  // success/pending/failed/none. Dữ liệu `lastReport` được server enrich theo TỪNG đơn (không lọc
-  // được ở Basso) -> lọc CLIENT-SIDE. Để lọc trên CẢ tập chứ không chỉ 20 đơn/trang, khi bật lọc
-  // ta kéo cả tập 1 lần rồi lọc/phân trang tại client (giống bật gom nhóm); bỏ lọc & không gom thì
-  // quay lại server-mode phân trang nhẹ (mặc định).
-  const fSendStatusEl = $('fSendStatus');
-  // Tô màu ô lọc theo giá trị đang chọn (data-v -> CSS): xanh lá/xanh dương/đỏ như pill từng dòng.
-  const paintSendStatusFilter = () => { if (fSendStatusEl) fSendStatusEl.dataset.v = fSendStatusEl.value || ''; };
-  paintSendStatusFilter();
-  if (fSendStatusEl) fSendStatusEl.addEventListener('change', (e) => {
-    currentSendStatus = e.target.value || '';
-    currentPage = 1;
-    paintSendStatusFilter();
-    // ND ship chỉ nằm trên đơn ĐÃ báo hàng (arrival/ship). Nếu đang ở tab "Chưa báo" (todo) thì
-    // lọc ship chắc chắn RỖNG -> tự chuyển trạng thái đơn về "Tất cả" cho lọc ship có tác dụng.
-    // Chỉ đổi khi đang mắc ở 'todo'; nếu người dùng đã chọn arrival/ship/all thì tôn trọng.
-    const shipFilter = currentSendStatus === 'ship_new_today' || currentSendStatus === 'ship_pending';
-    if (shipFilter && currentGroup === 'todo') {
-      currentGroup = '';
-      const st = $('fStatus'); if (st) { st.value = ''; st.dataset.v = ''; }
-    }
-    // Lọc trên TOÀN tập: bật -> kéo cả tập (client-mode); tắt & không còn lọc client-side nào ->
-    // quay lại server-mode. Dùng chung helper để không "rơi" nhầm mode khi Loại trừ/Ghi chú còn bật.
-    syncClientFilterMode();
-  });
 
   // Lọc theo KÊNH SALE THẬT của đơn (cột "Kênh sale" trong bảng, saleChannelLabel/saleChannel) —
   // field Partner API trả thẳng theo từng đơn, không lọc được ở Basso -> lọc CLIENT-SIDE giống
