@@ -7,6 +7,8 @@
   let currentStaff = ''; // user_id đang lọc ('' = tất cả)
   let currentGroup = 'todo'; // thẻ trạng thái đang xem ('todo' | 'arrival' | 'ship' | 'failed')
   let currentSendStatus = ''; // lọc theo TRẠNG THÁI GỬI TIN (lastReport): '' = tất cả | success | pending | failed | none
+  let currentChannel = ''; // lọc theo KÊNH SALE THẬT của đơn (saleChannelLabel/saleChannel): '' = tất cả
+  const knownChannels = new Set(); // gom dần tên kênh sale gặp được (không bao giờ mất, giống tabUsers) để đổ vào #fChannel
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
@@ -163,6 +165,23 @@
     el.value = cur; // giữ đúng lựa chọn kể cả khi option của NV đang chọn chưa có trong list
   }
 
+  // Gom tên kênh sale gặp được từ đơn đã tải vào knownChannels (không xoá — giống mergeTabUsers,
+  // tránh option biến mất khỏi dropdown khi đổi trang/lọc chỉ thấy 1 phần tập).
+  function mergeChannels(list) {
+    (list || []).forEach((o) => { const c = saleChannelOf(o); if (c) knownChannels.add(c); });
+  }
+  // Đổ danh sách kênh sale vào dropdown #fChannel, sắp theo vần (giữ đúng lựa chọn hiện tại).
+  function renderChannelOptions() {
+    const el = $('fChannel');
+    if (!el) return;
+    const cur = String(currentChannel || '');
+    const list = [...knownChannels].sort((a, b) => a.localeCompare(b, 'vi', { sensitivity: 'base' }));
+    el.innerHTML = `<option value="">Tất cả kênh sale</option>` + list.map((c) =>
+      `<option value="${App.esc(c)}"${c === cur ? ' selected' : ''}>${App.esc(c)}</option>`
+    ).join('');
+    el.value = cur;
+  }
+
   // ---------------- Render bảng ----------------
   function statusSelect(o) {
     const opts = STATUS_OPTS.map(([v, l]) =>
@@ -223,8 +242,11 @@
   }
   // Kênh sale THẬT của đơn — field Partner API trả thẳng (saleChannelLabel/saleChannel, xem
   // bassoApi.normalizeOrder), không còn suy đoán theo NV như trước.
+  function saleChannelOf(o) {
+    return String((o && (o.saleChannelLabel || o.saleChannel)) || '').trim();
+  }
   function channelCell(o) {
-    const label = String(o.saleChannelLabel || o.saleChannel || '').trim();
+    const label = saleChannelOf(o);
     if (!label) return '<span class="muted">—</span>';
     return `<span class="acct-kenh">${App.esc(label)}</span>`;
   }
@@ -679,6 +701,7 @@
     if (currentSendStatus === 'ship_pending') list = list.filter(hasUnsentShipContent);
     else if (currentSendStatus === 'ship_new_today') list = list.filter(isShipNewToday);
     else if (currentSendStatus) list = list.filter((o) => sendStatusOf(o) === currentSendStatus);
+    if (currentChannel) list = list.filter((o) => saleChannelOf(o) === currentChannel);
     if (F.exclude === 'excluded') list = list.filter((o) => excluded.has(String(o.id)));
     else if (F.exclude === 'not') list = list.filter((o) => !excluded.has(String(o.id)));
     if (F.note === 'has') list = list.filter((o) => (o.note || '').trim());
@@ -1392,6 +1415,7 @@
     if (currentPage > pageCount) currentPage = pageCount;
     orders = pages[currentPage - 1] || [];
     renderTabs();
+    renderChannelOptions();
     render();
     renderStatusTabs();
     updateCount(visibleOrders());
@@ -1420,6 +1444,7 @@
       }
       clientMode = true;
       allOrders = res.orders || [];
+      mergeChannels(allOrders);
       if (res.tabUsers && res.tabUsers.length) mergeTabUsers(res.tabUsers);
       syncLocalFlags(allOrders);
       if (auto) {
@@ -1470,6 +1495,7 @@
       // Trong lúc chờ, loadAll đã chuyển sang client-mode -> bỏ kết quả vẽ-nhanh để không đè.
       if (fast && clientMode) return;
       orders = res.orders || [];
+      mergeChannels(orders);
       serverTotal = res.total != null ? res.total : orders.length;
       pageCount = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE)); // server-mode: phân trang theo tổng đơn
       if (res.tabUsers && res.tabUsers.length) mergeTabUsers(res.tabUsers);
@@ -1488,6 +1514,7 @@
       if (!fast) setSyncInfo();
       updateActiveCount();
       renderTabs();
+      renderChannelOptions();
       render();
       renderStatusTabs();
       updateCount(visibleOrders());
@@ -1565,10 +1592,10 @@
   // trang cả tập (giữ gom đúng qua mọi trang); server-mode chỉ render lại trang hiện tại.
   function rerender() { if (clientMode) applyView({ keepPage: true }); else render(); }
 
-  // Có bất kỳ bộ lọc CLIENT-SIDE nào đang bật không? (gom nhóm, trạng thái gửi tin, hoặc
+  // Có bất kỳ bộ lọc CLIENT-SIDE nào đang bật không? (gom nhóm, trạng thái gửi tin, kênh sale, hoặc
   // Loại trừ/Ghi chú trong popover). Các lọc này không làm được ở Basso -> phải lọc tại client.
   function hasClientFilter() {
-    return !!currentGroupBy || !!currentSendStatus || F.exclude !== 'all' || F.note !== 'all';
+    return !!currentGroupBy || !!currentSendStatus || !!currentChannel || F.exclude !== 'all' || F.note !== 'all';
   }
   // Đồng bộ chế độ theo bộ lọc client-side: nếu đang bật mà chưa kéo cả tập -> kéo cả tập rồi
   // lọc/phân trang tại client (để lọc trên TOÀN tập chứ không chỉ 20 đơn của trang đang xem);
@@ -1780,6 +1807,20 @@
   }
   ensureSendStatusFilter();
 
+  // Bơm ô lọc "Kênh sale" bằng JS nếu trình duyệt/gateway còn giữ index.html BẢN CŨ trong cache
+  // (giống ensureSendStatusFilter ở trên). HTML mới đã có sẵn ô này thì hàm thành no-op.
+  function ensureChannelFilter() {
+    const anchor = $('fSendStatus') || $('fStatus');
+    if ($('fChannel') || !anchor) return;
+    const sel = document.createElement('select');
+    sel.id = 'fChannel';
+    sel.className = 'tb-select';
+    sel.title = 'Lọc theo kênh sale';
+    sel.innerHTML = '<option value="">Tất cả kênh sale</option>';
+    anchor.insertAdjacentElement('afterend', sel);
+  }
+  ensureChannelFilter();
+
   // Lọc theo TRẠNG THÁI GỬI TIN (toolbar, kế bên trạng thái đơn): '' = tất cả, hoặc
   // success/pending/failed/none. Dữ liệu `lastReport` được server enrich theo TỪNG đơn (không lọc
   // được ở Basso) -> lọc CLIENT-SIDE. Để lọc trên CẢ tập chứ không chỉ 20 đơn/trang, khi bật lọc
@@ -1803,6 +1844,16 @@
     }
     // Lọc trên TOÀN tập: bật -> kéo cả tập (client-mode); tắt & không còn lọc client-side nào ->
     // quay lại server-mode. Dùng chung helper để không "rơi" nhầm mode khi Loại trừ/Ghi chú còn bật.
+    syncClientFilterMode();
+  });
+
+  // Lọc theo KÊNH SALE THẬT của đơn (cột "Kênh sale" trong bảng, saleChannelLabel/saleChannel) —
+  // field Partner API trả thẳng theo từng đơn, không lọc được ở Basso -> lọc CLIENT-SIDE giống
+  // trạng thái gửi tin: bật lọc -> kéo cả tập rồi lọc tại client (syncClientFilterMode).
+  const fChannelEl = $('fChannel');
+  if (fChannelEl) fChannelEl.addEventListener('change', (e) => {
+    currentChannel = e.target.value || '';
+    currentPage = 1;
     syncClientFilterMode();
   });
 
