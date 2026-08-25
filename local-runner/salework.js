@@ -564,10 +564,12 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         }
       }
       let pick = null;
+      let ambiguous = false; // >1 hàng khớp khác nhau -> đủ dữ liệu để đòi hỏi đúng loại (isGroup)
       if (terms.length) {
         // Bỏ WRAPPER: hàng nào CHỨA hàng khớp khác -> loại (giữ hàng lá thật, tránh trúng vùng bọc mục).
         const leaves = matches.filter((a) => !matches.some((b) => b.el !== a.el && a.el.contains(b.el)));
         let pool = leaves.length ? leaves : matches;
+        ambiguous = pool.length > 1;
         // CHỈ dùng nhóm/cá nhân để PHÂN GIẢI khi có >1 hàng khớp (giữ nguyên case chỉ 1 hàng, tránh
         // phá luồng phổ biến nếu nhận diện avatar sai). preferGroup: báo nhóm -> chọn hàng nhóm.
         if (pool.length > 1) {
@@ -583,7 +585,9 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       // Đánh dấu để click bằng element thật (auto-scroll + actionable) thay vì chỉ toạ độ.
       pick.el.setAttribute('data-mi-target', '1');
       const rr = pick.rect;
-      return { x: rr.left + rr.width / 2, y: rr.top + rr.height / 2, isGroup: !!pick.isGroup };
+      return {
+        x: rr.left + rr.width / 2, y: rr.top + rr.height / 2, isGroup: !!pick.isGroup, ambiguous,
+      };
     }, { matchTerms, section, preferGroup: !isPersonal });
 
     // Kết quả tìm kiếm có debounce -> poll, TRẢ VỀ NGAY khi có kết quả.
@@ -594,7 +598,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       rect = await scan();
     } while (!rect && Date.now() < deadline);
     await shot(page, '03-searched');
-    if (rect) console.log(`[mi] khớp hội thoại mục "${section}": isGroup=${rect.isGroup} (cần ${isPersonal ? 'cá nhân' : 'nhóm'})`);
+    if (rect) console.log(`[mi] khớp hội thoại mục "${section}": isGroup=${rect.isGroup} ambiguous=${rect.ambiguous} (cần ${isPersonal ? 'cá nhân' : 'nhóm'})`);
     return rect;
   }
 
@@ -616,12 +620,14 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     const tag = strictMatch ? 'KHONG_THAY_HOI_THOAI (strict)' : 'KHONG_THAY_HOI_THOAI';
     throw new Error(`${tag}: không tìm thấy hội thoại cho "${phone || name}" trong mục "Trò chuyện". Kiểm tra khách đã có hội thoại (đặt tên sẵn) trong "Trò chuyện" trên tài khoản này chưa.`);
   }
-  // Tìm được hội thoại nhưng SAI LOẠI (cần Nhóm mà chỉ ra Cá nhân, hoặc ngược lại) — thường gặp khi
-  // khách chỉ có ĐÚNG 1 hội thoại khớp trong "Trò chuyện" nên bước phân giải nhóm/cá nhân ở scan()
-  // (chỉ chạy khi có >1 hàng khớp) không có gì để chọn. KHÔNG được âm thầm gửi nhầm loại (vd khách
-  // cấu hình "Kiểu báo riêng = Nhóm" trong Danh bạ nhưng tài khoản này chỉ có sẵn chat 1-1) -> DỪNG,
-  // ném lỗi rõ để NV biết tạo/kiểm tra đúng loại hội thoại hoặc đổi tài khoản gửi.
-  if (rect.isGroup !== !isPersonal) {
+  // Tìm được hội thoại nhưng SAI LOẠI (cần Nhóm mà chỉ ra Cá nhân, hoặc ngược lại). CHỈ ném lỗi khi
+  // "Trò chuyện" có >1 hội thoại khớp (rect.ambiguous) — tức có thật ứng viên khác để so sánh/chọn.
+  // Khi CHỈ CÓ ĐÚNG 1 hội thoại khớp, không còn gì để đối chiếu nên KHÔNG ép theo isGroup: heuristic
+  // nhận diện nhóm (đếm ảnh avatar ghép / icon nhóm) có thể sai với nhóm dùng avatar tuỳ chỉnh (logo
+  // riêng thay vì ảnh ghép mặc định) -> từng gây SAI_LOAI_HOI_THOAI oan dù hội thoại đúng là nhóm cần
+  // gửi (vd nhóm "[VLES-Basso] ..." dùng logo 1 ảnh). Hàng duy nhất khớp SĐT trong "Trò chuyện" luôn
+  // là hội thoại có sẵn của khách đó trên tài khoản này -> tin tưởng lấy luôn.
+  if (rect.ambiguous && rect.isGroup !== !isPersonal) {
     await shot(page, '03c-conversation-wrong-type');
     const wantLabel = isPersonal ? 'CÁ NHÂN' : 'NHÓM';
     const gotLabel = rect.isGroup ? 'NHÓM' : 'CÁ NHÂN';
