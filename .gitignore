@@ -16,6 +16,8 @@ config/zalo-accounts.json
 config/login-history.json
 # Override chế độ TEST an toàn (chỉnh qua UI) — runtime data, KHÔNG commit
 config/test-mode.json
+# Checkpoint chống gửi lại ảnh khi bước text lỗi
+config/image-send-checkpoints.json
 
 # Cấu hình Claude Code cá nhân (máy-specific)
 .claude/settings.local.json
