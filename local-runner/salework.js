@@ -1,4 +1,5 @@
 'use strict';
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
@@ -37,6 +38,65 @@ function phoneAllowed(phone) {
 
 const sleep = (page, ms) => page.waitForTimeout(ms);
 const randomDelay = (page, min, max) => page.waitForTimeout(min + Math.floor(Math.random() * (max - min)));
+
+// Nếu ảnh đã gửi nhưng text lỗi, lưu checkpoint bền để lần retry cùng payload chỉ gửi text.
+// Không lưu nội dung/đường dẫn thô: file chỉ chứa SHA-256 và thời điểm gửi ảnh.
+const IMAGE_CHECKPOINT_FILE = path.join(__dirname, '..', 'config', 'image-send-checkpoints.json');
+const IMAGE_CHECKPOINT_TTL_MS = 24 * 60 * 60 * 1000;
+
+function imageCheckpointKey({ profile, account, keyword, name, message, imagePaths }) {
+  return crypto.createHash('sha256').update(JSON.stringify({
+    profile: profile || 'default',
+    account: account || '',
+    keyword: normPhone(keyword),
+    name: norm(name),
+    message: String(message || '').normalize('NFC'),
+    images: (imagePaths || []).map((p) => path.resolve(p)),
+  })).digest('hex');
+}
+
+function loadImageCheckpoints() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(IMAGE_CHECKPOINT_FILE, 'utf8'));
+    const now = Date.now();
+    let changed = false;
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!value || now - Number(value.imageSentAt || 0) > IMAGE_CHECKPOINT_TTL_MS) {
+        delete parsed[key];
+        changed = true;
+      }
+    }
+    if (changed) saveImageCheckpoints(parsed);
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function saveImageCheckpoints(data) {
+  const dir = path.dirname(IMAGE_CHECKPOINT_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmp = `${IMAGE_CHECKPOINT_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, IMAGE_CHECKPOINT_FILE);
+}
+
+function hasImageCheckpoint(key) {
+  return !!loadImageCheckpoints()[key];
+}
+
+function markImageCheckpoint(key) {
+  const data = loadImageCheckpoints();
+  data[key] = { imageSentAt: Date.now() };
+  saveImageCheckpoints(data);
+}
+
+function clearImageCheckpoint(key) {
+  const data = loadImageCheckpoints();
+  if (!data[key]) return;
+  delete data[key];
+  saveImageCheckpoints(data);
+}
 
 function shot(page, name) {
   try {
@@ -800,14 +860,18 @@ async function attachImages(page, imagePaths) {
  * RỒI GỬI TEXT thành tin riêng. textarea bind Vue v-model → fill() + bắn 'input' để BẬT nút Gửi;
  * KHÔNG gõ Enter (Enter chỉ xuống dòng).
  */
-async function typeAndSend(page, message, imagePaths = []) {
+async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
   let sentAny = false;
 
   // ----- 1. ẢNH: đính rồi gửi (1 tin riêng) -----
   if (imagePaths && imagePaths.length > 0) {
     const uploaded = await attachImages(page, imagePaths);
     if (uploaded) {
-      if (await clickSend(page)) sentAny = true;
+      if (await clickSend(page)) {
+        sentAny = true;
+        // Ghi checkpoint NGAY sau khi nút gửi ảnh đã ăn, trước bước gửi text có thể lỗi.
+        if (typeof onImageSent === 'function') onImageSent();
+      }
       await sleep(page, 1500); // chờ tin ảnh gửi xong + ô soạn reset trước khi nhập text
     }
   }
@@ -910,7 +974,25 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
       }
 
       await searchAndClickConversation(page, { name, phone: keyword, strictMatch, notifyTarget });
-      await typeAndSend(page, message, imagePaths);
+
+      const uniqueImagePaths = [...new Set((imagePaths || []).map((p) => path.resolve(p)))];
+      const checkpointKey = uniqueImagePaths.length
+        ? imageCheckpointKey({ profile, account, keyword, name, message, imagePaths: uniqueImagePaths })
+        : null;
+      const imageAlreadySent = checkpointKey ? hasImageCheckpoint(checkpointKey) : false;
+      if (imageAlreadySent) {
+        console.warn('[zalo] Lần trước đã gửi ảnh nhưng text lỗi — retry chỉ gửi text để tránh ảnh trùng.');
+      }
+
+      await typeAndSend(
+        page,
+        message,
+        imageAlreadySent ? [] : uniqueImagePaths,
+        checkpointKey ? () => markImageCheckpoint(checkpointKey) : null,
+      );
+
+      // Ảnh + text đã hoàn tất; xoá checkpoint để một yêu cầu gửi mới độc lập vẫn hoạt động.
+      if (checkpointKey) clearImageCheckpoint(checkpointKey);
     } finally {
       // Gửi xong (kể cả khi lỗi) thì đóng trình duyệt để giải phóng tài nguyên.
       // Tắt bằng CLOSE_AFTER_SEND=false nếu muốn giữ context sống cho lần gửi sau.
