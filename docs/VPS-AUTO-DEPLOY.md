@@ -1,48 +1,48 @@
-# Tự động deploy mi runner lên VPS
+# Tự động deploy mi runner lên VPS Windows
 
-Workflow `.github/workflows/deploy-vps.yml` deploy đúng commit mới nhất của nhánh `main` lên self-hosted runner và chỉ khởi động lại tiến trình PM2 `mi-runner`. Tiến trình `mi-server` không bị tác động vì theo kiến trúc hiện tại server thường chạy trên cloud.
+Workflow `.github/workflows/deploy-vps.yml` deploy commit mới của nhánh `main` lên GitHub Actions self-hosted runner Windows và chỉ reload PM2 process `mi-runner`; `mi-server` không bị tác động.
 
-## Chuẩn bị một lần trên VPS
+## Phần mềm cần cài
 
-1. Dùng cùng user GitHub Actions runner đang chạy Xeko. User này phải sở hữu thư mục deploy và không nên có quyền `sudo` trong workflow.
-2. Gắn các label cho runner: `self-hosted`, `Linux`, `X64`, `vps`.
-3. Cài Git, Node.js >= 22.5, npm, PM2, curl, flock và các thư viện hệ thống của Playwright.
-4. Tạo thư mục và cấp quyền cho user runner:
+- Windows Server 2016 trở lên, Windows 10 hoặc Windows 11 64-bit.
+- Git for Windows.
+- Node.js 22 LTS (tối thiểu 22.5) và npm.
+- PM2 cùng tiện ích tự khởi động trên Windows:
 
-   ```bash
-   sudo mkdir -p /srv/mi
-   sudo chown -R <runner-user>:<runner-user> /srv/mi
-   ```
+  ```powershell
+  npm install --global pm2 pm2-windows-startup
+  pm2-startup install
+  ```
 
-5. Sau lần workflow đầu tiên (workflow sẽ clone source rồi dừng vì chưa có secret), tạo `/srv/mi/.env` từ `.env.example` và điền giá trị production. Các giá trị quan trọng gồm `REMOTE_BOT_URL`, `API_KEY`, URL public/tunnel và cấu hình headless phù hợp với VPS.
-6. Cài thư viện hệ thống Playwright một lần nếu VPS chưa có:
+- GitHub Actions self-hosted runner được đăng ký với custom label `vps`.
 
-   ```bash
-   cd /srv/mi
-   sudo npx playwright install-deps chromium
-   ```
+Workflow tự chạy `npx playwright install chromium`; không cần cài Chromium thủ công.
 
-7. Cho PM2 tự phục hồi sau reboot bằng `pm2 startup`, sau đó chạy lệnh mà PM2 in ra. Workflow sẽ tự gọi `pm2 save` sau mỗi deploy.
+## Đăng ký GitHub Actions runner
 
-## Biến GitHub tùy chọn
+Dùng runner instance riêng cho mi tại `C:\actions-runner-mi`. Trong repository mi mở Settings → Actions → Runners → New self-hosted runner, chọn Windows/x64 và chạy đúng các lệnh GitHub sinh ra. Khi chạy `config.cmd`, thêm label `vps`. Runner phải có đủ labels `self-hosted`, `Windows`, `X64`, `vps`.
 
-Trong repository Settings → Actions → Variables:
+Nếu Playwright chạy headed (`HEADLESS=false`), khởi động runner tương tác bằng `run.cmd` trong Windows user đang đăng nhập. Không chạy runner hoặc PM2 trong Session 0 vì cửa sổ Chrome không hiển thị được. Muốn tự bật sau reboot, cấu hình auto-login và Task Scheduler với lựa chọn “Run only when user is logged on”.
 
-- `MI_DEPLOY_DIR`: mặc định `/srv/mi`.
-- `MI_HEALTHCHECK_URL`: mặc định `http://127.0.0.1:8090/health`.
+## Thư mục ứng dụng
 
-## Cách hoạt động
+Tạo thư mục:
 
-Mỗi push/merge vào `main` sẽ:
+```powershell
+New-Item -ItemType Directory -Force C:\apps\mi
+```
 
-1. Khóa deploy chung trên VPS để Xeko và mi không restart PM2 đồng thời.
-2. Fetch đúng commit GitHub yêu cầu và checkout vào thư mục cố định.
-3. Giữ nguyên các file không được Git theo dõi như `.env`, dữ liệu và profile Playwright.
-4. Chạy `npm ci`, cài đúng phiên bản Chromium, rồi reload duy nhất `mi-runner` bằng cấu hình PM2 hiện có.
-5. Chỉ báo thành công khi endpoint health check phản hồi HTTP 2xx.
+User chạy GitHub runner phải có quyền Modify trên thư mục này. Lần workflow đầu tiên sẽ clone source rồi dừng an toàn nếu thiếu secret. Sau đó tạo `C:\apps\mi\.env` từ `.env.example`, điền `REMOTE_BOT_URL`, `API_KEY`, URL public/tunnel và cấu hình headless phù hợp, rồi chạy lại workflow.
 
-Có thể chạy lại thủ công từ Actions → Deploy mi runner to VPS → Run workflow.
+Nếu mi đang nằm ở thư mục khác, đặt repository variable `MI_DEPLOY_DIR` thành đường dẫn hiện tại để không tạo bản chạy thứ hai. Health check mặc định là `http://127.0.0.1:8090/health`; thay bằng `MI_HEALTHCHECK_URL` nếu port khác.
 
-## Lưu ý an toàn
+Sau lần deploy thành công:
 
-Code được merge vào `main` có thể thực thi trên VPS. Nên bật branch protection/review cho `main`, dùng runner user riêng, không đưa secret vào repository và không cấp `sudo` không mật khẩu cho runner.
+```powershell
+pm2 save
+pm2 status
+```
+
+## Lưu ý
+
+Hai workflow dùng chung file lock trong `%TEMP%` để không deploy Xeko và mi đồng thời. File `.env`, profile Playwright và dữ liệu không được Git theo dõi sẽ được giữ nguyên qua các lần deploy.

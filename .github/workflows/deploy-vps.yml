@@ -1,4 +1,4 @@
-name: Deploy mi runner to VPS
+name: Deploy mi runner to Windows VPS
 
 on:
   push:
@@ -13,68 +13,117 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_DIR: ${{ vars.MI_DEPLOY_DIR || '/srv/mi' }}
+  APP_DIR: ${{ vars.MI_DEPLOY_DIR || 'C:\apps\mi' }}
   HEALTHCHECK_URL: ${{ vars.MI_HEALTHCHECK_URL || 'http://127.0.0.1:8090/health' }}
 
 jobs:
   deploy:
     name: Deploy mi runner
-    runs-on: [self-hosted, Linux, X64, vps]
+    runs-on: [self-hosted, Windows, X64, vps]
     timeout-minutes: 20
 
     steps:
       - name: Deploy exact commit and restart mi
-        shell: bash
+        shell: powershell
         env:
           REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
-          set -Eeuo pipefail
+          $ErrorActionPreference = 'Stop'
 
-          for tool in git node npm npx pm2 curl flock; do
-            command -v "$tool" >/dev/null || {
-              echo "::error::Missing required command: $tool"
-              exit 1
+          foreach ($tool in @('git', 'node', 'npm', 'npx', 'pm2')) {
+            if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
+              throw "Missing required command: $tool"
             }
-          done
-
-          # Serialize deployments from Xeko and mi on the shared VPS.
-          exec 9>/tmp/ngalinh-vps-deploy.lock
-          flock -w 180 9 || {
-            echo "::error::Another VPS deployment did not release the lock in time."
-            exit 1
           }
 
-          if [[ -e "$APP_DIR" && ! -d "$APP_DIR" ]]; then
-            echo "::error::$APP_DIR exists but is not a directory."
-            exit 1
-          fi
+          # Serialize deployments from Xeko and mi on the shared Windows VPS.
+          $lockPath = Join-Path $env:TEMP 'ngalinh-vps-deploy.lock'
+          $lockStream = $null
+          $deadline = (Get-Date).AddSeconds(180)
+          while ($null -eq $lockStream) {
+            try {
+              $lockStream = [System.IO.File]::Open(
+                $lockPath,
+                [System.IO.FileMode]::OpenOrCreate,
+                [System.IO.FileAccess]::ReadWrite,
+                [System.IO.FileShare]::None
+              )
+            } catch [System.IO.IOException] {
+              if ((Get-Date) -ge $deadline) {
+                throw 'Another VPS deployment did not release the lock in time.'
+              }
+              Start-Sleep -Seconds 3
+            }
+          }
 
-          mkdir -p "$APP_DIR"
-          if [[ ! -d "$APP_DIR/.git" ]]; then
-            if [[ -n "$(find "$APP_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
-              echo "::error::$APP_DIR is not empty and is not a Git checkout."
-              exit 1
-            fi
-            git clone --no-checkout "$REPOSITORY_URL" "$APP_DIR"
-          fi
+          try {
+            if ((Test-Path -LiteralPath $env:APP_DIR) -and
+                -not (Test-Path -LiteralPath $env:APP_DIR -PathType Container)) {
+              throw "$env:APP_DIR exists but is not a directory."
+            }
 
-          git -C "$APP_DIR" remote set-url origin "$REPOSITORY_URL"
-          git -C "$APP_DIR" fetch --prune origin "$GITHUB_SHA"
-          git -C "$APP_DIR" checkout --force --detach "$GITHUB_SHA"
+            New-Item -ItemType Directory -Path $env:APP_DIR -Force | Out-Null
+            $gitDir = Join-Path $env:APP_DIR '.git'
+            if (-not (Test-Path -LiteralPath $gitDir -PathType Container)) {
+              if (@(Get-ChildItem -LiteralPath $env:APP_DIR -Force).Count -gt 0) {
+                throw "$env:APP_DIR is not empty and is not a Git checkout."
+              }
+              git clone --no-checkout $env:REPOSITORY_URL $env:APP_DIR
+              if ($LASTEXITCODE -ne 0) { throw "git clone failed with exit code $LASTEXITCODE" }
+            }
 
-          if [[ ! -f "$APP_DIR/.env" ]]; then
-            echo "::error::Missing $APP_DIR/.env. Create it on the VPS; never commit production secrets."
-            exit 1
-          fi
+            git -C $env:APP_DIR remote set-url origin $env:REPOSITORY_URL
+            if ($LASTEXITCODE -ne 0) { throw "git remote failed with exit code $LASTEXITCODE" }
+            git -C $env:APP_DIR fetch --prune origin $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "git fetch failed with exit code $LASTEXITCODE" }
+            git -C $env:APP_DIR checkout --force --detach $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "git checkout failed with exit code $LASTEXITCODE" }
 
-          npm --prefix "$APP_DIR" ci --omit=dev
-          (
-            cd "$APP_DIR"
-            npx playwright install chromium
-            pm2 startOrReload ecosystem.config.js --only mi-runner --update-env
-            pm2 save
-          )
+            $envFile = Join-Path $env:APP_DIR '.env'
+            if (-not (Test-Path -LiteralPath $envFile -PathType Leaf)) {
+              throw "Missing $envFile. Create it on the VPS; never commit production secrets."
+            }
 
-          curl --fail --silent --show-error             --retry 10 --retry-delay 3 --retry-connrefused             --max-time 5 "$HEALTHCHECK_URL" >/dev/null
+            $serverDir = $env:APP_DIR
+            npm --prefix $serverDir ci --omit=dev
+            if ($LASTEXITCODE -ne 0) { throw "npm ci failed with exit code $LASTEXITCODE" }
 
-          echo "mi deployed at commit $GITHUB_SHA"
+            Push-Location $serverDir
+            try {
+              npx playwright install chromium
+              if ($LASTEXITCODE -ne 0) { throw "Playwright install failed with exit code $LASTEXITCODE" }
+            } finally {
+              Pop-Location
+            }
+
+            Push-Location $env:APP_DIR
+            try {
+              pm2 startOrReload ecosystem.config.js --only mi-runner --update-env
+              if ($LASTEXITCODE -ne 0) { throw "PM2 reload failed with exit code $LASTEXITCODE" }
+              pm2 save
+              if ($LASTEXITCODE -ne 0) { throw "PM2 save failed with exit code $LASTEXITCODE" }
+            } finally {
+              Pop-Location
+            }
+
+            $healthy = $false
+            for ($attempt = 1; $attempt -le 10; $attempt++) {
+              try {
+                $response = Invoke-WebRequest -Uri $env:HEALTHCHECK_URL -UseBasicParsing -TimeoutSec 5
+                if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
+                  $healthy = $true
+                  break
+                }
+              } catch {
+                if ($attempt -eq 10) {
+                  throw "mi health check failed after 10 attempts: $($_.Exception.Message)"
+                }
+              }
+              Start-Sleep -Seconds 3
+            }
+            if (-not $healthy) { throw 'mi health check did not return HTTP 2xx.' }
+
+            Write-Host "mi deployed at commit $env:GITHUB_SHA"
+          } finally {
+            if ($null -ne $lockStream) { $lockStream.Dispose() }
+          }
