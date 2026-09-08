@@ -26,13 +26,13 @@ Nếu Playwright chạy headed (`HEADLESS=false`), khởi động runner tương
 
 ## Thư mục ứng dụng
 
-Tạo thư mục:
+Thư mục hiện tại:
 
 ```powershell
-New-Item -ItemType Directory -Force C:\apps\mi
+New-Item -ItemType Directory -Force C:\mi
 ```
 
-User chạy GitHub runner phải có quyền Modify trên thư mục này. Lần workflow đầu tiên sẽ clone source rồi dừng an toàn nếu thiếu secret. Sau đó tạo `C:\apps\mi\.env` từ `.env.example`, điền `REMOTE_BOT_URL`, `API_KEY`, URL public/tunnel và cấu hình headless phù hợp, rồi chạy lại workflow.
+User chạy GitHub runner phải có quyền Modify trên thư mục này. Lần workflow đầu tiên sẽ clone source rồi dừng an toàn nếu thiếu secret. Sau đó tạo `C:\mi\.env` từ `.env.example`, điền `REMOTE_BOT_URL`, `API_KEY`, URL public/tunnel và cấu hình headless phù hợp, rồi chạy lại workflow.
 
 Nếu mi đang nằm ở thư mục khác, đặt repository variable `MI_DEPLOY_DIR` thành đường dẫn hiện tại để không tạo bản chạy thứ hai. Health check mặc định là `http://127.0.0.1:8090/health`; thay bằng `MI_HEALTHCHECK_URL` nếu port khác.
 

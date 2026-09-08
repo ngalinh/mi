@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_DIR: ${{ vars.MI_DEPLOY_DIR || 'C:\apps\mi' }}
+  APP_DIR: ${{ vars.MI_DEPLOY_DIR || 'C:\mi' }}
   HEALTHCHECK_URL: ${{ vars.MI_HEALTHCHECK_URL || 'http://127.0.0.1:8090/health' }}
 
 jobs:
