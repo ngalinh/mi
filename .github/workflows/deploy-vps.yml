@@ -1,0 +1,80 @@
+name: Deploy mi runner to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-mi-vps
+  cancel-in-progress: false
+
+env:
+  APP_DIR: ${{ vars.MI_DEPLOY_DIR || '/srv/mi' }}
+  HEALTHCHECK_URL: ${{ vars.MI_HEALTHCHECK_URL || 'http://127.0.0.1:8090/health' }}
+
+jobs:
+  deploy:
+    name: Deploy mi runner
+    runs-on: [self-hosted, Linux, X64, vps]
+    timeout-minutes: 20
+
+    steps:
+      - name: Deploy exact commit and restart mi
+        shell: bash
+        env:
+          REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          set -Eeuo pipefail
+
+          for tool in git node npm npx pm2 curl flock; do
+            command -v "$tool" >/dev/null || {
+              echo "::error::Missing required command: $tool"
+              exit 1
+            }
+          done
+
+          # Serialize deployments from Xeko and mi on the shared VPS.
+          exec 9>/tmp/ngalinh-vps-deploy.lock
+          flock -w 180 9 || {
+            echo "::error::Another VPS deployment did not release the lock in time."
+            exit 1
+          }
+
+          if [[ -e "$APP_DIR" && ! -d "$APP_DIR" ]]; then
+            echo "::error::$APP_DIR exists but is not a directory."
+            exit 1
+          fi
+
+          mkdir -p "$APP_DIR"
+          if [[ ! -d "$APP_DIR/.git" ]]; then
+            if [[ -n "$(find "$APP_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+              echo "::error::$APP_DIR is not empty and is not a Git checkout."
+              exit 1
+            fi
+            git clone --no-checkout "$REPOSITORY_URL" "$APP_DIR"
+          fi
+
+          git -C "$APP_DIR" remote set-url origin "$REPOSITORY_URL"
+          git -C "$APP_DIR" fetch --prune origin "$GITHUB_SHA"
+          git -C "$APP_DIR" checkout --force --detach "$GITHUB_SHA"
+
+          if [[ ! -f "$APP_DIR/.env" ]]; then
+            echo "::error::Missing $APP_DIR/.env. Create it on the VPS; never commit production secrets."
+            exit 1
+          fi
+
+          npm --prefix "$APP_DIR" ci --omit=dev
+          (
+            cd "$APP_DIR"
+            npx playwright install chromium
+            pm2 startOrReload ecosystem.config.js --only mi-runner --update-env
+            pm2 save
+          )
+
+          curl --fail --silent --show-error             --retry 10 --retry-delay 3 --retry-connrefused             --max-time 5 "$HEALTHCHECK_URL" >/dev/null
+
+          echo "mi deployed at commit $GITHUB_SHA"
