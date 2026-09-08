@@ -26,7 +26,7 @@ Nếu Playwright chạy headed (`HEADLESS=false`), khởi động runner tương
 
 ## Thư mục ứng dụng
 
-Tạo thư mục:
+Thư mục hiện tại:
 
 ```powershell
 New-Item -ItemType Directory -Force C:\apps\mi
