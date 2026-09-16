@@ -144,7 +144,7 @@
   };
   const orderPayload = (o) => ({
     id: o.id, customerId: o.customerId, dateInventory: o.dateInventory,
-    customerName: o.customerName, phone: o.phone, note: o.note, staff: o.staff,
+    customerName: o.customerName, phone: o.phone, note: o.note, staff: o.staff, userId: o.userId,
     warehouseDate: o.warehouseDate, orderCode: orderCodeOf(o),
     noiDungBaoHang: o.noiDungBaoHang, noiDungBaoShip: o.noiDungBaoShip,
     saleChannel: o.saleChannel, saleChannelLabel: o.saleChannelLabel,
