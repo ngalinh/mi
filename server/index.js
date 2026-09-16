@@ -663,18 +663,22 @@ app.get('/api/order-counts', async (req, res) => {
 
 // ---- Báo hàng loạt: kéo HẾT đơn "Chưa báo" qua mọi trang rồi gửi ----
 // (không bị giới hạn ở trang đang xem). Tự bỏ qua đơn đã Delay và đơn bot/đã báo tay.
-// body: { from?, to?, staff?, q?, kind?, kenhSale? }
+// body: { orders?, from?, to?, staff?, q?, kind?, kenhSale?, saleChannel? }
 app.post('/api/notify-all', async (req, res) => {
   try {
-    const { orders, from, to, staff, q, kind, kenhSale } = req.body || {};
+    const { orders, from, to, staff, q, kind, kenhSale, saleChannel } = req.body || {};
     const actor = getActor(req);
     // Ưu tiên danh sách client gửi lên (dashboard client-mode đã có sẵn cả tập) -> KHÔNG kéo
     // lại từ Basso, tránh timeout khi Basso chậm. Không có thì fallback kéo toàn bộ như cũ.
-    const all = (Array.isArray(orders) && orders.length)
+    // orders: [] là tập rỗng có chủ đích, không được fallback thành toàn bộ khách.
+    const all = Array.isArray(orders)
       ? orders
       : await fetchAllOrders({ status: 'not_sent', from, to, staff, q });
     const delayed = getDelayedMap();
     const targets = all.filter((o) => {
+      // Lọc kênh sale thật cho cả client-mode lẫn server-mode (sau khi kéo mọi trang).
+      // saleChannel chỉ giới hạn khách nhận; kenhSale vẫn là cấu hình tài khoản gửi.
+      if (saleChannel && String(o.saleChannelLabel || o.saleChannel || '').trim() !== saleChannel) return false;
       const key = autoNotify.autoKey(o);
       if (delayed.has(key)) return false;             // đã Delay -> loại
       const a = getAutoRecord(key);

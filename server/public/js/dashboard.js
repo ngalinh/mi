@@ -1192,10 +1192,11 @@
 
   function openBulkModal() {
     if (!counts.todo) { App.toast('Không có khách nào để báo', 4000); return; }
-    // Server gửi cho TẤT CẢ đơn "Chưa báo" (mọi trang), tự bỏ qua đơn đã Delay/đã báo.
-    $('bulkSummary').innerHTML = `Sẽ gửi báo hàng cho toàn bộ <strong>${counts.todo}</strong> khách "Chưa báo"`
+    const total = clientMode ? bulkTodoPayloads().length : (currentChannel ? null : counts.todo);
+    const channelLabel = currentChannel ? ` thuộc kênh <strong>${App.esc(currentChannel)}</strong>` : '';
+    $('bulkSummary').innerHTML = `Sẽ gửi báo hàng cho ${total == null ? 'các' : `<strong>${total}</strong>`} khách "Chưa báo"${channelLabel} trong phạm vi đang lọc (mọi trang)`
       + ` <span class="muted">(các đơn đã Delay hoặc đã báo sẽ tự bỏ qua)</span>.`;
-    $('bulkConfirm').innerHTML = App.icon('megaphone') + ` Báo hàng (${counts.todo})`;
+    $('bulkConfirm').innerHTML = App.icon('megaphone') + (total == null ? ' Báo hàng' : ` Báo hàng (${total})`);
     $('bulkModalBg').classList.add('show');
   }
   function closeBulkModal() { $('bulkModalBg').classList.remove('show'); }
@@ -1216,6 +1217,7 @@
   function bulkTodoPayloads() {
     const q = $('fQ').value.trim().toLowerCase();
     return allOrders
+      .filter((o) => !currentChannel || saleChannelOf(o) === currentChannel)
       .filter((o) => !currentStaff || String(o.userId) === String(currentStaff))
       .filter((o) => !q || `${o.customerName} ${o.phone}`.toLowerCase().includes(q))
       .filter((o) => groupOf(o) === 'todo')
@@ -1268,6 +1270,7 @@
       const body = {
         from: F.from || undefined, to: F.to || undefined,
         staff: currentStaff || undefined, q: q || undefined,
+        saleChannel: currentChannel || undefined,
       };
       // Chỉ gửi kèm `orders` khi client-mode (có đủ tập). Tập quá lớn (server-mode phân trang)
       // -> để server tự kéo toàn bộ như cũ, tránh gửi thiếu đơn ở trang khác.
@@ -1366,7 +1369,7 @@
     if (currentStaff) base = base.filter((o) => String(o.userId) === String(currentStaff));
     const q = $('fQ').value.trim().toLowerCase();
     if (q) base = base.filter((o) => `${o.customerName} ${o.phone}`.toLowerCase().includes(q));
-    counts = countGroups(base); // cả 4 thẻ luôn đúng theo NV + tìm kiếm hiện tại
+    counts = countGroups(currentChannel ? base.filter((o) => saleChannelOf(o) === currentChannel) : base);
     let list = currentGroup ? base.filter((o) => groupOf(o) === currentGroup) : base;
     list = applyExcludeNote(list);
     serverTotal = list.length;
