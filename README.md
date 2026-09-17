@@ -442,3 +442,9 @@ Pattern Xeko (runner tự đăng ký URL + heartbeat) là lựa chọn **đủ t
 > 👉 Nâng cấp **đáng giá nhất** nếu thấy việc duy trì tunnel/port phiền: chuyển sang
 > **WebSocket runner→cloud**. Khi đó khỏi cần `PLAYWRIGHT_PUBLIC_URL`, `/api/register-local`
 > và cả tunnel — runner chủ động giữ 1 kết nối lên cloud là đủ.
+
+### Giữ phiên Zalo cho khách tiếp theo
+
+Đăng nhập và chọn tài khoản trên cửa sổ do local-runner mở, sau đó giữ nguyên cửa sổ. Mặc định `CLOSE_AFTER_SEND=false`: runner tái dùng trang chat, kiểm tra tài khoản đang chọn và tìm khách tiếp theo, không tải lại trang hoặc mở lại Chromium. Khi yêu cầu dùng tài khoản khác, runner vẫn chọn và xác minh tài khoản đó trước khi tìm khách.
+
+Máy đã cài trước đây cần đổi `CLOSE_AFTER_SEND=true` thành `CLOSE_AFTER_SEND=false` trong `.env` rồi khởi động lại local-runner. Nếu tự đóng cửa sổ hoặc phiên hết hạn, runner mở lại/đăng nhập lại theo flow hiện có. Các lệnh gửi tự động vẫn yêu cầu cấu hình tài khoản; không tự suy đoán từ lựa chọn thủ công.

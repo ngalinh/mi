@@ -108,6 +108,16 @@ function shot(page, name) {
 }
 
 async function gotoSalework(page) {
+  // Tái dùng trang chat còn hoạt động để giữ bộ lọc tài khoản giữa các khách.
+  const target = new URL(config.saleworkChatUrl);
+  const current = new URL(page.url());
+  if (current.origin === target.origin
+      && current.pathname.replace(/\/+$/, '') === target.pathname.replace(/\/+$/, '')
+      && current.hash === target.hash
+      && await page.locator('.acc-btn-text').first().isVisible().catch(() => false)
+      && await page.locator('input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], input[placeholder*="Search"], input[type="search"]').first().isVisible().catch(() => false)) {
+    return;
+  }
   // Mở thẳng trang chat (nơi có dropdown chọn tài khoản + danh sách hội thoại).
   await page.goto(config.saleworkChatUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(3000);
@@ -994,10 +1004,8 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
       // Ảnh + text đã hoàn tất; xoá checkpoint để một yêu cầu gửi mới độc lập vẫn hoạt động.
       if (checkpointKey) clearImageCheckpoint(checkpointKey);
     } finally {
-      // Gửi xong (kể cả khi lỗi) thì đóng trình duyệt để giải phóng tài nguyên.
-      // Tắt bằng CLOSE_AFTER_SEND=false nếu muốn giữ context sống cho lần gửi sau.
-      // keepContext=true: đơn kế TIẾP cùng profile (báo loạt đã gom) -> GIỮ context để tái dùng,
-      // đỡ mở/đóng lặp lại; sẽ đóng ở đơn cuối của profile (keepContext=false).
+      // Mặc định giữ phiên và tài khoản cho khách tiếp theo. Chỉ đóng khi cấu hình
+      // CLOSE_AFTER_SEND=true và không còn đơn cùng profile trong lô.
       if (config.closeAfterSend && !keepContext) await closeContext(profile);
     }
     return { ok: true };

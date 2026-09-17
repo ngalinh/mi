@@ -168,7 +168,7 @@ function profileExists(profileName) {
 /**
  * Mở Chromium (headed) cho 1 profile để ĐĂNG NHẬP THỦ CÔNG + chọn tài khoản, rồi TRẢ VỀ NGAY
  * (không chờ user đóng). Dùng cho endpoint thêm/re-login tài khoản Zalo: nhân viên đăng nhập
- * trên cửa sổ vừa mở, đóng lại là session được lưu vào userDataDir.
+ * trên cửa sổ vừa mở, giữ nguyên cửa sổ để dùng cho các lần gửi tiếp theo.
  * @param {string} profileName
  * @param {string} url  trang để mở (vd config.saleworkLoginUrl)
  * @param {(ev:'opened'|'closed')=>void} [onEvent] callback để ghi log lịch sử
@@ -178,38 +178,34 @@ function profileExists(profileName) {
  * @returns {Promise<void>} resolve khi cửa sổ đã mở & điều hướng xong
  */
 async function openForLogin(profileName, url, onEvent, prefill) {
-  // GIỮ khoá profile tới khi cửa sổ đóng -> trong lúc nhân viên đăng nhập thủ công, mọi
-  // lệnh gửi/kiểm tra cùng profile sẽ XẾP HÀNG chờ (an toàn) thay vì mở trùng userDataDir.
-  return withProfileLock(profileName, () => new Promise((resolve) => {
-    (async () => {
-      const context = await getContext(profileName);
-      const page = context.pages()[0] || (await context.newPage());
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-      // Tự điền tài khoản + mật khẩu nếu có (giống Xeko) — nhân viên chỉ cần bấm đăng nhập.
-      if (prefill && prefill.password) {
-        try {
-          const fbEmail = await page.$('input[name="email"]');
-          if (fbEmail) {
-            // Form login Facebook: ô name="email" + name="pass".
-            if (prefill.email) await fbEmail.fill(prefill.email);
-            await page.fill('input[name="pass"]', prefill.password);
-          } else {
-            // Form login Zalo Basso (Vuetify): ô mật khẩu + ô text đầu tiên = tài khoản.
-            const passEl = await page.$('input[type="password"]');
-            if (passEl) {
-              const userEl = await page.$('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])');
-              if (userEl && prefill.email) await userEl.fill(prefill.email);
-              await passEl.fill(prefill.password);
-            }
+  // Chỉ khoá trong lúc mở/điền form. Các lệnh sau tái dùng cùng context và tự kiểm tra
+  // đăng nhập; không bắt nhân viên đóng cửa sổ mới giải phóng hàng đợi.
+  return withProfileLock(profileName, async () => {
+    const context = await getContext(profileName);
+    const page = context.pages()[0] || (await context.newPage());
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    // Tự điền tài khoản + mật khẩu nếu có (giống Xeko) — nhân viên chỉ cần bấm đăng nhập.
+    if (prefill && prefill.password) {
+      try {
+        const fbEmail = await page.$('input[name="email"]');
+        if (fbEmail) {
+          // Form login Facebook: ô name="email" + name="pass".
+          if (prefill.email) await fbEmail.fill(prefill.email);
+          await page.fill('input[name="pass"]', prefill.password);
+        } else {
+          // Form login Zalo Basso (Vuetify): ô mật khẩu + ô text đầu tiên = tài khoản.
+          const passEl = await page.$('input[type="password"]');
+          if (passEl) {
+            const userEl = await page.$('input:not([type="password"]):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"])');
+            if (userEl && prefill.email) await userEl.fill(prefill.email);
+            await passEl.fill(prefill.password);
           }
-        } catch { /* trang không phải form login -> bỏ qua, để nhân viên tự đăng nhập */ }
-      }
-      if (typeof onEvent === 'function') onEvent('opened');
-      let done = false;
-      const finish = () => { if (done) return; done = true; if (typeof onEvent === 'function') onEvent('closed'); resolve(); };
-      context.on('close', finish);
-    })().catch((e) => { console.error(`[browser] openForLogin lỗi: ${e.message}`); resolve(); });
-  }));
+        }
+      } catch { /* trang không phải form login -> bỏ qua, để nhân viên tự đăng nhập */ }
+    }
+    if (typeof onEvent === 'function') onEvent('opened');
+    context.once('close', () => { if (typeof onEvent === 'function') onEvent('closed'); });
+  });
 }
 
 /** Đóng trình duyệt của 1 profile (session đăng nhập vẫn lưu trong userDataDir nên lần sau mở lại vẫn đăng nhập). */
