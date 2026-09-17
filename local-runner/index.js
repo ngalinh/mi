@@ -178,8 +178,8 @@ app.post('/api/accounts', (req, res) => {
 
   const already = profileExists(account.key);
   const loginMsg = platform === 'facebook'
-    ? `Đang mở Chromium để đăng nhập Facebook cho "${account.name}". Đăng nhập xong thì đóng cửa sổ.`
-    : `Đang mở Chromium để đăng nhập Zalo Basso và chọn tài khoản "${account.name}". Chọn xong thì đóng cửa sổ.`;
+    ? `Đang mở Chromium để đăng nhập Facebook cho "${account.name}". Đăng nhập xong giữ nguyên cửa sổ để tiếp tục gửi.`
+    : `Đang mở Chromium để đăng nhập Zalo Basso và chọn tài khoản "${account.name}". Chọn xong giữ nguyên cửa sổ; khách tiếp theo chỉ cần tìm kiếm.`;
   res.json({
     ok: true,
     account: decorate(account),
@@ -216,7 +216,7 @@ app.post('/api/accounts/:key/login', (req, res) => {
   const account = accountsStore.get(key);
   if (!account) return res.status(404).json({ ok: false, error: `Không tìm thấy tài khoản "${key}"` });
 
-  res.json({ ok: true, message: `Đang mở Chromium cho "${account.name}". Đăng nhập xong thì đóng cửa sổ.` });
+  res.json({ ok: true, message: `Đang mở Chromium cho "${account.name}". Đăng nhập xong giữ nguyên cửa sổ để tiếp tục gửi.` });
   openForLogin(key, loginUrlFor(account.platform), (ev) =>
     loginHistory.add(key, account.name, 'login', ev === 'opened' ? 'Mở lại để đăng nhập' : 'Đã đóng — session đã lưu'), loginPrefill(account))
     .catch((e) => console.error(`[accounts] re-login lỗi: ${e.message}`));
