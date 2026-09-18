@@ -10,7 +10,7 @@ const config = require('./config');
 const { createJob, getJob } = require('./jobQueue');
 const { sendBaoHang } = require('./salework');
 const { sendBaoHangFb } = require('./facebook');
-const { profileExists, profilePath, openForLogin, closeAll } = require('./browser');
+const { profileExists, profilePath, openForLogin, closeAll, closeContext, withProfileLock } = require('./browser');
 const accountsStore = require('./accountsStore');
 const testModeStore = require('./testModeStore');
 const loginHistory = require('./loginHistory');
@@ -96,14 +96,24 @@ app.get('/api/profile/:name', (req, res) => {
  * body: { profile, account?, keyword, name?, message, strictMatch?, imagePaths?, notifyTarget?, keepContext? }
  * => trả { ok, jobId } ngay; poll /api/job/:id để lấy kết quả.
  */
+app.post('/api/browser/close', (req, res) => {
+  const { profile } = req.body || {};
+  if (typeof profile !== 'string' || !profile) return res.status(400).json({ ok: false, error: 'Thiếu profile' });
+  const jobId = createJob({ profile }, ({ profile }) => withProfileLock(profile, async () => {
+    await closeContext(profile);
+    return { ok: true };
+  }));
+  res.json({ ok: true, jobId });
+});
+
 app.post('/api/zalo/send', (req, res) => {
   // notifyTarget ('group'|'personal') + keepContext PHẢI đọc ra + chuyển tiếp — thiếu là
   // salework.sendBaoHang nhận undefined -> mặc định 'group' -> luôn bấm tab Nhóm dù NV để Cá nhân.
-  const { profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext } = req.body || {};
+  const { profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend } = req.body || {};
   if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext }, sendBaoHang);
+  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend }, sendBaoHang);
   res.json({ ok: true, jobId });
 });
 
@@ -113,11 +123,11 @@ app.post('/api/zalo/send', (req, res) => {
  * fbLink = link hội thoại FB/Messenger của khách để mở thẳng (bắt buộc, sendBaoHangFb cần).
  */
 app.post('/api/facebook/send', (req, res) => {
-  const { profile, fbLink, keyword, name, message, strictMatch, imagePaths } = req.body || {};
+  const { profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend } = req.body || {};
   if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, fbLink, keyword, name, message, strictMatch, imagePaths }, sendBaoHangFb);
+  const jobId = createJob({ profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend }, sendBaoHangFb);
   res.json({ ok: true, jobId });
 });
 

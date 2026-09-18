@@ -1,4 +1,5 @@
 'use strict';
+const { employeeKey, groupByEmployee, withBrowserBatch } = require('./browserBatch');
 const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems, getOrderContent } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
@@ -400,53 +401,57 @@ async function notifyOrders(orders, opts = {}) {
     stopRequested = false;
     try {
       // Gom theo profile trước -> gửi tuần tự HẾT đơn của 1 tài khoản rồi mới sang tài khoản kế.
-      const ordered = await groupOrdersByProfile(orders, opts);
+      let ordered = await groupOrdersByProfile(orders, opts);
       const results = [];
       let aborted = false;
       let stopped = false;
       let abortError = null;
-      for (let idx = 0; idx < ordered.length; idx += 1) {
-        // Người dùng bấm Dừng -> thoát TRƯỚC khi gửi đơn kế (đơn đang gửi dở đã xong ở vòng trước).
-        if (stopRequested) { stopped = true; break; }
-        const { order, profileKey } = ordered[idx];
-        // Giữ context nếu đơn KẾ TIẾP cùng profile (đã gom) -> tái dùng browser, đỡ mở/đóng lặp lại.
-        const keepContext = profileKey != null && idx + 1 < ordered.length
-          && ordered[idx + 1].profileKey === profileKey;
-        // eslint-disable-next-line no-await-in-loop
-        const r = await notifyOne(order, { ...opts, keepContext });
-        // notifyOne tự hủy trong ân hạn / lúc chuẩn bị (người dùng bấm Dừng trước khi tin đi) ->
-        // KHÔNG tính vào results (không phải gửi lỗi), coi như đơn bỏ dở như khi dừng ở ranh giới.
-        if (r.stopped) { stopped = true; break; }
-        // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không cập nhật
-        // web). Không đè lên 'success' của bot để giữ đúng badge. Khóa theo LOẠI tin (báo ship dùng
-        // autoKeyShip) để báo ship tay chỉ chặn bot báo ship, không đụng báo hàng.
-        if (r.ok) {
-          const dkey = opts.kind === 'ship' ? autoKeyShip(order) : autoKey(order);
-          const ex = getAutoRecord(dkey);
-          if (!ex || ex.status !== 'success') recordAutoNotified(dkey, 'manual', ex ? ex.attempts : 0);
-        }
-        results.push({
-          orderId: order.id,
-          customerName: order.customerName,
-          ok: r.ok,
-          error: r.error || r.updateError || null,
-          jobId: r.jobId || null,
-        });
-        // Zalo hiện trang login (chưa đăng nhập) -> DỪNG NGAY cả loạt: các đơn còn lại chắc chắn
-        // cũng fail vì cùng chưa đăng nhập. Không gửi tiếp để tránh loạt đơn failed vô ích; trả cờ
-        // aborted để UI hiện cảnh báo đăng nhập thay vì "Hoàn tất".
-        if (r.loginRequired) {
-          aborted = true;
-          abortError = r.error || 'Zalo chưa đăng nhập.';
-          break;
-        }
-        // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn — bỏ qua sau đơn cuối) để tránh
-        // gửi dồn quá nhanh -> giảm rủi ro chống spam Zalo/FB. Tắt bằng SEND_DELAY_BETWEEN_MAX_MS=0.
-        if (idx + 1 < ordered.length) {
+      await withBrowserBatch(async (browserBatch) => {
+        ordered = groupByEmployee(ordered, t => employeeKey(t.order, t.profileKey));
+        for (let idx = 0; idx < ordered.length; idx += 1) {
+          // Người dùng bấm Dừng -> thoát TRƯỚC khi gửi đơn kế (đơn đang gửi dở đã xong ở vòng trước).
+          if (stopRequested) { stopped = true; break; }
+          const { order, profileKey } = ordered[idx];
+          await browserBatch.select(employeeKey(order, profileKey));
+          // Giữ context nếu đơn KẾ TIẾP cùng profile (đã gom) -> tái dùng browser, đỡ mở/đóng lặp lại.
+          const keepContext = profileKey != null && idx + 1 < ordered.length
+            && ordered[idx + 1].profileKey === profileKey;
           // eslint-disable-next-line no-await-in-loop
-          await delayBetweenCustomers();
+          const r = await notifyOne(order, { ...opts, keepContext });
+          // notifyOne tự hủy trong ân hạn / lúc chuẩn bị (người dùng bấm Dừng trước khi tin đi) ->
+          // KHÔNG tính vào results (không phải gửi lỗi), coi như đơn bỏ dở như khi dừng ở ranh giới.
+          if (r.stopped) { stopped = true; break; }
+          // Báo tay thành công -> ghi dấu 'manual' để BOT không gửi lại (kể cả khi không cập nhật
+          // web). Không đè lên 'success' của bot để giữ đúng badge. Khóa theo LOẠI tin (báo ship dùng
+          // autoKeyShip) để báo ship tay chỉ chặn bot báo ship, không đụng báo hàng.
+          if (r.ok) {
+            const dkey = opts.kind === 'ship' ? autoKeyShip(order) : autoKey(order);
+            const ex = getAutoRecord(dkey);
+            if (!ex || ex.status !== 'success') recordAutoNotified(dkey, 'manual', ex ? ex.attempts : 0);
+          }
+          results.push({
+            orderId: order.id,
+            customerName: order.customerName,
+            ok: r.ok,
+            error: r.error || r.updateError || null,
+            jobId: r.jobId || null,
+          });
+          // Zalo hiện trang login (chưa đăng nhập) -> DỪNG NGAY cả loạt: các đơn còn lại chắc chắn
+          // cũng fail vì cùng chưa đăng nhập. Không gửi tiếp để tránh loạt đơn failed vô ích; trả cờ
+          // aborted để UI hiện cảnh báo đăng nhập thay vì "Hoàn tất".
+          if (r.loginRequired) {
+            aborted = true;
+            abortError = r.error || 'Zalo chưa đăng nhập.';
+            break;
+          }
+          // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn — bỏ qua sau đơn cuối) để tránh
+          // gửi dồn quá nhanh -> giảm rủi ro chống spam Zalo/FB. Tắt bằng SEND_DELAY_BETWEEN_MAX_MS=0.
+          if (idx + 1 < ordered.length) {
+            // eslint-disable-next-line no-await-in-loop
+            await delayBetweenCustomers();
+          }
         }
-      }
+      });
       const sent = results.filter((r) => r.ok).length;
       // Số đơn CÒN LẠI chưa gửi khi dừng giữa chừng (login hoặc người dùng bấm Dừng) — để UI báo rõ
       // đã bỏ dở bao nhiêu.

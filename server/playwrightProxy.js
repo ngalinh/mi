@@ -2,6 +2,7 @@
 const fetch = require('node-fetch');
 const config = require('./config');
 const localRegistry = require('./localRegistry');
+const { sendOptions } = require('./browserBatch');
 
 /**
  * Forward lệnh automation xuống local-runner (qua tunnel / localhost).
@@ -87,12 +88,12 @@ async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeout
 
 /** Gửi 1 tin báo hàng qua Zalo và chờ kết quả. */
 function sendBaoHang(payload, opts) {
-  return sendViaRunner('/api/zalo/send', payload, opts);
+  return sendViaRunner('/api/zalo/send', sendOptions(payload), opts);
 }
 
 /** Gửi 1 tin báo hàng qua Facebook Messenger và chờ kết quả (cho khách không dùng Zalo). */
 function sendBaoHangFb(payload, opts) {
-  return sendViaRunner('/api/facebook/send', payload, opts);
+  return sendViaRunner('/api/facebook/send', sendOptions(payload), opts);
 }
 
 /**
@@ -148,7 +149,12 @@ function invalidateAccountsCache() {
   _accountsCache = { at: 0, list: [] };
 }
 
-module.exports = {
+async function closeBrowserProfile(profile) {
+  const result = await sendViaRunner('/api/browser/close', { profile });
+  if (!result.ok) throw new Error(result.error || 'Không đóng được browser');
+}
+
+module.exports = { closeBrowserProfile,
   sendBaoHang, sendBaoHangFb, checkLocalHealth, getLocalHealth, effectiveBaseUrl,
   forwardAccounts, getAccountsCached, invalidateAccountsCache,
 };

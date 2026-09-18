@@ -445,6 +445,12 @@ Pattern Xeko (runner tự đăng ký URL + heartbeat) là lựa chọn **đủ t
 
 ### Giữ phiên Zalo cho khách tiếp theo
 
-Đăng nhập và chọn tài khoản trên cửa sổ do local-runner mở, sau đó giữ nguyên cửa sổ. Mặc định `CLOSE_AFTER_SEND=false`: runner tái dùng trang chat, kiểm tra tài khoản đang chọn và tìm khách tiếp theo, không tải lại trang hoặc mở lại Chromium. Khi yêu cầu dùng tài khoản khác, runner vẫn chọn và xác minh tài khoản đó trước khi tìm khách.
+Cửa sổ đăng nhập thủ công có thể giữ mở. Các lượt báo hàng/báo ship quản lý browser theo từng nhân viên như mô tả bên dưới.
 
-Máy đã cài trước đây cần đổi `CLOSE_AFTER_SEND=true` thành `CLOSE_AFTER_SEND=false` trong `.env` rồi khởi động lại local-runner. Nếu tự đóng cửa sổ hoặc phiên hết hạn, runner mở lại/đăng nhập lại theo flow hiện có. Các lệnh gửi tự động vẫn yêu cầu cấu hình tài khoản; không tự suy đoán từ lựa chọn thủ công.
+
+
+### Đóng browser sau mỗi nhân viên
+
+Các lượt báo hàng và báo ship (tay/tự động, gồm Quản lý giao hàng) gom đơn theo nhân viên. Trong một lượt của nhân viên, runner tái dùng browser; khi chuyển nhân viên hoặc kết thúc/dừng/lỗi, server yêu cầu đóng tất cả profile đã dùng, kể cả tài khoản dự phòng và Facebook. Gửi một đơn riêng lẻ đóng browser sau gửi. Session đăng nhập vẫn được lưu trên đĩa.
+
+Cần cập nhật và khởi động lại **cả server và local-runner** vì có endpoint mới `POST /api/browser/close` (cùng xác thực API key, hàng đợi và khóa profile). Luồng báo mới chủ động quản lý vòng đời browser, kể cả máy cũ đang đặt `CLOSE_AFTER_SEND=false`; cấu hình đó chỉ còn là mặc định cho các lệnh trực tiếp không có chỉ định vòng đời. Lỗi đóng browser dừng lượt và được báo lỗi, không tự gửi lại tin đã gửi.

@@ -377,7 +377,7 @@ async function typeAndSend(page, box, message) {
  * Cùng chữ ký chung với salework.sendBaoHang để notifyService gọi thống nhất theo `channel`.
  * @param {{profile?:string, fbLink:string, keyword?:string, name?:string, message:string, strictMatch?:boolean}} p
  */
-async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, message }) {
+async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, message, keepContext = false, closeAfterSend = config.closeAfterSend }) {
   if (!fbLink) throw new Error('Thiếu link Facebook của khách (fbLink).');
   if (!message) throw new Error('Thiếu nội dung tin nhắn.');
 
@@ -393,7 +393,7 @@ async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, messa
       const box = await openConversationByLink(page, fbLink);
       await typeAndSend(page, box, message);
     } finally {
-      if (config.closeAfterSend) await closeContext(profile);
+      if (closeAfterSend && !keepContext) await closeContext(profile);
     }
     return { ok: true };
   });

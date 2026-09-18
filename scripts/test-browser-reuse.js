@@ -68,6 +68,11 @@ function load(file, mocks, extra = '') {
   config.closeAfterSend = true;
   await salework.sendBaoHang({ account: 'Khác', name: 'Khách C', message: 'Test' });
   assert.equal(closes, 1, 'explicit close setting remains supported');
+  config.closeAfterSend = false;
+  await salework.sendBaoHang({ account: 'Khác', name: 'Khách C', message: 'Test', closeAfterSend: true });
+  assert.equal(closes, 2, 'single notification closes even with legacy keep-open config');
+  await salework.sendBaoHang({ account: 'Khác', name: 'Khách C', message: 'Test', closeAfterSend: true, keepContext: true });
+  assert.equal(closes, 2, 'employee batch keeps the browser between customers');
 
   const context = new EventEmitter();
   context.pages = () => [page];

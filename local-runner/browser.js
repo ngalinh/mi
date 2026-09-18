@@ -212,7 +212,7 @@ async function openForLogin(profileName, url, onEvent, prefill) {
 async function closeContext(profileName) {
   const entry = contexts.get(profileName);
   if (!entry) return;
-  try { await entry.context.close(); } catch { /* ignore */ }
+  await entry.context.close();
   contexts.delete(profileName);
 }
 

@@ -951,7 +951,7 @@ async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
  *        không khớp -> dừng. Mặc định 'group'.
  * @returns {Promise<{ok:boolean}>}
  */
-async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [], notifyTarget = 'group', keepContext = false }) {
+async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [], notifyTarget = 'group', keepContext = false, closeAfterSend = config.closeAfterSend }) {
   if (!keyword && !name) throw new Error('Thiếu keyword (SĐT) hoặc name (tên khách).');
   if (!message && !(imagePaths && imagePaths.length)) throw new Error('Thiếu nội dung tin nhắn.');
 
@@ -1006,7 +1006,7 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
     } finally {
       // Mặc định giữ phiên và tài khoản cho khách tiếp theo. Chỉ đóng khi cấu hình
       // CLOSE_AFTER_SEND=true và không còn đơn cùng profile trong lô.
-      if (config.closeAfterSend && !keepContext) await closeContext(profile);
+      if (closeAfterSend && !keepContext) await closeContext(profile);
     }
     return { ok: true };
   });
