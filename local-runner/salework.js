@@ -1004,8 +1004,8 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
       // Ảnh + text đã hoàn tất; xoá checkpoint để một yêu cầu gửi mới độc lập vẫn hoạt động.
       if (checkpointKey) clearImageCheckpoint(checkpointKey);
     } finally {
-      // Mặc định giữ phiên và tài khoản cho khách tiếp theo. Chỉ đóng khi cấu hình
-      // CLOSE_AFTER_SEND=true và không còn đơn cùng profile trong lô.
+      // Mặc định đóng sau khi gửi xong; giữ context khi còn đơn cùng profile trong lô.
+      // Session đăng nhập vẫn lưu trên đĩa cho lần mở tiếp theo.
       if (config.closeAfterSend && !keepContext) await closeContext(profile);
     }
     return { ok: true };
