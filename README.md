@@ -443,8 +443,8 @@ Pattern Xeko (runner tự đăng ký URL + heartbeat) là lựa chọn **đủ t
 > **WebSocket runner→cloud**. Khi đó khỏi cần `PLAYWRIGHT_PUBLIC_URL`, `/api/register-local`
 > và cả tunnel — runner chủ động giữ 1 kết nối lên cloud là đủ.
 
-### Giữ phiên Zalo cho khách tiếp theo
+### Đóng trình duyệt sau khi gửi
 
-Đăng nhập và chọn tài khoản trên cửa sổ do local-runner mở, sau đó giữ nguyên cửa sổ. Mặc định `CLOSE_AFTER_SEND=false`: runner tái dùng trang chat, kiểm tra tài khoản đang chọn và tìm khách tiếp theo, không tải lại trang hoặc mở lại Chromium. Khi yêu cầu dùng tài khoản khác, runner vẫn chọn và xác minh tài khoản đó trước khi tìm khách.
+Mặc định `CLOSE_AFTER_SEND=true`: runner đóng browser sau khi gửi xong (áp dụng cho Zalo và Facebook). Với lô Zalo có `keepContext=true`, browser được giữ cho đơn tiếp theo và đóng khi gửi đơn cuối. Session đăng nhập vẫn lưu trong `playwright-data/`, nên lần gửi tiếp theo có thể mở lại bằng profile cũ.
 
-Máy đã cài trước đây cần đổi `CLOSE_AFTER_SEND=true` thành `CLOSE_AFTER_SEND=false` trong `.env` rồi khởi động lại local-runner. Nếu tự đóng cửa sổ hoặc phiên hết hạn, runner mở lại/đăng nhập lại theo flow hiện có. Các lệnh gửi tự động vẫn yêu cầu cấu hình tài khoản; không tự suy đoán từ lựa chọn thủ công.
+Máy đã cài trước đây cần đổi `CLOSE_AFTER_SEND=false` thành `CLOSE_AFTER_SEND=true` trong `.env` rồi khởi động lại local-runner. Muốn giữ cửa sổ và tài khoản đã chọn giữa các lần gửi thì đặt `CLOSE_AFTER_SEND=false`.
