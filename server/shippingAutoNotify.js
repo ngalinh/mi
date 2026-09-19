@@ -1,4 +1,6 @@
 'use strict';
+const { withBrowserBatch, accountQueue } = require('./accountQueue');
+const { getHold } = require('./notificationHold');
 /**
  * Pha 2 — Tự động báo ship từ "Quản lý giao hàng" (xem docs/shipping-notify-plan.md).
  *
@@ -162,6 +164,7 @@ async function fetchRecentOrders(days) {
  * @returns {{decision:'send'|'skip', reason?:string}}
  */
 function classify(order) {
+  if (getHold('shipping:' + order.id)) return { decision: 'skip', reason: 'needs_check' };
   if (order.id != null && isShippingExcluded(order.id)) return { decision: 'skip', reason: 'excluded' };
   // Đã thử gửi LỖI đủ số lần cho phép (cfg.maxRetries) -> NGỪNG tự thử lại (tránh vòng lặp gửi
   // lại vô hạn mỗi chu kỳ quét); NV vẫn gửi tay được qua nút Xem/Gửi. Xem db.shipping_auto_fail.
@@ -253,31 +256,27 @@ async function runShippingAuto(opts = {}) {
       }
       summary.candidates = eligible.length;
       const gaveUp = []; // đơn VỪA chạm trần maxRetries ở lượt này -> cảnh báo NV gửi tay
-      for (let i = 0; i < eligible.length; i += 1) {
-        const order = eligible[i];
-        // eslint-disable-next-line no-await-in-loop
-        const r = await shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' });
-        summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
-        if (r.ok) {
-          summary.sent += 1;
-        } else {
-          summary.failed += 1;
-          // Đếm lần thử lỗi -> đạt cfg.maxRetries thì classify() sẽ bỏ qua đơn này ở các chu kỳ
-          // sau (KHÔNG thử lại vô hạn). Gửi tay (nút Xem/Gửi) vẫn không bị ảnh hưởng.
-          if (order.id != null) {
-            const attempts = recordShippingAutoFail(order.id, r.error);
-            if (attempts >= cfg.maxRetries) gaveUp.push(order);
+      await withBrowserBatch(async () => {
+        for await (const { item: order, result: r } of accountQueue(eligible, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' }))) {
+          summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
+          if (r.ok) {
+            summary.sent += 1;
+          } else {
+            summary.failed += 1;
+            // Đếm lần thử lỗi -> đạt cfg.maxRetries thì classify() sẽ bỏ qua đơn này ở các chu kỳ
+            // sau (KHÔNG thử lại vô hạn). Gửi tay (nút Xem/Gửi) vẫn không bị ảnh hưởng.
+            if (order.id != null) {
+              const attempts = recordShippingAutoFail(order.id, r.error);
+              if (attempts >= cfg.maxRetries) gaveUp.push(order);
+            }
           }
+
         }
-        if (i + 1 < eligible.length) {
-          // eslint-disable-next-line no-await-in-loop
-          await delayBetweenCustomers();
-        }
-      }
-      summary.gaveUp = gaveUp.length;
-      // Cảnh báo NV các đơn vừa NGỪNG tự thử (chạm trần retry) -> cần gửi tay qua nút Xem/Gửi,
-      // không thì đơn sẽ nằm im vô thời hạn (khác trước đây: tự thử lại vô hạn, ồn nhưng không
-      // "mất tích"). Gộp 1 tin cho cả lượt, giống cách lưới an toàn 17:00 cảnh báo missingLink/unregistered.
+        summary.gaveUp = gaveUp.length;
+        // Cảnh báo NV các đơn vừa NGỪNG tự thử (chạm trần retry) -> cần gửi tay qua nút Xem/Gửi,
+        // không thì đơn sẽ nằm im vô thời hạn (khác trước đây: tự thử lại vô hạn, ồn nhưng không
+        // "mất tích"). Gộp 1 tin cho cả lượt, giống cách lưới an toàn 17:00 cảnh báo missingLink/unregistered.
+      });
       if (gaveUp.length) {
         const names = gaveUp.slice(0, 15).map((o) => `${o.recipient || o.trackingCode || `#${o.id}`}${o.recipient ? ` (#${o.id})` : ''}`).join(', ');
         const lines = [
@@ -350,18 +349,14 @@ async function runSafetyNet(day) {
         if (order.trackingCode) eligible.push(order);
       }
 
-      for (let i = 0; i < eligible.length; i += 1) {
-        const order = eligible[i];
-        // eslint-disable-next-line no-await-in-loop
-        const r = await shippingSendService.sendShippingOne(order, { actor: 'auto-ship2-safety' });
-        summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
-        if (r.ok) summary.sent += 1; else summary.failed += 1;
-        if (i + 1 < eligible.length) {
-          // eslint-disable-next-line no-await-in-loop
-          await delayBetweenCustomers();
-        }
-      }
+      await withBrowserBatch(async () => {
+        for await (const { item: order, result: r } of accountQueue(eligible, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2-safety' }))) {
+          summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
+          if (r.ok) summary.sent += 1; else summary.failed += 1;
 
+        }
+
+      });
       if (missingLink.length || unregistered.length) {
         summary.alerted = missingLink.length + unregistered.length;
         const lines = ['⚠️ [mi] Lưới an toàn 17:00 — báo ship (Quản lý giao hàng)'];

@@ -1,4 +1,6 @@
 'use strict';
+const { withBrowserBatch, accountQueue } = require('./accountQueue');
+const { getHold } = require('./notificationHold');
 const config = require('./config');
 const { getOrders } = require('./bassoApi');
 const { notifyOne, delayBetweenCustomers } = require('./notifyService');
@@ -416,6 +418,7 @@ function localDayKey(value) {
  * Check RẺ (trạng thái/nội dung/đã gửi/Delay) chạy TRƯỚC; chỉ đơn còn lọt mới resolve account (đắt hơn).
  */
 async function classifyForAuto(order, delayedMap) {
+  if (getHold(autoKey(order))) return { decision: 'skip', reason: 'needs_check' };
   if (order.statusCode !== 'not_sent') return { decision: 'skip', reason: 'not_target' }; // chỉ "Chưa báo"
   // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo hàng" (raw.content). Đơn trống ND -> bỏ qua.
   if (!order.noiDungBaoHang || !String(order.noiDungBaoHang).trim()) return { decision: 'skip', reason: 'no_content' };
@@ -458,6 +461,7 @@ async function classifyForAuto(order, delayedMap) {
  * Trả { decision:'send'|'skip', reason?, acct? }.
  */
 async function classifyForShip(order, delayedMap) {
+  if (getHold(autoKeyShip(order))) return { decision: 'skip', reason: 'needs_check' };
   // KHÔNG chặn theo TRẠNG THÁI. NV hay QUÊN/nhầm tick: đơn kẹt "Chưa báo" dù đang giao, HOẶC tick
   // "Đã báo ship" TAY dù Mi chưa gửi (ND ship hiện sau). Nên hễ đơn CÓ "ND báo ship" là xét gửi,
   // dù trạng thái là not_sent / notified_arrival / notified_ship. Chống trùng CHỈ dựa vào DẤU
@@ -678,71 +682,50 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
     summary.candidates = ordered.length;
 
     const gaveUp = []; // đơn VỪA chạm trần maxRetries ở lượt này -> cảnh báo Zalo, kèm lý do lỗi
-    for (let i = 0; i < ordered.length; i += 1) {
-      const { order, profileKey } = ordered[i];
-      // Giữ context nếu đơn kế cùng profile (đã gom) -> tái dùng browser, đóng ở đơn cuối mỗi profile.
-      const keepContext = i + 1 < ordered.length && ordered[i + 1].profileKey === profileKey;
-      const key = keyOf(order);
-      const prev = getAutoRecord(key);
-
-      // eslint-disable-next-line no-await-in-loop
-      const r = await notifyOne(order, {
-        profile: cfg.profile,
-        defaultAccount: cfg.account,   // fallback khi NV không có trong ZALO_ACCOUNT_MAP
-        kind,
-        skipWebUpdate: !cfg.updateWeb, // mặc định đẩy trạng thái về web Basso (tắt qua AUTO_NOTIFY_UPDATE_WEB=false)
-        strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
-        actor: 'bot',                  // audit: luồng tự động
-        keepContext,                   // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
+    await withBrowserBatch(async () => {
+      const send = ({ order }) => notifyOne(order, {
+        profile: cfg.profile, defaultAccount: cfg.account, kind,
+        skipWebUpdate: !cfg.updateWeb, strictMatch: true, actor: 'bot',
       });
-
-      // Phân loại lỗi để quyết định "dừng cả lượt" hay "tính 1 attempt rồi đi tiếp".
-      // CHỈ coi là transient (dừng lượt, KHÔNG trừ lượt) khi runner THỰC SỰ offline — xác
-      // nhận bằng health-check thay vì chỉ dò chữ trong message.
-      // eslint-disable-next-line no-await-in-loop
-      const runnerDown = !r.ok && isTransientError(r.error) && !(await checkLocalHealth());
-      if (r.ok) {
-        recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
-        summary.sent += 1;
-      } else if (r.loginRequired) {
-        // Zalo hiện trang login (chưa đăng nhập): mọi đơn còn lại cũng sẽ fail như nhau -> DỪNG
-        // cả lượt NGAY, KHÔNG trừ lượt thử để thử lại sau khi đã đăng nhập.
-        summary.failed += 1;
-        summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
-        summary.stopped = 'Zalo chưa đăng nhập';
-        console.warn(`[${logTag}:${trigger}] dừng giữa chừng — Zalo chưa đăng nhập: ${r.error}`);
-        break;
-      } else if (runnerDown) {
-        // Runner sập / mạng tới runner đứt giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
-        summary.failed += 1;
-        summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
-        summary.stopped = 'local-runner offline giữa chừng';
-        console.warn(`[${logTag}:${trigger}] dừng giữa chừng — runner offline: ${r.error}`);
-        break;
-      } else {
-        // Lỗi cấp-đơn (runner vẫn sống): tính 1 lượt thử, ĐI TIẾP đơn khác. Hết maxRetries thì thôi.
-        const attempts = (prev ? prev.attempts : 0) + 1;
-        recordAutoNotified(key, 'failed', attempts);
-        summary.failed += 1;
-        // VỪA chạm trần maxRetries ở lượt NÀY (không cảnh báo lặp lại ở các lượt sau — classify()
-        // đã tự bỏ qua đơn này rồi, "chạm trần" chỉ xảy ra đúng 1 lần) -> gom cảnh báo Zalo bên dưới,
-        // kèm lý do lỗi cụ thể (KHONG_THAY_HOI_THOAI/chưa đăng nhập account khác/…) để người trực biết
-        // ngay mà xử lý tay, không phải tự mò "Lịch sử báo" mỗi ngày.
-        if (attempts >= cfg.maxRetries) gaveUp.push({ order, error: r.error });
-      }
-      summary.results.push({
-        orderId: key,
-        customerName: order.customerName,
-        ok: r.ok,
-        error: r.error || r.updateError || null,
-      });
-      // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn) để tránh gửi dồn quá nhanh.
-      if (i + 1 < ordered.length) {
+      for await (const { item: { order }, result: r } of accountQueue(ordered, send)) {
+        const key = keyOf(order);
+        const prev = getAutoRecord(key);
+        // Phân loại lỗi để quyết định "dừng cả lượt" hay "tính 1 attempt rồi đi tiếp".
+        // CHỈ coi là transient (dừng lượt, KHÔNG trừ lượt) khi runner THỰC SỰ offline — xác
+        // nhận bằng health-check thay vì chỉ dò chữ trong message.
         // eslint-disable-next-line no-await-in-loop
-        await delayBetweenCustomers();
-      }
-    }
+        const runnerDown = !r.ok && isTransientError(r.error) && !(await checkLocalHealth());
+        if (r.ok) {
+          recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
+          summary.sent += 1;
+        } else if (runnerDown) {
+          // Runner sập / mạng tới runner đứt giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
+          summary.failed += 1;
+          summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
+          summary.stopped = 'local-runner offline giữa chừng';
+          console.warn(`[${logTag}:${trigger}] dừng giữa chừng — runner offline: ${r.error}`);
+          break;
+        } else {
+          // Lỗi cấp-đơn (runner vẫn sống): tính 1 lượt thử, ĐI TIẾP đơn khác. Hết maxRetries thì thôi.
+          const attempts = (prev ? prev.attempts : 0) + 1;
+          recordAutoNotified(key, 'failed', attempts);
+          summary.failed += 1;
+          // VỪA chạm trần maxRetries ở lượt NÀY (không cảnh báo lặp lại ở các lượt sau — classify()
+          // đã tự bỏ qua đơn này rồi, "chạm trần" chỉ xảy ra đúng 1 lần) -> gom cảnh báo Zalo bên dưới,
+          // kèm lý do lỗi cụ thể (KHONG_THAY_HOI_THOAI/chưa đăng nhập account khác/…) để người trực biết
+          // ngay mà xử lý tay, không phải tự mò "Lịch sử báo" mỗi ngày.
+          if (attempts >= cfg.maxRetries) gaveUp.push({ order, error: r.error });
+        }
+        summary.results.push({
+          orderId: key,
+          customerName: order.customerName,
+          ok: r.ok,
+          error: r.error || r.updateError || null,
+        });
 
+      }
+
+    });
     // CẢNH BÁO ZALO cho người trực: đơn nào vừa NGỪNG tự thử lại (chạm trần maxRetries lỗi liên
     // tiếp — không tìm thấy hội thoại, account chưa đăng nhập, v.v.) cần gửi tay, không thì nằm im
     // vô thời hạn. Gộp 1 tin/lượt kèm lý do lỗi rút gọn từng đơn (giống lưới an toàn báo ship —

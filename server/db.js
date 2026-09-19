@@ -451,7 +451,7 @@ const getLastReportsStmt = db.prepare(`
     FROM reports
    WHERE customer_id IS NOT NULL AND date_inventory IS NOT NULL
    ORDER BY customer_id, date_inventory,
-            CASE WHEN status IN ('success', 'sent_check') THEN 0 ELSE 1 END,
+            CASE WHEN status = 'needs_check' THEN 0 WHEN status IN ('success', 'sent_check') THEN 1 ELSE 2 END,
             created_at DESC
 `);
 
@@ -936,7 +936,7 @@ function stats({ q, from, to, staff, sender, account } = {}) {
       SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success,
       SUM(CASE WHEN status='failed'  THEN 1 ELSE 0 END) AS failed,
       SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
-      SUM(CASE WHEN status='sent_check' THEN 1 ELSE 0 END) AS sent_check
+      SUM(CASE WHEN status IN ('sent_check', 'needs_check') THEN 1 ELSE 0 END) AS sent_check
     FROM reports${whereSql}
   `).get(params);
   return {

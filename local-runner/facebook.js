@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const { prepareWithRetry } = require('./sendRecovery');
 const testModeStore = require('./testModeStore');
 const { getPage, closeContext, withProfileLock } = require('./browser');
 
@@ -64,7 +65,7 @@ async function findVisible(page, selectors, timeout = 8000) {
 async function ensureLoggedIn(page) {
   const url = page.url();
   if (/\/(login|checkpoint)/i.test(url) || /login\.php/i.test(url)) {
-    throw new Error(`Session Facebook đã hết hạn (URL: ${url}). Vào "Tài khoản" bấm Đăng nhập để đăng nhập lại.`);
+    throw new Error(`CHUA_DANG_NHAP: Session Facebook đã hết hạn (URL: ${url}). Vào "Tài khoản" bấm Đăng nhập để đăng nhập lại.`);
   }
 }
 
@@ -355,21 +356,15 @@ async function typeAndSend(page, box, message) {
   await page.keyboard.press('Enter'); // gửi
   await page.waitForTimeout(1500);
 
-  // Xác nhận ĐÃ GỬI: Messenger tự xoá sạch ô soạn khi gửi thành công. Nếu ô soạn vẫn còn
-  // y nguyên nội dung vừa gõ, Enter chưa "ăn" (thường do trang còn đang load/chuyển hội
-  // thoại làm mất focus) -> thử bấm lại 1 lần; vẫn còn thì KHÔNG được báo đã gửi (tránh
-  // hiện tượng báo giả trong khi khách chưa nhận được tin).
-  let remaining = (await box.innerText().catch(() => '')).trim();
-  if (remaining) {
-    await box.click().catch(() => {});
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(1500);
-    remaining = (await box.innerText().catch(() => '')).trim();
-  }
+  // Read-only confirmation after Enter. Never press Enter again on uncertainty.
+  let remaining;
+  try {
+    await box.waitFor({ state: 'visible', timeout: 10000 });
+    remaining = (await box.innerText()).trim();
+  } catch (err) { throw new Error('NEEDS_CHECK: không đọc được kết quả gửi Facebook. ' + err.message); }
   await shot(page, '04-sent');
-  if (remaining) {
-    throw new Error('FB: có vẻ CHƯA gửi được tin (ô soạn vẫn còn nội dung sau khi bấm Gửi) — có thể trang chưa load xong hội thoại khách, thử lại.');
-  }
+  if (remaining) throw new Error('NEEDS_CHECK: đã bấm Gửi Facebook nhưng ô soạn chưa xóa; cần kiểm tra hội thoại.');
+
 }
 
 /**
@@ -377,7 +372,7 @@ async function typeAndSend(page, box, message) {
  * Cùng chữ ký chung với salework.sendBaoHang để notifyService gọi thống nhất theo `channel`.
  * @param {{profile?:string, fbLink:string, keyword?:string, name?:string, message:string, strictMatch?:boolean}} p
  */
-async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, message }) {
+async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, message, keepContext = false, closeAfterSend = config.closeAfterSend }) {
   if (!fbLink) throw new Error('Thiếu link Facebook của khách (fbLink).');
   if (!message) throw new Error('Thiếu nội dung tin nhắn.');
 
@@ -388,12 +383,19 @@ async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, messa
 
   // Tuần tự hoá theo profile: không mở trùng userDataDir với lệnh đăng nhập/kiểm tra cùng profile.
   return withProfileLock(profile, async () => {
-    const page = await getPage(profile);
+    let sending = false;
     try {
-      const box = await openConversationByLink(page, fbLink);
+      const { page, value: box } = await prepareWithRetry(profile, page => openConversationByLink(page, fbLink));
+      sending = true;
       await typeAndSend(page, box, message);
+    } catch (err) {
+      if (sending && !/^NEEDS_CHECK:/.test(err.message)) throw new Error('NEEDS_CHECK: kết quả gửi Facebook chưa rõ. ' + err.message);
+      throw err;
     } finally {
-      if (config.closeAfterSend) await closeContext(profile);
+      if (closeAfterSend && !keepContext) {
+        try { await closeContext(profile); }
+        catch (err) { throw new Error((sending ? 'NEEDS_CHECK: gửi đã chạy nhưng đóng browser lỗi. ' : 'ACCOUNT_UNAVAILABLE: ') + err.message); }
+      }
     }
     return { ok: true };
   });

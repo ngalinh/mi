@@ -267,6 +267,7 @@
     if (s === 'pending') return `<span class="pill pending">${App.icon('hourglass')} Đang gửi</span>`;
     if (s === 'success') return `<span class="pill success">${App.icon('check')} Đã gửi</span>`;
     // Đã gửi cho khách nhưng cập nhật trạng thái web lỗi -> cần kiểm tra/sửa tay (không phải "Lỗi").
+    if (s === 'needs_check') return `<span class="pill check" title="Chưa xác định tin đã gửi hay chưa; đã chặn gửi lại tự động">${App.icon('alert')} Cần kiểm tra</span>`;
     if (s === 'sent_check') return `<span class="pill check" title="Đã gửi tin cho khách nhưng cập nhật trạng thái trên web lỗi — hãy kiểm tra và đổi trạng thái tay">${App.icon('alert')} Đã gửi · cần KT</span>`;
     // Lỗi "không tìm thấy cuộc trò chuyện Zalo" (KHONG_THAY_HOI_THOAI) -> nhãn RIÊNG "Không Zalo"
     // để phân biệt với lỗi gửi khác (mạng/timeout/…). Khách chưa có hội thoại trên Zalo -> cần

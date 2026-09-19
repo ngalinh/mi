@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const { prepareWithRetry } = require('./sendRecovery');
 const testModeStore = require('./testModeStore');
 const accountsStore = require('./accountsStore');
 const { getPage, closeContext, withProfileLock } = require('./browser');
@@ -770,20 +771,13 @@ async function waitForSendConfirmed(page, text, beforeCount, timeoutMs = 8000) {
 // nội dung/ảnh). Fallback nút theo chữ "Gửi"/"Send". Trả false nếu không bấm được.
 async function clickSend(page) {
   await randomDelay(page, 500, 1000);
-  try {
-    await page.locator('button.send-btn').first().click({ timeout: 8000 });
+  for (const selector of ['button.send-btn', 'button:has-text("Gửi")', 'button:has-text("Send")']) {
+    const button = page.locator(selector).first();
+    if (!(await button.count()) || !(await button.isEnabled().catch(() => false))) continue;
+    try { await button.click({ timeout: 8000 }); }
+    catch (err) { throw new Error('NEEDS_CHECK: thao tác bấm Gửi bị gián đoạn; không bấm lại. ' + err.message); }
     await randomDelay(page, 1500, 2400);
     return true;
-  } catch { /* thử fallback */ }
-  for (const sel of ['button:has-text("Gửi")', 'button:has-text("Send")']) {
-    try {
-      const btn = page.locator(sel).first();
-      if (await btn.count() && await btn.isEnabled().catch(() => false)) {
-        await btn.click({ timeout: 5000 });
-        await randomDelay(page, 1500, 2400);
-        return true;
-      }
-    } catch {}
   }
   return false;
 }
@@ -925,7 +919,7 @@ async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
     const confirmed = await waitForSendConfirmed(page, message, beforeCount, 15000);
     if (!confirmed) {
       await shot(page, '05-message-unconfirmed');
-      throw new Error('KHONG_XAC_NHAN_DA_GUI: đã bấm Gửi nhưng không thấy tin nhắn xuất hiện trong hội thoại sau khi chờ (nghi Zalo Basso bị lag/mất kết nối). KHÔNG tính là gửi thành công — bấm "Thử lại" để kiểm tra và gửi lại cho khách.');
+      throw new Error('KHONG_XAC_NHAN_DA_GUI: đã bấm Gửi nhưng không thấy tin nhắn xuất hiện trong hội thoại sau khi chờ (nghi Zalo Basso bị lag/mất kết nối). Cần kiểm tra hội thoại; hệ thống sẽ chặn tự động gửi lại để tránh trùng.');
     }
     sentAny = true;
   }
@@ -951,7 +945,7 @@ async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
  *        không khớp -> dừng. Mặc định 'group'.
  * @returns {Promise<{ok:boolean}>}
  */
-async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [], notifyTarget = 'group', keepContext = false }) {
+async function sendBaoHang({ profile = 'default', account, keyword, name, message, strictMatch = false, imagePaths = [], notifyTarget = 'group', keepContext = false, closeAfterSend = config.closeAfterSend }) {
   if (!keyword && !name) throw new Error('Thiếu keyword (SĐT) hoặc name (tên khách).');
   if (!message && !(imagePaths && imagePaths.length)) throw new Error('Thiếu nội dung tin nhắn.');
 
@@ -962,28 +956,30 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
 
   // Tuần tự hoá theo profile: không mở trùng userDataDir với lệnh đăng nhập/kiểm tra cùng profile.
   return withProfileLock(profile, async () => {
-    const page = await getPage(profile);
+    let sending = false;
     try {
-      await gotoSalework(page);
-      await ensureLoggedIn(page, { profile });
+      const { page } = await prepareWithRetry(profile, async page => {
+        await gotoSalework(page);
+        await ensureLoggedIn(page, { profile });
 
-      // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env.
-      // HUỶ gửi nếu không xác minh được đúng tài khoản — thà báo lỗi rõ ràng còn hơn âm thầm gửi
-      // bằng tài khoản mặc định ("Tất cả Zalo") → gửi nhầm khách của tài khoản khác.
-      const acct = account || config.defaultZaloAccount;
-      if (acct) {
-        const ok = await selectZaloAccount(page, acct);
-        if (!ok) {
-          throw new Error(`KHONG_CHON_DUNG_TAI_KHOAN: không chọn/xác minh được tài khoản Zalo "${acct}". Đã huỷ gửi để tránh gửi nhầm tài khoản — mở lại Zalo Basso kiểm tra danh sách tài khoản đã kết nối.`);
+        // Chọn tài khoản Zalo: ưu tiên account truyền vào, sau đó tới DEFAULT_ZALO_ACCOUNT trong .env.
+        // HUỶ gửi nếu không xác minh được đúng tài khoản — thà báo lỗi rõ ràng còn hơn âm thầm gửi
+        // bằng tài khoản mặc định ("Tất cả Zalo") → gửi nhầm khách của tài khoản khác.
+        const acct = account || config.defaultZaloAccount;
+        if (acct) {
+          const ok = await selectZaloAccount(page, acct);
+          if (!ok) {
+            throw new Error(`KHONG_CHON_DUNG_TAI_KHOAN: không chọn/xác minh được tài khoản Zalo "${acct}". Đã huỷ gửi để tránh gửi nhầm tài khoản — mở lại Zalo Basso kiểm tra danh sách tài khoản đã kết nối.`);
+          }
+        } else if (strictMatch) {
+          // Luồng TỰ ĐỘNG (strictMatch) mà KHÔNG biết gửi bằng account nào -> KHÔNG gửi. Nếu để
+          // trống, ô lọc đang ở "Tất cả Zalo" sẽ quét hội thoại của MỌI account -> dễ gửi nhầm
+          // khách của account khác. Cấu hình account cho NV (UI Tài khoản Zalo) hoặc AUTO_NOTIFY_ACCOUNT.
+          throw new Error('KHONG_RO_TAI_KHOAN: luồng tự động không xác định được tài khoản Zalo để gửi (chưa map NV → account, cũng chưa đặt AUTO_NOTIFY_ACCOUNT). Đã huỷ để tránh gửi nhầm tài khoản.');
         }
-      } else if (strictMatch) {
-        // Luồng TỰ ĐỘNG (strictMatch) mà KHÔNG biết gửi bằng account nào -> KHÔNG gửi. Nếu để
-        // trống, ô lọc đang ở "Tất cả Zalo" sẽ quét hội thoại của MỌI account -> dễ gửi nhầm
-        // khách của account khác. Cấu hình account cho NV (UI Tài khoản Zalo) hoặc AUTO_NOTIFY_ACCOUNT.
-        throw new Error('KHONG_RO_TAI_KHOAN: luồng tự động không xác định được tài khoản Zalo để gửi (chưa map NV → account, cũng chưa đặt AUTO_NOTIFY_ACCOUNT). Đã huỷ để tránh gửi nhầm tài khoản.');
-      }
 
-      await searchAndClickConversation(page, { name, phone: keyword, strictMatch, notifyTarget });
+        await searchAndClickConversation(page, { name, phone: keyword, strictMatch, notifyTarget });
+      });
 
       const uniqueImagePaths = [...new Set((imagePaths || []).map((p) => path.resolve(p)))];
       const checkpointKey = uniqueImagePaths.length
@@ -994,6 +990,7 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
         console.warn('[zalo] Lần trước đã gửi ảnh nhưng text lỗi — retry chỉ gửi text để tránh ảnh trùng.');
       }
 
+      sending = true;
       await typeAndSend(
         page,
         message,
@@ -1003,10 +1000,15 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
 
       // Ảnh + text đã hoàn tất; xoá checkpoint để một yêu cầu gửi mới độc lập vẫn hoạt động.
       if (checkpointKey) clearImageCheckpoint(checkpointKey);
+    } catch (err) {
+      if (sending && !/^(NEEDS_CHECK|KHONG_XAC_NHAN_DA_GUI):/.test(err.message)) throw new Error(`NEEDS_CHECK: chưa xác định kết quả gửi; kiểm tra hội thoại trước khi gửi lại. ${err.message}`);
+      throw err;
     } finally {
-      // Mặc định giữ phiên và tài khoản cho khách tiếp theo. Chỉ đóng khi cấu hình
-      // CLOSE_AFTER_SEND=true và không còn đơn cùng profile trong lô.
-      if (config.closeAfterSend && !keepContext) await closeContext(profile);
+      // A batch closes its profile at the account boundary; standalone sends close here.
+      if (closeAfterSend && !keepContext) {
+        try { await closeContext(profile); }
+        catch (err) { throw new Error((sending ? 'NEEDS_CHECK: gửi đã chạy nhưng đóng browser lỗi. ' : 'ACCOUNT_UNAVAILABLE: ') + err.message); }
+      }
     }
     return { ok: true };
   });

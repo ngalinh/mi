@@ -1,4 +1,6 @@
 'use strict';
+const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
+const { isUncertain, getHold, hold } = require('./notificationHold');
 /**
  * Pha 1 — Gửi tay báo ship từ trang "Quản lý giao hàng" (xem docs/shipping-notify-plan.md).
  *
@@ -15,7 +17,7 @@ const {
   getShippingNotified, markShippingNotified, getShippingTemplates,
   getContactReportTarget,
 } = require('./db');
-const { delayBetweenCustomers } = require('./notifyService');
+const { withLock } = require('./lock');
 
 /** NV duyệt đại diện của vận đơn — lấy từ dòng SP đầu tiên (thường cả đơn cùng 1 NV duyệt). */
 function firstApproveUser(order) {
@@ -73,6 +75,7 @@ async function trySendZalo(resolved, keyword, matchName, message) {
     } catch (err) {
       result = { ok: false, error: err.message };
     }
+    if (result.deferred || result.stopped) return result;
     if (result.ok || i === candidates.length - 1 || !isRetryableAccountError(result.error)) {
       if (cand !== resolved && result.ok) {
         console.log(`[shipping-notify] account "${resolved.account || resolved.profile}" không thấy hội thoại -> gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
@@ -113,13 +116,16 @@ async function findFallbackCustomer(order) {
  */
 async function sendShippingOne(order, opts = {}) {
   if (!order || order.id == null) return { ok: false, error: 'Thiếu đơn' };
+  const holdKey = 'shipping:' + order.id;
+  const held = getHold(holdKey);
+  if (held) return { ok: false, needsCheck: true, error: held };
 
   if (!opts.force) {
     const seen = getShippingNotified(order.id);
     if (seen) return { ok: false, alreadySent: true, sentAt: seen.sentAt, error: `Đã gửi báo ship lúc ${seen.sentAt}` };
   }
 
-  const built = buildDeliveryMessage(order, getShippingTemplates());
+  const built = once('message', () => buildDeliveryMessage(order, getShippingTemplates()));
   if (!built.sendable) {
     return { ok: false, error: REASON_LABEL[built.reason] || 'Chưa gửi được.', reason: built.reason };
   }
@@ -128,7 +134,7 @@ async function sendShippingOne(order, opts = {}) {
   const orderCode = firstOrderCode(order);
   // user_id Basso của NV duyệt (nếu tra được) — để accountResolver khớp được tài khoản "dùng
   // chung" (sharedStaffIds) như flow "Hàng về VN", thay vì chỉ khớp theo tên.
-  const staffUserId = await staffUserIdByName(staff);
+  const staffUserId = await once('staff-user', () => staffUserIdByName(staff));
   // KÊNH SALE: chỉ còn vai trò PHỤ — khi NV duyệt có ≥2 tài khoản mà brand không phân biệt được,
   // resolver dùng kênh sale (thật của vận đơn rồi tới gắn trong Danh bạ) để chọn đúng tài khoản
   // trong số đó, KHÔNG tự chọn account độc lập với NV — xem accountResolver.resolveForOrder. Phải
@@ -141,7 +147,7 @@ async function sendShippingOne(order, opts = {}) {
     staff, userId: staffUserId, orderCode, phone,
     saleChannel: order.saleChannel, saleChannelLabel: order.saleChannelLabel,
   });
-  const resolved = await resolveForOrder(resolverOrder(order.phone), opts);
+  const resolved = await once('resolved', () => resolveForOrder(resolverOrder(order.phone), opts));
   // NGOẠI LỆ THEO KHÁCH: "Kiểu báo riêng" trong Danh bạ ('personal'/'group') GHI ĐÈ kiểu báo mặc
   // định của NV phụ trách (vd NV báo nhóm nhưng riêng khách này không có group Zalo, phải báo cá
   // nhân). Thiếu bước này thì auto-ship luôn dùng kiểu báo của tài khoản Zalo (theo NV) bất kể
@@ -166,7 +172,7 @@ async function sendShippingOne(order, opts = {}) {
   const matchName = zaloName || order.recipient;
   const keyword = order.phone || zaloName || order.recipient;
 
-  const pending = addReport({
+  const pending = pendingReport(() => addReport({
     orderId: order.trackingCode || String(order.id),
     customerName: order.recipient,
     phone: order.phone,
@@ -177,7 +183,7 @@ async function sendShippingOne(order, opts = {}) {
     kind: 'ship',
     channel: resolved.channel,
     zaloAccount: resolved.account || resolved.profile || null,
-  });
+  }), report => updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' }));
 
   let result;
   // SĐT khách hàng THẬT khi phải tra ngược mã đơn (khác SĐT người nhận trên vận đơn) — set ở các
@@ -192,7 +198,7 @@ async function sendShippingOne(order, opts = {}) {
         // SĐT người nhận trên vận đơn (người nhận hộ) có thể KHÁC SĐT khách hàng thật đã lưu link
         // Facebook trong Danh bạ -> tra ngược mã đơn sang "Hàng về VN" (bassoApi.findCustomerByOrderCode)
         // lấy SĐT thật rồi thử tra link Facebook theo SĐT đó, giống cơ chế fallback Zalo bên dưới.
-        const fb = await findFallbackCustomer(order).catch(() => null);
+        const fb = await once('fallback-customer', () => findFallbackCustomer(order).catch(() => null));
         const altLink = fb && fb.phone ? getFbLink(fb.phone) : '';
         if (altLink) {
           console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có link Facebook -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) có link FB -> gửi theo SĐT này.`);
@@ -219,6 +225,8 @@ async function sendShippingOne(order, opts = {}) {
     result = { ok: false, error: err.message };
   }
 
+  if (result.deferred || result.stopped) return result;
+
   // FALLBACK SĐT NGƯỜI NHẬN -> SĐT KHÁCH HÀNG THẬT: chỉ khi lần gửi trên thất bại đúng vì "không
   // có hội thoại Zalo" (KHONG_THAY_HOI_THOAI) — các lỗi khác (chưa đăng nhập, mạng...) thử số khác
   // cũng không giải quyết được. SĐT người nhận trên vận đơn có thể khác SĐT khách đặt đơn (người
@@ -227,7 +235,7 @@ async function sendShippingOne(order, opts = {}) {
   // opts.channel==='zalo') — tôn trọng lựa chọn của người gửi, không tự ý đổi kênh.
   const allowChannelSwitch = resolved.source !== 'explicit' && opts.channel !== 'zalo';
   if (!result.ok && resolved.channel !== 'facebook' && !fallback && isRetryableAccountError(result.error)) {
-    const fb = await findFallbackCustomer(order).catch(() => null);
+    const fb = await once('fallback-customer', () => findFallbackCustomer(order).catch(() => null));
     if (fb && fb.phone && fb.phone !== order.phone) {
       const fbLink = allowChannelSwitch ? getFbLink(fb.phone) : '';
       if (fbLink) {
@@ -235,14 +243,15 @@ async function sendShippingOne(order, opts = {}) {
         // phải Zalo — chính là trường hợp gốc gây fail) -> gửi Facebook thay vì thử lại Zalo (thử
         // lại Zalo với SĐT này gần như chắc chắn cũng lỗi KHONG_THAY_HOI_THOAI).
         console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có hội thoại Zalo -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) có link Facebook -> gửi qua Facebook thay vì Zalo.`);
-        const fbResolved = await resolveForOrder(resolverOrder(fb.phone), { ...opts, channel: 'facebook' });
+        const fbResolved = await once('fallback-facebook', () => resolveForOrder(resolverOrder(fb.phone), { ...opts, channel: 'facebook' }));
         if (fbResolved.skip) {
-          result = { ...result, error: `${result.error} — đã tra ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) có link Facebook nhưng NV ${staff || '—'} chưa có tài khoản Facebook.` };
+          result = { ok: false, error: 'Chưa có tài khoản Facebook được gán cho nhân viên để báo khách hàng thật.' };
         } else {
           const fbMatchName = getZaloName(fb.phone) || fb.customerName || matchName;
           const retryResult = await sendBaoHangFb({
             profile: fbResolved.profile || 'default', fbLink, keyword: fb.phone, name: fbMatchName, message: built.message,
           });
+          if (retryResult.deferred || retryResult.stopped) return retryResult;
           if (retryResult.ok) {
             result = retryResult;
             resolved.channel = 'facebook';
@@ -250,7 +259,7 @@ async function sendShippingOne(order, opts = {}) {
             resolved.profile = fbResolved.profile;
             fallback = fb;
           } else {
-            result = { ...result, error: `${result.error} — đã tra ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) có link Facebook và thử gửi Facebook nhưng cũng thất bại: ${retryResult.error}` };
+            result = retryResult;
           }
         }
       } else {
@@ -258,19 +267,21 @@ async function sendShippingOne(order, opts = {}) {
         const fbMatchName = fbZaloName || fb.customerName || matchName;
         console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có hội thoại Zalo -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) -> thử gửi lại.`);
         const retryResult = await trySendZalo(resolved, fb.phone, fbMatchName, built.message);
+        if (retryResult.deferred || retryResult.stopped) return retryResult;
         if (retryResult.ok) {
           result = retryResult;
           fallback = fb;
         } else {
           console.log(`[shipping-notify] SĐT khách hàng ${fb.phone} cũng không có hội thoại Zalo -> giữ nguyên lỗi.`);
-          result = { ...result, error: `${result.error} — đã tra ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) và thử lại nhưng cũng không có hội thoại Zalo.` };
+          result = retryResult;
         }
       }
     }
   }
 
+  if (isUncertain(result.error)) hold(holdKey, result.error, pending.id);
   let report = updateReport(pending.id, {
-    status: result.ok ? 'success' : 'failed',
+    status: result.ok ? 'success' : (isUncertain(result.error) ? 'needs_check' : 'failed'),
     error: result.ok ? null : result.error,
     jobId: result.jobId,
     zaloAccount: resolved.account || resolved.profile || null,
@@ -312,24 +323,16 @@ async function sendShippingOne(order, opts = {}) {
 async function sendShippingBulk(orders, opts = {}) {
   const list = Array.isArray(orders) ? orders : [];
   const results = [];
-  for (let i = 0; i < list.length; i += 1) {
-    const order = list[i];
-    // Tài khoản CHỌN TAY riêng cho đơn này (cột "Tài khoản gửi" trên Quản lý giao hàng, gắn kèm
-    // mỗi đơn khi báo loạt qua bulkNotify) -> ưu tiên hơn opts chung (vốn không có account/profile
-    // khi gửi loạt, chỉ có actor) để KHÔNG bị resolver tự suy đè lên lựa chọn tay.
-    const orderOpts = (order.account || order.profile)
-      ? { ...opts, account: order.account || opts.account, profile: order.profile || opts.profile }
-      : opts;
-    // eslint-disable-next-line no-await-in-loop
-    const r = await sendShippingOne(order, orderOpts);
-    results.push({ id: order.id, ok: r.ok, error: r.error || null, alreadySent: !!r.alreadySent });
-    if (i + 1 < list.length) {
-      // eslint-disable-next-line no-await-in-loop
-      await delayBetweenCustomers();
+  await withBrowserBatch(async () => {
+    const send = order => sendShippingOne(order, (order.account || order.profile)
+      ? { ...opts, account: order.account || opts.account, profile: order.profile || opts.profile } : opts);
+    for await (const { item: order, result: r } of accountQueue(list, send)) {
+      results.push({ id: order.id, ok: r.ok, error: r.error || null, alreadySent: !!r.alreadySent });
+
     }
-  }
+  });
   const sent = results.filter((r) => r.ok).length;
   return { total: results.length, sent, failed: results.length - sent, results };
 }
 
-module.exports = { sendShippingOne, sendShippingBulk, firstApproveUser };
+module.exports = { sendShippingOne: (...args) => withLock(() => sendShippingOne(...args)), sendShippingBulk: (...args) => withLock(() => sendShippingBulk(...args)), firstApproveUser };

@@ -9,6 +9,8 @@
  *
  * Cả hai luồng cùng nằm trong 1 process server nên 1 mutex bộ-nhớ là đủ.
  */
+const { AsyncLocalStorage } = require('node:async_hooks');
+const scope = new AsyncLocalStorage();
 let tail = Promise.resolve();
 
 /**
@@ -17,7 +19,13 @@ let tail = Promise.resolve();
  * @returns {Promise<T>} kết quả của fn
  */
 function withLock(fn) {
-  const result = tail.then(() => fn());
+  if (scope.getStore()?.held) return fn();
+  const result = tail.then(() => {
+    const token = { held: true };
+    return scope.run(token, async () => {
+      try { return await fn(); } finally { token.held = false; }
+    });
+  });
   // Giữ chuỗi tiếp tục dù fn thành công hay lỗi (nuốt lỗi ở nhánh chuỗi, không ở nhánh trả về).
   tail = result.then(() => undefined, () => undefined);
   return result;

@@ -445,6 +445,18 @@ Pattern Xeko (runner tự đăng ký URL + heartbeat) là lựa chọn **đủ t
 
 ### Giữ phiên Zalo cho khách tiếp theo
 
-Đăng nhập và chọn tài khoản trên cửa sổ do local-runner mở, sau đó giữ nguyên cửa sổ. Mặc định `CLOSE_AFTER_SEND=false`: runner tái dùng trang chat, kiểm tra tài khoản đang chọn và tìm khách tiếp theo, không tải lại trang hoặc mở lại Chromium. Khi yêu cầu dùng tài khoản khác, runner vẫn chọn và xác minh tài khoản đó trước khi tìm khách.
+Cửa sổ đăng nhập thủ công có thể giữ mở. Các lượt báo hàng/báo ship quản lý browser theo từng nhân viên như mô tả bên dưới.
 
-Máy đã cài trước đây cần đổi `CLOSE_AFTER_SEND=true` thành `CLOSE_AFTER_SEND=false` trong `.env` rồi khởi động lại local-runner. Nếu tự đóng cửa sổ hoặc phiên hết hạn, runner mở lại/đăng nhập lại theo flow hiện có. Các lệnh gửi tự động vẫn yêu cầu cấu hình tài khoản; không tự suy đoán từ lựa chọn thủ công.
+
+
+### Hàng đợi theo tài khoản và retry an toàn
+
+Báo hàng/báo ship tay, tự động và Quản lý giao hàng dùng chung khóa gửi. Đơn của nhân viên chính/phụ có chung profile dùng cùng browser. Chỉ một browser do runner quản lý được mở: gửi hết hàng chờ X, đóng X rồi mới mở Y; session đăng nhập vẫn lưu trên đĩa. Kiểm tra đăng nhập/keepalive cũng dùng khóa browser chung.
+
+Không tìm thấy hội thoại: chuyển đơn sang hàng chờ tài khoản dự phòng do resolver cho phép. Thử hết đơn còn lại của X trước khi chuyển Y; không thử tài khoản ngoài danh sách được gán. Các lần đã thử được ghi nhớ trong lượt, chỉ tạo một report và chốt một kết quả cho mỗi đơn. Lỗi đăng nhập hoặc browser không phục hồi được dừng tài khoản đó trong lượt, các tài khoản khác vẫn tiếp tục.
+
+Lỗi timeout/mạng/browser đóng trong giai đoạn chuẩn bị được thử lại tối đa một lần. Từ lúc bắt đầu thao tác gửi, lỗi không rõ kết quả chuyển thành **Cần kiểm tra**: không đổi tài khoản, không tự gửi lại. Mất phản hồi khi giao job hoặc hết thời gian poll cũng được xử lý như vậy. Cờ chặn được lưu bền cho riêng đơn và loại báo; không đánh dấu thành công hay cập nhật Basso khi chưa xác nhận.
+
+Sau khi kiểm tra hội thoại thực tế, Admin có thể xác nhận qua `POST /api/reports/:id/resolve-uncertain`, body `{"decision":"sent"}` hoặc `{"decision":"not_sent"}`. Thao tác này không gửi tin; `sent` ghi nhận đã gửi, `not_sent` gỡ chặn để gửi lại từ luồng thông thường. Việc xác nhận không tự đồng bộ trạng thái Basso. Các nút retry thông thường không tự gỡ chặn.
+
+Cần cập nhật và khởi động lại **cả server và local-runner** (endpoint mới `POST /api/browser/close`). Luồng mới chủ động đóng browser dù cấu hình cũ là `CLOSE_AFTER_SEND=false`. Phạm vi giới hạn là browser do runner quản lý, không đóng Chrome cá nhân hoặc tiến trình CLI đăng nhập độc lập.
