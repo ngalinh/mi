@@ -28,6 +28,7 @@ function load(file, mocks, extra = '') {
     goto: async () => { navigations++; }, waitForTimeout: async () => {},
   };
   const salework = load('local-runner/salework.js', {
+    './bassoReady': { waitUntil: async () => {}, waitControl: async () => {}, notBusy: async () => true },
     './sendRecovery': { prepareWithRetry: async (_profile, prepare) => { await prepare(page); return { page }; } },
     './config': config, './testModeStore': { get: () => ({ testMode: false }) }, './accountsStore': {},
     './browser': { getPage: async () => page, closeContext: async () => { closes++; },
