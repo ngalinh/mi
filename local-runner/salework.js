@@ -4,6 +4,23 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const { prepareWithRetry } = require('./sendRecovery');
+const { waitUntil, waitControl, notBusy } = require('./bassoReady');
+const SEARCH_SELECTOR = 'input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], input[placeholder*="Search"], input[type="search"]';
+const COMPOSER_SELECTOR = 'textarea.msg-textarea, textarea[placeholder*="Nhập tin nhắn"], textarea:visible';
+
+async function waitChatReady(page) {
+  await waitControl(page, '.acc-btn-text', 'thanh chọn tài khoản');
+  await waitControl(page, SEARCH_SELECTOR, 'ô tìm kiếm hội thoại', { editable: true });
+}
+
+async function waitEntryReady(page) {
+  await waitUntil(page, 'trang chat hoặc form đăng nhập', async () => {
+    const password = page.locator(PASSWORD_SELECTOR).first();
+    if (await password.isVisible() && await password.isEditable()) return true;
+    return await notBusy(page) && await page.locator('.acc-btn-text').first().isVisible()
+      && await page.locator(SEARCH_SELECTOR).first().isEditable();
+  });
+}
 const testModeStore = require('./testModeStore');
 const accountsStore = require('./accountsStore');
 const { getPage, closeContext, withProfileLock } = require('./browser');
@@ -121,7 +138,7 @@ async function gotoSalework(page) {
   }
   // Mở thẳng trang chat (nơi có dropdown chọn tài khoản + danh sách hội thoại).
   await page.goto(config.saleworkChatUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForTimeout(3000);
+  await waitEntryReady(page);
   await shot(page, '01-loaded');
 }
 
@@ -195,7 +212,7 @@ async function performLogin(page, { username, password }) {
   let pass = page.locator(PASSWORD_SELECTOR).first();
   if (!(await pass.isVisible().catch(() => false))) {
     await page.goto(config.saleworkLoginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-    await sleep(page, 2000);
+    await waitControl(page, PASSWORD_SELECTOR, 'form đăng nhập', { editable: true });
     pass = page.locator(PASSWORD_SELECTOR).first();
   }
   if (!(await pass.isVisible().catch(() => false))) {
@@ -210,13 +227,11 @@ async function performLogin(page, { username, password }) {
     // eslint-disable-next-line no-await-in-loop
     if (await loc.isVisible().catch(() => false)) { userInput = loc; break; }
   }
-  if (userInput) {
-    try { await userInput.click({ timeout: 3000 }); } catch { /* vẫn thử fill */ }
-    await userInput.fill('').catch(() => {});
-    await userInput.fill(username).catch(() => {});
-  }
-  await pass.fill('').catch(() => {});
-  await pass.fill(password).catch(() => {});
+  if (!userInput) throw new Error('UI_NOT_READY: thiếu ô tài khoản đăng nhập.');
+  await waitUntil(page, 'các ô đăng nhập', async () =>
+    await userInput.isEditable() && await pass.isEditable());
+  await userInput.fill(username);
+  await pass.fill(password);
   await shot(page, '00c-login-filled');
 
   // Bấm nút "Đăng nhập"; nếu không thấy nút thì thử Enter trong ô mật khẩu.
@@ -226,17 +241,21 @@ async function performLogin(page, { username, password }) {
     // eslint-disable-next-line no-await-in-loop
     if (!(await btn.isVisible().catch(() => false))) continue;
     // eslint-disable-next-line no-await-in-loop
-    try { await btn.click({ timeout: 4000 }); clicked = true; break; } catch { /* thử selector kế */ }
+    await waitUntil(page, 'nút đăng nhập', () => btn.isEnabled());
+    await btn.click({ timeout: 10000 }); clicked = true; break;
   }
-  if (!clicked) { await pass.press('Enter').catch(() => {}); }
+  if (!clicked) await pass.press('Enter');
 
-  // Chờ form đăng nhập biến mất (đăng nhập xong app chuyển trang) — tối đa ~15s.
-  const deadline = Date.now() + 15000;
+  // Chờ form biến mất; ensureLoggedIn sẽ mở chat và chờ các control sau đó.
+  const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
     // eslint-disable-next-line no-await-in-loop
     await sleep(page, 800);
     // eslint-disable-next-line no-await-in-loop
-    if (!(await hasLoginForm(page))) { await shot(page, '00d-login-ok'); return true; }
+    if (!(await hasLoginForm(page))) {
+      await shot(page, '00d-login-ok');
+      return true;
+    }
   }
   await shot(page, '00e-login-fail');
   return false;
@@ -252,7 +271,8 @@ async function performLogin(page, { username, password }) {
  */
 async function ensureLoggedIn(page, opts = {}) {
   const { profile, autoLogin = true } = opts;
-  if (!(await hasLoginForm(page))) return { loggedIn: true };
+  await waitEntryReady(page);
+  if (!(await hasLoginForm(page))) { await waitChatReady(page); return { loggedIn: true }; }
 
   if (autoLogin) {
     const creds = loginCredsFor(profile);
@@ -260,7 +280,7 @@ async function ensureLoggedIn(page, opts = {}) {
       const ok = await performLogin(page, creds);
       if (ok) {
         await gotoSalework(page);                 // quay lại trang chat để tiếp tục luồng gửi
-        if (!(await hasLoginForm(page))) return { loggedIn: true, autoLoggedIn: true };
+        if (!(await hasLoginForm(page))) { await waitChatReady(page); return { loggedIn: true, autoLoggedIn: true }; }
       }
       throw new Error('CHUA_DANG_NHAP: đã thử TỰ ĐỘNG đăng nhập Zalo Basso nhưng chưa vào được (sai tài khoản/mật khẩu, hoặc gặp OTP/captcha). Chạy `npm run login` để đăng nhập thủ công 1 lần.');
     }
@@ -305,14 +325,15 @@ async function currentAccountButtonLabel(page) {
 // Mở dropdown chọn tài khoản. Nút mở hiển thị nhãn span.acc-btn-text ("Tất cả Zalo" hoặc
 // tên tài khoản đã chọn lần trước). Thử vài selector phòng khi DOM đổi.
 async function openAccountDropdown(page) {
+  await waitControl(page, '.acc-btn-text', 'nút chọn tài khoản');
   if (await accountListVisible(page)) return true;
   const tries = ['.acc-btn-text', '.acc-btn', '[class*="acc-btn"]', '[aria-haspopup="menu"]', '[aria-haspopup]'];
   for (const sel of tries) {
     const loc = page.locator(sel).first();
     if (!(await loc.count().catch(() => 0))) continue;
-    try { await loc.click({ timeout: 3000, force: true }); } catch { continue; }
-    await sleep(page, 800);
-    if (await accountListVisible(page)) return true;
+    await loc.click({ timeout: 10000 });
+    await waitUntil(page, 'danh sách tài khoản', () => accountListVisible(page));
+    return true;
   }
   return accountListVisible(page);
 }
@@ -342,8 +363,13 @@ async function readAccountRows(page) {
 async function clickAccountRowByIdx(page, idx) {
   const loc = page.locator(`.v-list-item[data-mi-idx="${idx}"]`).first();
   try { await loc.scrollIntoViewIfNeeded({ timeout: 2000 }); } catch {}
-  await loc.click({ timeout: 4000 });
-  await sleep(page, 500);
+  const title = await loc.locator('.v-list-item-title').textContent();
+  const wasOn = await loc.locator('.acc-tick').evaluate(el => el.classList.contains('on'));
+  await loc.click({ timeout: 10000 });
+  await waitUntil(page, 'trạng thái chọn tài khoản', async () => {
+    const row = (await readAccountRows(page)).find(r => ACC_NORM(r.title) === ACC_NORM(title));
+    return row && row.on !== wasOn;
+  });
 }
 
 /**
@@ -365,7 +391,8 @@ async function selectZaloAccount(page, accountLabel) {
     await shot(page, '02b-account-dropdown-fail');
     return false;
   }
-  await sleep(page, 500);
+  await waitUntil(page, 'tài khoản cần chọn tải xong', async () =>
+    (await readAccountRows(page)).some(r => ACC_NORM(r.title) === want));
 
   // Hội tụ về trạng thái mong muốn: mỗi vòng sửa ĐÚNG 1 việc rồi đọc lại (vì click làm Vue
   // re-render → phải re-mark data-mi-idx). Tối đa 8 vòng cho an toàn.
@@ -397,8 +424,9 @@ async function selectZaloAccount(page, accountLabel) {
 
   // Đóng dropdown để bước tìm hội thoại đọc đúng danh sách đã lọc + không bị overlay che click.
   await page.keyboard.press('Escape').catch(() => {});
-  await page.click('body', { position: { x: 700, y: 400 }, force: true }).catch(() => {});
-  await sleep(page, 800);
+  if (await accountListVisible(page)) await page.locator('.acc-btn-text').first().click({ timeout: 10000 });
+  await waitUntil(page, 'đóng danh sách tài khoản', async () => !(await accountListVisible(page)));
+  await waitChatReady(page);
 
   await shot(page, '02-account-selected');
   if (!ok) {
@@ -441,6 +469,7 @@ async function clickFilterTab(page, wantLabel, index, guessSelectors = []) {
   const shotName = `02d-tab-${want.replace(/\s+/g, '-')}`;
   const isActive = (btn) => btn.evaluate((el) => el.classList.contains('filter-active')).catch(() => false);
   const btns = page.locator('.filter-bar .filter-btn');
+  await waitControl(page, '.filter-bar .filter-btn', 'bộ lọc hội thoại');
   const n = await btns.count().catch(() => 0);
 
   // (1) CHÍNH — theo VỊ TRÍ + xác minh .filter-active. Đã active sẵn -> THÔI (không bấm lại kẻo bỏ chọn).
@@ -450,9 +479,9 @@ async function clickFilterTab(page, wantLabel, index, guessSelectors = []) {
       if (await isActive(btn)) { await shot(page, shotName); return true; }
       await btn.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
       await btn.click({ timeout: 3000 });
-      await sleep(page, 700);
+      await waitUntil(page, 'bộ lọc hội thoại được chọn', () => isActive(btn));
       if (await isActive(btn)) { await shot(page, shotName); return true; }
-    } catch { /* rơi xuống dự phòng */ }
+    } catch (err) { if (/UI_NOT_READY|Timeout/i.test(err.message)) throw err; }
   }
 
   // (2) DỰ PHÒNG — hover từng nút đọc tooltip qua aria-describedby, bấm nút khớp nhãn + xác minh.
@@ -475,11 +504,11 @@ async function clickFilterTab(page, wantLabel, index, guessSelectors = []) {
         // eslint-disable-next-line no-await-in-loop
         await btn.click({ timeout: 3000 });
         // eslint-disable-next-line no-await-in-loop
-        await sleep(page, 700);
+        await waitUntil(page, 'bộ lọc hội thoại được chọn', () => isActive(btn));
         // eslint-disable-next-line no-await-in-loop
         if (await isActive(btn)) { await shot(page, shotName); return true; }
       }
-    } catch { /* thử nút kế */ }
+    } catch (err) { if (/UI_NOT_READY|Timeout/i.test(err.message)) throw err; }
   }
 
   // (3) Fallback selector đoán — phòng khi DOM đổi hoàn toàn.
@@ -488,10 +517,10 @@ async function clickFilterTab(page, wantLabel, index, guessSelectors = []) {
     try {
       if (!(await loc.count().catch(() => 0))) continue;
       await loc.click({ timeout: 3000 });
-      await sleep(page, 700);
+      await waitUntil(page, 'bộ lọc hội thoại được chọn', () => isActive(loc));
       await shot(page, shotName);
       return true;
-    } catch { /* thử selector kế */ }
+    } catch (err) { if (/UI_NOT_READY|Timeout/i.test(err.message)) throw err; }
   }
   return false;
 }
@@ -522,7 +551,7 @@ const clickPersonalTab = (page) => clickFilterTab(page, 'cá nhân', 2,
  * Gõ THẲNG SĐT vào ô tìm (SĐT duy nhất, khớp chính xác hơn tên). Có SĐT mà KHÔNG khớp được
  * hội thoại -> DỪNG LUÔN, KHÔNG fallback sang tìm theo TÊN (tránh khớp nhầm hội thoại của
  * khách KHÁC trùng tên, không nằm trong whitelist). Chỉ tìm theo TÊN khi không có SĐT.
- * Click bằng element thật (Playwright cuộn tới + chờ actionable), dự phòng toạ độ chuột.
+ * Click bằng element thật (Playwright cuộn tới + chờ actionable); mất hàng thì dừng.
  * @param {object} p { name, phone, strictMatch, notifyTarget }
  */
 async function searchAndClickConversation(page, { name, phone, strictMatch = false, notifyTarget = 'group' }) {
@@ -534,18 +563,10 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // nhầm hội thoại của 1 khách KHÁC trùng tên (không nằm trong whitelist). -> Khi TEST_MODE,
   // CHỈ khớp theo SĐT đã whitelist, bỏ qua tìm theo tên cho an toàn.
   if (testModeStore.get().testMode && phone) name = undefined;
-  // Chọn tab lọc theo kiểu báo (best-effort): 'group' -> tab "Nhóm"; 'personal' -> tab "Cá nhân"
-  // (để không dính bộ lọc Nhóm còn sót). Không thấy tab thì bỏ qua, còn lớp lọc "Trò chuyện" đỡ.
-  if (isPersonal) await clickPersonalTab(page); else await clickGroupTab(page);
-  const searchBox = page
-    .locator(
-      'input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], '
-      + 'input[placeholder*="Search"], input[type="search"]'
-    )
-    .first();
-  if (!(await searchBox.isVisible().catch(() => false))) {
-    throw new Error('KHONG_THAY_O_TIM_KIEM: Không tìm thấy ô tìm kiếm hội thoại.');
-  }
+  // Chờ và xác nhận bộ lọc trước khi tìm kiếm.
+  const filterReady = isPersonal ? await clickPersonalTab(page) : await clickGroupTab(page);
+  if (!filterReady) throw new Error('UI_NOT_READY: không xác nhận được bộ lọc hội thoại; đã dừng.');
+  const searchBox = await waitControl(page, SEARCH_SELECTOR, 'ô tìm kiếm hội thoại', { editable: true });
 
   // typeTerm: từ khoá GÕ vào ô tìm (ưu tiên SĐT). matchTerms: danh sách chuỗi để khớp hàng
   // hội thoại (SĐT và/hoặc tên) — null/[] -> lấy hàng trên cùng.
@@ -555,9 +576,10 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // báo cá nhân -> "Tin nhắn" (chat 1-1 thật), fallback "Người dùng Zalo".
   async function attempt(typeTerm, matchTerms, section = 'Trò chuyện') {
     if (!typeTerm) return null;
-    await searchBox.click().catch(() => {});
-    await searchBox.fill('').catch(() => {});
-    await searchBox.type(String(typeTerm), { delay: 30 });
+    await searchBox.fill('');
+    await searchBox.fill(String(typeTerm));
+    await waitUntil(page, 'từ khóa tìm kiếm', async () =>
+      await searchBox.inputValue() === String(typeTerm) && await notBusy(page));
 
     const scan = () => page.evaluate(({ matchTerms, section, preferGroup }) => {
       const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
@@ -658,16 +680,24 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       const rr = pick.rect;
       return {
         x: rr.left + rr.width / 2, y: rr.top + rr.height / 2, isGroup: !!pick.isGroup, ambiguous,
+        identity: (pick.el.textContent || '').normalize('NFC').replace(/\s+/g, ' ').trim(),
       };
     }, { matchTerms, section, preferGroup: !isPersonal });
 
-    // Kết quả tìm kiếm có debounce -> poll, TRẢ VỀ NGAY khi có kết quả.
+    // Give slow search up to 30s; require the same matching row for one second.
     let rect = null;
-    const deadline = Date.now() + 3000;
+    let previous = '';
+    let stableSince = null;
+    const deadline = Date.now() + 30000;
     do {
-      await page.waitForTimeout(300);
-      rect = await scan();
-    } while (!rect && Date.now() < deadline);
+      await page.waitForTimeout(250);
+      rect = await notBusy(page) ? await scan() : null;
+      const signature = rect ? JSON.stringify(rect) : '';
+      if (signature && signature === previous) {
+        if (Date.now() - stableSince >= 1000) break;
+      } else { previous = signature; stableSince = Date.now(); }
+      rect = null;
+    } while (Date.now() < deadline);
     await shot(page, '03-searched');
     if (rect) console.log(`[mi] khớp hội thoại mục "${section}": isGroup=${rect.isGroup} ambiguous=${rect.ambiguous} (cần ${isPersonal ? 'cá nhân' : 'nhóm'})`);
     return rect;
@@ -704,17 +734,10 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
     const gotLabel = rect.isGroup ? 'NHÓM' : 'CÁ NHÂN';
     throw new Error(`SAI_LOAI_HOI_THOAI: cần hội thoại ${wantLabel} cho "${phone || name}" nhưng tài khoản này chỉ có hội thoại ${gotLabel} trong mục "Trò chuyện". Kiểm tra/tạo đúng loại hội thoại cho khách trên tài khoản này, hoặc xem lại "Kiểu báo riêng" trong Danh bạ.`);
   }
-  // Ưu tiên click bằng element đã đánh dấu (Playwright tự cuộn tới + chờ actionable),
-  // dự phòng click theo toạ độ chuột nếu Vue đã render lại làm mất cờ.
-  let opened = false;
-  try {
-    const target = page.locator('[data-mi-target]').first();
-    await target.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-    await target.click({ timeout: 5000 });
-    opened = true;
-  } catch { /* dự phòng toạ độ chuột */ }
-  if (!opened) await page.mouse.click(rect.x, rect.y);
-  await page.waitForTimeout(1500);
+  // A stale row must fail safely; never click old screen coordinates.
+  const target = page.locator('[data-mi-target]').first();
+  await target.click({ timeout: 10000 });
+  await waitControl(page, COMPOSER_SELECTOR, 'ô soạn tin của hội thoại', { editable: true });
   await shot(page, '04-conversation-opened');
 }
 
@@ -768,18 +791,21 @@ async function waitForSendConfirmed(page, text, beforeCount, timeoutMs = 8000) {
 }
 
 // Bấm nút Gửi (.send-btn) — Playwright tự chờ tới khi hết disabled (nút bật khi ô soạn có
-// nội dung/ảnh). Fallback nút theo chữ "Gửi"/"Send". Trả false nếu không bấm được.
+// nội dung/ảnh). Fallback nút theo chữ "Gửi"/"Send"; hết thời gian chờ thì dừng.
 async function clickSend(page) {
-  await randomDelay(page, 500, 1000);
-  for (const selector of ['button.send-btn', 'button:has-text("Gửi")', 'button:has-text("Send")']) {
-    const button = page.locator(selector).first();
-    if (!(await button.count()) || !(await button.isEnabled().catch(() => false))) continue;
-    try { await button.click({ timeout: 8000 }); }
-    catch (err) { throw new Error('NEEDS_CHECK: thao tác bấm Gửi bị gián đoạn; không bấm lại. ' + err.message); }
-    await randomDelay(page, 1500, 2400);
-    return true;
-  }
-  return false;
+  let button;
+  await waitUntil(page, 'nút Gửi sẵn sàng', async () => {
+    if (!(await notBusy(page))) return false;
+    for (const selector of ['button.send-btn', 'button:has-text("Gửi")', 'button:has-text("Send")']) {
+      const candidate = page.locator(selector).first();
+      if (await candidate.isVisible() && await candidate.isEnabled()) { button = candidate; return true; }
+    }
+    return false;
+  });
+  try { await button.click({ timeout: 10000 }); }
+  catch (err) { throw new Error('NEEDS_CHECK: thao tác bấm Gửi bị gián đoạn; không bấm lại. ' + err.message); }
+  await randomDelay(page, 1500, 2400);
+  return true;
 }
 
 // Đính ảnh vào ô soạn tin. CÁCH CHÍNH: DÁN (paste) ảnh từ clipboard — dựng File rồi dispatch
@@ -885,38 +911,25 @@ async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
   // bấm nút thành công: khi Zalo Basso bị lag, Playwright vẫn bấm được nút Gửi nhưng tin không
   // lên hội thoại -> khách không nhận được dù trước đây hàm này vẫn báo "gửi thành công".
   //
-  // QUAN TRỌNG: nút Gửi CHỈ được bấm ĐÚNG 1 LẦN (đã ăn). Không bấm lại để "thử gửi lần nữa" khi
-  // chưa xác nhận được, vì rất có thể tin ĐÃ thực sự gửi và chỉ đang hiển thị chậm — bấm lại dễ
-  // gửi TRÙNG cho khách (còn tệ hơn triệu chứng ban đầu). Nếu bấm nút chưa hề ăn (nút chưa kịp bật/
-  // click bị nuốt) thì được thử bấm lại — lúc đó chắc chắn chưa có tin nào rời đi.
+  // Chờ nội dung và nút Gửi sẵn sàng, bấm đúng một lần rồi chờ xác nhận.
+  // Không bấm lại khi chưa rõ kết quả: tin có thể đã gửi nhưng đang hiển thị chậm.
   if (message) {
-    const ta = page.locator('textarea.msg-textarea, textarea[placeholder*="Nhập tin nhắn"], textarea:visible').first();
-    if (!(await ta.isVisible().catch(() => false))) {
-      throw new Error('KHONG_THAY_O_NHAP: Không tìm thấy ô nhập tin nhắn.');
-    }
+    const ta = await waitControl(page, COMPOSER_SELECTOR, 'ô soạn tin', { editable: true });
     const beforeCount = await countTextOccurrences(page, message);
 
-    // (a) Bấm nút Gửi — được thử lại TỐI ĐA 3 lần CHỈ KHI click chưa hề ăn (chưa có tin nào gửi).
-    let clicked = false;
-    for (let attempt = 1; attempt <= 3 && !clicked; attempt += 1) {
-      await ta.click({ timeout: 5000 });
-      await ta.fill(message);
-      await ta.evaluate((el, val) => {
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }, message);
-      await shot(page, `05-message-typed-a${attempt}`);
-      clicked = await clickSend(page);
-      if (!clicked) await sleep(page, 800);
-    }
-    if (!clicked) {
-      throw new Error('KHONG_GUI_DUOC: bấm nút Gửi không ăn (nút không bật được sau nhiều lần thử).');
-    }
+    await ta.fill(message);
+    await ta.evaluate((el, val) => {
+      el.value = val;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, message);
+    await waitUntil(page, 'nội dung tin nhắn', async () => await ta.inputValue() === message);
+    await shot(page, '05-message-typed');
+    await clickSend(page);
 
     // (b) Đã bấm Gửi 1 lần thành công -> CHỜ DÀI để xác định tin có thực sự hiển thị trong hội
     // thoại không (nghi lag nên chờ lâu, tuyệt đối KHÔNG bấm Gửi lại ở bước này).
-    const confirmed = await waitForSendConfirmed(page, message, beforeCount, 15000);
+    const confirmed = await waitForSendConfirmed(page, message, beforeCount, 30000);
     if (!confirmed) {
       await shot(page, '05-message-unconfirmed');
       throw new Error('KHONG_XAC_NHAN_DA_GUI: đã bấm Gửi nhưng không thấy tin nhắn xuất hiện trong hội thoại sau khi chờ (nghi Zalo Basso bị lag/mất kết nối). Cần kiểm tra hội thoại; hệ thống sẽ chặn tự động gửi lại để tránh trùng.');

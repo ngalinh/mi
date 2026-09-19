@@ -182,10 +182,11 @@ test('managed browser closes previous profile before launch and serializes profi
 test('Zalo send click timeout is uncertain and never clicks fallback buttons', async () => {
   const source = fs.readFileSync(path.join(__dirname, '..', 'local-runner/salework.js'), 'utf8');
   const body = source.slice(source.indexOf('async function clickSend(page)'), source.indexOf('// Đính ảnh'));
-  const context = { randomDelay: async () => {} };
+  const context = { randomDelay: async () => {}, notBusy: async () => true,
+    waitUntil: async (_page, _step, condition) => { assert.equal(await condition(), true); } };
   vm.createContext(context); vm.runInContext(body, context);
   let clicks = 0;
-  const page = { locator: () => ({ first: () => ({ count: async () => 1, isEnabled: async () => true,
+  const page = { locator: () => ({ first: () => ({ count: async () => 1, isVisible: async () => true, isEnabled: async () => true,
     click: async () => { clicks++; throw Error('Timeout'); } }) }) };
   await assert.rejects(context.clickSend(page), /^Error: NEEDS_CHECK:/);
   assert.equal(clicks, 1);
