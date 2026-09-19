@@ -13,13 +13,10 @@ const accountsStore = require('./accountsStore');
 
 const contexts = new Map(); // profileName -> { context, lastUsed }
 
-// Khoá TUẦN TỰ HOÁ theo profile: 2 thao tác trên CÙNG userDataDir (gửi tin / đăng nhập /
-// kiểm tra) KHÔNG được chạy song song — Chromium giữ SingletonLock trên userDataDir, mở
-// đồng thời sẽ crash hoặc đóng context của nhau giữa chừng. Mỗi profile 1 chuỗi promise;
-// profile khác nhau chạy độc lập. (jobQueue chỉ tuần tự hoá GỬI, không bao các endpoint account.)
-const _locks = new Map(); // profileName -> Promise (tail)
+// One global browser lock includes sends, account checks, login and keepalive.
+const _locks = new Map();
 function withProfileLock(profileName, fn) {
-  const key = profileName || 'default';
+  const key = 'browser'; // Global lock: no other profile may close a browser in use.
   const prev = _locks.get(key) || Promise.resolve();
   const run = prev.catch(() => {}).then(() => fn());
   _locks.set(key, run.catch(() => {})); // tail nuốt lỗi để 1 lần fail không kẹt cả chuỗi
@@ -130,6 +127,7 @@ async function safeLaunchPersistentContext(userDataDir, proxy) {
  * Lấy (hoặc tạo) context cho profile và trả về 1 page sẵn sàng.
  */
 async function getContext(profileName) {
+  for (const name of contexts.keys()) if (name !== profileName) await closeContext(name);
   let entry = contexts.get(profileName);
   if (entry && entry.context) {
     // kiểm tra context còn sống
@@ -147,7 +145,7 @@ async function getContext(profileName) {
   // Cấp quyền clipboard để dán nội dung bằng Ctrl+V thật (Facebook Messenger) — dùng cho báo FB.
   // Bỏ qua an toàn nếu trình duyệt không hỗ trợ cấp quyền (không ảnh hưởng luồng Zalo).
   try { await context.grantPermissions(['clipboard-read', 'clipboard-write']); } catch { /* ignore */ }
-  context.on('close', () => contexts.delete(profileName));
+  context.on('close', () => { if (contexts.get(profileName)?.context === context) contexts.delete(profileName); });
   entry = { context, lastUsed: Date.now() };
   contexts.set(profileName, entry);
   return context;

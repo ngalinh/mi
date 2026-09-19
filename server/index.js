@@ -1241,6 +1241,15 @@ app.get('/api/reports', async (req, res) => {
 // Tái tạo đơn từ khóa đã lưu (customerId+dateInventory+userId) rồi đi qua notifyOrders như báo
 // tay: có khóa chung với bot (không đua), resolve đúng account theo NV, dùng lại NGUYÊN VĂN nội
 // dung đã gửi (messageOverride) để khớp lần trước. Chỉ cho thử lại dòng 'failed'.
+// Resolve only after an administrator has inspected the actual conversation.
+app.post('/api/reports/:id/resolve-uncertain', async (req, res) => {
+  if (await guardAdmin(req, res)) return;
+  try {
+    const result = await require('./lock').withLock(() => require('./notificationHold').resolveHold(req.params.id, req.body?.decision, getActor(req)));
+    res.json(result);
+  } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
+});
+
 app.post('/api/reports/:id/retry', async (req, res) => {
   try {
     const rep = getReportById(req.params.id);

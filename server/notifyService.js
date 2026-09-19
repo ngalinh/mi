@@ -1,5 +1,6 @@
 'use strict';
-const { employeeKey, groupByEmployee, withBrowserBatch } = require('./browserBatch');
+const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
+const { isUncertain, getHold, hold } = require('./notificationHold');
 const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems, getOrderContent } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
@@ -122,6 +123,9 @@ async function resolveOrderMeta(order) {
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
+  const holdKey = kind === 'ship' ? autoKeyShip(order) : autoKey(order);
+  const held = getHold(holdKey);
+  if (held) return { ok: false, needsCheck: true, error: held };
 
   // Tài khoản CHỌN TAY riêng cho đơn này (cột "Tài khoản gửi" trên dashboard, gắn kèm mỗi đơn khi
   // báo LOẠT — khác với opts.account/opts.profile vốn chỉ áp dụng khi gửi 1 đơn từ modal/nút icon
@@ -166,9 +170,9 @@ async function notifyOne(order, opts = {}) {
     }
   }
 
-  const message = opts.messageOverride && opts.messageOverride.trim()
+  const message = once('message', () => opts.messageOverride && opts.messageOverride.trim()
     ? opts.messageOverride.trim()
-    : (kind === 'ship' ? buildBaoShipMessage(order) : buildBaoHangMessage(order));
+    : (kind === 'ship' ? buildBaoShipMessage(order) : buildBaoHangMessage(order)));
 
   // Tìm khách: dùng SĐT (whitelist + tìm) và tên (khớp hội thoại).
   // DANH BẠ ZALO: nếu SĐT khách có tên Zalo/FB đã lưu (import/nhập tay), dùng tên đó để KHỚP
@@ -188,7 +192,7 @@ async function notifyOne(order, opts = {}) {
   // brand không phân biệt được, resolver dùng kênh sale (chọn tay > thật của đơn > gắn trong Danh
   // bạ) để chọn đúng tài khoản trong số đó, KHÔNG tự chọn account độc lập với NV — xem
   // accountResolver.resolveForOrder.
-  const resolved = await resolveForOrder(order, opts);
+  const resolved = await once('resolved', () => resolveForOrder(order, opts));
   // NGOẠI LỆ THEO KHÁCH: nếu khách này có "Kiểu báo riêng" trong danh bạ ('personal'/'group'), nó
   // GHI ĐÈ kiểu báo của NV phụ trách (vd NV báo cá nhân nhưng riêng khách này báo vào group Zalo).
   // Chỉ áp cho kênh Zalo — kênh Facebook không có tab cá nhân/nhóm.
@@ -202,7 +206,7 @@ async function notifyOne(order, opts = {}) {
 
   // Tra mã ĐH + ảnh SP TRƯỚC khi gửi để dòng "đang báo" đã đủ thông tin hiển thị (chỉ tra 1 lần,
   // dùng lại cho cả lúc cập nhật kết quả cuối).
-  const meta = await resolveOrderMeta(order);
+  const meta = await once('meta', () => resolveOrderMeta(order));
 
   // Bỏ qua có lý do rõ ràng -> ghi 1 dòng "failed" vào Lịch sử báo để người soát xử lý.
   //   - brand             : NV chưa có Zalo cho brand của đơn (tránh gửi nhầm brand).
@@ -244,7 +248,7 @@ async function notifyOne(order, opts = {}) {
   // Ghi 1 dòng "đang báo" (pending) NGAY trước khi gửi. Nhờ vậy cả báo tự động lẫn báo tay đều
   // thấy ngay đã nhận lệnh gửi cho khách nào, kể cả khi job kéo dài (sendBaoHang poll tới 10 phút)
   // hay đang xếp hàng trong báo loạt. Sau khi gửi xong sẽ UPDATE chính dòng này thành success/failed.
-  const pending = addReport({
+  const pending = pendingReport(() => addReport({
     orderId: meta.orderCode,
     customerName: order.customerName,
     phone: order.phone,
@@ -262,7 +266,7 @@ async function notifyOne(order, opts = {}) {
     // Tài khoản Zalo dùng để gửi (để đối chiếu trên Lịch sử báo): ưu tiên tên dropdown,
     // không có thì tới profile/key, cuối cùng 'default'.
     zaloAccount: resolved.account || resolved.profile || null,
-  });
+  }), report => updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' }));
 
   let result;
   try {
@@ -299,11 +303,11 @@ async function notifyOne(order, opts = {}) {
             message,
             strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
             notifyTarget: cand.notifyTarget || resolved.notifyTarget, // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
-            keepContext: opts.keepContext === true,  // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
           });
         } catch (err) {
           result = { ok: false, error: err.message };
         }
+        if (result.deferred || result.stopped) return result;
         if (result.ok || i === candidates.length - 1 || !isRetryableAccountError(result.error)) {
           if (cand !== resolved && result.ok) {
             console.log(`[notify] account "${resolved.account || resolved.profile}" không thấy hội thoại -> gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
@@ -318,6 +322,9 @@ async function notifyOne(order, opts = {}) {
   } catch (err) {
     result = { ok: false, error: err.message };
   }
+
+  if (result.deferred || result.stopped) return result;
+  if (isUncertain(result.error)) hold(holdKey, result.error, pending.id);
 
   // Gửi thành công -> cập nhật trạng thái 'Đã báo hàng' ngược về web (nếu bật).
   // skipWebUpdate=true (luồng bot tự động): CHỈ lưu trạng thái trong mi, KHÔNG đẩy về web Basso.
@@ -342,7 +349,7 @@ async function notifyOne(order, opts = {}) {
   //    đổi (vd Basso timeout) -> cần KIỂM TRA/sửa tay. KHÔNG để 'success' (giấu lỗi) cũng KHÔNG để
   //    'failed' (sai — khách đã nhận tin, gửi lại sẽ trùng).
   const report = updateReport(pending.id, {
-    status: result.ok ? (updateError ? 'sent_check' : 'success') : 'failed',
+    status: result.ok ? (updateError ? 'sent_check' : 'success') : (isUncertain(result.error) ? 'needs_check' : 'failed'),
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
     // resolved.account/profile được cập nhật lại nếu gửi thành công qua account DỰ PHÒNG (fallback)
@@ -401,23 +408,13 @@ async function notifyOrders(orders, opts = {}) {
     stopRequested = false;
     try {
       // Gom theo profile trước -> gửi tuần tự HẾT đơn của 1 tài khoản rồi mới sang tài khoản kế.
-      let ordered = await groupOrdersByProfile(orders, opts);
+      const ordered = await groupOrdersByProfile(orders, opts);
       const results = [];
       let aborted = false;
       let stopped = false;
       let abortError = null;
-      await withBrowserBatch(async (browserBatch) => {
-        ordered = groupByEmployee(ordered, t => employeeKey(t.order, t.profileKey));
-        for (let idx = 0; idx < ordered.length; idx += 1) {
-          // Người dùng bấm Dừng -> thoát TRƯỚC khi gửi đơn kế (đơn đang gửi dở đã xong ở vòng trước).
-          if (stopRequested) { stopped = true; break; }
-          const { order, profileKey } = ordered[idx];
-          await browserBatch.select(employeeKey(order, profileKey));
-          // Giữ context nếu đơn KẾ TIẾP cùng profile (đã gom) -> tái dùng browser, đỡ mở/đóng lặp lại.
-          const keepContext = profileKey != null && idx + 1 < ordered.length
-            && ordered[idx + 1].profileKey === profileKey;
-          // eslint-disable-next-line no-await-in-loop
-          const r = await notifyOne(order, { ...opts, keepContext });
+      await withBrowserBatch(async () => {
+        for await (const { item: { order }, result: r } of accountQueue(ordered, ({ order }) => notifyOne(order, opts), { shouldStop: () => stopRequested })) {
           // notifyOne tự hủy trong ân hạn / lúc chuẩn bị (người dùng bấm Dừng trước khi tin đi) ->
           // KHÔNG tính vào results (không phải gửi lỗi), coi như đơn bỏ dở như khi dừng ở ranh giới.
           if (r.stopped) { stopped = true; break; }
@@ -436,22 +433,10 @@ async function notifyOrders(orders, opts = {}) {
             error: r.error || r.updateError || null,
             jobId: r.jobId || null,
           });
-          // Zalo hiện trang login (chưa đăng nhập) -> DỪNG NGAY cả loạt: các đơn còn lại chắc chắn
-          // cũng fail vì cùng chưa đăng nhập. Không gửi tiếp để tránh loạt đơn failed vô ích; trả cờ
-          // aborted để UI hiện cảnh báo đăng nhập thay vì "Hoàn tất".
-          if (r.loginRequired) {
-            aborted = true;
-            abortError = r.error || 'Zalo chưa đăng nhập.';
-            break;
-          }
-          // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn — bỏ qua sau đơn cuối) để tránh
-          // gửi dồn quá nhanh -> giảm rủi ro chống spam Zalo/FB. Tắt bằng SEND_DELAY_BETWEEN_MAX_MS=0.
-          if (idx + 1 < ordered.length) {
-            // eslint-disable-next-line no-await-in-loop
-            await delayBetweenCustomers();
-          }
+
         }
       });
+      stopped = stopped || stopRequested;
       const sent = results.filter((r) => r.ok).length;
       // Số đơn CÒN LẠI chưa gửi khi dừng giữa chừng (login hoặc người dùng bấm Dừng) — để UI báo rõ
       // đã bỏ dở bao nhiêu.
@@ -510,5 +495,5 @@ async function notifyMany(orderIds, opts = {}) {
 }
 
 module.exports = {
-  notifyOne, notifyMany, notifyOrders, delayBetweenCustomers, requestStopBulk, isBulkRunning,
+  notifyOne: (...args) => withLock(() => notifyOne(...args)), notifyMany, notifyOrders, delayBetweenCustomers, requestStopBulk, isBulkRunning,
 };

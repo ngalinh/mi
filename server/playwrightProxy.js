@@ -2,7 +2,7 @@
 const fetch = require('node-fetch');
 const config = require('./config');
 const localRegistry = require('./localRegistry');
-const { sendOptions } = require('./browserBatch');
+const { dispatchSend } = require('./accountQueue');
 
 /**
  * Forward lệnh automation xuống local-runner (qua tunnel / localhost).
@@ -55,24 +55,30 @@ async function getLocalHealth() {
  * @returns {Promise<{ok:boolean, jobId:string, result?:object, error?:string}>}
  */
 async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60 * 1000 } = {}) {
-  const res = await fetch(localUrl(sendPath), {
+  let res;
+  try { res = await fetch(localUrl(sendPath), {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(payload),
-  });
+    timeout: 20000,
+  }); } catch (err) {
+    return { ok: false, error: `NEEDS_CHECK: mất kết nối khi giao lệnh gửi cho runner; không tự gửi lại. ${err.message}` };
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    if (res.status >= 500) return { ok: false, error: `NEEDS_CHECK: runner/gateway trả ${res.status}; chưa rõ job đã được nhận chưa. ${text}` };
     throw new Error(`Local-runner từ chối (${res.status}): ${text}`);
   }
-  const { jobId } = await res.json();
-  if (!jobId) throw new Error('Local-runner không trả jobId');
+  let jobId;
+  try { ({ jobId } = await res.json()); } catch {}
+  if (!jobId) return { ok: false, error: 'NEEDS_CHECK: runner có thể đã nhận lệnh nhưng không trả jobId; không tự gửi lại.' };
 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, pollIntervalMs));
     let job;
     try {
-      const jr = await fetch(localUrl(`/api/job/${jobId}`), { headers: headers() });
+      const jr = await fetch(localUrl(`/api/job/${jobId}`), { headers: headers(), timeout: 10000 });
       if (!jr.ok) continue; // glitch mạng tạm thời -> thử lại
       const data = await jr.json();
       job = data.job;
@@ -83,17 +89,17 @@ async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeout
     if (job.status === 'done') return { ok: true, jobId, result: job.result };
     if (job.status === 'error') return { ok: false, jobId, error: job.error };
   }
-  return { ok: false, jobId, error: 'Hết thời gian chờ local-runner (timeout)' };
+  return { ok: false, jobId, error: 'NEEDS_CHECK: hết thời gian chờ local-runner (timeout); lệnh có thể đã gửi, không tự gửi lại.' };
 }
 
 /** Gửi 1 tin báo hàng qua Zalo và chờ kết quả. */
 function sendBaoHang(payload, opts) {
-  return sendViaRunner('/api/zalo/send', sendOptions(payload), opts);
+  return dispatchSend('/api/zalo/send', payload, p => sendViaRunner('/api/zalo/send', p, opts));
 }
 
 /** Gửi 1 tin báo hàng qua Facebook Messenger và chờ kết quả (cho khách không dùng Zalo). */
 function sendBaoHangFb(payload, opts) {
-  return sendViaRunner('/api/facebook/send', sendOptions(payload), opts);
+  return dispatchSend('/api/facebook/send', payload, p => sendViaRunner('/api/facebook/send', p, opts));
 }
 
 /**

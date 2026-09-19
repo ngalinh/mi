@@ -1,5 +1,6 @@
 'use strict';
-const { employeeKey, groupByEmployee, withBrowserBatch } = require('./browserBatch');
+const { withBrowserBatch, accountQueue } = require('./accountQueue');
+const { getHold } = require('./notificationHold');
 /**
  * Pha 2 — Tự động báo ship từ "Quản lý giao hàng" (xem docs/shipping-notify-plan.md).
  *
@@ -163,6 +164,7 @@ async function fetchRecentOrders(days) {
  * @returns {{decision:'send'|'skip', reason?:string}}
  */
 function classify(order) {
+  if (getHold('shipping:' + order.id)) return { decision: 'skip', reason: 'needs_check' };
   if (order.id != null && isShippingExcluded(order.id)) return { decision: 'skip', reason: 'excluded' };
   // Đã thử gửi LỖI đủ số lần cho phép (cfg.maxRetries) -> NGỪNG tự thử lại (tránh vòng lặp gửi
   // lại vô hạn mỗi chu kỳ quét); NV vẫn gửi tay được qua nút Xem/Gửi. Xem db.shipping_auto_fail.
@@ -240,7 +242,7 @@ async function runShippingAuto(opts = {}) {
       }
       const orders = await fetchRecentOrders(cfg.lookbackDays);
       summary.scanned = orders.length;
-      let eligible = [];
+      const eligible = [];
       for (const order of orders) {
         if (order.id == null) continue;
         if (getShippingNotified(order.id)) continue;
@@ -254,13 +256,8 @@ async function runShippingAuto(opts = {}) {
       }
       summary.candidates = eligible.length;
       const gaveUp = []; // đơn VỪA chạm trần maxRetries ở lượt này -> cảnh báo NV gửi tay
-      await withBrowserBatch(async (browserBatch) => {
-        eligible = groupByEmployee(eligible);
-        for (let i = 0; i < eligible.length; i += 1) {
-          const order = eligible[i];
-          await browserBatch.select(employeeKey(order));
-          // eslint-disable-next-line no-await-in-loop
-          const r = await shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' });
+      await withBrowserBatch(async () => {
+        for await (const { item: order, result: r } of accountQueue(eligible, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' }))) {
           summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
           if (r.ok) {
             summary.sent += 1;
@@ -273,10 +270,7 @@ async function runShippingAuto(opts = {}) {
               if (attempts >= cfg.maxRetries) gaveUp.push(order);
             }
           }
-          if (i + 1 < eligible.length) {
-            // eslint-disable-next-line no-await-in-loop
-            await delayBetweenCustomers();
-          }
+
         }
         summary.gaveUp = gaveUp.length;
         // Cảnh báo NV các đơn vừa NGỪNG tự thử (chạm trần retry) -> cần gửi tay qua nút Xem/Gửi,
@@ -343,7 +337,7 @@ async function runSafetyNet(day) {
 
       const missingLink = [];
       const unregistered = [];
-      let eligible = [];
+      const eligible = [];
       for (const order of preparedToday) {
         const reg = CARRIERS[Number(order.shippingId)];
         if (!reg) { unregistered.push(order); continue; }
@@ -355,19 +349,11 @@ async function runSafetyNet(day) {
         if (order.trackingCode) eligible.push(order);
       }
 
-      await withBrowserBatch(async (browserBatch) => {
-        eligible = groupByEmployee(eligible);
-        for (let i = 0; i < eligible.length; i += 1) {
-          const order = eligible[i];
-          await browserBatch.select(employeeKey(order));
-          // eslint-disable-next-line no-await-in-loop
-          const r = await shippingSendService.sendShippingOne(order, { actor: 'auto-ship2-safety' });
+      await withBrowserBatch(async () => {
+        for await (const { item: order, result: r } of accountQueue(eligible, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2-safety' }))) {
           summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
           if (r.ok) summary.sent += 1; else summary.failed += 1;
-          if (i + 1 < eligible.length) {
-            // eslint-disable-next-line no-await-in-loop
-            await delayBetweenCustomers();
-          }
+
         }
 
       });

@@ -1,5 +1,6 @@
 'use strict';
-const { employeeKey, groupByEmployee, withBrowserBatch } = require('./browserBatch');
+const { withBrowserBatch, accountQueue } = require('./accountQueue');
+const { getHold } = require('./notificationHold');
 const config = require('./config');
 const { getOrders } = require('./bassoApi');
 const { notifyOne, delayBetweenCustomers } = require('./notifyService');
@@ -417,6 +418,7 @@ function localDayKey(value) {
  * Check RẺ (trạng thái/nội dung/đã gửi/Delay) chạy TRƯỚC; chỉ đơn còn lọt mới resolve account (đắt hơn).
  */
 async function classifyForAuto(order, delayedMap) {
+  if (getHold(autoKey(order))) return { decision: 'skip', reason: 'needs_check' };
   if (order.statusCode !== 'not_sent') return { decision: 'skip', reason: 'not_target' }; // chỉ "Chưa báo"
   // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo hàng" (raw.content). Đơn trống ND -> bỏ qua.
   if (!order.noiDungBaoHang || !String(order.noiDungBaoHang).trim()) return { decision: 'skip', reason: 'no_content' };
@@ -459,6 +461,7 @@ async function classifyForAuto(order, delayedMap) {
  * Trả { decision:'send'|'skip', reason?, acct? }.
  */
 async function classifyForShip(order, delayedMap) {
+  if (getHold(autoKeyShip(order))) return { decision: 'skip', reason: 'needs_check' };
   // KHÔNG chặn theo TRẠNG THÁI. NV hay QUÊN/nhầm tick: đơn kẹt "Chưa báo" dù đang giao, HOẶC tick
   // "Đã báo ship" TAY dù Mi chưa gửi (ND ship hiện sau). Nên hễ đơn CÓ "ND báo ship" là xét gửi,
   // dù trạng thái là not_sent / notified_arrival / notified_ship. Chống trùng CHỈ dựa vào DẤU
@@ -673,33 +676,20 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
     // của 1 tài khoản/NV rồi mới sang cái kế, giữ context tái dùng -> đỡ mở/đóng browser.
     const rank = new Map();
     toSend.forEach((t) => { if (!rank.has(t.profileKey)) rank.set(t.profileKey, rank.size); });
-    let ordered = toSend
+    const ordered = toSend
       .map((t, i) => ({ ...t, _i: i }))
       .sort((a, b) => (rank.get(a.profileKey) - rank.get(b.profileKey)) || (a._i - b._i));
     summary.candidates = ordered.length;
 
     const gaveUp = []; // đơn VỪA chạm trần maxRetries ở lượt này -> cảnh báo Zalo, kèm lý do lỗi
-    await withBrowserBatch(async (browserBatch) => {
-      ordered = groupByEmployee(ordered, t => employeeKey(t.order, t.profileKey));
-      for (let i = 0; i < ordered.length; i += 1) {
-        const { order, profileKey } = ordered[i];
-        await browserBatch.select(employeeKey(order, profileKey));
-        // Giữ context nếu đơn kế cùng profile (đã gom) -> tái dùng browser, đóng ở đơn cuối mỗi profile.
-        const keepContext = i + 1 < ordered.length && ordered[i + 1].profileKey === profileKey;
+    await withBrowserBatch(async () => {
+      const send = ({ order }) => notifyOne(order, {
+        profile: cfg.profile, defaultAccount: cfg.account, kind,
+        skipWebUpdate: !cfg.updateWeb, strictMatch: true, actor: 'bot',
+      });
+      for await (const { item: { order }, result: r } of accountQueue(ordered, send)) {
         const key = keyOf(order);
         const prev = getAutoRecord(key);
-
-        // eslint-disable-next-line no-await-in-loop
-        const r = await notifyOne(order, {
-          profile: cfg.profile,
-          defaultAccount: cfg.account,   // fallback khi NV không có trong ZALO_ACCOUNT_MAP
-          kind,
-          skipWebUpdate: !cfg.updateWeb, // mặc định đẩy trạng thái về web Basso (tắt qua AUTO_NOTIFY_UPDATE_WEB=false)
-          strictMatch: true,             // R5: tự động -> chỉ gửi khi khớp chắc chắn, không "lấy đại"
-          actor: 'bot',                  // audit: luồng tự động
-          keepContext,                   // báo loạt gom theo profile -> giữ browser cho đơn kế cùng account
-        });
-
         // Phân loại lỗi để quyết định "dừng cả lượt" hay "tính 1 attempt rồi đi tiếp".
         // CHỈ coi là transient (dừng lượt, KHÔNG trừ lượt) khi runner THỰC SỰ offline — xác
         // nhận bằng health-check thay vì chỉ dò chữ trong message.
@@ -708,14 +698,6 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
         if (r.ok) {
           recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
           summary.sent += 1;
-        } else if (r.loginRequired) {
-          // Zalo hiện trang login (chưa đăng nhập): mọi đơn còn lại cũng sẽ fail như nhau -> DỪNG
-          // cả lượt NGAY, KHÔNG trừ lượt thử để thử lại sau khi đã đăng nhập.
-          summary.failed += 1;
-          summary.results.push({ orderId: key, customerName: order.customerName, ok: false, transient: true, error: r.error });
-          summary.stopped = 'Zalo chưa đăng nhập';
-          console.warn(`[${logTag}:${trigger}] dừng giữa chừng — Zalo chưa đăng nhập: ${r.error}`);
-          break;
         } else if (runnerDown) {
           // Runner sập / mạng tới runner đứt giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
           summary.failed += 1;
@@ -740,11 +722,7 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
           ok: r.ok,
           error: r.error || r.updateError || null,
         });
-        // Nghỉ NGẪU NHIÊN trước khi sang khách kế (chỉ GIỮA các đơn) để tránh gửi dồn quá nhanh.
-        if (i + 1 < ordered.length) {
-          // eslint-disable-next-line no-await-in-loop
-          await delayBetweenCustomers();
-        }
+
       }
 
     });
