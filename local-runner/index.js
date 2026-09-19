@@ -16,7 +16,6 @@ const testModeStore = require('./testModeStore');
 const loginHistory = require('./loginHistory');
 const { checkLoggedIn } = require('./salework');
 const { checkLoggedInFb } = require('./facebook');
-const sessionKeeper = require('./sessionKeeper');
 
 // Trang mở khi đăng nhập theo kênh: Facebook -> facebook.com, còn lại -> Zalo Basso.
 const loginUrlFor = (platform) => (platform === 'facebook' ? config.facebookLoginUrl : config.saleworkLoginUrl);
@@ -300,8 +299,7 @@ const server = app.listen(config.port, () => {
   } else {
     console.warn('[local-runner] ⚠️  TEST_MODE TẮT — sẽ gửi tới TẤT CẢ số được yêu cầu (khách thật).');
   }
-  // Giữ ấm session Zalo (tự đăng nhập lại trước khi hết hạn ~1 tuần) — no-op nếu SESSION_KEEPALIVE tắt.
-  sessionKeeper.start();
+  // No background browser checks. Sending verifies the session and logs in on demand.
 });
 
 // ============================================================================
