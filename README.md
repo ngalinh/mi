@@ -67,9 +67,7 @@ nhập lại. Để khỏi làm tay mỗi tuần, lưu **tài khoản + mật kh
   (không mất lượt). Không có credential (hoặc gặp OTP/captcha) → báo lỗi `CHUA_DANG_NHAP` rõ ràng
   để đăng nhập thủ công (`npm run login`).
 - **Lúc bấm "Kiểm tra"** kết nối account (`/api/accounts/:key/check`): tự đăng nhập lại nếu hết hạn.
-- **Giữ ấm định kỳ** (mặc định BẬT): runner tự quét từng profile Zalo có lưu credential mỗi
-  `SESSION_KEEPALIVE_MS` (mặc định 12h) và đăng nhập lại **trước** khi tới lượt gửi -> hiếm khi gặp
-  form login (kể cả OTP) đúng lúc gửi. Chỉ đụng account có credential. Đặt `SESSION_KEEPALIVE=false` để tắt.
+- **Không kiểm tra định kỳ**: không có lượt mở browser sau 30 giây khởi động hoặc mỗi 12 giờ. Khi không có đơn, runner không mở browser để kiểm tra phiên. Các biến `SESSION_KEEPALIVE` / `SESSION_KEEPALIVE_MS` cũ không còn tác dụng, kể cả `SESSION_KEEPALIVE=true`.
 - **Nút "Đăng nhập"** trên UI (mở Chromium): tự điền sẵn tài khoản/mật khẩu, NV chỉ cần bấm đăng
   nhập / xử lý xác minh nếu có.
 
@@ -451,7 +449,7 @@ Cửa sổ đăng nhập thủ công có thể giữ mở. Các lượt báo hà
 
 ### Hàng đợi theo tài khoản và retry an toàn
 
-Báo hàng/báo ship tay, tự động và Quản lý giao hàng dùng chung khóa gửi. Đơn của nhân viên chính/phụ có chung profile dùng cùng browser. Chỉ một browser do runner quản lý được mở: gửi hết hàng chờ X, đóng X rồi mới mở Y; session đăng nhập vẫn lưu trên đĩa. Kiểm tra đăng nhập/keepalive cũng dùng khóa browser chung.
+Báo hàng/báo ship tay, tự động và Quản lý giao hàng dùng chung khóa gửi. Đơn của nhân viên chính/phụ có chung profile dùng cùng browser. Chỉ một browser do runner quản lý được mở: gửi hết hàng chờ X, đóng X rồi mới mở Y; session đăng nhập vẫn lưu trên đĩa. Kiểm tra đăng nhập thủ công cũng dùng khóa browser chung; không có keepalive nền.
 
 Không tìm thấy hội thoại: chuyển đơn sang hàng chờ tài khoản dự phòng do resolver cho phép. Thử hết đơn còn lại của X trước khi chuyển Y; không thử tài khoản ngoài danh sách được gán. Các lần đã thử được ghi nhớ trong lượt, chỉ tạo một report và chốt một kết quả cho mỗi đơn. Lỗi đăng nhập hoặc browser không phục hồi được dừng tài khoản đó trong lượt, các tài khoản khác vẫn tiếp tục.
 
@@ -460,3 +458,5 @@ Lỗi timeout/mạng/browser đóng trong giai đoạn chuẩn bị được th�
 Sau khi kiểm tra hội thoại thực tế, Admin có thể xác nhận qua `POST /api/reports/:id/resolve-uncertain`, body `{"decision":"sent"}` hoặc `{"decision":"not_sent"}`. Thao tác này không gửi tin; `sent` ghi nhận đã gửi, `not_sent` gỡ chặn để gửi lại từ luồng thông thường. Việc xác nhận không tự đồng bộ trạng thái Basso. Các nút retry thông thường không tự gỡ chặn.
 
 Cần cập nhật và khởi động lại **cả server và local-runner** (endpoint mới `POST /api/browser/close`). Luồng mới chủ động đóng browser dù cấu hình cũ là `CLOSE_AFTER_SEND=false`. Phạm vi giới hạn là browser do runner quản lý, không đóng Chrome cá nhân hoặc tiến trình CLI đăng nhập độc lập.
+
+Sau khi cập nhật thay đổi này, khởi động lại local-runner để bỏ timer của phiên chạy cũ. Tự đăng nhập khi gửi vẫn yêu cầu credential đã lưu; OTP/captcha cần xử lý thủ công.
