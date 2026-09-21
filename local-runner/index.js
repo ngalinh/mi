@@ -96,9 +96,9 @@ app.get('/api/profile/:name', (req, res) => {
  * => trả { ok, jobId } ngay; poll /api/job/:id để lấy kết quả.
  */
 app.post('/api/browser/close', (req, res) => {
-  const { profile } = req.body || {};
+  const { profile, browserLane } = req.body || {};
   if (typeof profile !== 'string' || !profile) return res.status(400).json({ ok: false, error: 'Thiếu profile' });
-  const jobId = createJob({ profile }, ({ profile }) => withProfileLock(profile, async () => {
+  const jobId = createJob({ profile, browserLane }, ({ profile }) => withProfileLock(profile, async () => {
     await closeContext(profile);
     return { ok: true };
   }));
@@ -108,11 +108,11 @@ app.post('/api/browser/close', (req, res) => {
 app.post('/api/zalo/send', (req, res) => {
   // notifyTarget ('group'|'personal') + keepContext PHẢI đọc ra + chuyển tiếp — thiếu là
   // salework.sendBaoHang nhận undefined -> mặc định 'group' -> luôn bấm tab Nhóm dù NV để Cá nhân.
-  const { profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend } = req.body || {};
+  const { profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend, browserLane } = req.body || {};
   if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend }, sendBaoHang);
+  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend, browserLane }, sendBaoHang);
   res.json({ ok: true, jobId });
 });
 
@@ -122,11 +122,11 @@ app.post('/api/zalo/send', (req, res) => {
  * fbLink = link hội thoại FB/Messenger của khách để mở thẳng (bắt buộc, sendBaoHangFb cần).
  */
 app.post('/api/facebook/send', (req, res) => {
-  const { profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend } = req.body || {};
+  const { profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend, browserLane } = req.body || {};
   if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend }, sendBaoHangFb);
+  const jobId = createJob({ profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend, browserLane }, sendBaoHangFb);
   res.json({ ok: true, jobId });
 });
 

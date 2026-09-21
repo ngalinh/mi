@@ -156,7 +156,7 @@ function invalidateAccountsCache() {
 }
 
 async function closeBrowserProfile(profile) {
-  const result = await sendViaRunner('/api/browser/close', { profile });
+  const result = await sendViaRunner('/api/browser/close', { profile, browserLane: require('../shared/notificationLane').current() });
   if (!result.ok) throw new Error(result.error || 'Không đóng được browser');
 }
 

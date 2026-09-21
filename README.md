@@ -462,3 +462,9 @@ Cần cập nhật và khởi động lại **cả server và local-runner** (en
 Sau khi cập nhật thay đổi này, khởi động lại local-runner để bỏ timer của phiên chạy cũ. Tự đăng nhập khi gửi vẫn yêu cầu credential đã lưu; OTP/captcha cần xử lý thủ công.
 
 Luồng Zalo báo hàng/báo ship chờ giao diện theo từng bước: form đăng nhập hoặc thanh chat, trạng thái chọn tài khoản/bộ lọc, kết quả tìm kiếm, ô soạn tin có thể nhập và nút Gửi được bật. Điều kiện phải ổn định 1 giây; mỗi bước chờ tối đa 30 giây (không phải ngủ cố định 30 giây). Kết quả tìm kiếm chậm được chờ tối đa 30 giây thay vì 3 giây. Mất phần tử hội thoại thì dừng, không click theo tọa độ cũ. Sau khi bấm Gửi một lần, chờ xác nhận tin tối đa 30 giây; chưa rõ kết quả vẫn chặn gửi lại để tránh trùng. Không dùng `networkidle` vì chat có kết nối liên tục. Đây là chờ trạng thái UI, không bảo đảm xử lý được lỗi dữ liệu, OTP hay mọi lỗi từ Basso. Cập nhật và khởi động lại local-runner để áp dụng.
+
+### Báo ship chạy song song với báo hàng
+
+Báo ship dùng hàng đợi và browser Chromium riêng, nên có thể bắt đầu trong lúc báo hàng đang gửi hoặc chờ delay. Các tin cùng loại vẫn chạy tuần tự; delay giữa các khách của từng loại vẫn được giữ. Browser báo ship lấy trạng thái đăng nhập của tài khoản, giữ nguyên proxy và không dùng chung thư mục profile Chromium đang mở. Đóng browser báo ship không đóng browser báo hàng.
+
+Cần cập nhật và khởi động lại cả server lẫn local-runner để dùng cơ chế này. Kiểm tra offline: `node --test scripts/test-account-queue.js scripts/test-shipping-lane.js` và `node scripts/test-browser-reuse.js`.

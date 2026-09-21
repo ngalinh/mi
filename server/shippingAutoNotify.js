@@ -33,7 +33,8 @@ const { CARRIERS } = require('./shippingNotify');
 const shippingSendService = require('./shippingSendService');
 const { delayBetweenCustomers } = require('./notifyService');
 const { checkLocalHealth } = require('./playwrightProxy');
-const { withLock } = require('./lock');
+const { withLock: lock } = require('./lock');
+const withLock = fn => lock(fn, 'ship');
 const {
   getSetting, setSetting, getShippingNotified, isShippingAutoSeen, markShippingAutoSeen,
   getShippingAutoFail, recordShippingAutoFail, isShippingExcluded,

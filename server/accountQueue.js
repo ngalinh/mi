@@ -42,7 +42,7 @@ async function dispatchSend(path, payload, send) {
       batch.sent = true;
     }
     let result;
-    try { result = await send({ ...payload, keepContext: !!batch, closeAfterSend: true }); }
+    try { result = await send({ ...payload, browserLane: require('../shared/notificationLane').current(), keepContext: !!batch, closeAfterSend: true }); }
     catch (err) { result = { ok: false, error: err.message }; }
     if (task) task.attempts.set(key, result);
     if (batch && /^(?:CHUA_DANG_NHAP|ACCOUNT_UNAVAILABLE):/.test(result.error || '')) {

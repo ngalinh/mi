@@ -2,13 +2,14 @@
 const crypto = require('crypto');
 
 /**
- * Job queue tuần tự (1 browser, chạy lần lượt) — tránh nhiều job thao tác browser cùng lúc.
+ * Hai hàng đợi báo hàng/báo ship độc lập; mỗi hàng đợi vẫn chạy tuần tự.
  * POST trả jobId ngay; client poll /api/job/:id để lấy kết quả (tránh timeout qua tunnel).
  */
 
 const jobs = new Map(); // id -> { id, status, result, error, createdAt, startedAt, finishedAt, payload }
-const queue = [];
-let running = false;
+const laneScope = require('../shared/notificationLane');
+const queues = { hang: [], ship: [] };
+const running = new Set();
 
 function createJob(payload, handler) {
   const id = crypto.randomUUID();
@@ -24,14 +25,16 @@ function createJob(payload, handler) {
     _handler: handler,
   };
   jobs.set(id, job);
-  queue.push(id);
-  pump();
+  const lane = laneScope.normalize(payload.browserLane);
+  queues[lane].push(id);
+  pump(lane);
   return id;
 }
 
-async function pump() {
-  if (running) return;
-  running = true;
+async function pump(lane) {
+  if (running.has(lane)) return;
+  running.add(lane);
+  const queue = queues[lane];
   try {
     while (queue.length) {
       const id = queue.shift();
@@ -40,7 +43,7 @@ async function pump() {
       job.status = 'running';
       job.startedAt = Date.now();
       try {
-        job.result = await job._handler(job.payload);
+        job.result = await laneScope.run(lane, () => job._handler(job.payload));
         job.status = 'done';
       } catch (err) {
         job.status = 'error';
@@ -51,7 +54,7 @@ async function pump() {
       }
     }
   } finally {
-    running = false;
+    running.delete(lane);
   }
 }
 

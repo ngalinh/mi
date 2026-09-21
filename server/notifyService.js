@@ -17,22 +17,23 @@ const isLoginRequiredError = (msg) => LOGIN_REQUIRED_RE.test(msg || '');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---- Dừng báo loạt giữa chừng (do người dùng bấm nút "Dừng") ----
-// `bulkRunning` = có 1 phiên notifyOrders đang chạy hay không (chỉ 1 vì đi qua withLock).
-// `stopRequested` = người dùng đã yêu cầu dừng loạt đang chạy; vòng lặp kiểm tra cờ này ở ranh giới
+// Mỗi luồng báo hàng/báo ship có trạng thái chạy và dừng riêng.
+// `bulkState().stop` = người dùng đã yêu cầu dừng loạt đang chạy; vòng lặp kiểm tra cờ này ở ranh giới
 // giữa các đơn để DỪNG ngay — các đơn còn lại bỏ dở (KHÔNG đánh dấu đã báo, báo lại sau được).
-let bulkRunning = false;
-let stopRequested = false;
+const laneScope = require('../shared/notificationLane');
+const bulkStates = { hang: { running: false, stop: false }, ship: { running: false, stop: false } };
+const bulkState = () => bulkStates[laneScope.current()];
 
 /** Có phiên báo loạt đang chạy không (để route/quyết định phản hồi). */
-function isBulkRunning() { return bulkRunning; }
+function isBulkRunning() { return Object.values(bulkStates).some(s => s.running); }
 
 /**
  * Yêu cầu DỪNG loạt đang chạy. Chỉ có tác dụng khi đang chạy; đặt cờ để vòng lặp tự thoát ở đơn
  * kế tiếp (đơn đang gửi dở vẫn chạy xong). Trả true nếu có loạt để dừng, false nếu không có gì đang chạy.
  */
 function requestStopBulk() {
-  if (!bulkRunning) return false;
-  stopRequested = true;
+  if (!isBulkRunning()) return false;
+  for (const state of Object.values(bulkStates)) if (state.running) state.stop = true;
   return true;
 }
 
@@ -52,7 +53,7 @@ function betweenSendDelayMs() {
 /**
  * Nghỉ giữa 2 khách theo cấu hình (no-op nếu delay = 0). Chia nhỏ giấc ngủ để THOÁT SỚM khi người
  * dùng bấm Dừng — nếu không, dừng có thể phải chờ tới hết 1 nhịp nghỉ (mặc định 5–10s) mới ăn.
- * `stopRequested` chỉ bật khi có báo loạt tay đang chạy (requestStopBulk), nên nhánh này không ảnh
+ * `bulkState().stop` chỉ bật khi có báo loạt tay đang chạy (requestStopBulk), nên nhánh này không ảnh
  * hưởng luồng auto (dùng chung hàm này nhưng không đặt cờ dừng).
  */
 async function delayBetweenCustomers() {
@@ -60,7 +61,7 @@ async function delayBetweenCustomers() {
   if (ms <= 0) return;
   const STEP_MS = 250;
   for (let waited = 0; waited < ms; waited += STEP_MS) {
-    if (stopRequested) return;
+    if (bulkState().stop) return;
     // eslint-disable-next-line no-await-in-loop
     await sleep(Math.min(STEP_MS, ms - waited));
   }
@@ -72,14 +73,14 @@ async function delayBetweenCustomers() {
  * lúc chờ (=> hủy gửi), false nếu chờ xong bình thường. ms<=0 -> bỏ qua chờ, chỉ trả trạng thái cờ.
  */
 async function graceBeforeSend(ms) {
-  if (!ms || ms <= 0) return stopRequested;
+  if (!ms || ms <= 0) return bulkState().stop;
   const STEP_MS = 200;
   for (let waited = 0; waited < ms; waited += STEP_MS) {
-    if (stopRequested) return true;
+    if (bulkState().stop) return true;
     // eslint-disable-next-line no-await-in-loop
     await sleep(Math.min(STEP_MS, ms - waited));
   }
-  return stopRequested;
+  return bulkState().stop;
 }
 
 /**
@@ -241,7 +242,7 @@ async function notifyOne(order, opts = {}) {
   // CHỐT DỪNG LẦN CUỐI trước khi tin thật sự đi: người dùng bấm Dừng trong lúc server đang CHUẨN BỊ
   // (lấy ND tươi, tra mã ĐH — mất ~1–2s) -> hủy TRƯỚC khi đẩy job xuống runner, KHÔNG ghi Lịch sử báo.
   // Sau điểm này job đã xuống runner nên không cắt được nữa (runner sắp gõ & bấm gửi trong Zalo).
-  if (stopRequested) {
+  if (bulkState().stop) {
     return { order, ok: false, stopped: true, error: null };
   }
 
@@ -404,8 +405,8 @@ async function groupOrdersByProfile(orders, opts = {}) {
 async function notifyOrders(orders, opts = {}) {
   return withLock(async () => {
     // Đánh dấu "đang chạy" để nút Dừng có tác dụng; reset cờ dừng của phiên trước cho chắc.
-    bulkRunning = true;
-    stopRequested = false;
+    bulkState().running = true;
+    bulkState().stop = false;
     try {
       // Gom theo profile trước -> gửi tuần tự HẾT đơn của 1 tài khoản rồi mới sang tài khoản kế.
       const ordered = await groupOrdersByProfile(orders, opts);
@@ -414,7 +415,7 @@ async function notifyOrders(orders, opts = {}) {
       let stopped = false;
       let abortError = null;
       await withBrowserBatch(async () => {
-        for await (const { item: { order }, result: r } of accountQueue(ordered, ({ order }) => notifyOne(order, opts), { shouldStop: () => stopRequested })) {
+        for await (const { item: { order }, result: r } of accountQueue(ordered, ({ order }) => notifyOne(order, opts), { shouldStop: () => bulkState().stop })) {
           // notifyOne tự hủy trong ân hạn / lúc chuẩn bị (người dùng bấm Dừng trước khi tin đi) ->
           // KHÔNG tính vào results (không phải gửi lỗi), coi như đơn bỏ dở như khi dừng ở ranh giới.
           if (r.stopped) { stopped = true; break; }
@@ -436,7 +437,7 @@ async function notifyOrders(orders, opts = {}) {
 
         }
       });
-      stopped = stopped || stopRequested;
+      stopped = stopped || bulkState().stop;
       const sent = results.filter((r) => r.ok).length;
       // Số đơn CÒN LẠI chưa gửi khi dừng giữa chừng (login hoặc người dùng bấm Dừng) — để UI báo rõ
       // đã bỏ dở bao nhiêu.
@@ -453,10 +454,10 @@ async function notifyOrders(orders, opts = {}) {
         skipped,
       };
     } finally {
-      bulkRunning = false;
-      stopRequested = false;
+      bulkState().running = false;
+      bulkState().stop = false;
     }
-  });
+  }, opts.kind);
 }
 
 /**
@@ -495,5 +496,5 @@ async function notifyMany(orderIds, opts = {}) {
 }
 
 module.exports = {
-  notifyOne: (...args) => withLock(() => notifyOne(...args)), notifyMany, notifyOrders, delayBetweenCustomers, requestStopBulk, isBulkRunning,
+  notifyOne: (...args) => withLock(() => notifyOne(...args), args[1]?.kind), notifyMany, notifyOrders, delayBetweenCustomers, requestStopBulk, isBulkRunning,
 };
