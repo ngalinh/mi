@@ -15,11 +15,11 @@ function load(file, mocks, extra = {}) {
   return box.module.exports;
 }
 
-function harness(outcome = () => null) {
+function harness(outcome = () => null, delay = async () => {}) {
   const requests = [], reports = [], settings = new Map();
   let proxy;
   const queue = load('server/accountQueue.js', {
-    './lock': { withLock }, './notifyService': { delayBetweenCustomers: async () => {} },
+    './lock': { withLock }, './notifyService': { delayBetweenCustomers: delay },
     './playwrightProxy': { closeBrowserProfile: profile => proxy.closeBrowserProfile(profile) },
   });
   proxy = load('server/playwrightProxy.js', {
@@ -106,14 +106,23 @@ test('missing conversation never tries accounts outside resolver candidates', as
   assert.equal(h.reports.length, 1);
 });
 
-test('simultaneous arrival and shipping batches do not interleave', async () => {
-  const h = harness();
-  await Promise.all([
-    h.notify.notifyOrders([{ id: 1, phone: '1', orderCode: 'BS1' }]),
-    h.shipping.sendShippingBulk([{ id: 2, phone: '2' }]),
-  ]);
-  assert.deepEqual(h.requests.map(r => r.path), ['/api/zalo/send', '/api/browser/close', '/api/zalo/send', '/api/browser/close']);
-});
+for (const kind of ['ship', 'shipping-management']) {
+  test(kind + ' sends while arrival is still waiting for its delay', async () => {
+    const gate = Promise.withResolvers();
+    const waiting = Promise.withResolvers();
+    const h = harness(undefined, () => { waiting.resolve(); return gate.promise; });
+    const arrival = h.notify.notifyOrders([1, 2].map(id => ({ id, phone: String(id) })));
+    await waiting.promise;
+    try {
+      const orders = [{ id: 3, phone: '3' }];
+      const result = await (kind === 'ship' ? h.notify.notifyOrders(orders, { kind }) : h.shipping.sendShippingBulk(orders));
+      assert.equal(result.sent, 1);
+      assert.equal(h.notify.isBulkRunning(), true, 'arrival remains active after ship completes');
+      assert.equal(h.requests.filter(r => r.browserLane === 'hang' && r.path.endsWith('/send')).length, 1);
+      assert.deepEqual(h.requests.filter(r => r.browserLane === 'ship').map(r => r.path), ['/api/zalo/send', '/api/browser/close']);
+    } finally { gate.resolve(); await arrival; }
+  });
+}
 
 test('stop drains no more sends and finalizes pending reports', async () => {
   let h;

@@ -761,7 +761,7 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
       const skipBack = summary.skippedBacklog ? `, bỏ qua ${summary.skippedBacklog} đơn tồn đọng (về trước khi bật auto)` : '';
       console.log(`[${logTag}:${trigger}] gửi ${summary.sent} ✅ / ${summary.failed} ❌ (quét ${summary.scanned} ${noun}${skipNo}${skipDelay}${skipOff}${skipNoAcc}${skipBrand}${skipBack})`);
     }
-  });
+  }, kind);
 }
 
 async function runAutoNotify(opts = {}) {
@@ -998,7 +998,7 @@ function startTimer() {
     timer = setInterval(scheduleTick, cfg.scheduleCheckMs);
   } else {
     // GỬI NGAY (không hẹn giờ): chạy 1 nhịp sau 5s rồi lặp theo interval. Mỗi nhịp gồm báo hàng
-    // (nếu bật) + báo ship (nếu bật) — withLock tự xếp hàng nên không đụng nhau.
+    // (nếu bật) + báo ship (nếu bật) — mỗi loại dùng hàng đợi/browser riêng.
     setTimeout(intervalTick, 5000);
     timer = setInterval(intervalTick, cfg.intervalMs);
   }

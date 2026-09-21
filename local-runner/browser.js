@@ -4,6 +4,8 @@ const path = require('path');
 const { chromium } = require('playwright');
 const config = require('./config');
 const accountsStore = require('./accountsStore');
+const laneScope = require('../shared/notificationLane');
+const shippingContexts = new Map();
 
 /**
  * Quản lý 1 persistent context cho mỗi profile (account Salework/Zalo).
@@ -13,10 +15,10 @@ const accountsStore = require('./accountsStore');
 
 const contexts = new Map(); // profileName -> { context, lastUsed }
 
-// One global browser lock includes sends, account checks, login and keepalive.
+// Arrival/account management and shipping each have their own browser lock.
 const _locks = new Map();
 function withProfileLock(profileName, fn) {
-  const key = 'browser'; // Global lock: no other profile may close a browser in use.
+  const key = laneScope.current(); // Serialize each lane without blocking shipping behind arrivals.
   const prev = _locks.get(key) || Promise.resolve();
   const run = prev.catch(() => {}).then(() => fn());
   _locks.set(key, run.catch(() => {})); // tail nuốt lỗi để 1 lần fail không kẹt cả chuỗi
@@ -127,6 +129,7 @@ async function safeLaunchPersistentContext(userDataDir, proxy) {
  * Lấy (hoặc tạo) context cho profile và trả về 1 page sẵn sàng.
  */
 async function getContext(profileName) {
+  if (laneScope.current() === 'ship') return getShippingContext(profileName);
   for (const name of contexts.keys()) if (name !== profileName) await closeContext(name);
   let entry = contexts.get(profileName);
   if (entry && entry.context) {
@@ -208,6 +211,11 @@ async function openForLogin(profileName, url, onEvent, prefill) {
 
 /** Đóng trình duyệt của 1 profile (session đăng nhập vẫn lưu trong userDataDir nên lần sau mở lại vẫn đăng nhập). */
 async function closeContext(profileName) {
+  if (laneScope.current() === 'ship') {
+    const entry = shippingContexts.get(profileName);
+    if (entry) { await entry.browser.close(); shippingContexts.delete(profileName); }
+    return;
+  }
   const entry = contexts.get(profileName);
   if (!entry) return;
   await entry.context.close();
@@ -215,6 +223,10 @@ async function closeContext(profileName) {
 }
 
 async function closeAll() {
+  for (const entry of shippingContexts.values()) {
+    try { await entry.browser.close(); } catch { /* ignore */ }
+  }
+  shippingContexts.clear();
   for (const [name, entry] of contexts) {
     try { await entry.context.close(); } catch { /* ignore */ }
     contexts.delete(name);
@@ -222,3 +234,45 @@ async function closeAll() {
 }
 
 module.exports = { getContext, getPage, profileExists, profilePath, closeContext, closeAll, openForLogin, withProfileLock };
+
+// A separate Chromium process uses a snapshot of the account's login state.
+// Never open the same persistent userDataDir twice or navigate the arrival page.
+async function getShippingContext(profileName) {
+  for (const name of shippingContexts.keys()) if (name !== profileName) await closeContext(name);
+  const existing = shippingContexts.get(profileName);
+  if (existing) return existing.context;
+  let storageState;
+  const source = contexts.get(profileName);
+  if (source) {
+    storageState = await source.context.storageState({ indexedDB: true });
+  } else {
+    // Read the saved session under the arrival lock, without closing its active profile.
+    storageState = await laneScope.run('hang', () => withProfileLock(profileName, async () => {
+      const current = contexts.get(profileName);
+      if (current) return current.context.storageState({ indexedDB: true });
+      const temporary = await safeLaunchPersistentContext(profilePath(profileName), proxyForProfile(profileName));
+      try { return await temporary.storageState({ indexedDB: true }); }
+      finally { await temporary.close(); }
+    }));
+  }
+  const browser = await chromium.launch({
+    headless: config.headless, slowMo: config.slowMo,
+    handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false,
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage'],
+    ...(proxyForProfile(profileName) ? { proxy: proxyForProfile(profileName) } : {}),
+  });
+  try {
+    const context = await browser.newContext({ storageState, viewport: { width: 1366, height: 850 } });
+    try { await context.grantPermissions(['clipboard-read', 'clipboard-write']); } catch { /* ignore */ }
+    shippingContexts.set(profileName, { browser, context });
+    const forget = () => {
+      if (shippingContexts.get(profileName)?.context === context) shippingContexts.delete(profileName);
+    };
+    browser.on('disconnected', forget);
+    context.on('close', forget);
+    return context;
+  } catch (err) {
+    await browser.close();
+    throw err;
+  }
+}

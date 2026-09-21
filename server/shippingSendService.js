@@ -17,7 +17,8 @@ const {
   getShippingNotified, markShippingNotified, getShippingTemplates,
   getContactReportTarget,
 } = require('./db');
-const { withLock } = require('./lock');
+const { withLock: lock } = require('./lock');
+const withLock = fn => lock(fn, 'ship');
 
 /** NV duyệt đại diện của vận đơn — lấy từ dòng SP đầu tiên (thường cả đơn cùng 1 NV duyệt). */
 function firstApproveUser(order) {
