@@ -661,6 +661,11 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
     for (const order of orders) {
       // eslint-disable-next-line no-await-in-loop
       const c = await classify(order, delayedMap);
+      if (kind === 'ship' && trigger !== 'manual' && c.decision === 'send'
+          && !require('./shippingSchedule').isShippingTime(order, new Date(), cfg.timezone)) {
+        summary.waitSchedule = (summary.waitSchedule || 0) + 1;
+        continue;
+      }
       // classify đã resolve account -> lấy luôn profile để gom (khỏi resolve lại).
       if (c.decision === 'send') { toSend.push({ order, profileKey: (c.acct && c.acct.profile) || 'default' }); continue; }
       const bump = (k) => { summary[k] = (summary[k] || 0) + 1; };
@@ -870,7 +875,7 @@ async function debugShip() {
  * TỰ ĐỘNG BÁO SHIP: hễ đơn có "ND báo ship" (content_ship) là tự nhắn khách NGAY và chuyển trạng
  * thái sang "Đã báo ship" (notified_ship) — KHÔNG bắt buộc "Đã báo hàng" trước (NV hay quên tick
  * trạng thái nên quét cả "Chưa báo" lẫn "Đã báo hàng"). Chỉ bỏ đơn ĐÃ báo ship. Khác báo hàng: ship
- * KHÔNG hoãn theo giờ hẹn 17:00 — có nội dung là gửi. Cờ chạy + kết quả riêng (state.runningShip /
+ * Chờ 17:30 đối với ĐVVC khác Ahamove; gửi tay không chờ. Cờ chạy + kết quả riêng (state.runningShip /
  * lastShipResult) để không đụng lượt báo hàng.
  * @param {object} [opts] { trigger?: 'interval'|'webhook'|'manual'|'scheduled' }
  */

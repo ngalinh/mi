@@ -511,7 +511,7 @@
     </div>`;
     // Chọn tay tài khoản Zalo/FB để gửi qua đúng account đó (thay vì để hệ thống tự chọn theo
     // nhân viên) — chọn ở đây rồi bấm nút Gửi hộp/xe cạnh bên vẫn dùng account vừa chọn.
-    const rowAccountCell = `<select class="row-account-sel" data-id="${App.esc(o.id)}" title="Chọn tài khoản Zalo/FB để gửi tay — để trống thì gửi tự động theo nhân viên">${accountOptionsHtml('Tự động', rowAccounts.get(String(o.id)) || '')}</select>`;
+    const rowAccountCell = deliveryCell(o);
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
@@ -704,6 +704,7 @@
     if (currentGroupBy === 'customer') fillGroupProductCounts(pageList);
     renderPager(totalPages);
     autoFillContent(pageList); // ngầm: tự điền ND báo hàng cho dòng trống (không chặn render)
+    refreshDeliveryPreviews(pageList);
   }
 
   // ---------------- Phân trang ----------------
@@ -894,6 +895,37 @@
   // offline -> chỉ còn "Tự động (theo nhân viên)" như mặc định. Ưu tiên `accounts` (runner mới,
   // gộp cả 2 kênh + có `platform`); fallback `zalo` cho runner cũ (chỉ Zalo).
   let zaloAccounts = [];
+  let deliveryPreviewVersion = 0;
+  function deliveryCell(o) {
+    return `<div class="delivery-cell"><div class="delivery-preview" aria-live="polite">…</div>
+      <details class="delivery-edit"><summary title="Đổi tài khoản gửi" aria-label="Đổi tài khoản gửi cho ${App.esc(o.customerName || o.id)}">${App.icon('edit')}</summary>
+      <select class="row-account-sel" data-id="${App.esc(o.id)}" aria-label="Tài khoản gửi">${accountOptionsHtml('Tự động', rowAccounts.get(String(o.id)) || '')}</select></details></div>`;
+  }
+  function deliveryPreviewHtml(r) {
+    if (!r || r.error || !r.account) return `<span class="muted" title="${App.esc(r && r.error || 'Chưa xác định được tài khoản gửi')}">Chưa xác định</span>`;
+    const fb = r.channel === 'facebook';
+    return `<div class="delivery-account"><span class="delivery-platform">${fb ? 'FB' : 'Zalo'}</span><span>${App.esc(r.account)}</span></div>`
+      + (fb ? '' : `<small class="muted">${r.target === 'personal' ? 'Cá nhân' : 'Nhóm'}</small>`);
+  }
+  async function refreshDeliveryPreviews(list = visibleOrders()) {
+    const version = ++deliveryPreviewVersion;
+    rowsEl.querySelectorAll('.delivery-preview').forEach(el => { el.textContent = '…'; });
+    const previews = new Map();
+    try {
+      for (let i = 0; i < list.length; i += 100) {
+        const result = await App.api('/api/notify-preview', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orders: list.slice(i, i + 100).map(o => withRowAccountOverride(orderPayload(o), o.id)) }) });
+        if (version !== deliveryPreviewVersion) return;
+        for (const r of result.results || []) previews.set(String(r.id), r);
+      }
+    } catch { /* Show unknown instead of guessing a sending account. */ }
+    if (version !== deliveryPreviewVersion) return;
+    rowsEl.querySelectorAll('tr.main-row').forEach(row => {
+      const el = row.querySelector('.delivery-preview');
+      if (el) el.innerHTML = deliveryPreviewHtml(previews.get(String(row.dataset.id)));
+    });
+  }
   async function loadZaloAccounts() {
     try {
       const r = await App.api('/api/accounts');
@@ -901,6 +933,7 @@
     } catch { zaloAccounts = []; }
     populateAccountSelect();
     populateRowAccountSelects(); // các dòng đã vẽ trước khi tải xong -> nạp lại option account
+    refreshDeliveryPreviews();
     populateKenhSaleOptions(); // nạp lại gợi ý Kênh sale theo đúng tài khoản vừa tải
   }
   // Nhãn hiển thị 1 account, kèm chip kênh Zalo/FB — dùng chung cho modal + select mỗi dòng.
@@ -1898,6 +1931,8 @@
     if (ra) {
       const id = String(ra.dataset.id);
       if (ra.value) rowAccounts.set(id, ra.value); else rowAccounts.delete(id);
+      ra.closest('details').open = false;
+      refreshDeliveryPreviews();
       return;
     }
   });
@@ -1964,7 +1999,7 @@
       <th>Khách hàng</th>
       <th title="Kênh sale THẬT của đơn — Partner API trả thẳng, không suy đoán; trống nếu Basso chưa gán">Kênh sale</th>
       <th class="center" title="Nội dung báo hàng & báo ship">Nội dung</th>
-      <th class="center" style="width:150px" title="Chọn tài khoản Zalo/FB để gửi tay qua đúng account đó — để trống thì gửi tự động theo nhân viên">Tài khoản gửi</th>
+      <th style="width:190px" title="Tài khoản dự kiến; bấm bút để đổi">Cách gửi</th>
       <th class="center" style="width:120px" title="Gửi báo hàng / báo ship qua Zalo">Gửi</th>
       <th>Trạng thái</th>
       <th style="width:120px" title="Kết quả gửi tin của lượt báo gần nhất">Kết quả gửi</th>
