@@ -1128,12 +1128,15 @@
   // ---------------- Log thao tác & gửi — hiển thị kiểu TERMINAL (dùng lại /api/reports) ----------------
   const logTerm = $('logTerm');
   let logTimer = null; // debounce cho ô tìm
+  const resolvingReports = new Set();
 
   const isNoConvLog = (msg) => /KHONG_THAY_HOI_THOAI/i.test(msg || '');
   // Token trạng thái kiểu terminal: [NHÃN, class màu]. Đệm cho thẳng cột.
   function statusTok(r) {
     if (r.status === 'success') return ['OK     ', 't-ok'];
     if (r.status === 'pending') return ['PENDING', 't-pending'];
+    if (r.status === 'needs_check') return ['CẦN KT ', 't-warn'];
+    if (r.status === 'sent_check') return ['ĐÃ GỬI ', 't-warn'];
     if (isNoConvLog(r.error)) return ['NOZALO ', 't-noconv'];
     return ['ERROR  ', 't-err'];
   }
@@ -1203,7 +1206,8 @@
           : E(r.sent_by || '-');
         const acct = r.zalo_account ? `${E(r.zalo_account)}<span class="t-key">/${chan}</span>` : '-';
         // Lỗi -> ưu tiên lý do lỗi; ngược lại nội dung tin đã gửi. Gộp về 1 dòng.
-        const detailRaw = (r.status === 'failed' && r.error) ? r.error : (r.message || '');
+        const hasError = ['failed', 'needs_check', 'sent_check'].includes(r.status) && r.error;
+        const detailRaw = hasError ? App.friendlyError(r.error) : (r.message || '');
         const detail = detailRaw ? String(detailRaw).replace(/\s*\n\s*/g, ' ⏎ ') : '';
         // Lượt báo ship đã tra khớp + đổi trạng thái ở Hàng về VN (customer_id/date_inventory
         // gắn kèm — xem shippingSendService.js) -> cho link nhảy thẳng tới đúng dòng đó để kiểm
@@ -1219,8 +1223,13 @@
           + `<span class="t-key">nv=</span>${E(r.staff || '-')} `
           + `<span class="t-key">by=</span>${by} `
           + `<span class="t-key">acct=</span>${acct}`
-          + (detail ? `  <span class="t-msg">· ${E(detail)}</span>` : '')
+          + (detail ? `  <span class="t-msg" title="${E(r.error || r.message || '')}">· ${E(detail)}</span>` : '')
           + jumpLink
+          + (r.status === 'needs_check' ? `<div class="log-resolution" data-report-id="${E(r.id)}">
+              <span>Admin: kiểm tra hội thoại của khách trên tài khoản ${E(r.zalo_account || '-')} rồi xác nhận:</span>
+              <button type="button" class="btn small secondary" data-decision="sent" ${resolvingReports.has(String(r.id)) ? 'disabled' : ''}>Đã gửi</button>
+              <button type="button" class="btn small secondary" data-decision="not_sent" ${resolvingReports.has(String(r.id)) ? 'disabled' : ''}>Chưa gửi — gỡ chặn</button>
+            </div>` : '')
           + '</div>';
       }).join('');
       logTerm.scrollTop = 0;
@@ -1228,6 +1237,35 @@
       logTerm.innerHTML = `<div class="log-empty">Lỗi tải log: ${App.esc(e.message || '')}</div>`;
     }
   }
+
+  logTerm.addEventListener('click', async (e) => {
+    const button = e.target.closest('button[data-decision]');
+    const row = button?.closest('[data-report-id]');
+    if (!row) return;
+    const id = row.dataset.reportId;
+    const decision = button.dataset.decision;
+    if (resolvingReports.has(id) || !['sent', 'not_sent'].includes(decision)) return;
+    const question = decision === 'sent'
+      ? 'Bạn đã kiểm tra đúng hội thoại và thấy tin đã gửi? Xác nhận sẽ ghi nhận đã gửi, không gửi thêm tin.'
+      : 'Bạn đã kiểm tra đúng hội thoại và chắc chắn tin chưa được gửi? Xác nhận sẽ gỡ chặn để có thể gửi lại (kể cả lượt tự động kế tiếp).';
+    if (!window.confirm(question)) return;
+    resolvingReports.add(id);
+    row.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    try {
+      await App.api(`/api/reports/${encodeURIComponent(id)}/resolve-uncertain`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision }),
+      });
+      App.toast(decision === 'sent' ? 'Đã xác nhận tin đã gửi.' : 'Đã gỡ chặn. Có thể báo lại từ màn hình đơn hàng.');
+      await loadLog();
+    } catch (err) {
+      App.toast('Không thể xác nhận: ' + err.message, 6000);
+    } finally {
+      resolvingReports.delete(id);
+      logTerm.querySelectorAll('[data-report-id]').forEach((r) => {
+        if (r.dataset.reportId === id) r.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+      });
+    }
+  });
 
   $('logReload').addEventListener('click', loadLog);
   $('logStatus').addEventListener('change', loadLog);
