@@ -1,5 +1,4 @@
 'use strict';
-const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
 const { isUncertain, getHold, hold } = require('./notificationHold');
 const config = require('./config');
@@ -8,7 +7,7 @@ const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
 const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, autoKeyShip, getFbLink, getZaloName, getContactReportTarget } = require('./db');
 const { withLock } = require('./lock');
-const { resolveForOrder } = require('./accountResolver');
+const { resolveForOrder, isRetryableAccountError } = require('./accountResolver');
 
 // Marker lỗi "chưa đăng nhập Zalo" do runner (salework.ensureLoggedIn) ném ra khi mở trình duyệt
 // mà thấy trang login. Dùng để DỪNG NGAY báo loạt thay vì để mọi đơn còn lại failed như nhau.
@@ -195,10 +194,16 @@ async function notifyOne(order, opts = {}) {
   // bạ) để chọn đúng tài khoản trong số đó, KHÔNG tự chọn account độc lập với NV — xem
   // accountResolver.resolveForOrder.
   const resolved = await once('resolved', () => resolveForOrder(order, opts));
-  // Contact target overrides are applied per attempt, using the actual destination phone.
+  // NGOẠI LỆ THEO KHÁCH: nếu khách này có "Kiểu báo riêng" trong danh bạ ('personal'/'group'), nó
+  // GHI ĐÈ kiểu báo của NV phụ trách (vd NV báo cá nhân nhưng riêng khách này báo vào group Zalo).
+  // Chỉ áp cho kênh Zalo — kênh Facebook không có tab cá nhân/nhóm.
+  if (resolved.channel !== 'facebook') {
+    const override = getContactReportTarget(order.phone);
+    if (override) resolved.notifyTarget = override;
+  }
   // LOG CHẨN ĐOÁN: server đã chọn account nào + kiểu báo gì cho đơn này. notifyTarget=group cho NV
   // đáng lẽ cá nhân -> đơn KHÔNG khớp account store (source!='store'), hoặc server chạy code cũ.
-  console.log(`[notify] ${order.customerName || order.phone || '?'} | staff=${order.staff || '-'} userId=${order.userId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${getContactReportTarget(order.phone) || resolved.notifyTarget || 'group'}`);
+  console.log(`[notify] ${order.customerName || order.phone || '?'} | staff=${order.staff || '-'} userId=${order.userId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
 
   // Tra mã ĐH + ảnh SP TRƯỚC khi gửi để dòng "đang báo" đã đủ thông tin hiển thị (chỉ tra 1 lần,
   // dùng lại cho cả lúc cập nhật kết quả cuối).
@@ -272,7 +277,7 @@ async function notifyOne(order, opts = {}) {
       if (!fbLink) {
         result = { ok: false, error: `Chưa có link Facebook cho khách ${order.phone || '—'} — vào trang Danh bạ, mở khách này và thêm link (đang bật "Báo qua Facebook").` };
       } else {
-        result = await sendFacebookWithFallback(sendBaoHangFb, resolved, {
+        result = await sendBaoHangFb({
           profile: resolved.profile || 'default',
           fbLink,
           keyword,
@@ -284,8 +289,8 @@ async function notifyOne(order, opts = {}) {
     } else {
       // NV được gắn NHIỀU tài khoản Zalo không phân biệt được bằng brand (resolved.fallbackAccounts,
       // xem accountResolver.js) -> thử lần lượt: account chính trước, "không thấy hội thoại" (khách
-      // có thể đang nằm ở tài khoản kia), hoặc tài khoản chưa sẵn sàng TRƯỚC khi gửi thì thử
-      // tài khoản dự phòng. Kết quả gửi chưa rõ luôn dừng, không gửi tiếp.
+      // có thể đang nằm ở tài khoản kia) thì thử account dự phòng kế tiếp. Lỗi khác (chưa đăng nhập,
+      // v.v.) DỪNG ngay, không thử tiếp.
       const candidates = [resolved, ...(Array.isArray(resolved.fallbackAccounts) ? resolved.fallbackAccounts : [])];
       for (let i = 0; i < candidates.length; i += 1) {
         const cand = candidates[i];
@@ -298,21 +303,21 @@ async function notifyOne(order, opts = {}) {
             name: matchName,
             message,
             strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
-            notifyTarget: getContactReportTarget(order.phone) || cand.notifyTarget || 'group', // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
+            notifyTarget: cand.notifyTarget || resolved.notifyTarget, // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
           });
         } catch (err) {
           result = { ok: false, error: err.message };
         }
         if (result.deferred || result.stopped) return result;
-        if (result.ok || i === candidates.length - 1 || !canTryNextAccount(result.error)) {
+        if (result.ok || i === candidates.length - 1 || !isRetryableAccountError(result.error)) {
           if (cand !== resolved && result.ok) {
-            console.log(`[notify] account "${resolved.account || resolved.profile}" gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
+            console.log(`[notify] account "${resolved.account || resolved.profile}" không thấy hội thoại -> gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
             resolved.account = cand.account; // để log + báo cáo phản ánh đúng account đã gửi
             resolved.profile = cand.profile;
           }
           break;
         }
-        console.log(`[notify] account "${cand.account || cand.profile}" chưa gửi được -> thử account dự phòng "${candidates[i + 1].account || candidates[i + 1].profile}"`);
+        console.log(`[notify] account "${cand.account || cand.profile}" không thấy hội thoại -> thử account dự phòng "${candidates[i + 1].account || candidates[i + 1].profile}"`);
       }
     }
   } catch (err) {

@@ -1,5 +1,4 @@
 'use strict';
-const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
 const { isUncertain, getHold, hold } = require('./notificationHold');
 /**
@@ -72,21 +71,21 @@ async function trySendZalo(resolved, keyword, matchName, message) {
         keyword,
         name: matchName,
         message,
-        notifyTarget: getContactReportTarget(keyword) || cand.notifyTarget || 'group',
+        notifyTarget: cand.notifyTarget || resolved.notifyTarget,
       });
     } catch (err) {
       result = { ok: false, error: err.message };
     }
     if (result.deferred || result.stopped) return result;
-    if (result.ok || i === candidates.length - 1 || !canTryNextAccount(result.error)) {
+    if (result.ok || i === candidates.length - 1 || !isRetryableAccountError(result.error)) {
       if (cand !== resolved && result.ok) {
-        console.log(`[shipping-notify] account "${resolved.account || resolved.profile}" gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
+        console.log(`[shipping-notify] account "${resolved.account || resolved.profile}" không thấy hội thoại -> gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
         resolved.account = cand.account;
         resolved.profile = cand.profile;
       }
       break;
     }
-    console.log(`[shipping-notify] account "${cand.account || cand.profile}" chưa gửi được -> thử account dự phòng "${candidates[i + 1].account || candidates[i + 1].profile}"`);
+    console.log(`[shipping-notify] account "${cand.account || cand.profile}" không thấy hội thoại -> thử account dự phòng "${candidates[i + 1].account || candidates[i + 1].profile}"`);
   }
   return result;
 }
@@ -150,9 +149,17 @@ async function sendShippingOne(order, opts = {}) {
     saleChannel: order.saleChannel, saleChannelLabel: order.saleChannelLabel,
   });
   const resolved = await once('resolved', () => resolveForOrder(resolverOrder(order.phone), opts));
-  // Contact target overrides are applied per attempt, using the actual destination phone.
+  // NGOẠI LỆ THEO KHÁCH: "Kiểu báo riêng" trong Danh bạ ('personal'/'group') GHI ĐÈ kiểu báo mặc
+  // định của NV phụ trách (vd NV báo nhóm nhưng riêng khách này không có group Zalo, phải báo cá
+  // nhân). Thiếu bước này thì auto-ship luôn dùng kiểu báo của tài khoản Zalo (theo NV) bất kể
+  // Danh bạ cấu hình gì cho khách -> tìm sai hội thoại (KHONG_THAY_HOI_THOAI). Chỉ áp cho kênh
+  // Zalo — Facebook không có tab cá nhân/nhóm.
+  if (resolved.channel !== 'facebook') {
+    const override = getContactReportTarget(order.phone);
+    if (override) resolved.notifyTarget = override;
+  }
   // LOG CHẨN ĐOÁN: account + kiểu báo đã chọn cho đơn này (đối chiếu khi khách báo gửi nhầm nhóm/cá nhân).
-  console.log(`[shipping-notify] ${order.recipient || order.phone || '?'} | staff=${staff || '-'} userId=${staffUserId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${getContactReportTarget(order.phone) || resolved.notifyTarget || 'group'}`);
+  console.log(`[shipping-notify] ${order.recipient || order.phone || '?'} | staff=${staff || '-'} userId=${staffUserId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${resolved.notifyTarget || 'group'}`);
   if (resolved.skip) {
     const err = resolved.skipReason === 'fb_no_account'
       ? `Đơn cần báo qua Facebook nhưng NV ${staff || '—'} chưa có tài khoản Facebook.`
@@ -205,7 +212,7 @@ async function sendShippingOne(order, opts = {}) {
       if (!fbLink) {
         result = { ok: false, error: `Chưa có link Facebook cho khách ${order.phone || '—'} — vào trang Danh bạ để thêm.` };
       } else {
-        result = await sendFacebookWithFallback(sendBaoHangFb, resolved, {
+        result = await sendBaoHangFb({
           profile: resolved.profile || 'default', fbLink, keyword: fbPhone, name: fbName, message: built.message,
         });
       }
@@ -242,15 +249,19 @@ async function sendShippingOne(order, opts = {}) {
           result = { ok: false, error: 'Chưa có tài khoản Facebook được gán cho nhân viên để báo khách hàng thật.' };
         } else {
           const fbMatchName = getZaloName(fb.phone) || fb.customerName || matchName;
-          const retryResult = await sendFacebookWithFallback(sendBaoHangFb, fbResolved, {
+          const retryResult = await sendBaoHangFb({
             profile: fbResolved.profile || 'default', fbLink, keyword: fb.phone, name: fbMatchName, message: built.message,
           });
           if (retryResult.deferred || retryResult.stopped) return retryResult;
-          resolved.channel = 'facebook';
-          resolved.account = fbResolved.account;
-          resolved.profile = fbResolved.profile;
-          result = retryResult;
-          fallback = fb;
+          if (retryResult.ok) {
+            result = retryResult;
+            resolved.channel = 'facebook';
+            resolved.account = fbResolved.account;
+            resolved.profile = fbResolved.profile;
+            fallback = fb;
+          } else {
+            result = retryResult;
+          }
         }
       } else {
         const fbZaloName = getZaloName(fb.phone);
@@ -274,7 +285,6 @@ async function sendShippingOne(order, opts = {}) {
     status: result.ok ? 'success' : (isUncertain(result.error) ? 'needs_check' : 'failed'),
     error: result.ok ? null : result.error,
     jobId: result.jobId,
-    channel: resolved.channel,
     zaloAccount: resolved.account || resolved.profile || null,
     ...(fallback ? {
       phone: fallback.phone,

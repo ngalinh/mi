@@ -15,7 +15,7 @@ function load(file, mocks, extra = {}) {
   return box.module.exports;
 }
 
-function harness(outcome = () => null, delay = async () => {}, options = {}) {
+function harness(outcome = () => null, delay = async () => {}) {
   const requests = [], reports = [], settings = new Map();
   let proxy;
   const queue = load('server/accountQueue.js', {
@@ -46,10 +46,9 @@ function harness(outcome = () => null, delay = async () => {}, options = {}) {
     getShippingNotified: () => null, markShippingNotified: () => {}, getShippingTemplates: () => ({}),
   };
   const hold = load('server/notificationHold.js', { './db': db });
-  const resolveForOrder = options.resolveForOrder || (async order => ({ profile: 'X', account: 'X', channel: 'zalo',
-    fallbackAccounts: [{ profile: 'Y', account: 'Y' }], ...(order.route || {}) }));
+  const resolveForOrder = async order => ({ profile: 'X', account: 'X', channel: 'zalo',
+    fallbackAccounts: [{ profile: 'Y', account: 'Y' }], ...(order.route || {}) });
   const common = {
-    './accountFallback': require('../server/accountFallback'),
     './accountQueue': queue, './notificationHold': hold, './playwrightProxy': proxy,
     './lock': { withLock }, './db': db, './config': { basso: {}, notify: {} },
     './accountResolver': { resolveForOrder, isRetryableAccountError: e => /^KHONG_THAY_HOI_THOAI:/.test(e || '') },
@@ -57,8 +56,6 @@ function harness(outcome = () => null, delay = async () => {}, options = {}) {
       findCustomerByOrderCode: async () => null, syncShipStatusByCode: async () => ({}) },
     '../shared/messageTemplate': { buildBaoHangMessage: o => 'arrival ' + o.id, buildBaoShipMessage: o => 'ship ' + o.id },
   };
-  Object.assign(db, options.db || {});
-  Object.assign(common['./bassoApi'], options.basso || {});
   const notify = load('server/notifyService.js', common);
   const shipping = load('server/shippingSendService.js', { ...common,
     './notifyService': notify, './shippingNotify': { buildDeliveryMessage: o => ({ sendable: true, message: 'shipping ' + o.id }), REASON_LABEL: {} },
@@ -97,8 +94,8 @@ test('unavailable profile is attempted once; other profile still completes', asy
     { id: 1, phone: '1', orderCode: 'BS1' }, { id: 2, phone: '2', orderCode: 'BS2' },
     { id: 3, phone: '3', orderCode: 'BS3', route: { profile: 'Z', account: 'Z', fallbackAccounts: [] } },
   ]);
-  assert.equal(result.sent, 3);
-  assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => r.profile), ['X', 'Z', 'Y', 'Y']);
+  assert.equal(result.sent, 1);
+  assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => r.profile), ['X', 'Z']);
 });
 
 test('missing conversation never tries accounts outside resolver candidates', async () => {
@@ -255,63 +252,3 @@ for (const method of ['runShippingAuto', 'runSafetyNet']) {
     assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => r.profile), ['X','X','Y']);
   });
 }
-
-for (const kind of ['hang', 'ship', 'shipping-management']) {
-  for (const override of ['personal', 'group', null]) {
-    test(`${kind}: contact target ${override} survives account fallback`, async () => {
-      const h = harness(r => r.path.endsWith('/send') && r.profile === 'X' ? 'KHONG_THAY_HOI_THOAI: missing' : null,
-        async () => {}, { db: { getContactReportTarget: () => override },
-          resolveForOrder: async () => ({ channel: 'zalo', profile: 'X', account: 'X', notifyTarget: 'group',
-            fallbackAccounts: [{ channel: 'zalo', profile: 'Y', account: 'Y', notifyTarget: 'personal' }] }) });
-      const order = { id: 1, phone: '1', orderCode: 'BS1' };
-      const result = kind === 'shipping-management' ? await h.shipping.sendShippingBulk([order]) : await h.notify.notifyOrders([order], { kind });
-      assert.equal(result.sent, 1);
-      assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => r.notifyTarget), override ? [override, override] : ['group', 'personal']);
-    });
-  }
-  for (const error of ['FB: no composer', 'CHUA_DANG_NHAP: Session Facebook', 'ACCOUNT_UNAVAILABLE: browser', 'NEEDS_CHECK: FB: unknown result']) {
-    test(`${kind}: Facebook fallback handles ${error}`, async () => {
-      const h = harness(r => r.path.endsWith('/send') && r.profile === 'X' ? error : null, async () => {}, {
-        resolveForOrder: async () => ({ channel: 'facebook', profile: 'X', account: 'FB X',
-          fallbackAccounts: [{ channel: 'facebook', profile: 'Y', account: 'FB Y' }] }) });
-      const order = { id: 1, phone: '1', orderCode: 'BS1' };
-      const result = kind === 'shipping-management' ? await h.shipping.sendShippingBulk([order]) : await h.notify.notifyOrders([order], { kind });
-      const uncertain = error.startsWith('NEEDS_CHECK');
-      assert.equal(result.sent, uncertain ? 0 : 1);
-      assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => [r.path, r.profile]),
-        uncertain ? [['/api/facebook/send','X']] : [['/api/facebook/send','X'],['/api/facebook/send','Y']]);
-      assert.equal(h.reports.length, 1);
-      assert.equal(h.reports[0].status, uncertain ? 'needs_check' : 'success');
-      assert.equal(h.reports[0].zaloAccount, uncertain ? 'FB X' : 'FB Y');
-    });
-  }
-}
-
-test('shipping fallback re-reads purchaser target and preserves shipping message', async () => {
-  const h = harness(r => r.path.endsWith('/send') && r.keyword === 'recipient' ? 'KHONG_THAY_HOI_THOAI: missing' : null,
-    async () => {}, { db: { getFbLink: () => '', getContactReportTarget: phone => phone === 'recipient' ? 'group' : 'personal' },
-      basso: { findCustomerByOrderCode: async () => ({ phone: 'purchaser', customerName: 'Buyer' }) } });
-  const result = await h.shipping.sendShippingBulk([{ id: 1, phone: 'recipient', items: [{ orderCode: 'BS1' }] }]);
-  assert.equal(result.sent, 1);
-  const sends = h.requests.filter(r => r.path.endsWith('/send'));
-  assert.deepEqual(sends.map(r => [r.keyword, r.notifyTarget]), [['recipient','group'], ['recipient','group'], ['purchaser','personal']]);
-  assert.ok(sends.every(r => r.message === 'shipping 1'));
-});
-
-test('shipping purchaser Facebook fallback retains channel, account and uncertainty hold', async () => {
-  const h = harness(r => r.path === '/api/zalo/send' ? 'KHONG_THAY_HOI_THOAI: missing'
-    : r.path === '/api/facebook/send' ? 'NEEDS_CHECK: timeout' : null, async () => {}, {
-    db: { getFbLink: phone => phone === 'purchaser' ? 'https://facebook.com/messages/t/buyer' : '' },
-    basso: { findCustomerByOrderCode: async () => ({ phone: 'purchaser', customerName: 'Buyer' }) },
-    resolveForOrder: async (o, opts) => opts?.channel === 'facebook'
-      ? { channel: 'facebook', profile: 'FB', account: 'FB Buyer' }
-      : { channel: 'zalo', profile: 'X', account: 'X' },
-  });
-  const result = await h.shipping.sendShippingBulk([{ id: 1, phone: 'recipient', items: [{ orderCode: 'BS1' }] }]);
-  assert.equal(result.failed, 1);
-  assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => r.path), ['/api/zalo/send','/api/facebook/send']);
-  assert.equal(h.reports[0].channel, 'facebook');
-  assert.equal(h.reports[0].status, 'needs_check');
-  assert.equal(h.reports[0].zaloAccount, 'FB Buyer');
-  assert.ok(h.hold.getHold('shipping:1'));
-});

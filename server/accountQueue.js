@@ -31,13 +31,7 @@ async function dispatchSend(path, payload, send) {
     // Discovery and fallback enqueue work; they never open another browser.
     if (task && task.profile !== profile) return { ok: false, deferred: true, profile };
     const batch = state?.batch;
-    if (batch?.unavailable.has(profile)) {
-      const result = batch.unavailable.get(profile);
-      // Remember the skipped account when this task resumes on a fallback.
-      // Otherwise it keeps bouncing between the unavailable and fallback profiles.
-      if (task) task.attempts.set(key, result);
-      return result;
-    }
+    if (batch?.unavailable.has(profile)) return batch.unavailable.get(profile);
     if (batch) {
       if (batch.profile !== profile) {
         await batch.close();

@@ -90,9 +90,8 @@ const App = {
     const raw = String(msg == null ? '' : msg).trim();
     if (!raw) return 'Lỗi không rõ';
     const rules = [
-      [/^(NEEDS_CHECK|KHONG_XAC_NHAN_DA_GUI):/i, 'Chưa xác định được tin đã gửi hay chưa — kiểm tra hội thoại và xác nhận trong Lịch sử báo trước khi gửi lại.'],
-      [/Session Facebook đã hết hạn|phiên Facebook/i, '⛔ Phiên Facebook đã hết hạn — vào Cài đặt → Tài khoản để đăng nhập lại.'],
       [/CHUA_DANG_NHAP/i, '⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi gửi lại.'],
+      [/Session Facebook đã hết hạn|phiên Facebook/i, '⛔ Phiên Facebook đã hết hạn — vào Cài đặt → Tài khoản để đăng nhập lại.'],
       [/KHONG_THAY_HOI_THOAI/i, '🔍 Không tìm thấy cuộc trò chuyện của khách trong mục "Trò chuyện" trên Zalo — kiểm tra khách đã có hội thoại chưa.'],
       [/KHONG_THAY_TAI_KHOAN_ZALO/i, 'Không thấy tài khoản Zalo cần gửi trong danh sách — kiểm tra tài khoản đã kết nối trên Zalo Basso.'],
       [/KHONG_CHON_DUNG_TAI_KHOAN/i, 'Không chọn được đúng tài khoản Zalo — đã huỷ để tránh gửi nhầm. Kiểm tra danh sách tài khoản trên Zalo Basso.'],
@@ -102,8 +101,8 @@ const App = {
       [/TEST_MODE/i, 'Đang ở chế độ TEST — số khách này không nằm trong danh sách được phép gửi thử.'],
       [/không mở được khung soạn tin|^FB:/i, 'Không mở được khung chat Facebook — link sai, khách chặn, hoặc Messenger đổi giao diện.'],
       [/link Facebook|fbLink/i, 'Chưa có/không hợp lệ link Facebook của khách — vào Cài đặt → Báo qua Facebook để thêm link.'],
-      [/Local-runner|local-runner|không trả jobId|Hết thời gian chờ local/i, 'Lỗi máy chạy bot (local-runner) — xem lỗi gốc trong Lịch sử báo để kiểm tra kết nối, quyền truy cập hoặc API runner.'],
-      [/Quá thời gian chờ|timeout/i, 'Quá thời gian chờ — kết nối hoặc ứng dụng nhắn tin phản hồi chậm, thử lại.'],
+      [/Local-runner|local-runner|không trả jobId|Hết thời gian chờ local/i, 'Máy chạy Zalo (local-runner) không phản hồi — kiểm tra máy chạy bot còn bật và kết nối mạng.'],
+      [/Quá thời gian chờ|timeout/i, 'Quá thời gian chờ — kết nối chậm hoặc Zalo phản hồi lâu, thử lại.'],
     ];
     for (const [re, friendly] of rules) if (re.test(raw)) return friendly;
     return raw.split('\n')[0].trim();

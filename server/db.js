@@ -257,8 +257,7 @@ const updateStmt = db.prepare(`
   UPDATE reports
      SET status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id,
          customer_id = @customer_id, date_inventory = @date_inventory, phone = @phone,
-         customer_name = @customer_name, phone_source = @phone_source, phone_original = @phone_original,
-         channel = @channel, zalo_account = @zalo_account
+         customer_name = @customer_name, phone_source = @phone_source, phone_original = @phone_original
    WHERE id = @id
 `);
 const getReportStmt = db.prepare('SELECT * FROM reports WHERE id = @id');
@@ -291,8 +290,6 @@ function updateReport(id, fields = {}) {
     customer_name: fields.customerName !== undefined ? fields.customerName : cur.customer_name,
     phone_source: fields.phoneSource !== undefined ? fields.phoneSource : cur.phone_source,
     phone_original: fields.phoneOriginal !== undefined ? fields.phoneOriginal : cur.phone_original,
-    channel: fields.channel !== undefined ? fields.channel : cur.channel,
-    zalo_account: fields.zaloAccount !== undefined ? fields.zaloAccount : cur.zalo_account,
   };
   updateStmt.run(next);
   // Trạng thái/nội dung report đổi (pending -> success/failed) -> làm mới cache map dẫn xuất.

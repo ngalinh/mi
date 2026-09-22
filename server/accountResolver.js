@@ -1,6 +1,6 @@
 'use strict';
 const config = require('./config');
-const { getAccountsCached, invalidateAccountsCache } = require('./playwrightProxy');
+const { getAccountsCached } = require('./playwrightProxy');
 const { getArrivedItems } = require('./bassoApi');
 const { isFacebookOrder, getContactKenhSale } = require('./db');
 
@@ -140,15 +140,14 @@ function resolveFacebook(order, accounts, kenhSale) {
     // Đơn cần báo FB nhưng chưa cấu hình tài khoản Facebook nào cho NV -> bỏ qua có lý do rõ ràng.
     return { channel: 'facebook', profile: null, account: undefined, autoEnabled: true, source: 'fb', skip: true, skipReason: 'fb_no_account' };
   }
-  const pack = (a) => ({
-    channel: 'facebook', profile: a.key, account: a.fbName || undefined,
-    autoEnabled: a.autoEnabled !== false, autoEnabledAt: a.autoEnabledAt || null,
+  return {
+    channel: 'facebook',
+    profile: acct.key,
+    account: acct.fbName || undefined,
+    autoEnabled: acct.autoEnabled !== false,
+    autoEnabledAt: acct.autoEnabledAt || null,
     source: 'store-fb',
-  });
-  const result = pack(acct);
-  const rest = mine.filter(a => a.key !== acct.key);
-  if (rest.length) result.fallbackAccounts = rest.map(pack);
-  return result;
+  };
 }
 
 async function resolveForOrder(order, opts = {}) {
@@ -159,23 +158,26 @@ async function resolveForOrder(order, opts = {}) {
   // là Facebook (khớp theo fbName) thì gửi qua Facebook. Vẫn tra "Kiểu báo" (notifyTarget) của
   // account để không bị mất kiểu báo cá nhân -> mặc định 'group'.
   if (opts.account) {
-    const match = (accounts) => {
-      if (opts.profile) return accounts.filter(a => String(a.key) === String(opts.profile));
-      return accounts.filter(a => [a.saleworkName, a.fbName, a.name]
-        .some(name => name && norm(name) === norm(opts.account)));
-    };
-    let matches = match(await getAccountsCached());
-    if (matches.length !== 1) {
-      invalidateAccountsCache();
-      matches = match(await getAccountsCached());
-    }
-    if (matches.length !== 1) {
-      throw new Error('ACCOUNT_NOT_FOUND: Không xác định được duy nhất tài khoản đã chọn. Kiểm tra kết nối runner và tải lại danh sách tài khoản.');
-    }
-    const found = matches[0];
-    return { channel: found.platform === 'facebook' ? 'facebook' : 'zalo',
-      profile: found.key, account: opts.account, autoEnabled: true,
-      notifyTarget: found.notifyTarget === 'personal' ? 'personal' : 'group', source: 'explicit' };
+    let notifyTarget = 'group';
+    let channel = 'zalo';
+    try {
+      const accts = await getAccountsCached();
+      // Ưu tiên khớp CHÍNH XÁC theo profile (account.key, UI luôn gửi kèm opts.profile = acct.key
+      // khi người dùng chọn tay — xem giaohang.js/dashboard.js acctOverride). Khớp theo key trước
+      // để tránh nhầm platform khi 1 Zalo và 1 Facebook account TRÙNG tên hiển thị (vd NV "Thuỳ
+      // Trang" có cả Zalo lẫn FB) — so khớp mập mờ theo tên bên dưới có thể vớ nhầm account KHÁC
+      // platform với cái người dùng vừa chọn trên UI (chọn FB Thuỳ Trang lại resolve ra Zalo).
+      let found = opts.profile ? (accts || []).find((a) => a.key === opts.profile) : null;
+      if (!found) {
+        found = (accts || []).find((a) =>
+          norm(a.saleworkName) === norm(opts.account) || norm(a.fbName) === norm(opts.account) || norm(a.name) === norm(opts.account));
+      }
+      if (found) {
+        if (found.notifyTarget === 'personal') notifyTarget = 'personal';
+        if (found.platform === 'facebook') channel = 'facebook';
+      }
+    } catch { /* không tra được -> giữ mặc định zalo/group */ }
+    return { channel, profile: opts.profile || 'default', account: opts.account, autoEnabled: true, notifyTarget, source: 'explicit' };
   }
 
   // KÊNH gửi ép THẲNG qua nút "Báo qua Facebook" (opts.channel='facebook', người gửi TƯỜNG MINH bấm
