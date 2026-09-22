@@ -455,7 +455,7 @@ Không tìm thấy hội thoại: chuyển đơn sang hàng chờ tài khoản d
 
 Lỗi timeout/mạng/browser đóng trong giai đoạn chuẩn bị được thử lại tối đa một lần. Từ lúc bắt đầu thao tác gửi, lỗi không rõ kết quả chuyển thành **Cần kiểm tra**: không đổi tài khoản, không tự gửi lại. Mất phản hồi khi giao job hoặc hết thời gian poll cũng được xử lý như vậy. Cờ chặn được lưu bền cho riêng đơn và loại báo; không đánh dấu thành công hay cập nhật Basso khi chưa xác nhận.
 
-Sau khi kiểm tra hội thoại thực tế, Admin có thể xác nhận qua `POST /api/reports/:id/resolve-uncertain`, body `{"decision":"sent"}` hoặc `{"decision":"not_sent"}`. Thao tác này không gửi tin; `sent` ghi nhận đã gửi, `not_sent` gỡ chặn để gửi lại từ luồng thông thường. Việc xác nhận không tự đồng bộ trạng thái Basso. Các nút retry thông thường không tự gỡ chặn.
+Sau khi kiểm tra hội thoại thực tế, Admin vào **Cài đặt → Log**, lọc **Cần kiểm tra — chặn gửi lại**, rồi chọn **Đã gửi** hoặc **Chưa gửi — gỡ chặn** tại đúng lượt báo. Hộp xác nhận nhắc kiểm tra hội thoại trước khi lưu; hai nút bị khóa trong lúc xử lý để tránh bấm lặp. API tương ứng: `POST /api/reports/:id/resolve-uncertain`, body `{"decision":"sent"}` hoặc `{"decision":"not_sent"}`. Thao tác này không gửi tin; `sent` ghi nhận đã gửi, `not_sent` gỡ chặn để gửi lại từ luồng thông thường (kể cả lượt tự động kế tiếp). Việc xác nhận không tự đồng bộ trạng thái Basso. Các nút retry thông thường không tự gỡ chặn.
 
 Cần cập nhật và khởi động lại **cả server và local-runner** (endpoint mới `POST /api/browser/close`). Luồng mới chủ động đóng browser dù cấu hình cũ là `CLOSE_AFTER_SEND=false`. Phạm vi giới hạn là browser do runner quản lý, không đóng Chrome cá nhân hoặc tiến trình CLI đăng nhập độc lập.
 
