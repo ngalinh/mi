@@ -1564,14 +1564,14 @@ tr.row-excluded .cust a, tr.row-excluded .cust { text-decoration: line-through; 
 
 /* Compact sending plan: platform + real account name, optional recipient type. */
 .delivery-cell { display: flex; align-items: center; gap: 10px; min-width: 170px; text-align: left; }
-.delivery-preview { flex: 1; min-width: 0; }
-.delivery-account { display: flex; align-items: center; gap: 6px; }
-.delivery-account > span:last-child { overflow-wrap: anywhere; }
-.delivery-platform { background: #e8f0ff; color: #2878fa; border-radius: 9px; padding: 1px 7px; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+.delivery-preview { flex: 1; min-width: 0; font-family: inherit; font-size: 12px; line-height: 1.5; }
+.delivery-account { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text); }
+.delivery-account > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.delivery-platform { background: var(--blue-soft); color: var(--blue); border-radius: 9px; padding: 1px 7px; font-size: 10px; font-weight: 600; flex-shrink: 0; }
 .delivery-preview small { display: block; margin-top: 3px; font-size: 11px; }
-.delivery-edit { position: relative; }
-.delivery-edit summary { cursor: pointer; list-style: none; color: #365ca5; padding: 5px; border-radius: 5px; }
+.delivery-edit { position: relative; flex: none; }
+.delivery-edit summary { cursor: pointer; list-style: none; color: var(--text-soft); padding: 5px; border-radius: 5px; }
 .delivery-edit summary::-webkit-details-marker { display: none; }
-.delivery-edit summary:focus-visible { outline: 2px solid #2878fa; }
+.delivery-edit summary:focus-visible { outline: 2px solid var(--primary); }
 .delivery-edit summary svg { width: 15px; height: 15px; }
 .delivery-edit[open] .row-account-sel { position: absolute; z-index: 20; right: 0; top: 28px; width: 240px; max-width: 70vw; background: white; box-shadow: 0 4px 14px #17274b22; }
