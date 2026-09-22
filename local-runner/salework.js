@@ -130,8 +130,9 @@ async function gotoSalework(page) {
   const target = new URL(config.saleworkChatUrl);
   const current = new URL(page.url());
   if (current.origin === target.origin
-      && current.pathname.replace(/\/+$/, '') === target.pathname.replace(/\/+$/, '')
-      && current.hash === target.hash
+      // Hội thoại có thể đổi path/hash. Các control chat đang hiện mới là dấu hiệu
+      // trang có thể dùng tiếp; điều hướng lại sẽ làm mất tài khoản đã chọn.
+      && !/login|signin/i.test(current.pathname)
       && await page.locator('.acc-btn-text').first().isVisible().catch(() => false)
       && await page.locator('input[placeholder*="Tìm kiếm"], input[placeholder*="tìm kiếm"], input[placeholder*="Search"], input[type="search"]').first().isVisible().catch(() => false)) {
     return;

@@ -45,8 +45,12 @@ function load(file, mocks, extra = '') {
   `);
   let dropdownClicks = 0;
   const accountPage = { locator: () => ({ first: () => ({ count: async () => 1,
-    textContent: async () => 'Thuỷ Trang', click: async () => { dropdownClicks++; } }) }) };
+    textContent: async () => selected, click: async () => { dropdownClicks++; } }) }) };
   assert.equal(await salework.selectAccount(accountPage, 'Thuỷ Trang'), true);
+  selected = 'Basso  Order Hàng Mỹ';
+  for (let customer = 0; customer < 3; customer++) {
+    assert.equal(await salework.selectAccount(accountPage, 'Basso Order Hàng Mỹ'), true);
+  }
   assert.equal(dropdownClicks, 0, 'matching selected account skips dropdown interaction');
   salework.inject({ login: async () => ({}), account: async (_page, account) => { selected = account; return true; },
     search: async (_page, customer) => { searches.push([selected, customer.name]); },
@@ -60,6 +64,11 @@ function load(file, mocks, extra = '') {
   assert.deepEqual(searches, [['Thuỷ Trang', 'Khách A'], ['Thuỷ Trang', 'Khách B'], ['Khác', 'Khách C']]);
   await assert.rejects(salework.sendBaoHang({ name: 'Khách D', message: 'Test', strictMatch: true }), /KHONG_RO_TAI_KHOAN/);
   assert.equal(sends, 3, 'unknown account must not send');
+  for (const url of ['https://zalo.basso.vn/chat/customer-a', 'https://zalo.basso.vn/chat#customer-b']) {
+    page.url = () => url;
+    await salework.gotoSalework(page);
+  }
+  assert.equal(navigations, 0, 'conversation path/hash changes preserve the selected account');
   page.url = () => 'about:blank';
   await salework.gotoSalework(page);
   assert.equal(navigations, 1, 'a new page navigates to chat');
@@ -67,6 +76,14 @@ function load(file, mocks, extra = '') {
   page.locator = () => ({ first: () => ({ isVisible: async () => false }) });
   await salework.gotoSalework(page);
   assert.equal(navigations, 2, 'unready chat is recovered by navigation');
+  page.locator = () => ({ first: () => ({ isVisible: async () => true }) });
+  page.url = () => 'https://other.example/chat';
+  await salework.gotoSalework(page);
+  assert.equal(navigations, 3, 'chat controls on another origin cannot reuse the page');
+  page.url = () => 'https://zalo.basso.vn/login';
+  await salework.gotoSalework(page);
+  assert.equal(navigations, 4, 'login route is not reused as a ready chat');
+  page.url = () => config.saleworkChatUrl;
   config.closeAfterSend = true;
   await salework.sendBaoHang({ account: 'Khác', name: 'Khách C', message: 'Test' });
   assert.equal(closes, 1, 'explicit close setting remains supported');

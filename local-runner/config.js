@@ -12,7 +12,7 @@ module.exports = {
   // Zalo Basso (self-hosted, giao diện Vuetify giống Salework) — giống hệt Xeko. Vẫn cho
   // override qua SALEWORK_URL nếu muốn quay lại salework.net.
   saleworkUrl: process.env.SALEWORK_URL || 'https://zalo.basso.vn',
-  // Trang chat (nơi có dropdown chọn tài khoản + danh sách hội thoại). Mở mỗi lần gửi tin.
+  // Trang chat ban đầu; tái dùng trang đang mở cho các khách tiếp theo.
   // Ưu tiên SALEWORK_CHAT_URL; nếu không có thì suy ra từ SALEWORK_URL (+ "/chat").
   saleworkChatUrl: process.env.SALEWORK_CHAT_URL
     || `${(process.env.SALEWORK_URL || 'https://zalo.basso.vn').replace(/\/+$/, '')}/chat`,
