@@ -13,9 +13,7 @@ const { getPage, closeContext, withProfileLock } = require('./browser');
  * nhập tay 1 lần, session được lưu -> lần sau không phải login lại. Việc mở cửa sổ đăng nhập
  * dùng chung browser.openForLogin (đã có), file này lo phần KIỂM TRA đăng nhập và GỬI TIN.
  *
- * ⚠️ Phần GỬI TIN (tìm hội thoại theo SĐT trong Messenger + soạn/gửi) hiện là KHUNG STUB —
- * chờ chủ sản phẩm hướng dẫn từng bước + chụp element thật của Messenger rồi mới ráp selector.
- * Đến lúc đó chỉ cần điền vào các bước đánh dấu TODO bên dưới, KHÔNG phải đổi kiến trúc.
+ * Mở hội thoại theo link khách, xác định ô Messenger rồi mới nhập/gửi nội dung.
  */
 
 // Chuẩn hóa SĐT để so khớp whitelist test-mode (bỏ ký tự không phải số, bỏ 84/0 đầu).
@@ -69,14 +67,41 @@ async function ensureLoggedIn(page) {
   }
 }
 
-// Ô SOẠN TIN của Messenger (Lexical contenteditable). LƯU Ý: aria-label là "Write to <Tên>"
-// (đổi theo khách + ngôn ngữ) nên KHÔNG dùng làm selector. Thứ bền: aria-placeholder="Aa" +
-// data-lexical-editor="true" + role="textbox".
+// Chỉ nhận diện dấu hiệu riêng của Messenger: Lexical + "Aa", hoặc tiền tố nhãn
+// soạn tin theo ngôn ngữ. Không khớp tên khách cụ thể và không dùng Lexical đơn lẻ.
 const COMPOSE_BOX_SELECTORS = [
-  'div[contenteditable="true"][role="textbox"][aria-placeholder="Aa"]',
-  'div[data-lexical-editor="true"][contenteditable="true"][role="textbox"]',
-  'div[contenteditable="true"][role="textbox"]',
+  'div[data-lexical-editor="true"][contenteditable="true"][role="textbox"][aria-placeholder="Aa"]',
+  'div[contenteditable="true"][role="textbox"][aria-label^="Write to "]',
+  'div[contenteditable="true"][role="textbox"][aria-label^="Nhắn tin cho "]',
 ];
+// Comment editors also use Lexical and role=textbox. Never fall back to either alone.
+const COMPOSE_BOX_SELECTOR = COMPOSE_BOX_SELECTORS.join(',');
+
+async function findComposeBox(page, timeout = 12000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const boxes = page.locator(COMPOSE_BOX_SELECTOR);
+    const visible = [];
+    for (let i = 0; i < await boxes.count(); i += 1) {
+      const box = boxes.nth(i);
+      if (await box.isVisible()) visible.push(box);
+    }
+    if (visible.length > 1) throw new Error('FB: có nhiều ô Messenger đang mở; không xác định được hội thoại khách.');
+    if (visible.length === 1) return visible[0];
+    await page.waitForTimeout(300);
+  }
+  return null;
+}
+
+async function assertComposeTarget(box, focused = false) {
+  const valid = await box.evaluate((el, { selector, focused }) =>
+    el.isConnected && el.matches(selector) &&
+    (!focused || el === document.activeElement || el.contains(document.activeElement)),
+  { selector: COMPOSE_BOX_SELECTOR, focused });
+  if (!valid || !(await box.isVisible())) {
+    throw new Error('FB: ô Messenger không còn hợp lệ hoặc mất focus; dừng gửi để tránh bình luận nhầm.');
+  }
+}
 // Nút "Nhắn tin"/"Message" trên trang hồ sơ khách (fallback khi mở thẳng link chat không ra khung soạn).
 const MESSAGE_BUTTON_SELECTORS = [
   'div[aria-label="Message"][role="button"]',
@@ -239,7 +264,7 @@ function normalizeMessengerUrl(link) {
  * <Tên>") KHÔNG đổi qua 2 lần kiểm liên tiếp mới coi là hội thoại đã load xong.
  */
 async function waitComposeBox(page, label) {
-  let box = await findVisible(page, COMPOSE_BOX_SELECTORS, 12000);
+  let box = await findComposeBox(page);
   if (!box) {
     throw new Error(`FB: không mở được khung soạn tin (${label}). Kiểm tra link, khách có thể đã chặn/không nhắn được, hoặc Messenger đổi giao diện.`);
   }
@@ -250,20 +275,28 @@ async function waitComposeBox(page, label) {
   await waitDomSettled(page, { quietMs: 900, timeout: 8000 });
   await waitSpinnerGone(page, 10000);
   await waitChatLoaded(page, 10000);
+  let stable = false;
   for (let i = 0; i < 5; i += 1) {
-    const before = await box.getAttribute('aria-label').catch(() => null);
+    const handle = await box.elementHandle();
+    if (!handle) continue;
+    const before = await handle.getAttribute('aria-label');
     // eslint-disable-next-line no-await-in-loop
     await page.waitForTimeout(600);
     // eslint-disable-next-line no-await-in-loop
-    const again = await findVisible(page, COMPOSE_BOX_SELECTORS, 4000);
+    const again = await findComposeBox(page, 4000);
     if (!again) continue; // khung biến mất giữa chừng -> FB đang chuyển trang, chờ tiếp rồi thử lại
     box = again;
     // eslint-disable-next-line no-await-in-loop
     const after = await box.getAttribute('aria-label').catch(() => null);
-    if (before && after && before === after) break; // ổn định 2 lần liên tiếp -> coi như load xong
+    if (before === after && await again.evaluate((el, previous) => el === previous, handle)) {
+      // Pin the actual DOM node: a locator could silently resolve to a different editor later.
+      box = handle;
+      stable = true;
+      break;
+    }
   }
-  if (!box) {
-    throw new Error(`FB: khung soạn tin biến mất trong lúc chờ hội thoại load xong (${label}).`);
+  if (!stable) {
+    throw new Error(`FB: khung soạn tin chưa ổn định (${label}).`);
   }
   await shot(page, '02-conversation');
   return box;
@@ -295,7 +328,7 @@ async function openConversationByLink(page, link) {
   if (!btn) {
     throw new Error('FB: không thấy nút "Nhắn tin"/"Message" trên trang hồ sơ khách (có thể bị ẩn sau menu "...", khách chặn, hoặc FB đổi giao diện).');
   }
-  await btn.click().catch(() => {});
+  await btn.click();
   await page.waitForTimeout(2500);
   return waitComposeBox(page, 'sau khi bấm nút Nhắn tin trên hồ sơ');
 }
@@ -325,7 +358,9 @@ async function typeLines(page, text) {
  * nội dung vào đôi). Messenger (Lexical) hiểu \n là XUỐNG DÒNG trong CÙNG tin, rồi Enter = GỬI.
  */
 async function typeAndSend(page, box, message) {
+  await assertComposeTarget(box);
   await box.click();
+  await assertComposeTarget(box, true);
   const text = String(message == null ? '' : message);
 
   // Xoá sạch ô soạn (phòng nội dung nháp còn sót) để không bị nối thêm.
@@ -338,6 +373,7 @@ async function typeAndSend(page, box, message) {
   try {
     await page.evaluate((value) => navigator.clipboard.writeText(value), text);
     await box.click();
+    await assertComposeTarget(box, true);
     await page.keyboard.press('Control+V');
     await page.waitForTimeout(400);
     pasted = !!(await box.innerText().catch(() => '')).trim();
@@ -346,6 +382,7 @@ async function typeAndSend(page, box, message) {
   // Fallback: Ctrl+V không ăn -> xoá sạch (tránh nhập đôi nếu paste vào được một phần) rồi gõ tay.
   if (!pasted) {
     await box.click();
+    await assertComposeTarget(box, true);
     await page.keyboard.press('Control+A');
     await page.keyboard.press('Delete');
     await typeLines(page, text);
@@ -353,13 +390,14 @@ async function typeAndSend(page, box, message) {
 
   await page.waitForTimeout(300);
   await shot(page, '03-typed');
-  await page.keyboard.press('Enter'); // gửi
+  await assertComposeTarget(box, true);
+  await box.press('Enter'); // gửi đúng node Messenger đã xác định
   await page.waitForTimeout(1500);
 
   // Read-only confirmation after Enter. Never press Enter again on uncertainty.
   let remaining;
   try {
-    await box.waitFor({ state: 'visible', timeout: 10000 });
+    await box.waitForElementState('visible', { timeout: 10000 });
     remaining = (await box.innerText()).trim();
   } catch (err) { throw new Error('NEEDS_CHECK: không đọc được kết quả gửi Facebook. ' + err.message); }
   await shot(page, '04-sent');
