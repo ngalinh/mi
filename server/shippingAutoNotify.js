@@ -1,6 +1,7 @@
 'use strict';
 const { withBrowserBatch, accountQueue } = require('./accountQueue');
 const { getHold } = require('./notificationHold');
+const { SCHEDULE_TIME, isShippingTime } = require('./shippingSchedule');
 /**
  * Pha 2 — Tự động báo ship từ "Quản lý giao hàng" (xem docs/shipping-notify-plan.md).
  *
@@ -18,7 +19,7 @@ const { getHold } = require('./notificationHold');
  *      quét — dù đã hay chưa "Giao shipper" — nên KHÔNG BAO GIỜ được tự gửi (kể cả sau này đổi
  *      trạng thái); NV gửi tay qua nút Xem/Gửi (hoặc tìm bằng bộ lọc "Thời gian soạn hàng") nếu
  *      cần bắt kịp đơn ngoài cửa sổ.
- *   2) Lưới an toàn 17:00 (đơn "Đã soạn hàng" trong ngày quên bấm "Giao shipper" vẫn được báo) —
+ *   2) Lưới an toàn 17:30 (đơn "Đã soạn hàng" trong ngày quên bấm "Giao shipper" vẫn được báo) —
  *      code còn nguyên (runSafetyNet, route /api/shipping-auto/run-safety) nhưng trigger TỰ ĐỘNG
  *      theo giờ ĐANG TẮT (quyết định sản phẩm — xem startShippingAutoNotify()) để Viettel/GHTK
  *      không có ngoại lệ nào gửi trước khi tick "Giao shipper".
@@ -112,22 +113,15 @@ function localDayKey(value) {
   return localParts(new Date(ms)).day;
 }
 
-/** Giờ hẹn dùng cho lưới an toàn — tái dùng CHUNG setting với báo hàng (autoNotify.scheduleTime). */
+/** Giờ báo ship riêng, độc lập với lịch báo hàng. */
 function readScheduleTime() {
-  const saved = safeGet('autoNotify.scheduleTime');
-  const raw = (saved != null && saved !== '') ? saved : (config.autoNotify.scheduleTime || '');
-  const m = String(raw || '').trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return '';
-  const h = Number(m[1]);
-  const mi = Number(m[2]);
-  if (h > 23 || mi > 59) return '';
-  return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+  return SCHEDULE_TIME;
 }
 
 /**
  * Lấy vận đơn TẠO trong `days` ngày gần đây (mọi trạng thái), qua hết các trang. Cửa sổ ngày
  * để không kéo cả lịch sử mỗi lượt quét — vận đơn tồn quá lâu mới "Giao shipper" (hiếm) sẽ được
- * lưới an toàn 17:00 (quét theo ngày SOẠN HÀNG) hoặc gửi tay bắt kịp.
+ * lưới an toàn 17:30 (quét theo ngày SOẠN HÀNG) hoặc gửi tay bắt kịp.
  * `days <= 1` = CHỈ hôm nay: dùng `start = end` để filterDate/filterDateEnd cùng quy về 1 ngày
  * dương lịch (giờ VN) — tránh trường hợp "24h trước" lỡ lấn sang ngày hôm qua tuỳ giờ chạy, khiến
  * đơn cũ hơn hôm nay bị quét/seed nhầm. Mặc định `days=3` (`AUTO_SHIP2_LOOKBACK_DAYS`) nên nhánh
@@ -258,7 +252,10 @@ async function runShippingAuto(opts = {}) {
       summary.candidates = eligible.length;
       const gaveUp = []; // đơn VỪA chạm trần maxRetries ở lượt này -> cảnh báo NV gửi tay
       await withBrowserBatch(async () => {
-        for await (const { item: order, result: r } of accountQueue(eligible, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' }))) {
+        const due = eligible.filter(order => trigger === 'manual' || isShippingTime(order, new Date(), config.autoNotify.timezone));
+        summary.byReason.wait_schedule = eligible.length - due.length;
+        summary.candidates = due.length;
+        for await (const { item: order, result: r } of accountQueue(due, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' }))) {
           summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
           if (r.ok) {
             summary.sent += 1;
@@ -276,7 +273,7 @@ async function runShippingAuto(opts = {}) {
         summary.gaveUp = gaveUp.length;
         // Cảnh báo NV các đơn vừa NGỪNG tự thử (chạm trần retry) -> cần gửi tay qua nút Xem/Gửi,
         // không thì đơn sẽ nằm im vô thời hạn (khác trước đây: tự thử lại vô hạn, ồn nhưng không
-        // "mất tích"). Gộp 1 tin cho cả lượt, giống cách lưới an toàn 17:00 cảnh báo missingLink/unregistered.
+        // "mất tích"). Gộp 1 tin cho cả lượt, giống cách lưới an toàn 17:30 cảnh báo missingLink/unregistered.
       });
       if (gaveUp.length) {
         const names = gaveUp.slice(0, 15).map((o) => `${o.recipient || o.trackingCode || `#${o.id}`}${o.recipient ? ` (#${o.id})` : ''}`).join(', ');
@@ -304,7 +301,7 @@ async function runShippingAuto(opts = {}) {
 }
 
 /**
- * LƯỚI AN TOÀN 17:00 — bắt ca NV soạn xong hàng nhưng quên bấm "Giao shipper". Quét vận đơn
+ * LƯỚI AN TOÀN 17:30 — bắt ca NV soạn xong hàng nhưng quên bấm "Giao shipper". Quét vận đơn
  * "Đã soạn hàng" (isPrepared, chưa exported/completed) SOẠN TRONG NGÀY, chưa báo ship:
  *   - Viettel/GHTK (có mã vận đơn): gửi tin + đánh dấu notified_ship — KHÔNG đổi status vận đơn
  *     (tránh làm NV kho tưởng đã bàn giao).
@@ -340,6 +337,7 @@ async function runSafetyNet(day) {
       const unregistered = [];
       const eligible = [];
       for (const order of preparedToday) {
+        if (!isShippingTime(order, new Date(), config.autoNotify.timezone)) continue;
         const reg = CARRIERS[Number(order.shippingId)];
         if (!reg) { unregistered.push(order); continue; }
         if (reg.type === 'none') continue;
@@ -360,7 +358,7 @@ async function runSafetyNet(day) {
       });
       if (missingLink.length || unregistered.length) {
         summary.alerted = missingLink.length + unregistered.length;
-        const lines = ['⚠️ [mi] Lưới an toàn 17:00 — báo ship (Quản lý giao hàng)'];
+        const lines = ['⚠️ [mi] Lưới an toàn 17:30 — báo ship (Quản lý giao hàng)'];
         if (missingLink.length) {
           const names = missingLink.slice(0, 15).map((o) => o.recipient || o.trackingCode || `#${o.id}`).join(', ');
           lines.push(`${missingLink.length} đơn đã soạn hôm nay nhưng CHƯA đặt shipper (AhaMove/Grab): ${names}${missingLink.length > 15 ? '…' : ''}`);
@@ -407,7 +405,7 @@ function syncTimer() {
   if (state.enabled) { if (!timer) startTimer(); } else stopTimer();
 }
 
-/** Tick đồng hồ (rẻ) cho lưới an toàn — dùng CHUNG giờ hẹn với báo hàng, tự thân chỉ chạy khi bật. */
+/** Tick đồng hồ (rẻ) cho lưới an toàn — dùng giờ báo ship riêng, tự thân chỉ chạy khi bật. */
 function safetyTick() {
   if (!state.enabled) return;
   const st = readScheduleTime();
@@ -468,7 +466,7 @@ function getStatus() {
 /** Khởi động cùng server. Timer luôn dựng (kể cả khi tắt) để bật lại lúc runtime không cần restart. */
 function startShippingAutoNotify() {
   syncTimer();
-  // Lưới an toàn 17:00 ĐANG TẮT theo quyết định sản phẩm: Viettel Post/GHTK BẮT BUỘC phải bấm
+  // Lưới an toàn 17:30 ĐANG TẮT theo quyết định sản phẩm: Viettel Post/GHTK BẮT BUỘC phải bấm
   // "Giao shipper" mới gửi, không có ngoại lệ nào tự gửi trước khi NV tick trạng thái (kể cả đơn
   // đã soạn hàng trong ngày). Muốn bật lại: gọi startSafetyTimer() ở đây (hàm runSafetyNet() và
   // route POST /api/shipping-auto/run-safety vẫn còn nguyên, chỉ tắt trigger TỰ ĐỘNG theo giờ).
@@ -477,7 +475,7 @@ function startShippingAutoNotify() {
     console.log('[auto-ship2] chưa có mốc seed -> chạy seed lần đầu.');
     startSeed().catch(() => {});
   }
-  console.log(`[auto-ship2] BÁO SHIP (Quản lý giao hàng) ${state.enabled ? `BẬT — quét mỗi ${Math.round(cfg.intervalMs / 1000)}s (lưới an toàn 17:00 đang TẮT)` : 'TẮT'}`);
+  console.log(`[auto-ship2] BÁO SHIP (Quản lý giao hàng) ${state.enabled ? `BẬT — quét mỗi ${Math.round(cfg.intervalMs / 1000)}s (lưới an toàn 17:30 đang TẮT)` : 'TẮT'}`);
 }
 
 module.exports = {

@@ -664,6 +664,16 @@ app.get('/api/order-counts', async (req, res) => {
 // ---- Báo hàng loạt: kéo HẾT đơn "Chưa báo" qua mọi trang rồi gửi ----
 // (không bị giới hạn ở trang đang xem). Tự bỏ qua đơn đã Delay và đơn bot/đã báo tay.
 // body: { orders?, from?, to?, staff?, q?, kind?, kenhSale?, saleChannel? }
+app.post('/api/notify-preview', async (req, res) => {
+  const orders = req.body && req.body.orders;
+  if (!Array.isArray(orders) || orders.length > 100 || orders.some(o => !o || typeof o !== 'object' || o.id == null)) {
+    return res.status(400).json({ ok: false, error: 'Danh sách xem trước không hợp lệ (tối đa 100 đơn).' });
+  }
+  try {
+    res.json({ ok: true, results: await require('./notificationPreview').previewOrders(orders) });
+  } catch (error) { res.status(500).json({ ok: false, error: error.message }); }
+});
+
 app.post('/api/notify-all', async (req, res) => {
   try {
     const { orders, from, to, staff, q, kind, kenhSale, saleChannel } = req.body || {};

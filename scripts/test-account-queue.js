@@ -244,6 +244,7 @@ for (const method of ['runShippingAuto', 'runSafetyNet']) {
     const start = source.indexOf(`async function ${method}(`);
     const end = method === 'runShippingAuto' ? source.indexOf('async function runSafetyNet(') : source.indexOf('function maybeRun(');
     const context = { ...h.queue, withLock, shippingSendService: h.shipping, cfg: { maxRetries: 3 },
+      config: { autoNotify: { timezone: 'Asia/Ho_Chi_Minh' } }, isShippingTime: () => true,
       state: { enabled: true }, checkLocalHealth: async () => true, getShippingNotified: () => null,
       isShippingAutoSeen: () => false, isShippingExcluded: () => false, classify: () => ({ decision: 'send' }),
       CARRIERS: { 1: { type: 'tracking' } }, localDayKey: () => '2026-09-18',

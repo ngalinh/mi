@@ -236,6 +236,7 @@ function normalizeOrder(raw) {
     phone: raw.customer_phone || '',
     noiDungBaoHang: raw.content || '',
     noiDungBaoShip: raw.content_ship || '',
+    shippingId: raw.shipping_id == null ? null : Number(raw.shipping_id),
     statusCode: code,
     status: STATUS_LABELS[code] || code,
     note: raw.note || '',
