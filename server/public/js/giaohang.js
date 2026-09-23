@@ -398,14 +398,8 @@
   // ngày đang lọc (vd tạo hôm 07 nhưng mãi hôm 10 mới soạn/giao shipper).
   async function loadByPreparedDate(ymd) {
     const target = ymdToDmy(ymd);
-    const p = new URLSearchParams();
-    p.set('shipping_id', $('fCarrier').value || 0);
-    p.set('status', $('fStatus').value || 'all');
-    if ($('fStaff').value) p.set('user_approve', $('fStaff').value);
-    if ($('fQ').value.trim()) p.set('key', $('fQ').value.trim());
-    if (state.branch) p.set('branch', state.branch);
-    const r = await App.api('/api/shipping/all?' + p.toString());
-    const matched = (r.orders || []).filter((o) => String(o.preparedAt || '').startsWith(target));
+    const r = await fetchFilteredOrders(ymd);
+    const matched = r.orders;
     state.mock = r.source === 'mock';
     $('mockBadge').style.display = state.mock ? '' : 'none';
     state.total = matched.length;
@@ -655,6 +649,63 @@
   }
 
   // ---- Events -----------------------------------------------------------
+  // Chụp bộ lọc trước khi tải; không dùng state.orders (chỉ có trang hiện tại).
+  async function fetchFilteredOrders(preparedDate = $('fPreparedDate').value) {
+    const params = baseParams();
+    if (preparedDate) params.delete('filter_date');
+    const r = await App.api('/api/shipping/all?' + params.toString());
+    const orders = (r.orders || []).filter((o) => !preparedDate
+      || String(o.preparedAt || '').split(' ')[0] === ymdToDmy(preparedDate));
+    return { ...r, orders };
+  }
+
+  let filteredNotifyBusy = false;
+  async function notifyFiltered() {
+    if (filteredNotifyBusy) return;
+    filteredNotifyBusy = true;
+    const btn = $('btnNotifyFiltered');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    $('btnBulkNotify').disabled = true;
+    btn.textContent = 'Đang lấy đơn theo bộ lọc...';
+    let sent = 0, failed = 0, skipped = 0, processed = 0;
+    let started = false;
+    try {
+      const r = await fetchFilteredOrders();
+      const seen = new Set();
+      const orders = r.orders.filter((o) => {
+        if (o.id == null || seen.has(String(o.id)) || o.shipSentAt || !canPreviewMsg(o)) return false;
+        seen.add(String(o.id));
+        return true;
+      }).map((o) => withRowAccountOverride(toApiOrder(o), o.id));
+      if (!orders.length) { App.toast('Không có đơn chưa gửi báo ship phù hợp với bộ lọc.'); return; }
+      if (!confirm(`Gửi báo ship cho ${orders.length} đơn chưa gửi trong ${r.orders.length} đơn khớp bộ lọc trên tất cả các trang?\nCác đơn đã gửi hoặc chưa có nội dung báo ship sẽ được bỏ qua.`)) return;
+      started = true;
+      // Chia lô nhỏ để giới hạn payload và cập nhật tiến độ sau mỗi lượt gửi.
+      for (let offset = 0; offset < orders.length; offset += 20) {
+        btn.textContent = `Đang gửi ${processed}/${orders.length}...`;
+        const result = await App.api('/api/shipping/send-bulk', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orders: orders.slice(offset, offset + 20) }),
+        });
+        const alreadySent = (result.results || []).filter((item) => item.alreadySent).length;
+        sent += result.sent || 0;
+        skipped += alreadySent;
+        failed += Math.max(0, (result.failed || 0) - alreadySent);
+        processed += result.total || 0;
+      }
+      App.toast(`Đã gửi ${sent}/${orders.length} đơn, ${skipped} đơn đã gửi trước đó, ${failed} lỗi.`);
+    } catch (e) {
+      App.toast(`${started ? `Đã xác nhận gửi ${sent} đơn; dừng lượt gửi. ` : ''}Lỗi: ${App.friendlyError(e.message)}`);
+    } finally {
+      filteredNotifyBusy = false;
+      btn.disabled = false;
+      btn.innerHTML = original;
+      $('btnBulkNotify').disabled = false;
+      if (started) load();
+    }
+  }
+
   function bind() {
     $('btnBulkNotify').innerHTML = `${App.icon('message')} Gửi báo ship`;
     $('msgCopy').innerHTML = `${App.icon('copy')} Copy`;
@@ -669,6 +720,7 @@
     };
     $('msgSend').onclick = sendMessage;
     $('btnBulkNotify').onclick = bulkNotify;
+    $('btnNotifyFiltered').onclick = notifyFiltered;
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
     ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
