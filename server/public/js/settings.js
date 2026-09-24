@@ -683,7 +683,7 @@
 
   async function toggleAutoShip() {
     const next = !shipEnabled;
-    if (next && !confirm('Bật TỰ ĐỘNG báo ship?\n\n• Đơn đủ điều kiện có nội dung báo ship được tự nhắn từ 17:30; Ahamove giữ gửi ngay (cần local-runner mở & đăng nhập Zalo).\n• Các đơn ĐANG có sẵn ND ship lúc này sẽ được đánh dấu "tồn cũ" và KHÔNG gửi — chỉ gửi ND ship phát sinh SAU khi bật.')) return;
+    if (next && !confirm('Bật TỰ ĐỘNG báo ship?\n\n• Đơn đủ điều kiện có nội dung báo ship được tự nhắn ngay, không chờ giờ (cần local-runner mở & đăng nhập Zalo).\n• Các đơn ĐANG có sẵn ND ship lúc này sẽ được đánh dấu "tồn cũ" và KHÔNG gửi — chỉ gửi ND ship phát sinh SAU khi bật.')) return;
     try {
       const a = await App.api('/api/auto-notify/ship-toggle', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }),
@@ -733,7 +733,7 @@
 
   async function toggleAutoShip2() {
     const next = !ship2Enabled;
-    if (next && !confirm('Bật TỰ ĐỘNG báo ship — Quản lý giao hàng?\n\n• AhaMove: tự nhắn khách NGAY khi có link theo dõi shipper.\n• ĐVVC khác: gửi từ 17:30 khi đủ điều kiện; Viettel/GHTK cần giao shipper, Grab cần link.\n• Cần local-runner mở & đăng nhập Zalo.\n• Các vận đơn ĐANG đủ điều kiện lúc này sẽ được đánh dấu "tồn cũ" và KHÔNG gửi — chỉ gửi vận đơn mới đủ điều kiện SAU khi bật.')) return;
+    if (next && !confirm('Bật TỰ ĐỘNG báo ship — Quản lý giao hàng?\n\n• AhaMove: tự nhắn khách NGAY khi có link theo dõi shipper.\n• ĐVVC khác: gửi ngay khi đủ điều kiện, không chờ giờ; Viettel/GHTK cần giao shipper, Grab cần link.\n• Cần local-runner mở & đăng nhập Zalo.\n• Các vận đơn ĐANG đủ điều kiện lúc này sẽ được đánh dấu "tồn cũ" và KHÔNG gửi — chỉ gửi vận đơn mới đủ điều kiện SAU khi bật.')) return;
     try {
       const a = await App.api('/api/shipping-auto/toggle', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: next }),

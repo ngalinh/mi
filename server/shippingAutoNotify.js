@@ -113,7 +113,7 @@ function localDayKey(value) {
   return localParts(new Date(ms)).day;
 }
 
-/** Giờ báo ship riêng, độc lập với lịch báo hàng. */
+/** Giờ lưới an toàn (trigger tự động đang tắt), không áp dụng cho poller báo ship. */
 function readScheduleTime() {
   return SCHEDULE_TIME;
 }
@@ -252,10 +252,7 @@ async function runShippingAuto(opts = {}) {
       summary.candidates = eligible.length;
       const gaveUp = []; // đơn VỪA chạm trần maxRetries ở lượt này -> cảnh báo NV gửi tay
       await withBrowserBatch(async () => {
-        const due = eligible.filter(order => trigger === 'manual' || isShippingTime(order, new Date(), config.autoNotify.timezone));
-        summary.byReason.wait_schedule = eligible.length - due.length;
-        summary.candidates = due.length;
-        for await (const { item: order, result: r } of accountQueue(due, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' }))) {
+        for await (const { item: order, result: r } of accountQueue(eligible, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' }))) {
           summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
           if (r.ok) {
             summary.sent += 1;

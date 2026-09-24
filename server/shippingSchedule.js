@@ -1,4 +1,5 @@
 'use strict';
+// Legacy safety-net timing only; normal automatic shipping has no time cutoff.
 const SCHEDULE_TIME = '17:30';
 // Use explicit carrier metadata, never guess from customer/message text.
 function isAhamove(order) {
