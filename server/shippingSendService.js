@@ -16,7 +16,7 @@ const { syncShipStatusByCode, getTabUsers, findCustomerByOrderCode } = require('
 const {
   addReport, updateReport, getZaloName, getFbLink,
   getShippingNotified, markShippingNotified, getShippingTemplates,
-  getContactReportTarget,
+  getContactReportTarget, listZaloContacts, normPhone,
 } = require('./db');
 const { withLock: lock } = require('./lock');
 const withLock = fn => lock(fn, 'ship');
@@ -132,6 +132,16 @@ async function sendShippingOne(order, opts = {}) {
     return { ok: false, error: REASON_LABEL[built.reason] || 'Chưa gửi được.', reason: built.reason };
   }
 
+  // Keep delivery details/message intact; only change the notification destination.
+  const originalPhone = order.phone;
+  const manualRecipient = order.notifyPhone != null && order.notifyPhone !== '';
+  if (manualRecipient) {
+    const phone = normPhone(order.notifyPhone);
+    const contact = phone && listZaloContacts().find(c => c.phone === phone);
+    if (!contact) return { ok: false, error: 'Người nhận thông báo không còn trong danh bạ. Vui lòng chọn lại cột Gửi đến.' };
+    order = { ...order, phone: contact.phone, recipient: contact.zalo_name || contact.phone };
+  }
+
   const staff = firstApproveUser(order);
   const orderCode = firstOrderCode(order);
   // user_id Basso của NV duyệt (nếu tra được) — để accountResolver khớp được tài khoản "dùng
@@ -188,7 +198,7 @@ async function sendShippingOne(order, opts = {}) {
       let fbLink = getFbLink(order.phone);
       let fbPhone = order.phone;
       let fbName = matchName;
-      if (!fbLink) {
+      if (!fbLink && !manualRecipient) {
         // SĐT người nhận trên vận đơn (người nhận hộ) có thể KHÁC SĐT khách hàng thật đã lưu link
         // Facebook trong Danh bạ -> tra ngược mã đơn sang "Hàng về VN" (bassoApi.findCustomerByOrderCode)
         // lấy SĐT thật rồi thử tra link Facebook theo SĐT đó, giống cơ chế fallback Zalo bên dưới.
@@ -228,7 +238,7 @@ async function sendShippingOne(order, opts = {}) {
   // Không chạy nếu tài khoản/kênh đã được CHỌN TAY tường minh (resolved.source==='explicit' hoặc
   // opts.channel==='zalo') — tôn trọng lựa chọn của người gửi, không tự ý đổi kênh.
   const allowChannelSwitch = resolved.source !== 'explicit' && opts.channel !== 'zalo';
-  if (!result.ok && resolved.channel !== 'facebook' && !fallback && isRetryableAccountError(result.error)) {
+  if (!manualRecipient && !result.ok && resolved.channel !== 'facebook' && !fallback && isRetryableAccountError(result.error)) {
     const fb = await once('fallback-customer', () => findFallbackCustomer(order).catch(() => null));
     if (fb && fb.phone && fb.phone !== order.phone) {
       const fbLink = allowChannelSwitch ? getFbLink(fb.phone) : '';
@@ -276,6 +286,7 @@ async function sendShippingOne(order, opts = {}) {
     jobId: result.jobId,
     channel: resolved.channel,
     zaloAccount: resolved.account || resolved.profile || null,
+    ...(manualRecipient ? { phoneSource: 'manual_contact', phoneOriginal: originalPhone } : {}),
     ...(fallback ? {
       phone: fallback.phone,
       customerName: fallback.customerName || undefined,
