@@ -9,20 +9,24 @@
  * Sau khi đăng nhập xong trên cửa sổ browser, GÕ Ctrl+C ở terminal hoặc đóng cửa sổ để kết thúc.
  */
 const config = require('./config');
+const accountsStore = require('./accountsStore');
 const { getContext } = require('./browser');
 
 (async () => {
   const profile = process.argv[2] || 'default';
-  console.log(`[login] Mở Salework cho profile "${profile}" ...`);
+  const isFacebook = accountsStore.get(profile)?.platform === 'facebook';
+  const label = isFacebook ? 'Facebook' : 'Salework';
+  const loginUrl = isFacebook ? config.facebookLoginUrl : config.saleworkLoginUrl;
+  console.log(`[login] Mở ${label} cho profile "${profile}" ...`);
   console.log(`[login] HEADLESS=${config.headless} (nên để false để thấy cửa sổ và đăng nhập)`);
 
   const context = await getContext(profile);
   const page = context.pages()[0] || (await context.newPage());
-  console.log(`[login] URL đăng nhập: ${config.saleworkLoginUrl}`);
-  await page.goto(config.saleworkLoginUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  console.log(`[login] URL đăng nhập: ${loginUrl}`);
+  await page.goto(loginUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
 
   console.log('\n========================================================');
-  console.log(' 👉 ĐĂNG NHẬP Salework trên cửa sổ browser vừa mở.');
+  console.log(` 👉 ĐĂNG NHẬP ${label} trên cửa sổ browser vừa mở.`);
   console.log(' 👉 Đăng nhập xong cứ để đó (session đã được lưu tự động).');
   console.log(' 👉 Gõ Ctrl+C tại đây hoặc đóng cửa sổ để kết thúc.');
   console.log('========================================================\n');

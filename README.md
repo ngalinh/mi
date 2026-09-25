@@ -465,6 +465,8 @@ Luồng Zalo báo hàng/báo ship chờ giao diện theo từng bước: form đ
 
 ### Báo ship chạy song song với báo hàng
 
+Khi chạy có cửa sổ (`HEADLESS=false`), browser mở phóng to và vùng trang tự co theo kích thước cửa sổ thực tế, kể cả khi đổi kích thước Remote Desktop. Không ép viewport 1366 × 850 làm cắt phần bên phải hoặc ô nhập chat phía dưới. Chế độ headless vẫn giữ kích thước 1366 × 850. Sau khi cập nhật cần khởi động lại local-runner để tạo cửa sổ với cấu hình mới.
+
 Báo ship Zalo dùng hàng đợi và browser Chromium riêng, nên có thể bắt đầu trong lúc báo hàng đang gửi hoặc chờ delay. Các tin cùng loại vẫn chạy tuần tự; delay giữa các khách của từng loại vẫn được giữ. Browser báo ship Zalo lấy trạng thái đăng nhập của tài khoản, giữ nguyên proxy và không dùng chung thư mục profile Chromium đang mở. Đóng browser báo ship Zalo không đóng browser báo hàng.
 
 Báo ship Facebook dùng đúng profile `fb-<key>` đã đăng nhập, tái sử dụng cửa sổ Facebook đang mở thay vì tạo browser từ bản sao phiên. Facebook dùng chung khóa browser với đăng nhập/báo hàng để không điều hướng hoặc đóng cửa sổ khi thao tác khác đang chạy. Trước khi nhập nội dung, runner chờ ô chat hiển thị và cho phép soạn tin; nếu ô chat biến mất hoặc chưa sẵn sàng thì báo lỗi. Kiểm tra offline phần này: `node --test scripts/test-facebook-browser.js`.
