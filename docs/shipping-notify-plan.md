@@ -129,3 +129,13 @@ Sau khi gửi ship cho 1 vận đơn:
 | 7 | Khớp trạng thái | **`shipCode`** chính, `order_code` dự phòng; đánh dấu **mọi dòng khớp** |
 | 8 | Lưới 17:00 | **Chỉ gửi tin + mark `notified_ship`**, KHÔNG đổi status vận đơn (tránh ảnh hưởng NV kho) |
 | 9 | ĐVVC chưa khai mẫu | **Hướng B** — KHÔNG gửi, chỉ cảnh báo NV (whitelist registry) |
+
+## Chọn người nhận thông báo khi gửi tay
+
+Trong **Quản lý giao hàng**, cột **Gửi đến** cạnh **Tài khoản gửi** cho phép chọn tên/SĐT từ Danh bạ. Dùng khi người nhận hàng là khách của khách nhưng cần báo cho khách đặt hàng. Áp dụng cho nút Gửi từng dòng, cửa sổ xem trước và Gửi báo ship hàng loạt. Cửa sổ xem trước hiển thị người nhận thông báo đã chọn.
+
+Lựa chọn chỉ áp dụng cho gửi tay; giữ qua lọc/phân trang trong phiên trang hiện tại, tải lại trang sẽ về Tự động. Không thay đổi vận đơn hay cấu hình tự động báo ship. Nội dung tin vẫn dùng thông tin người nhận hàng trên vận đơn. Để trống thì giữ cách tìm người nhận hiện có.
+
+Server kiểm tra người được chọn còn trong danh bạ, dùng cấu hình Zalo/Facebook và kiểu báo nhóm/cá nhân của danh bạ đó; không tra ngược sang khách khác nếu gửi thất bại. Báo cáo ghi số điện thoại đích và số điện thoại gốc, vẫn chống gửi trùng theo vận đơn.
+
+Kiểm thử: `node --test scripts/test-shipping-recipient.js scripts/test-notification-fallback.js scripts/test-shared-account-payload.js`.

@@ -37,7 +37,36 @@
     addrExpanded: new Set(), // id vận đơn đang mở rộng xem đầy đủ địa chỉ
     hiddenCols: loadHiddenCols(), // Set các key cột đang ẨN (xem "Cột hiển thị" bên dưới)
     rowAccounts: new Map(), // tài khoản Zalo/FB CHỌN TAY cho từng vận đơn (id -> account key), cột "Tài khoản gửi"
+    rowRecipients: new Map(), // lựa chọn cho lượt gửi tay, giữ qua lọc/phân trang
   };
+
+  let contacts = [];
+  let contactsLoaded = false;
+  async function loadContacts() {
+    try {
+      const r = await App.api('/api/zalo-contacts');
+      contacts = r.contacts || [];
+      contactsLoaded = true;
+      document.querySelectorAll('.row-recipient-sel').forEach(sel => {
+        sel.innerHTML = recipientOptions(sel.dataset.id);
+        sel.disabled = !!state.orders.find(o => String(o.id) === sel.dataset.id)?.shipSentAt;
+      });
+    } catch (e) { App.toast('Không tải được danh bạ: ' + e.message); }
+  }
+  function recipientOptions(id) {
+    const selected = state.rowRecipients.get(String(id)) || '';
+    return '<option value="">Tự động (người nhận hàng)</option>' + contacts.map(c =>
+      `<option value="${App.esc(c.phone)}"${c.phone === selected ? ' selected' : ''}>${App.esc(c.zalo_name || c.phone)} · ${App.esc(c.phone)}</option>`
+    ).join('');
+  }
+  function renderRecipientSelect(o) {
+    return `<select class="row-recipient-sel" data-id="${App.esc(o.id)}" aria-label="Gửi đến" title="Chọn danh bạ nhận thông báo cho lượt gửi tay; không đổi người nhận hàng"${!contactsLoaded || o.shipSentAt ? ' disabled' : ''}>${recipientOptions(o.id)}</select>`;
+  }
+  function notificationRecipient(o) {
+    const phone = state.rowRecipients.get(String(o.id));
+    const contact = contacts.find(c => c.phone === phone);
+    return phone ? `${contact ? contact.zalo_name || phone : phone} (${phone})` : `${o.recipient} (${o.phone || '—'})`;
+  }
 
   // ---- Danh sách tài khoản Zalo + Facebook (cột "Tài khoản gửi") — giống dashboard.js. Nạp 1 lần;
   // runner offline -> chỉ còn "Tự động (theo nhân viên)" như mặc định.
@@ -272,7 +301,7 @@
   function render() {
     const tb = $('rows');
     if (!state.orders.length) {
-      tb.innerHTML = `<tr><td colspan="18" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="19" class="empty">${state.mock ? 'Chưa cấu hình Partner API — đang hiển thị dữ liệu mẫu.' : 'Không có đơn nào.'}</td></tr>`;
       return;
     }
     const rows = [];
@@ -302,6 +331,7 @@
           <td class="gh-datecell">${splitDateTime(o.preparedAt)}</td>
           <td class="center">${renderNdShip(o)}</td>
           <td class="center">${renderAccountSelect(o)}</td>
+          <td class="center">${renderRecipientSelect(o)}</td>
           <td><div class="ship-actions">${actionButtons(o)}</div></td>
           <td class="center">${renderExclude(o)}</td>
         </tr>`);
@@ -321,7 +351,7 @@
         <td class="center ship-list-qty">${it.quantity ?? 1}</td>
         <td>${App.esc(it.approveUser) || '<span class="muted">—</span>'}</td>
       </tr>`).join('');
-    return `<tr class="ship-detail"><td colspan="18">
+    return `<tr class="ship-detail"><td colspan="19">
       <div class="ship-detail-wrap">
         <div class="ship-detail-head">${App.icon('box')} Sản phẩm trong đơn (${o.items.length})</div>
         <table class="ship-list">
@@ -416,7 +446,7 @@
   }
 
   async function load() {
-    $('rows').innerHTML = '<tr><td colspan="18" class="empty">Đang tải...</td></tr>';
+    $('rows').innerHTML = '<tr><td colspan="19" class="empty">Đang tải...</td></tr>';
     try {
       const preparedDate = $('fPreparedDate').value;
       if (preparedDate) {
@@ -435,7 +465,7 @@
       render();
       renderPager();
     } catch (e) {
-      $('rows').innerHTML = `<tr><td colspan="18" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
+      $('rows').innerHTML = `<tr><td colspan="19" class="empty">Lỗi: ${App.esc(e.message)}</td></tr>`;
     }
   }
 
@@ -508,6 +538,7 @@
   function toApiOrder(o) {
     return {
       id: o.id, recipient: o.recipient, phone: o.phone, shipping: o.shipping, shippingId: o.shippingId,
+      notifyPhone: state.rowRecipients.get(String(o.id)) || '',
       trackingCode: o.trackingCode, codAmount: o.codAmount, shipperLink: o.shipperLink,
       shipFee: o.shipFee, shipPayer: o.shipPayer,
       saleChannel: o.saleChannel, saleChannelLabel: o.saleChannelLabel,
@@ -526,7 +557,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order: toApiOrder(o) }),
       });
-      $('msgSub').textContent = `${o.recipient} · ${o.shipping} · ${o.trackingCode || ''}`;
+      $('msgSub').textContent = `${o.recipient} · ${o.shipping} · ${o.trackingCode || ''} · Gửi đến: ${notificationRecipient(o)}`;
       const t = $('msgText');
       const sentNote = $('msgSentNote');
       const sendBtn = $('msgSend');
@@ -588,7 +619,7 @@
     const acct = acctKey ? zaloAccounts.find((a) => String(a.key) === String(acctKey)) : null;
     const override = acct ? { profile: acct.key, account: acctSendName(acct) } : null;
     const acctNote = acct ? ` — qua tài khoản ${acctOptionLabel(acct)}` : '';
-    if (!confirm(`Gửi báo ship qua Zalo cho ${o.recipient}${acctNote}?`)) return;
+    if (!confirm(`Gửi báo ship cho ${notificationRecipient(o)}${acctNote}?`)) return;
     const orig = btn.innerHTML;
     btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>';
     try {
@@ -641,7 +672,7 @@
     if (!ids.length) { App.toast('Chưa chọn đơn nào.'); return; }
     const orders = state.orders.filter((o) => ids.includes(String(o.id)))
       .map((o) => withRowAccountOverride(toApiOrder(o), o.id));
-    if (!confirm(`Gửi báo ship qua Zalo cho ${orders.length} đơn đã tick?`)) return;
+    if (!confirm(`Gửi báo ship cho ${orders.length} đơn đã tick theo cột Gửi đến?`)) return;
     try {
       const r = await App.api('/api/shipping/send-bulk', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -748,6 +779,12 @@
       if (btn) doAction(btn.dataset.id, btn.dataset.act);
     });
     $('rows').addEventListener('change', (e) => {
+      const recipient = e.target.closest('.row-recipient-sel');
+      if (recipient) {
+        const id = String(recipient.dataset.id);
+        if (recipient.value) state.rowRecipients.set(id, recipient.value);
+        else state.rowRecipients.delete(id);
+      }
       const cb = e.target.closest('.excl-cb');
       if (cb) toggleExclude(cb.dataset.id, cb.checked, cb);
       const ra = e.target.closest('.row-account-sel');
@@ -761,5 +798,6 @@
   bind();
   loadMeta();
   loadZaloAccounts();
+  loadContacts();
   load();
 })();
