@@ -13,9 +13,7 @@ const { getPage, closeContext, withProfileLock } = require('./browser');
  * nhập tay 1 lần, session được lưu -> lần sau không phải login lại. Việc mở cửa sổ đăng nhập
  * dùng chung browser.openForLogin (đã có), file này lo phần KIỂM TRA đăng nhập và GỬI TIN.
  *
- * ⚠️ Phần GỬI TIN (tìm hội thoại theo SĐT trong Messenger + soạn/gửi) hiện là KHUNG STUB —
- * chờ chủ sản phẩm hướng dẫn từng bước + chụp element thật của Messenger rồi mới ráp selector.
- * Đến lúc đó chỉ cần điền vào các bước đánh dấu TODO bên dưới, KHÔNG phải đổi kiến trúc.
+ * Mở hội thoại theo link Facebook của khách, chờ ô soạn sẵn sàng rồi nhập/gửi nội dung.
  */
 
 // Chuẩn hóa SĐT để so khớp whitelist test-mode (bỏ ký tự không phải số, bỏ 84/0 đầu).
@@ -48,9 +46,13 @@ async function findVisible(page, selectors, timeout = 8000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
     for (const sel of selectors) {
-      const el = page.locator(sel).first();
-      // eslint-disable-next-line no-await-in-loop
-      try { if (await el.isVisible()) return el; } catch { /* selector chưa gắn -> thử tiếp */ }
+      const matches = page.locator(sel);
+      try {
+        for (let i = 0; i < await matches.count(); i += 1) {
+          const el = matches.nth(i);
+          if (await el.isVisible()) return el;
+        }
+      } catch { /* selector chưa gắn -> thử tiếp */ }
     }
     // eslint-disable-next-line no-await-in-loop
     await page.waitForTimeout(300);
@@ -251,22 +253,21 @@ async function waitComposeBox(page, label) {
   await waitSpinnerGone(page, 10000);
   await waitChatLoaded(page, 10000);
   for (let i = 0; i < 5; i += 1) {
-    const before = await box.getAttribute('aria-label').catch(() => null);
+    const before = box ? await box.getAttribute('aria-label').catch(() => null) : null;
     // eslint-disable-next-line no-await-in-loop
     await page.waitForTimeout(600);
     // eslint-disable-next-line no-await-in-loop
     const again = await findVisible(page, COMPOSE_BOX_SELECTORS, 4000);
-    if (!again) continue; // khung biến mất giữa chừng -> FB đang chuyển trang, chờ tiếp rồi thử lại
     box = again;
+    if (!box) continue; // không giữ locator cũ khi khung chat đã biến mất
     // eslint-disable-next-line no-await-in-loop
     const after = await box.getAttribute('aria-label').catch(() => null);
-    if (before && after && before === after) break; // ổn định 2 lần liên tiếp -> coi như load xong
+    if (before === after && await box.isEditable().catch(() => false)) {
+      await shot(page, '02-conversation');
+      return box;
+    }
   }
-  if (!box) {
-    throw new Error(`FB: khung soạn tin biến mất trong lúc chờ hội thoại load xong (${label}).`);
-  }
-  await shot(page, '02-conversation');
-  return box;
+  throw new Error(`FB: khung soạn tin chưa sẵn sàng để nhập nội dung (${label}).`);
 }
 
 /**
@@ -295,7 +296,7 @@ async function openConversationByLink(page, link) {
   if (!btn) {
     throw new Error('FB: không thấy nút "Nhắn tin"/"Message" trên trang hồ sơ khách (có thể bị ẩn sau menu "...", khách chặn, hoặc FB đổi giao diện).');
   }
-  await btn.click().catch(() => {});
+  await btn.click();
   await page.waitForTimeout(2500);
   return waitComposeBox(page, 'sau khi bấm nút Nhắn tin trên hồ sơ');
 }

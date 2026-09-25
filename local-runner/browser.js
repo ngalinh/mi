@@ -17,10 +17,17 @@ const contexts = new Map(); // profileName -> { context, lastUsed }
 
 // Arrival/account management and shipping each have their own browser lock.
 const _locks = new Map();
+// Messenger must keep its persistent session (including encrypted chat state).
+// Shipping Facebook shares the login/arrival browser and its lock.
+function browserLane(profileName) {
+  const account = accountsStore.get(profileName);
+  return account?.platform === 'facebook' ? 'hang' : laneScope.current();
+}
+
 function withProfileLock(profileName, fn) {
-  const key = laneScope.current(); // Serialize each lane without blocking shipping behind arrivals.
+  const key = browserLane(profileName);
   const prev = _locks.get(key) || Promise.resolve();
-  const run = prev.catch(() => {}).then(() => fn());
+  const run = prev.catch(() => {}).then(() => laneScope.run(key, fn));
   _locks.set(key, run.catch(() => {})); // tail nuốt lỗi để 1 lần fail không kẹt cả chuỗi
   return run;
 }
@@ -129,6 +136,8 @@ async function safeLaunchPersistentContext(userDataDir, proxy) {
  * Lấy (hoặc tạo) context cho profile và trả về 1 page sẵn sàng.
  */
 async function getContext(profileName) {
+  const lane = browserLane(profileName);
+  if (lane !== laneScope.current()) return laneScope.run(lane, () => getContext(profileName));
   if (laneScope.current() === 'ship') return getShippingContext(profileName);
   for (const name of contexts.keys()) if (name !== profileName) await closeContext(name);
   let entry = contexts.get(profileName);
@@ -211,6 +220,8 @@ async function openForLogin(profileName, url, onEvent, prefill) {
 
 /** Đóng trình duyệt của 1 profile (session đăng nhập vẫn lưu trong userDataDir nên lần sau mở lại vẫn đăng nhập). */
 async function closeContext(profileName) {
+  const lane = browserLane(profileName);
+  if (lane !== laneScope.current()) return laneScope.run(lane, () => closeContext(profileName));
   if (laneScope.current() === 'ship') {
     const entry = shippingContexts.get(profileName);
     if (entry) { await entry.browser.close(); shippingContexts.delete(profileName); }
