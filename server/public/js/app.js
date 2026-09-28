@@ -90,7 +90,7 @@ const App = {
     const raw = String(msg == null ? '' : msg).trim();
     if (!raw) return 'Lỗi không rõ';
     const rules = [
-      [/^(NEEDS_CHECK|KHONG_XAC_NHAN_DA_GUI):/i, 'Chưa xác định được tin đã gửi hay chưa — đã chặn gửi lại để tránh trùng. Kiểm tra hội thoại, sau đó nhờ Admin xác nhận tại Cài đặt → Log.'],
+      [/^(NEEDS_CHECK|KHONG_XAC_NHAN_DA_GUI):/i, 'Chưa xác định được tin đã gửi hay chưa. Lượt gửi được ghi nhận lỗi và có thể thử lại; không cần xác nhận trong Log. Lưu ý có thể trùng tin nếu lần trước đã gửi.'],
       [/Session Facebook đã hết hạn|phiên Facebook/i, '⛔ Phiên Facebook đã hết hạn — vào Cài đặt → Tài khoản để đăng nhập lại.'],
       [/CHUA_DANG_NHAP/i, '⛔ Zalo chưa đăng nhập — hãy đăng nhập Zalo rồi gửi lại.'],
       [/KHONG_THAY_HOI_THOAI/i, '🔍 Không tìm thấy cuộc trò chuyện của khách trong mục "Trò chuyện" trên Zalo — kiểm tra khách đã có hội thoại chưa.'],

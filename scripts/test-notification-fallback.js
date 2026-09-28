@@ -98,3 +98,24 @@ test('SQLite persists fallback account/channel and keeps them on later status up
     assert.equal(result.status, 'needs_check');
   } finally { database?.close(); }
 });
+
+test('startup migrates old uncertain reports without changing delivery evidence', () => {
+  const { DatabaseSync } = require('node:sqlite');
+  let database;
+  const box = { module: { exports: {} }, console, require: name => {
+    if (name === './config') return { dbPath: ':memory:' };
+    if (name === 'node:sqlite') return { DatabaseSync: class extends DatabaseSync {
+      constructor(p) {
+        super(p); database = this;
+        this.exec("CREATE TABLE reports (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id TEXT, customer_name TEXT, phone TEXT, staff TEXT, message TEXT, status TEXT NOT NULL, error TEXT, job_id TEXT, created_at TEXT NOT NULL); INSERT INTO reports (status,error,created_at) VALUES ('needs_check','NEEDS_CHECK: timeout','2026-09-28'),('success',NULL,'2026-09-28');");
+      }
+    } };
+    return require(name);
+  } };
+  try {
+    vm.runInNewContext(read('server/db.js'), box);
+    assert.equal(box.module.exports.getReportById(1).status, 'failed');
+    assert.equal(box.module.exports.getReportById(1).error, 'NEEDS_CHECK: timeout');
+    assert.equal(box.module.exports.getReportById(2).status, 'success');
+  } finally { database?.close(); }
+});

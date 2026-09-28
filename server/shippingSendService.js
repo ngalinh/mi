@@ -1,7 +1,6 @@
 'use strict';
 const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
-const { isUncertain, getHold, hold } = require('./notificationHold');
 /**
  * Pha 1 — Gửi tay báo ship từ trang "Quản lý giao hàng" (xem docs/shipping-notify-plan.md).
  *
@@ -118,9 +117,6 @@ async function findFallbackCustomer(order) {
  */
 async function sendShippingOne(order, opts = {}) {
   if (!order || order.id == null) return { ok: false, error: 'Thiếu đơn' };
-  const holdKey = 'shipping:' + order.id;
-  const held = getHold(holdKey);
-  if (held) return { ok: false, needsCheck: true, error: held };
 
   if (!opts.force) {
     const seen = getShippingNotified(order.id);
@@ -269,9 +265,8 @@ async function sendShippingOne(order, opts = {}) {
     }
   }
 
-  if (isUncertain(result.error)) hold(holdKey, result.error, pending.id);
   let report = updateReport(pending.id, {
-    status: result.ok ? 'success' : (isUncertain(result.error) ? 'needs_check' : 'failed'),
+    status: result.ok ? 'success' : 'failed',
     error: result.ok ? null : result.error,
     jobId: result.jobId,
     channel: resolved.channel,

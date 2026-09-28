@@ -49,6 +49,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reports_status  ON reports(status);
 `);
 
+// Old uncertain sends are failures, never successful deliveries or manual retry gates.
+db.exec("UPDATE reports SET status = 'failed' WHERE status = 'needs_check'");
+
 // Migration: thêm cột ảnh SP (JSON mảng URL) cho report cũ. SQLite không có
 // "ADD COLUMN IF NOT EXISTS" -> bọc try/catch, chạy lại không sao.
 try { db.exec('ALTER TABLE reports ADD COLUMN images TEXT'); } catch (_) { /* đã có cột */ }

@@ -81,14 +81,14 @@ for (const kind of ['hang', 'ship', 'shipping-management']) {
   });
 }
 
-test('uncertain send gets durable hold and cannot fallback or retry in next batch', async () => {
+test('uncertain send is a failure and can retry next batch without account fallback', async () => {
   const h = harness(r => r.path.endsWith('/send') ? 'NEEDS_CHECK: lost confirmation' : null);
   const order = { id: 1, phone: '1', orderCode: 'BS1' };
   await h.notify.notifyOrders([order]);
-  assert.equal(h.reports[0].status, 'needs_check');
+  assert.equal(h.reports[0].status, 'failed');
   await h.notify.notifyOrders([order]);
-  assert.equal(h.requests.filter(r => r.path.endsWith('/send')).length, 1);
-  assert.ok(h.hold.getHold('arrival:1'));
+  assert.equal(h.requests.filter(r => r.path.endsWith('/send')).length, 2);
+  assert.equal(h.hold.getHold('arrival:1'), undefined);
 });
 
 test('unavailable profile is attempted once; other profile still completes', async () => {
@@ -157,16 +157,14 @@ test('transport timeout after accepting send requires checking, not resend', asy
   assert.match((await proxy.sendBaoHang({})).error, /^NEEDS_CHECK:/);
 });
 
-test('hold requires explicit valid human decision; releasing it does not send', async () => {
-  const h = harness(r => r.path.endsWith('/send') ? 'NEEDS_CHECK: uncertain' : null);
+test('legacy holds no longer block a new send', async () => {
+  const h = harness();
+  h.hold.hold('arrival:1', 'NEEDS_CHECK: old timeout', 99);
+  h.hold.hold('shipping:2', 'NEEDS_CHECK: old timeout', 98);
   await h.notify.notifyOrders([{ id: 1, phone: '1', orderCode: 'BS1' }]);
-  const count = h.requests.length;
-  assert.throws(() => h.hold.resolveHold(1, 'retry', 'admin'));
-  assert.ok(h.hold.getHold('arrival:1'));
-  h.hold.resolveHold(1, 'not_sent', 'admin');
-  assert.equal(h.hold.getHold('arrival:1'), null);
-  assert.equal(h.reports[0].status, 'failed');
-  assert.equal(h.requests.length, count);
+  await h.shipping.sendShippingBulk([{ id: 2, phone: '2', items: [{ orderCode: 'BS2' }] }]);
+  assert.equal(h.requests.filter(r => r.path.endsWith('/send')).length, 2);
+  assert.ok(h.reports.every(r => r.status === 'success'));
 });
 
 test('managed browser closes previous profile before launch and serializes profiles', async () => {
@@ -282,7 +280,7 @@ for (const kind of ['hang', 'ship', 'shipping-management']) {
       assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => [r.path, r.profile]),
         uncertain ? [['/api/facebook/send','X']] : [['/api/facebook/send','X'],['/api/facebook/send','Y']]);
       assert.equal(h.reports.length, 1);
-      assert.equal(h.reports[0].status, uncertain ? 'needs_check' : 'success');
+      assert.equal(h.reports[0].status, uncertain ? 'failed' : 'success');
       assert.equal(h.reports[0].zaloAccount, uncertain ? 'FB X' : 'FB Y');
     });
   }
@@ -299,7 +297,7 @@ test('shipping fallback re-reads purchaser target and preserves shipping message
   assert.ok(sends.every(r => r.message === 'shipping 1'));
 });
 
-test('shipping purchaser Facebook fallback retains channel, account and uncertainty hold', async () => {
+test('shipping purchaser Facebook fallback retains channel and account on retryable failure', async () => {
   const h = harness(r => r.path === '/api/zalo/send' ? 'KHONG_THAY_HOI_THOAI: missing'
     : r.path === '/api/facebook/send' ? 'NEEDS_CHECK: timeout' : null, async () => {}, {
     db: { getFbLink: phone => phone === 'purchaser' ? 'https://facebook.com/messages/t/buyer' : '' },
@@ -312,7 +310,31 @@ test('shipping purchaser Facebook fallback retains channel, account and uncertai
   assert.equal(result.failed, 1);
   assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => r.path), ['/api/zalo/send','/api/facebook/send']);
   assert.equal(h.reports[0].channel, 'facebook');
-  assert.equal(h.reports[0].status, 'needs_check');
+  assert.equal(h.reports[0].status, 'failed');
   assert.equal(h.reports[0].zaloAccount, 'FB Buyer');
-  assert.ok(h.hold.getHold('shipping:1'));
+  assert.equal(h.hold.getHold('shipping:1'), undefined);
 });
+
+for (const kind of ['hang', 'ship']) {
+  test(kind + ': uncertain failures reach retry limit and dispatch Zalo alert', async () => {
+    const h = harness(r => r.path.endsWith('/send') ? 'NEEDS_CHECK: lost confirmation' : null);
+    const source = fs.readFileSync(path.join(__dirname, '..', 'server/autoNotify.js'), 'utf8');
+    const body = source.slice(source.indexOf('async function executeNotifyPass('), source.indexOf('async function runAutoNotify('));
+    const records = [], alerts = [];
+    const context = { ...h.queue, withLock, notifyOne: h.notify.notifyOne, cfg: { maxRetries: 3 },
+      checkLocalHealth: async () => true, fetchAllByStatus: async () => [{ id: 1, phone: '1', orderCode: 'BS1' }],
+      autoKey: o => o.id, getDelayedMap: () => new Map(), getAutoRecord: () => ({ status: 'failed', attempts: 2 }),
+      recordAutoNotified: (...args) => records.push(args), isTransientError: () => false,
+      dispatchAlert: async text => alerts.push(text), console: { log() {} },
+    };
+    vm.createContext(context); vm.runInContext(body, context);
+    const summary = { results: [], sent: 0, failed: 0 };
+    await context.executeNotifyPass({ kind, trigger: 'manual', statusFilter: 'not_sent', summary,
+      classify: async () => ({ decision: 'send', acct: { profile: 'X' } }), keyOf: o => o.id });
+    assert.equal(summary.failed, 1);
+    assert.deepEqual(records, [[1, 'failed', 3]]);
+    assert.equal(alerts.length, 1);
+    assert.match(alerts[0], /NEEDS_CHECK/);
+    assert.equal(h.reports[0].status, 'failed');
+  });
+}

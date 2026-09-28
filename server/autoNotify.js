@@ -1,6 +1,5 @@
 'use strict';
 const { withBrowserBatch, accountQueue } = require('./accountQueue');
-const { getHold } = require('./notificationHold');
 const config = require('./config');
 const { getOrders } = require('./bassoApi');
 const { notifyOne, delayBetweenCustomers } = require('./notifyService');
@@ -418,7 +417,6 @@ function localDayKey(value) {
  * Check RẺ (trạng thái/nội dung/đã gửi/Delay) chạy TRƯỚC; chỉ đơn còn lọt mới resolve account (đắt hơn).
  */
 async function classifyForAuto(order, delayedMap) {
-  if (getHold(autoKey(order))) return { decision: 'skip', reason: 'needs_check' };
   if (order.statusCode !== 'not_sent') return { decision: 'skip', reason: 'not_target' }; // chỉ "Chưa báo"
   // Chỉ tự gửi khi Basso ĐÃ soạn sẵn "ND báo hàng" (raw.content). Đơn trống ND -> bỏ qua.
   if (!order.noiDungBaoHang || !String(order.noiDungBaoHang).trim()) return { decision: 'skip', reason: 'no_content' };
@@ -461,7 +459,6 @@ async function classifyForAuto(order, delayedMap) {
  * Trả { decision:'send'|'skip', reason?, acct? }.
  */
 async function classifyForShip(order, delayedMap) {
-  if (getHold(autoKeyShip(order))) return { decision: 'skip', reason: 'needs_check' };
   // KHÔNG chặn theo TRẠNG THÁI. NV hay QUÊN/nhầm tick: đơn kẹt "Chưa báo" dù đang giao, HOẶC tick
   // "Đã báo ship" TAY dù Mi chưa gửi (ND ship hiện sau). Nên hễ đơn CÓ "ND báo ship" là xét gửi,
   // dù trạng thái là not_sent / notified_arrival / notified_ship. Chống trùng CHỈ dựa vào DẤU
