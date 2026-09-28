@@ -461,7 +461,7 @@ Cần cập nhật và khởi động lại **cả server và local-runner** (en
 
 Sau khi cập nhật thay đổi này, khởi động lại local-runner để bỏ timer của phiên chạy cũ. Tự đăng nhập khi gửi vẫn yêu cầu credential đã lưu; OTP/captcha cần xử lý thủ công.
 
-Luồng Zalo báo hàng/báo ship chờ giao diện theo từng bước: form đăng nhập hoặc thanh chat, trạng thái chọn tài khoản/bộ lọc, kết quả tìm kiếm, ô soạn tin có thể nhập và nút Gửi được bật. Điều kiện phải ổn định 1 giây; mỗi bước chờ tối đa 30 giây (không phải ngủ cố định 30 giây). Kết quả tìm kiếm chậm được chờ tối đa 30 giây thay vì 3 giây. Mất phần tử hội thoại thì dừng, không click theo tọa độ cũ. Sau khi bấm Gửi một lần, chờ xác nhận tin tối đa 30 giây; chưa rõ kết quả vẫn chặn gửi lại để tránh trùng. Không dùng `networkidle` vì chat có kết nối liên tục. Đây là chờ trạng thái UI, không bảo đảm xử lý được lỗi dữ liệu, OTP hay mọi lỗi từ Basso. Cập nhật và khởi động lại local-runner để áp dụng.
+Luồng Zalo báo hàng/báo ship chờ giao diện theo từng bước: form đăng nhập hoặc thanh chat, trạng thái chọn tài khoản/bộ lọc, kết quả tìm kiếm, ô soạn tin có thể nhập và nút Gửi được bật. Điều kiện phải ổn định 1 giây; mỗi bước chờ tối đa 30 giây (không phải ngủ cố định 30 giây). Kết quả tìm kiếm chậm được chờ tối đa 30 giây thay vì 3 giây. Mất phần tử hội thoại thì dừng, không click theo tọa độ cũ. Sau khi bấm Gửi một lần, chờ xác nhận tin tối đa 30 giây; chưa rõ kết quả được ghi lỗi và thử lại theo giới hạn retry, không cần xác nhận trong Log. Không dùng `networkidle` vì chat có kết nối liên tục. Đây là chờ trạng thái UI, không bảo đảm xử lý được lỗi dữ liệu, OTP hay mọi lỗi từ Basso. Cập nhật và khởi động lại local-runner để áp dụng.
 
 ### Báo ship chạy song song với báo hàng
 
@@ -472,3 +472,7 @@ Báo ship Zalo dùng hàng đợi và browser Chromium riêng, nên có thể b�
 Báo ship Facebook dùng đúng profile `fb-<key>` đã đăng nhập, tái sử dụng cửa sổ Facebook đang mở thay vì tạo browser từ bản sao phiên. Facebook dùng chung khóa browser với đăng nhập/báo hàng để không điều hướng hoặc đóng cửa sổ khi thao tác khác đang chạy. Trước khi nhập nội dung, runner chờ ô chat hiển thị và cho phép soạn tin; nếu ô chat biến mất hoặc chưa sẵn sàng thì báo lỗi. Kiểm tra offline phần này: `node --test scripts/test-facebook-browser.js`.
 
 Cần cập nhật và khởi động lại cả server lẫn local-runner để dùng cơ chế này. Kiểm tra offline: `node --test scripts/test-account-queue.js scripts/test-shipping-lane.js` và `node scripts/test-browser-reuse.js`.
+
+### Log lỗi không cần xác nhận
+
+Lỗi chưa rõ kết quả gửi được ghi `failed`, không tạo khóa chờ Admin. Các lượt tự động thử lại theo giới hạn hiện có; khi hết lượt thử, cảnh báo qua Zalo tới SĐT nhận nhắc đã cấu hình. Log chỉ hiển thị lỗi. Báo cáo `needs_check` cũ được chuyển sang `failed` khi server khởi động; khóa cũ không còn chặn gửi. Không đánh dấu đã gửi khi chưa có kết quả thành công. Nếu tin đã tới khách nhưng phản hồi bị mất, thử lại có thể gửi trùng. Khởi động lại server sau khi cập nhật.

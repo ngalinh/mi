@@ -1,7 +1,6 @@
 'use strict';
 const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
-const { isUncertain, getHold, hold } = require('./notificationHold');
 const config = require('./config');
 const { getOrders, updateOrderStatus, getArrivedItems, getOrderContent } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
@@ -125,9 +124,6 @@ async function resolveOrderMeta(order) {
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
-  const holdKey = kind === 'ship' ? autoKeyShip(order) : autoKey(order);
-  const held = getHold(holdKey);
-  if (held) return { ok: false, needsCheck: true, error: held };
 
   // Tài khoản CHỌN TAY riêng cho đơn này (cột "Tài khoản gửi" trên dashboard, gắn kèm mỗi đơn khi
   // báo LOẠT — khác với opts.account/opts.profile vốn chỉ áp dụng khi gửi 1 đơn từ modal/nút icon
@@ -320,7 +316,6 @@ async function notifyOne(order, opts = {}) {
   }
 
   if (result.deferred || result.stopped) return result;
-  if (isUncertain(result.error)) hold(holdKey, result.error, pending.id);
 
   // Gửi thành công -> cập nhật trạng thái 'Đã báo hàng' ngược về web (nếu bật).
   // skipWebUpdate=true (luồng bot tự động): CHỈ lưu trạng thái trong mi, KHÔNG đẩy về web Basso.
@@ -345,7 +340,7 @@ async function notifyOne(order, opts = {}) {
   //    đổi (vd Basso timeout) -> cần KIỂM TRA/sửa tay. KHÔNG để 'success' (giấu lỗi) cũng KHÔNG để
   //    'failed' (sai — khách đã nhận tin, gửi lại sẽ trùng).
   const report = updateReport(pending.id, {
-    status: result.ok ? (updateError ? 'sent_check' : 'success') : (isUncertain(result.error) ? 'needs_check' : 'failed'),
+    status: result.ok ? (updateError ? 'sent_check' : 'success') : 'failed',
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
     // resolved.account/profile được cập nhật lại nếu gửi thành công qua account DỰ PHÒNG (fallback)

@@ -121,11 +121,8 @@ async function safeLaunchPersistentContext(userDataDir, proxy) {
     handleSIGINT: false,
     handleSIGTERM: false,
     handleSIGHUP: false,
-    // Headed windows must follow the real desktop/RDP size, otherwise the
-    // fixed emulated viewport can hide Messenger's composer below the window.
-    viewport: config.headless ? { width: 1366, height: 850 } : null,
+    viewport: { width: 1366, height: 850 },
     args: [
-      ...(!config.headless ? ['--start-maximized'] : []),
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
       '--disable-dev-shm-usage',
@@ -272,17 +269,11 @@ async function getShippingContext(profileName) {
   const browser = await chromium.launch({
     headless: config.headless, slowMo: config.slowMo,
     handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false,
-    args: [
-      ...(!config.headless ? ['--start-maximized'] : []),
-      '--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage',
-    ],
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage'],
     ...(proxyForProfile(profileName) ? { proxy: proxyForProfile(profileName) } : {}),
   });
   try {
-    const context = await browser.newContext({
-      storageState,
-      viewport: config.headless ? { width: 1366, height: 850 } : null,
-    });
+    const context = await browser.newContext({ storageState, viewport: { width: 1366, height: 850 } });
     try { await context.grantPermissions(['clipboard-read', 'clipboard-write']); } catch { /* ignore */ }
     shippingContexts.set(profileName, { browser, context });
     const forget = () => {

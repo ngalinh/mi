@@ -1,6 +1,5 @@
 'use strict';
 const { withBrowserBatch, accountQueue } = require('./accountQueue');
-const { getHold } = require('./notificationHold');
 const { SCHEDULE_TIME, isShippingTime } = require('./shippingSchedule');
 /**
  * Pha 2 — Tự động báo ship từ "Quản lý giao hàng" (xem docs/shipping-notify-plan.md).
@@ -159,7 +158,6 @@ async function fetchRecentOrders(days) {
  * @returns {{decision:'send'|'skip', reason?:string}}
  */
 function classify(order) {
-  if (getHold('shipping:' + order.id)) return { decision: 'skip', reason: 'needs_check' };
   if (order.id != null && isShippingExcluded(order.id)) return { decision: 'skip', reason: 'excluded' };
   // Đã thử gửi LỖI đủ số lần cho phép (cfg.maxRetries) -> NGỪNG tự thử lại (tránh vòng lặp gửi
   // lại vô hạn mỗi chu kỳ quét); NV vẫn gửi tay được qua nút Xem/Gửi. Xem db.shipping_auto_fail.
