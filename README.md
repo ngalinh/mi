@@ -476,3 +476,7 @@ Cần cập nhật và khởi động lại cả server lẫn local-runner để
 ### Log lỗi không cần xác nhận
 
 Lỗi chưa rõ kết quả gửi được ghi `failed`, không tạo khóa chờ Admin. Các lượt tự động thử lại theo giới hạn hiện có; khi hết lượt thử, cảnh báo qua Zalo tới SĐT nhận nhắc đã cấu hình. Log chỉ hiển thị lỗi. Báo cáo `needs_check` cũ được chuyển sang `failed` khi server khởi động; khóa cũ không còn chặn gửi. Không đánh dấu đã gửi khi chưa có kết quả thành công. Nếu tin đã tới khách nhưng phản hồi bị mất, thử lại có thể gửi trùng. Khởi động lại server sau khi cập nhật.
+
+### Báo ship Facebook cho chủ đơn
+
+Khi báo ship qua Facebook từ Quản lý giao hàng, bot tra các mã đơn trong vận đơn về Hàng về VN để tìm khách đặt hàng, rồi lấy link Facebook trong Danh bạ theo SĐT khách đó. Người nhận trên vận đơn có thể là khách của khách; link Facebook của người nhận không được ưu tiên hơn chủ đơn đã tra được. Nội dung ship giữ nguyên, tài khoản gửi được chọn lại theo danh bạ chủ đơn và cấu hình NV (giữ account chọn tay), log và đồng bộ Đã báo ship ghi theo chủ đơn. Nếu lỗi tra cứu, không tìm thấy chủ đơn từ các mã đã có, nhiều chủ đơn khác nhau hoặc thiếu link Facebook của chủ đơn, lượt gửi báo lỗi. Vận đơn không có mã đơn vẫn dùng thông tin người nhận như trước. Áp dụng cho cả gửi tay và tự động đi qua nhánh Facebook; fallback Zalo sang Facebook vẫn giữ nguyên.

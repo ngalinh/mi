@@ -94,19 +94,26 @@ async function trySendZalo(resolved, keyword, matchName, message) {
  * SĐT người nhận trên vận đơn (Quản lý giao hàng) đôi khi KHÁC SĐT khách hàng thật đặt đơn (vd
  * người nhận hộ) -> tìm không ra hội thoại Zalo dù khách có Zalo thật. Tra ngược từng mã đơn
  * trong vận đơn sang "Hàng về VN" (bassoApi.findCustomerByOrderCode) để lấy SĐT khách hàng thật,
- * thử mã đầu tiên khớp được. CHỈ gọi khi lần gửi đầu đã thất bại vì "không có hội thoại"
- * (xem sendShippingOne) — không tính sẵn cho toàn bộ danh sách.
+ * thử mã đầu tiên khớp được cho fallback Zalo. Nhánh Facebook tra trước khi gửi,
+ * kiểm tra các mã để không chọn tùy ý khi vận đơn thuộc nhiều chủ đơn.
+ * Chỉ tra trong lượt gửi, không tính sẵn cho toàn bộ danh sách hiển thị.
  * @returns {Promise<{customerName:string, phone:string}|null>}
  */
-async function findFallbackCustomer(order) {
+async function findFallbackCustomer(order, verifyOwner = false) {
   const items = Array.isArray(order.items) ? order.items : [];
   const codes = [...new Set(items.map((it) => it && it.orderCode && String(it.orderCode).trim()).filter(Boolean))];
+  let owner = null;
   for (const code of codes) {
     // eslint-disable-next-line no-await-in-loop
     const hit = await findCustomerByOrderCode(code);
-    if (hit && hit.phone) return hit;
+    if (hit && hit.phone) {
+      if (!verifyOwner) return hit;
+      if (owner && owner.phone !== hit.phone) throw new Error('Vận đơn có nhiều khách đặt hàng khác nhau — chưa thể chọn Facebook nhận báo ship.');
+      owner = hit;
+    }
   }
-  return null;
+  if (verifyOwner && codes.length && !owner) throw new Error('Không tra được khách đặt hàng từ mã đơn — chưa gửi báo ship qua Facebook.');
+  return owner;
 }
 
 /**
@@ -145,7 +152,7 @@ async function sendShippingOne(order, opts = {}) {
     staff, userId: staffUserId, orderCode, phone,
     saleChannel: order.saleChannel, saleChannelLabel: order.saleChannelLabel,
   });
-  const resolved = await once('resolved', () => resolveForOrder(resolverOrder(order.phone), opts));
+  let resolved = await once('resolved', () => resolveForOrder(resolverOrder(order.phone), opts));
   // Contact target overrides are applied per attempt, using the actual destination phone.
   // LOG CHẨN ĐOÁN: account + kiểu báo đã chọn cho đơn này (đối chiếu khi khách báo gửi nhầm nhóm/cá nhân).
   console.log(`[shipping-notify] ${order.recipient || order.phone || '?'} | staff=${staff || '-'} userId=${staffUserId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${getContactReportTarget(order.phone) || resolved.notifyTarget || 'group'}`);
@@ -181,25 +188,21 @@ async function sendShippingOne(order, opts = {}) {
   let fallback = null;
   try {
     if (resolved.channel === 'facebook') {
-      let fbLink = getFbLink(order.phone);
-      let fbPhone = order.phone;
-      let fbName = matchName;
-      if (!fbLink) {
-        // SĐT người nhận trên vận đơn (người nhận hộ) có thể KHÁC SĐT khách hàng thật đã lưu link
-        // Facebook trong Danh bạ -> tra ngược mã đơn sang "Hàng về VN" (bassoApi.findCustomerByOrderCode)
-        // lấy SĐT thật rồi thử tra link Facebook theo SĐT đó, giống cơ chế fallback Zalo bên dưới.
-        const fb = await once('fallback-customer', () => findFallbackCustomer(order).catch(() => null));
-        const altLink = fb && fb.phone ? getFbLink(fb.phone) : '';
-        if (altLink) {
-          console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có link Facebook -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) có link FB -> gửi theo SĐT này.`);
-          fbLink = altLink;
-          fbPhone = fb.phone;
-          fbName = getZaloName(fb.phone) || fb.customerName || matchName;
-          fallback = fb;
-        }
+      // Người nhận có thể là khách của khách, kể cả khi chính họ đã có link FB.
+      // Tra chủ đơn trước khi gửi; không nuốt lỗi tra cứu rồi gửi nhầm người nhận.
+      const owner = await once('facebook-owner', () => findFallbackCustomer(order, true));
+      const fbPhone = owner?.phone || order.phone;
+      const fbName = owner ? (owner.customerName || getZaloName(fbPhone) || fbPhone) : matchName;
+      const fbLink = getFbLink(fbPhone);
+      if (owner && owner.phone !== order.phone) {
+        fallback = owner;
+        // Giữ lựa chọn account tường minh, nhưng tra lại kênh sale trong danh bạ của chủ đơn.
+        resolved = await once('owner-facebook-account', () => resolveForOrder(resolverOrder(fbPhone), { ...opts, channel: 'facebook' }));
       }
-      if (!fbLink) {
-        result = { ok: false, error: `Chưa có link Facebook cho khách ${order.phone || '—'} — vào trang Danh bạ để thêm.` };
+      if (resolved.skip) {
+        result = { ok: false, error: 'Chưa có tài khoản Facebook được gán cho nhân viên để báo khách hàng thật.' };
+      } else if (!fbLink) {
+        result = { ok: false, error: `Chưa có link Facebook cho khách đặt hàng ${fbPhone || '—'} — vào trang Danh bạ để thêm.` };
       } else {
         result = await sendFacebookWithFallback(sendBaoHangFb, resolved, {
           profile: resolved.profile || 'default', fbLink, keyword: fbPhone, name: fbName, message: built.message,
