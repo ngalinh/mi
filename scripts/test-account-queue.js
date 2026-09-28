@@ -338,3 +338,79 @@ for (const kind of ['hang', 'ship']) {
     assert.equal(h.reports[0].status, 'failed');
   });
 }
+
+for (const recipientHasLink of [false, true]) {
+  test('Facebook shipping goes to purchaser, recipient link=' + recipientHasLink, async () => {
+    const lookups = [], resolvedPhones = [], marked = [], synced = [];
+    const h = harness(r => r.path.endsWith('/send') && r.profile === 'Owner1' ? 'FB: no composer' : null, async () => {}, {
+      db: {
+        getFbLink: phone => phone === 'buyer' ? 'https://facebook.com/messages/t/buyer' : recipientHasLink ? 'https://facebook.com/messages/t/recipient' : '',
+        markShippingNotified: (...args) => marked.push(args),
+      },
+      basso: {
+        findCustomerByOrderCode: async code => { lookups.push(code); return { phone: 'buyer', customerName: 'Buyer' }; },
+        syncShipStatusByCode: async data => { synced.push(data); return {}; },
+      },
+      resolveForOrder: async (order, opts) => {
+        resolvedPhones.push([order.phone, opts.channel]);
+        return order.phone === 'buyer'
+          ? { channel: 'facebook', profile: 'Owner1', account: 'Owner1', fallbackAccounts: [{ channel: 'facebook', profile: 'Owner2', account: 'Owner2' }] }
+          : { channel: 'facebook', profile: 'Recipient', account: 'Recipient' };
+      },
+    });
+    const result = await h.shipping.sendShippingBulk([{ id: 1, phone: 'recipient', recipient: 'Recipient', trackingCode: 'TRACK', items: [{ orderCode: 'BS1' }, { orderCode: 'BS1' }] }]);
+    assert.equal(result.sent, 1);
+    assert.deepEqual(lookups, ['BS1']);
+    assert.deepEqual(resolvedPhones, [['recipient', undefined], ['buyer', 'facebook']]);
+    const sends = h.requests.filter(r => r.path.endsWith('/send'));
+    assert.deepEqual(sends.map(r => r.profile), ['Owner1', 'Owner2']);
+    assert.ok(sends.every(r => r.path === '/api/facebook/send' && r.keyword === 'buyer' && r.name === 'Buyer' && r.fbLink.endsWith('/buyer') && r.message === 'shipping 1'));
+    assert.equal(h.reports.length, 1);
+    assert.equal(h.reports[0].phone, 'buyer');
+    assert.equal(h.reports[0].phoneOriginal, 'recipient');
+    assert.equal(h.reports[0].customerName, 'Buyer');
+    assert.equal(h.reports[0].phoneSource, 'fallback_customer');
+    assert.equal(h.reports[0].zaloAccount, 'Owner2');
+    assert.deepEqual(marked, [[1, 'buyer']]);
+    assert.equal(synced[0].phone, 'buyer');
+    assert.equal(synced[0].code, 'TRACK');
+  });
+}
+
+for (const scenario of ['missing-link', 'lookup-error', 'not-found', 'multiple-owners', 'missing-account']) {
+  test('Facebook owner lookup fails without sending recipient: ' + scenario, async () => {
+    const h = harness(() => null, async () => {}, {
+      db: { getFbLink: phone => phone === 'buyer' && scenario === 'missing-link' ? '' : 'https://facebook.com/messages/t/' + phone },
+      basso: { findCustomerByOrderCode: async code => {
+        if (scenario === 'lookup-error') throw Error('Basso lookup unavailable');
+        if (scenario === 'not-found') return null;
+        return { phone: scenario === 'multiple-owners' && code === 'BS2' ? 'other' : 'buyer', customerName: 'Buyer' };
+      } },
+      resolveForOrder: async order => ({ channel: 'facebook', profile: 'FB', account: 'FB', skip: scenario === 'missing-account' && order.phone === 'buyer' }),
+    });
+    const result = await h.shipping.sendShippingBulk([{ id: 1, phone: 'recipient', items: [{ orderCode: 'BS1' }, { orderCode: 'BS2' }] }]);
+    assert.equal(result.failed, 1);
+    assert.equal(h.requests.filter(r => r.path.endsWith('/send')).length, 0);
+    assert.equal(h.reports.length, 1);
+    assert.equal(h.reports[0].status, 'failed');
+    assert.ok(h.reports[0].error);
+  });
+}
+
+test('Facebook purchaser lookup preserves explicitly selected sender account', async () => {
+  const selections = [];
+  const h = harness(() => null, async () => {}, {
+    basso: { findCustomerByOrderCode: async () => ({ phone: 'buyer', customerName: 'Buyer' }) },
+    resolveForOrder: async (order, opts) => {
+      selections.push([order.phone, opts.profile, opts.account]);
+      return { channel: 'facebook', profile: opts.profile, account: opts.account, source: 'explicit' };
+    },
+  });
+  const result = await h.shipping.sendShippingBulk([{ id: 1, phone: 'recipient', items: [{ orderCode: 'BS1' }] }], { profile: 'Chosen', account: 'Chosen FB' });
+  assert.equal(result.sent, 1);
+  assert.deepEqual(selections, [['recipient', 'Chosen', 'Chosen FB'], ['buyer', 'Chosen', 'Chosen FB']]);
+  const sends = h.requests.filter(r => r.path.endsWith('/send'));
+  assert.equal(sends.length, 1);
+  assert.equal(sends[0].profile, 'Chosen');
+  assert.equal(sends[0].keyword, 'buyer');
+});
