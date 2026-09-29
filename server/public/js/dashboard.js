@@ -356,8 +356,8 @@
             customerId: o.customerId ?? '', dateInventory: o.dateInventory ?? '', phone: o.phone || '',
           });
           const res = await App.api(`/api/order-content?${qs.toString()}`);
-          if (res.noiDungBaoHang) o.noiDungBaoHang = res.noiDungBaoHang;
-          if (res.noiDungBaoShip) o.noiDungBaoShip = res.noiDungBaoShip;
+          o.noiDungBaoHang = res.noiDungBaoHang || "";
+          o.noiDungBaoShip = res.noiDungBaoShip || "";
           if (res.noiDungBaoHang && String(res.noiDungBaoHang).trim()) updateHangCellDom(o);
         } catch (_) {
           // Im lặng: Basso chậm/lỗi hoặc chưa sinh ND -> để lần sync sau thử lại (tới hết lượt).
@@ -1014,6 +1014,7 @@
     const warn = $('modalStale'); if (warn) { warn.style.display = 'none'; warn.textContent = ''; } // reset cảnh báo mỗi lần mở
     const current = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
     set('modalMsg', 'value', current);
+    if ($('modalMsg')) $('modalMsg').dataset.bassoContent = current;
     set('modalMsg', 'disabled', false); // reset nếu lần trước đóng modal giữa lúc đang tải
     set('modalMsg', 'placeholder', '');
     const bg = $('modalBg');
@@ -1068,19 +1069,19 @@
       });
       const res = await App.api(`/api/order-content?${qs.toString()}`);
       // Cập nhật đơn trong bộ nhớ dù modal đã đóng — lần mở sau đỡ phải gọi lại.
-      if (res.noiDungBaoHang) o.noiDungBaoHang = res.noiDungBaoHang;
-      if (res.noiDungBaoShip) o.noiDungBaoShip = res.noiDungBaoShip;
+      o.noiDungBaoHang = res.noiDungBaoHang || "";
+      o.noiDungBaoShip = res.noiDungBaoShip || "";
       const val = (isShip ? o.noiDungBaoShip : o.noiDungBaoHang) || '';
       if (stillOpen()) {
         if (!hadContent) {
           // Đổ nội dung mới lấy về vào ô đang trống.
-          if (ta) { ta.value = val; ta.placeholder = val ? '' : 'Basso chưa có nội dung cho đơn này.'; autoGrowMsg(); }
+          if (ta) { ta.value = val; ta.dataset.bassoContent = val; ta.placeholder = val ? '' : 'Basso chưa có nội dung cho đơn này.'; autoGrowMsg(); }
           hideWarn();
         } else {
-          const changed = !!(val && val.trim() && val.trim() !== original.trim());
+          const changed = val.trim() !== original.trim();
           const edited = ta && ta.value.trim() !== original.trim(); // người dùng đã sửa tay chưa?
           if (changed && !edited) {
-            if (ta) { ta.value = val; autoGrowMsg(); }
+            if (ta) { ta.value = val; ta.dataset.bassoContent = val; autoGrowMsg(); }
             showWarn('', '⚠️ Nội dung trên Basso đã THAY ĐỔI so với bản đang hiển thị (có thể khách vừa về thêm sản phẩm). Đã cập nhật ô soạn bên dưới bằng nội dung MỚI NHẤT — kiểm tra rồi hãy gửi.');
           } else if (changed && edited) {
             showWarn('', '⚠️ Nội dung trên Basso đã THAY ĐỔI (có thể khách về thêm sản phẩm), nhưng bạn đã sửa tay nên KHÔNG tự ghi đè. Đối chiếu lại trước khi gửi.');
@@ -1112,7 +1113,9 @@
     const override = acct ? { profile: acct.key, account: acctSendName(acct) } : null;
     const ksEl = $('modalKenhSale');
     const kenhSale = ksEl ? ksEl.value : '';
-    await sendZalo(modalId, $('modalMsg').value.trim(), $('modalSend'), modalKind, override, { kenhSale });
+    const original = $('modalMsg').dataset.bassoContent || '';
+    const edited = $('modalMsg').value.trim();
+    await sendZalo(modalId, edited === original.trim() ? undefined : edited, $('modalSend'), modalKind, override, { kenhSale });
     closeModal();
   }
 

@@ -139,35 +139,7 @@ async function notifyOne(order, opts = {}) {
     return { order, ok: false, stopped: true, error: null };
   }
 
-  // LẤY ND TƯƠI NGAY TRƯỚC KHI GỬI (chỉ khi KHÔNG có messageOverride — tức luồng auto-notify &
-  // Báo hàng loạt dùng thẳng ND từ Basso). order.noiDungBaoHang có thể là bản CŨ (list cache 30s
-  // / dashboard cầm bản cũ) -> khách về thêm sản phẩm nhưng tin vẫn báo nội dung cũ (vd 1 sp).
-  // getOrderContent bỏ cache, khớp đúng đơn theo (customerId + dateInventory) nên lấy được nội
-  // dung mới nhất Basso đã soạn lại. Lỗi/không thấy -> giữ nguyên ND đang có, KHÔNG chặn gửi.
-  const noOverride = !(opts.messageOverride && opts.messageOverride.trim());
-  if (noOverride && config.basso.refreshContentBeforeSend
-      && order.customerId != null && order.dateInventory != null) {
-    try {
-      const fresh = await getOrderContent({
-        customerId: order.customerId,
-        dateInventory: order.dateInventory,
-        phone: order.phone,
-        fresh: true, // bỏ cache: lấy đúng bản mới nhất Basso đã soạn ngay trước lúc gửi
-      });
-      if (fresh && fresh.found) {
-        const key = kind === 'ship' ? 'noiDungBaoShip' : 'noiDungBaoHang';
-        const next = kind === 'ship' ? fresh.noiDungBaoShip : fresh.noiDungBaoHang;
-        const prev = order[key];
-        if (next && String(next).trim() && String(next).trim() !== String(prev || '').trim()) {
-          console.log(`[notify] ND ${kind} của ${order.customerName || order.phone || order.customerId} đã ĐỔI trên Basso -> dùng bản mới nhất (bản cũ có thể thiếu sản phẩm vừa về).`);
-          order = { ...order, [key]: next };
-        }
-      }
-    } catch (err) {
-      console.warn(`[notify] không lấy được ND tươi cho đơn ${order.customerId}/${order.dateInventory}: ${err.message} — dùng ND đang có.`);
-    }
-  }
-
+  // Keep the queue identity stable; resolve Basso content only at actual dispatch.
   const message = once('message', () => opts.messageOverride && opts.messageOverride.trim()
     ? opts.messageOverride.trim()
     : (kind === 'ship' ? buildBaoShipMessage(order) : buildBaoHangMessage(order)));
@@ -260,6 +232,22 @@ async function notifyOne(order, opts = {}) {
     zaloAccount: resolved.account || resolved.profile || null,
   }), report => updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' }));
 
+  const prepareMessage = async () => {
+    if (opts.messageOverride && opts.messageOverride.trim()) return message;
+    if (order.customerId == null || order.dateInventory == null) {
+      throw new Error('Không đủ khóa đơn để lấy nội dung mới từ Basso. Hãy tải lại Dashboard.');
+    }
+    const fresh = await getOrderContent({ customerId: order.customerId,
+      dateInventory: order.dateInventory, phone: order.phone, fresh: true });
+    const next = fresh && fresh.found && (kind === 'ship' ? fresh.noiDungBaoShip : fresh.noiDungBaoHang);
+    if (!next || !String(next).trim()) {
+      throw new Error('Basso chưa có nội dung mới cho đúng đơn này; chưa gửi tin.');
+    }
+    const value = String(next).trim();
+    updateReport(pending.id, { message: value });
+    return value;
+  };
+
   let result;
   try {
     if (resolved.channel === 'facebook') {
@@ -274,6 +262,7 @@ async function notifyOne(order, opts = {}) {
           keyword,
           name: matchName,
           message,
+          prepareMessage,
           strictMatch: opts.strictMatch === true,
         });
       }
@@ -293,6 +282,7 @@ async function notifyOne(order, opts = {}) {
             keyword,
             name: matchName,
             message,
+            prepareMessage,
             strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
             notifyTarget: getContactReportTarget(order.phone) || cand.notifyTarget || 'group', // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
           });
