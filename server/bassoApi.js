@@ -551,22 +551,29 @@ async function getOrderContent({ customerId, dateInventory, phone, fresh = false
   // hệ thống Basso. swrFetch gộp các call TRÙNG SĐT (single-flight) + trả ngay trong TTL, giảm mạnh
   // tải; hết TTL vẫn tự làm mới nền để "Xem nội dung" thấy ND vừa soạn.
   const runFetch = async () => {
-    const raw = await apiFetch('/partner/getArrivedVnList', {
-      query: { page: 1, page_size: 100, key: phone || undefined },
-    });
-    return raw.rows || [];
+    // Restrict to the inventory day, especially when a customer has no phone.
+    const date = formatUnixDate(dateInventory).replaceAll('/', '-');
+    const rows = [];
+    for (let page = 1; page <= 100; page += 1) {
+      const raw = await apiFetch('/partner/getArrivedVnList', {
+        query: { page, page_size: 100, key: phone || undefined, from: date, to: date },
+      });
+      const part = raw.rows || [];
+      rows.push(...part);
+      if (rows.some(matches) || part.length < 100 || (raw.total != null && page * 100 >= raw.total)) break;
+    }
+    return rows;
   };
   let rows;
   if (config.basso.listCacheTtlMs) {
-    const cacheKey = 'content:' + JSON.stringify({ key: phone || '' });
+    const cacheKey = 'content:' + JSON.stringify({ key: phone || '', customerId, dateInventory });
     // fresh=true -> swrFetch bỏ qua cache cũ, đọc thẳng Basso rồi nạp lại cache cho lần sau.
     ({ data: rows } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, runFetch, { fresh }));
   } else {
     rows = await runFetch();
   }
-  // Khớp chính xác theo (customer_id + date_inventory); nếu lệch kiểu date mà chỉ có đúng 1
-  // dòng trả về (đã lọc theo SĐT) thì lấy dòng đó làm fallback.
-  const row = rows.find(matches) || (rows.length === 1 ? rows[0] : null);
+  // Chỉ dùng đúng khách và ngày nhập kho; một dòng khác cũng không được dùng thay thế.
+  const row = rows.find(matches);
   return { source: 'api', ...pick(row) };
 }
 

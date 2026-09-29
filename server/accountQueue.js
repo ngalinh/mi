@@ -48,7 +48,11 @@ async function dispatchSend(path, payload, send) {
       batch.sent = true;
     }
     let result;
-    try { result = await send({ ...payload, browserLane: require('../shared/notificationLane').current(), keepContext: !!batch, closeAfterSend: true }); }
+    try {
+      const { prepareMessage, ...ready } = payload;
+      if (prepareMessage) ready.message = await prepareMessage();
+      if (batch?.shouldStop()) return { ok: false, stopped: true };
+      result = await send({ ...ready, browserLane: require('../shared/notificationLane').current(), keepContext: !!batch, closeAfterSend: true }); }
     catch (err) { result = { ok: false, error: err.message }; }
     if (task) task.attempts.set(key, result);
     if (batch && /^(?:CHUA_DANG_NHAP|ACCOUNT_UNAVAILABLE):/.test(result.error || '')) {

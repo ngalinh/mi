@@ -258,7 +258,7 @@ function addReport(row) {
 
 const updateStmt = db.prepare(`
   UPDATE reports
-     SET status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id,
+     SET message = @message, status = @status, error = @error, job_id = @job_id, images = @images, order_id = @order_id,
          customer_id = @customer_id, date_inventory = @date_inventory, phone = @phone,
          customer_name = @customer_name, phone_source = @phone_source, phone_original = @phone_original,
          channel = @channel, zalo_account = @zalo_account
@@ -276,6 +276,7 @@ function updateReport(id, fields = {}) {
   if (!cur) return null;
   const next = {
     id,
+    message: fields.message !== undefined ? fields.message : cur.message,
     status: fields.status ?? cur.status,
     error: fields.error !== undefined ? fields.error : cur.error,
     job_id: fields.jobId !== undefined ? fields.jobId : cur.job_id,

@@ -53,18 +53,58 @@ function harness(outcome = () => null, delay = async () => {}, options = {}) {
     './accountQueue': queue, './notificationHold': hold, './playwrightProxy': proxy,
     './lock': { withLock }, './db': db, './config': { basso: {}, notify: {} },
     './accountResolver': { resolveForOrder, isRetryableAccountError: e => /^KHONG_THAY_HOI_THOAI:/.test(e || '') },
-    './bassoApi': { getArrivedItems: async () => ({ items: [] }), getTabUsers: async () => ({ tabUsers: [] }),
+    './bassoApi': { getOrderContent: async ({ customerId }) => ({ found: true, noiDungBaoHang: 'arrival ' + customerId, noiDungBaoShip: 'ship ' + customerId }), getArrivedItems: async () => ({ items: [] }), getTabUsers: async () => ({ tabUsers: [] }),
       findCustomerByOrderCode: async () => null, syncShipStatusByCode: async () => ({}) },
     '../shared/messageTemplate': { buildBaoHangMessage: o => 'arrival ' + o.id, buildBaoShipMessage: o => 'ship ' + o.id },
   };
   Object.assign(db, options.db || {});
   Object.assign(common['./bassoApi'], options.basso || {});
   const notify = load('server/notifyService.js', common);
+  // Existing queue fixtures use only an id; production arrival rows also carry this key.
+  const keyed = o => ({ customerId: o.id, dateInventory: 1780000000, ...o });
+  const one = notify.notifyOne, many = notify.notifyOrders;
+  notify.notifyOne = (o, opts) => one(keyed(o), opts);
+  notify.notifyOrders = (orders, opts) => many(orders.map(keyed), opts);
   const shipping = load('server/shippingSendService.js', { ...common,
     './notifyService': notify, './shippingNotify': { buildDeliveryMessage: o => ({ sendable: true, message: 'shipping ' + o.id }), REASON_LABEL: {} },
   });
   return { queue, proxy, requests, reports, settings, hold, notify, shipping };
 }
+
+for (const kind of ['hang', 'ship']) {
+  test(`${kind}: content is fetched after queue delay and again for fallback`, async () => {
+    let version = 1, reads = 0;
+    const h = harness(r => r.profile === 'X' && r.keyword === '1' ? 'KHONG_THAY_HOI_THOAI: missing' : null,
+      async () => { version++; }, { basso: { getOrderContent: async () => {
+        reads++;
+        return { found: true, noiDungBaoHang: `debt ${version}`, noiDungBaoShip: `debt ${version}` };
+      } } });
+    await h.notify.notifyOrders([1, 2].map(id => ({ id, phone: String(id), noiDungBaoHang: 'old debt' })), { kind });
+    const sends = h.requests.filter(r => r.path.endsWith('/send'));
+    assert.deepEqual(sends.map(r => r.message), ['debt 1', 'debt 2', 'debt 3']);
+    assert.equal(reads, 3); // no content reads for discovery/deferred work
+    assert.equal(h.reports[0].message, 'debt 3');
+    assert.equal(h.reports[1].message, 'debt 2');
+  });
+  for (const state of ['error', 'empty', 'missing']) {
+    test(`${kind}: ${state} fresh content never sends old debt`, async () => {
+      const h = harness(() => null, async () => {}, { basso: { getOrderContent: async () => {
+        if (state === 'error') throw Error('Basso timeout');
+        return { found: state !== 'missing', noiDungBaoHang: '', noiDungBaoShip: '' };
+      } } });
+      const r = await h.notify.notifyOrders([{ id: 1, phone: '1', noiDungBaoHang: 'old debt', noiDungBaoShip: 'old debt' }], { kind });
+      assert.equal(r.failed, 1);
+      assert.equal(h.requests.filter(r => r.path.endsWith('/send')).length, 0);
+      assert.equal(h.reports[0].status, 'failed');
+    });
+  }
+}
+
+test('explicitly edited message is preserved', async () => {
+  const h = harness(() => null, async () => {}, { basso: { getOrderContent: async () => { throw Error('must not fetch'); } } });
+  await h.notify.notifyOrders([{ id: 1, phone: '1' }], { messageOverride: 'Edited by staff' });
+  assert.equal(h.requests.find(r => r.path.endsWith('/send')).message, 'Edited by staff');
+});
 
 for (const kind of ['hang', 'ship', 'shipping-management']) {
   test(`${kind}: shared employees reuse X; fallback waits until X completes; one report per order`, async () => {

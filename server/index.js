@@ -1249,8 +1249,7 @@ app.get('/api/reports', async (req, res) => {
 
 // ---- Thử gửi LẠI 1 lượt báo THẤT BẠI (từ Lịch sử báo) ----
 // Tái tạo đơn từ khóa đã lưu (customerId+dateInventory+userId) rồi đi qua notifyOrders như báo
-// tay: có khóa chung với bot (không đua), resolve đúng account theo NV, dùng lại NGUYÊN VĂN nội
-// dung đã gửi (messageOverride) để khớp lần trước. Chỉ cho thử lại dòng 'failed'.
+// tay: có khóa chung với bot, resolve đúng account và lấy nội dung Basso mới. Chỉ retry 'failed'.
 app.post('/api/reports/:id/retry', async (req, res) => {
   try {
     const rep = getReportById(req.params.id);
@@ -1259,7 +1258,7 @@ app.post('/api/reports/:id/retry', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Chỉ thử lại được lượt THẤT BẠI' });
     }
     // Report cũ (trước khi có 3 cột khóa đơn) không đủ dữ liệu tái tạo -> hướng người dùng báo tay.
-    if (rep.customer_id == null && !rep.phone) {
+    if (rep.customer_id == null || rep.date_inventory == null) {
       return res.status(400).json({
         ok: false,
         error: 'Lượt báo cũ thiếu dữ liệu đơn — hãy báo lại từ Dashboard.',
@@ -1274,10 +1273,9 @@ app.post('/api/reports/:id/retry', async (req, res) => {
       userId: rep.user_id,
       orderCode: rep.order_id,
     };
-    // messageOverride = nội dung đã lưu -> gửi lại y hệt (không dựng lại từ template).
+    // Retry reads current Basso content when this order reaches dispatch.
     const result = await notifyOrders([order], {
       kind: rep.kind === 'ship' ? 'ship' : 'hang', // giữ đúng loại tin của lượt cũ
-      messageOverride: rep.message || undefined,
       actor: getActor(req),
     });
     res.json({ ok: true, ...result });

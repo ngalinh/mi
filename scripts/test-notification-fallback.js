@@ -91,11 +91,12 @@ test('SQLite persists fallback account/channel and keeps them on later status up
     vm.runInNewContext(read('server/db.js'), box);
     const db = box.module.exports;
     const row = db.addReport({ phone: '1', channel: 'zalo', zaloAccount: 'X', status: 'pending' });
-    db.updateReport(row.id, { channel: 'facebook', zaloAccount: 'FB Y', status: 'needs_check' });
+    db.updateReport(row.id, { message: 'fresh debt', channel: 'facebook', zaloAccount: 'FB Y', status: 'needs_check' });
     const result = db.updateReport(row.id, { error: 'check conversation' });
     assert.equal(result.channel, 'facebook');
     assert.equal(result.zalo_account, 'FB Y');
     assert.equal(result.status, 'needs_check');
+    assert.equal(result.message, 'fresh debt');
   } finally { database?.close(); }
 });
 
