@@ -6,6 +6,52 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { withLock } = require('../server/lock');
 
+for (const scenario of ['chung-anh', 'multiple-owners', 'lookup-error']) {
+  test('Zalo missing recipient resolves shipping purchaser: ' + scenario, async () => {
+    const codes = [], marked = [], synced = [];
+    const h = harness(r => r.path === '/api/zalo/send' ? 'KHONG_THAY_HOI_THOAI: missing' : null, async () => {}, {
+      db: {
+        getFbLink: phone => phone === 'buyer' ? 'https://facebook.com/messages/t/test-buyer' : '',
+        markShippingNotified: (...args) => marked.push(args),
+      },
+      basso: {
+        findCustomerByOrderCode: async code => {
+          codes.push(code);
+          if (scenario === 'lookup-error') throw Error('Lookup unavailable');
+          return { phone: scenario === 'multiple-owners' && code === 'SU2082622' ? 'other' : 'buyer', customerName: 'Chung Anh' };
+        },
+        syncShipStatusByCode: async data => { synced.push(data); return {}; },
+      },
+      resolveForOrder: async (o, opts) => opts.channel === 'facebook'
+        ? { channel: 'facebook', profile: 'FB', account: 'FB' }
+        : { channel: 'zalo', profile: 'Zalo', account: 'Zalo' },
+    });
+    const result = await h.shipping.sendShippingBulk([{
+      id: 1, recipient: 'chị Hà', phone: 'recipient', trackingCode: 'TH30091038',
+      items: ['SU2082628', 'SU2082622', 'SU12082625', '', 'SU2082628'].map(orderCode => ({ orderCode })),
+    }]);
+    const fbSends = h.requests.filter(r => r.path === '/api/facebook/send');
+    if (scenario === 'chung-anh') {
+      assert.equal(result.sent, 1);
+      assert.deepEqual(codes, ['SU2082628', 'SU2082622', 'SU12082625']);
+      assert.equal(fbSends.length, 1);
+      assert.equal(fbSends[0].name, 'Chung Anh');
+      assert.equal(fbSends[0].keyword, 'buyer');
+      assert.equal(fbSends[0].message, 'shipping 1');
+      assert.equal(h.reports[0].channel, 'facebook');
+      assert.equal(h.reports[0].phoneOriginal, 'recipient');
+      assert.deepEqual(marked, [[1, 'buyer']]);
+      assert.equal(synced[0].phone, 'buyer');
+    } else {
+      assert.equal(result.failed, 1);
+      assert.equal(fbSends.length, 0);
+      assert.equal(marked.length, 0);
+      assert.equal(synced.length, 0);
+      assert.match(h.reports[0].error, scenario === 'lookup-error' ? /Lookup unavailable/ : /nhiều khách/);
+    }
+  });
+}
+
 function load(file, mocks, extra = {}) {
   const filename = path.join(__dirname, '..', file);
   const box = { module: { exports: {} }, console: { log() {}, warn() {}, error() {} }, URLSearchParams, setTimeout: fn => fn(),
