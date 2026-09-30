@@ -467,7 +467,7 @@ async function getAllOrders(filters = {}) {
   };
 
   if (!config.basso.listCacheTtlMs) return { ...(await fetchFn()), source: 'api' };
-  const { data, source } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, fetchFn);
+  const { data, source } = await swrFetch(cacheKey, config.basso.listCacheTtlMs, fetchFn, { fresh: !!filters.fresh });
   return { ...data, source };
 }
 
