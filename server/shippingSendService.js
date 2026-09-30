@@ -228,7 +228,12 @@ async function sendShippingOne(order, opts = {}) {
   // opts.channel==='zalo') — tôn trọng lựa chọn của người gửi, không tự ý đổi kênh.
   const allowChannelSwitch = resolved.source !== 'explicit' && opts.channel !== 'zalo';
   if (!result.ok && resolved.channel !== 'facebook' && !fallback && isRetryableAccountError(result.error)) {
-    const fb = await once('fallback-customer', () => findFallbackCustomer(order).catch(() => null));
+    let fb;
+    try {
+      fb = await once('fallback-customer', () => findFallbackCustomer(order, true));
+    } catch (err) {
+      result = { ok: false, error: err.message };
+    }
     if (fb && fb.phone && fb.phone !== order.phone) {
       const fbLink = allowChannelSwitch ? getFbLink(fb.phone) : '';
       if (fbLink) {
