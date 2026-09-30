@@ -341,12 +341,12 @@ function makeCachedMap(build) {
 
 // Gom điều kiện WHERE dùng chung cho listReports + stats để 2 nơi lọc y hệt nhau.
 // staff/sender/account là bộ lọc mở rộng: khớp CHÍNH XÁC giá trị đã chọn từ dropdown.
-function reportsWhere({ status, q, from, to, staff, sender, account } = {}) {
+function reportsWhere({ status, q, from, to, staff, sender, account, kind, beforeId } = {}) {
   const where = [];
   const params = {};
   if (status) { where.push('status = @status'); params.status = status; }
   if (q) {
-    where.push('(customer_name LIKE @q OR phone LIKE @q OR order_id LIKE @q)');
+    where.push('(customer_name LIKE @q OR phone LIKE @q OR phone_original LIKE @q OR order_id LIKE @q OR error LIKE @q)');
     params.q = `%${q}%`;
   }
   // from/to là mốc ISO (UTC) do client tính từ ngày local; so sánh chuỗi ISO đúng thứ tự.
@@ -355,6 +355,11 @@ function reportsWhere({ status, q, from, to, staff, sender, account } = {}) {
   if (staff) { where.push('staff = @staff'); params.staff = staff; }
   if (sender) { where.push('sent_by = @sender'); params.sender = sender; }
   if (account) { where.push('zalo_account = @account'); params.account = account; }
+  if (kind === 'ship') where.push("kind = 'ship'");
+  if (kind === 'hang') where.push("(kind IS NULL OR kind <> 'ship')");
+  if (Number.isSafeInteger(Number(beforeId)) && Number(beforeId) > 0) {
+    where.push('id < @beforeId'); params.beforeId = Number(beforeId);
+  }
   return { whereSql: where.length ? ' WHERE ' + where.join(' AND ') : '', params };
 }
 
@@ -363,6 +368,17 @@ function listReports({ limit = 200, ...filters } = {}) {
   params.limit = Math.min(limit, 1000);
   const sql = `SELECT * FROM reports${whereSql} ORDER BY id DESC LIMIT @limit`;
   return db.prepare(sql).all(params).map(parseImages);
+}
+
+function listReportPage({ limit = 200, beforeId, ...filters } = {}) {
+  const size = Math.min(Math.max(parseInt(limit, 10) || 200, 1), 1000);
+  const { whereSql, params } = reportsWhere({ ...filters, beforeId });
+  const rows = db.prepare(`SELECT * FROM reports${whereSql} ORDER BY id DESC LIMIT @limit`)
+    .all({ ...params, limit: size + 1 });
+  const count = reportsWhere(filters);
+  const total = db.prepare(`SELECT COUNT(*) AS total FROM reports${count.whereSql}`).get(count.params).total;
+  const items = rows.slice(0, size).map(parseImages);
+  return { items, total, nextCursor: rows.length > size ? items[items.length - 1].id : null };
 }
 
 // Giá trị phân biệt cho các dropdown lọc mở rộng (Nhân viên / Người gửi / Tài khoản).
@@ -934,9 +950,9 @@ function findChannelAccount({ kenhSale, staffId, staffName } = {}) {
 }
 
 // Thẻ thống kê tôn trọng bộ lọc ngày + tìm kiếm (không lọc theo status vì đếm riêng từng loại).
-function stats({ q, from, to, staff, sender, account } = {}) {
+function stats({ q, from, to, staff, sender, account, kind } = {}) {
   // Không tính 'status' vào WHERE: thẻ thống kê phải hiện đủ 4 trạng thái để bấm lọc.
-  const { whereSql, params } = reportsWhere({ q, from, to, staff, sender, account });
+  const { whereSql, params } = reportsWhere({ q, from, to, staff, sender, account, kind });
   const row = db.prepare(`
     SELECT
       COUNT(*) AS total,
@@ -1181,6 +1197,7 @@ function migrateFbRoutingIntoContacts() {
 migrateFbRoutingIntoContacts();
 
 module.exports = {
+  listReportPage,
   db, addReport, updateReport, getReportById, listReports, reportFacets, stats, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, recordAutoNotified, autoKey, autoKeyShip, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified, markShippingNotified,

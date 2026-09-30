@@ -14,7 +14,7 @@ const shippingApi = require('./shippingApi');
 const shippingNotify = require('./shippingNotify');
 const shippingSendService = require('./shippingSendService');
 const shippingAutoNotify = require('./shippingAutoNotify');
-const { listReports, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
+const { listReportPage, reportFacets, stats, getReportById, getAutoRecord, getAutoMap, getSentTimesMap, getLastReportMap, getDelayedMap, setDelayed,
   getShipSeenMap, recordShipSeen, countShipSeen,
   getShippingNotified, getShippingTemplates, setShippingTemplate,
   isShippingExcluded, setShippingExcluded,
@@ -1219,9 +1219,10 @@ app.post('/api/webhook/ship', async (req, res) => {
 // ---- Lịch sử report ----
 app.get('/api/reports', async (req, res) => {
   try {
-    const { limit, status, q, from, to, staff, sender, account } = req.query;
-    const filters = { status, q, from, to, staff, sender, account };
-    const items = listReports({ limit: limit ? parseInt(limit, 10) : 200, ...filters });
+    const { limit, status, q, from, to, staff, sender, account, kind, beforeId } = req.query;
+    const filters = { status, q, from, to, staff, sender, account, kind };
+    const page = listReportPage({ limit, beforeId, ...filters });
+    const items = page.items;
     // Kênh hiển thị bám theo NỀN TẢNG tài khoản đã gửi (chuẩn hơn cột channel đã lưu — đúng cả
     // report cũ chưa có channel): report gửi bằng 1 tài khoản Facebook -> chip 'facebook'.
     let fbIds = null;
@@ -1241,7 +1242,7 @@ app.get('/api/reports', async (req, res) => {
         channel: (r.zalo_account && fbIds.has(String(r.zalo_account).trim())) ? 'facebook' : (r.channel || 'zalo'),
       }))
       : items;
-    res.json({ ok: true, stats: stats(filters), items: items2, facets: reportFacets() });
+    res.json({ ok: true, stats: stats(filters), items: items2, total: page.total, nextCursor: page.nextCursor, facets: reportFacets() });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }

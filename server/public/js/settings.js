@@ -1128,6 +1128,7 @@
   // ---------------- Log thao tác & gửi — hiển thị kiểu TERMINAL (dùng lại /api/reports) ----------------
   const logTerm = $('logTerm');
   let logTimer = null; // debounce cho ô tìm
+  let logCursor = null, logItems = [], logRequest = 0;
 
   const isNoConvLog = (msg) => /KHONG_THAY_HOI_THOAI/i.test(msg || '');
   // Token trạng thái kiểu terminal: [NHÃN, class màu]. Đệm cho thẳng cột.
@@ -1162,7 +1163,10 @@
     sel.value = cur;
   }
 
-  async function loadLog() {
+  async function loadLog(older = false) {
+    older = older === true; // DOM event callbacks start a fresh search.
+    if (older && (logCursor == null || $('logMore').disabled)) return;
+    const request = ++logRequest;
     const q = $('logSearch').value.trim();
     const status = $('logStatus').value;
     const kind = $('logKind').value;
@@ -1170,27 +1174,30 @@
     const from = $('logFrom').value; // YYYY-MM-DD (giờ local)
     const to = $('logTo').value;
     const limit = $('logLimit').value || '200';
-    logTerm.innerHTML = '<div class="log-empty">Đang tải…</div>';
+    if (!older) {
+      logItems = []; logCursor = null;
+      logTerm.innerHTML = '<div class="log-empty">Đang tải…</div>';
+      $('logMore').hidden = true;
+    }
+    $('logMore').disabled = true;
     try {
       const params = new URLSearchParams({ limit });
       if (q) params.set('q', q);
       if (status) params.set('status', status);
+      if (kind) params.set('kind', kind);
+      if (staff) params.set('staff', staff);
+      if (older) params.set('beforeId', logCursor);
       // Ngày local -> mốc ISO: from = đầu ngày, to = đầu ngày kế tiếp (API so sánh created_at < to).
       if (from) { const d = new Date(`${from}T00:00:00`); if (!isNaN(d)) params.set('from', d.toISOString()); }
       if (to) { const d = new Date(`${to}T00:00:00`); if (!isNaN(d)) { d.setDate(d.getDate() + 1); params.set('to', d.toISOString()); } }
       const res = await App.api(`/api/reports?${params.toString()}`);
-      let items = res.items || [];
-      const total = items.length; // số lượt sau lọc phía server (q/kết quả/ngày)
-      // Danh sách nhân viên lấy từ toàn bộ dữ liệu (trước khi lọc theo nhân viên).
-      fillStaffFilter(items);
-      // Lọc loại tin (hàng/ship) ở client — API không có filter kind riêng.
-      if (kind) items = items.filter((r) => (r.kind === 'ship' ? 'ship' : 'hang') === kind);
-      // Lọc theo nhân viên ở client.
-      if (staff) items = items.filter((r) => (r.staff || '').trim() === staff);
-      // Bộ đếm: nếu lọc client (hàng-ship/nhân viên) làm giảm số dòng thì hiện "X / Y lượt".
-      $('logCount').textContent = items.length < total
-        ? `${items.length} / ${total} lượt`
-        : `${items.length} lượt`;
+      if (request !== logRequest) return;
+      logItems = older ? [...logItems, ...(res.items || [])] : (res.items || []);
+      const items = logItems;
+      logCursor = res.nextCursor ?? null;
+      $('logMore').hidden = logCursor == null;
+      fillStaffFilter(res.facets?.staff ? res.facets.staff.map(staff => ({ staff })) : items);
+      $('logCount').textContent = `${items.length} / ${res.total ?? items.length} lượt`;
       if (!items.length) {
         logTerm.innerHTML = '<div class="log-empty">Chưa có lượt báo nào khớp.</div>';
         return;
@@ -1219,6 +1226,7 @@
           + `<span class="${cls}">${tok}</span> `
           + `<span class="t-kind">${kindTok}</span>  `
           + `${E(r.customer_name || '-')} <span class="t-key">${E(r.phone || '')}</span>  `
+          + (r.phone_original ? `<span class="t-key">SĐT ban đầu=${E(r.phone_original)}</span>  ` : '')
           + `<span class="t-key">nv=</span>${E(r.staff || '-')} `
           + `<span class="t-key">by=</span>${by} `
           + `<span class="t-key">acct=</span>${acct}`
@@ -1226,12 +1234,17 @@
           + jumpLink
           + '</div>';
       }).join('');
-      logTerm.scrollTop = 0;
+      if (!older) logTerm.scrollTop = 0;
     } catch (e) {
-      logTerm.innerHTML = `<div class="log-empty">Lỗi tải log: ${App.esc(e.message || '')}</div>`;
+      if (request !== logRequest) return;
+      if (older) App.toast(`Lỗi tải log cũ: ${e.message || ''}`);
+      else logTerm.innerHTML = `<div class="log-empty">Lỗi tải log: ${App.esc(e.message || '')}</div>`;
+    } finally {
+      if (request === logRequest) $('logMore').disabled = false;
     }
   }
 
+  $('logMore').addEventListener('click', () => loadLog(true));
   $('logReload').addEventListener('click', loadLog);
   $('logStatus').addEventListener('change', loadLog);
   $('logKind').addEventListener('change', loadLog);
