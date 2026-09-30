@@ -6,6 +6,64 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { withLock } = require('../server/lock');
 
+for (const kind of ['hang', 'ship', 'shipping-management']) {
+  for (const scenario of ['different-phone', 'same-phone', 'explicit-zalo', 'no-fb', 'missing-account', 'lookup-error', 'partial-owner', 'multiple-owners', 'resolver-error', 'login-error', 'uncertain']) {
+    test(`${kind}: purchaser fallback ${scenario}`, async () => {
+      const lookups = [], selections = [], contentPhones = [];
+      const phone = scenario === 'same-phone' ? 'buyer' : 'recipient';
+      const initialError = scenario === 'login-error' ? 'CHUA_DANG_NHAP: login'
+        : scenario === 'uncertain' ? 'NEEDS_CHECK: KHONG_THAY_HOI_THOAI' : 'KHONG_THAY_HOI_THOAI: missing';
+      const h = harness(r => r.path === '/api/zalo/send' && r.keyword === phone ? initialError : null, async () => {}, {
+        db: { getFbLink: p => p === 'buyer' && scenario !== 'no-fb' ? 'https://facebook.com/messages/t/buyer' : '' },
+        basso: {
+          getArrivedItems: async () => ({ items: [{ orderCode: 'SU1' }, { orderCode: 'SU2' }] }),
+          getOrderContent: async args => { contentPhones.push(args.phone); return { found: true, noiDungBaoHang: 'fresh arrival', noiDungBaoShip: 'fresh ship' }; },
+          findCustomerByOrderCode: async code => {
+            lookups.push(code);
+            if (scenario === 'lookup-error') throw Error('Lookup unavailable');
+            if (scenario === 'partial-owner' && code === 'SU2') return null;
+            return { phone: scenario === 'multiple-owners' && code === 'SU2' ? 'other' : 'buyer', customerName: 'Chung Anh', customerId: 1 };
+          },
+        },
+        resolveForOrder: async (order, opts) => {
+          selections.push({ phone: order.phone, ...opts });
+          if (opts.channel === 'facebook') {
+            assert.equal(opts.account, undefined);
+            assert.equal(opts.profile, undefined);
+            if (scenario === 'resolver-error') throw Error('Resolver unavailable');
+            return { channel: 'facebook', profile: 'FB', account: 'FB', skip: scenario === 'missing-account' };
+          }
+          return { channel: 'zalo', profile: 'Z', account: 'Z', source: opts.account ? 'explicit' : 'store' };
+        },
+      });
+      const order = { id: 1, phone, customerName: 'Recipient', recipient: 'Recipient', items: [{ orderCode: 'SU1' }, { orderCode: 'SU2' }] };
+      const opts = { kind, ...(scenario === 'explicit-zalo' ? { account: 'Z', profile: 'Z', channel: 'zalo' } : {}) };
+      const result = kind === 'shipping-management' ? await h.shipping.sendShippingBulk([order], opts) : await h.notify.notifyOrders([order], opts);
+      const sends = h.requests.filter(r => r.path.endsWith('/send'));
+      const succeeds = ['different-phone', 'same-phone', 'explicit-zalo', 'no-fb'].includes(scenario);
+      assert.equal(result.sent, succeeds ? 1 : 0);
+      assert.equal(h.reports.length, 1);
+      assert.equal(h.reports[0].status, succeeds ? 'success' : 'failed');
+      if (succeeds) {
+        assert.equal(sends.length, 2); // Resuming another profile must not send twice.
+        const last = sends[1];
+        assert.equal(last.keyword, 'buyer');
+        assert.equal(last.name, 'Chung Anh');
+        assert.equal(last.path, scenario === 'no-fb' ? '/api/zalo/send' : '/api/facebook/send');
+        assert.equal(h.reports[0].phone, 'buyer');
+        assert.equal(h.reports[0].channel, scenario === 'no-fb' ? 'zalo' : 'facebook');
+        assert.equal(last.message, kind === 'shipping-management' ? 'shipping 1' : kind === 'ship' ? 'fresh ship' : 'fresh arrival');
+        if (kind !== 'shipping-management') assert.deepEqual(contentPhones, [phone, 'buyer']);
+      } else {
+        assert.equal(sends.length, 1);
+        assert.ok(h.reports[0].error);
+      }
+      if (['login-error', 'uncertain'].includes(scenario)) assert.equal(lookups.length, 0);
+      else assert.ok(lookups.includes('SU1'));
+    });
+  }
+}
+
 for (const scenario of ['chung-anh', 'multiple-owners', 'lookup-error']) {
   test('Zalo missing recipient resolves shipping purchaser: ' + scenario, async () => {
     const codes = [], marked = [], synced = [];
@@ -95,6 +153,7 @@ function harness(outcome = () => null, delay = async () => {}, options = {}) {
   const resolveForOrder = options.resolveForOrder || (async order => ({ profile: 'X', account: 'X', channel: 'zalo',
     fallbackAccounts: [{ profile: 'Y', account: 'Y' }], ...(order.route || {}) }));
   const common = {
+    './customerLookup': require('../server/customerLookup'),
     './accountFallback': require('../server/accountFallback'),
     './accountQueue': queue, './notificationHold': hold, './playwrightProxy': proxy,
     './lock': { withLock }, './db': db, './config': { basso: {}, notify: {} },

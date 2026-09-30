@@ -1,6 +1,7 @@
 'use strict';
 const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
+const { findOrderCustomer, facebookFallbackOptions } = require('./customerLookup');
 /**
  * Pha 1 — Gửi tay báo ship từ trang "Quản lý giao hàng" (xem docs/shipping-notify-plan.md).
  *
@@ -94,26 +95,14 @@ async function trySendZalo(resolved, keyword, matchName, message) {
  * SĐT người nhận trên vận đơn (Quản lý giao hàng) đôi khi KHÁC SĐT khách hàng thật đặt đơn (vd
  * người nhận hộ) -> tìm không ra hội thoại Zalo dù khách có Zalo thật. Tra ngược từng mã đơn
  * trong vận đơn sang "Hàng về VN" (bassoApi.findCustomerByOrderCode) để lấy SĐT khách hàng thật,
- * thử mã đầu tiên khớp được cho fallback Zalo. Nhánh Facebook tra trước khi gửi,
  * kiểm tra các mã để không chọn tùy ý khi vận đơn thuộc nhiều chủ đơn.
  * Chỉ tra trong lượt gửi, không tính sẵn cho toàn bộ danh sách hiển thị.
  * @returns {Promise<{customerName:string, phone:string}|null>}
  */
-async function findFallbackCustomer(order, verifyOwner = false) {
+async function findFallbackCustomer(order) {
   const items = Array.isArray(order.items) ? order.items : [];
   const codes = [...new Set(items.map((it) => it && it.orderCode && String(it.orderCode).trim()).filter(Boolean))];
-  let owner = null;
-  for (const code of codes) {
-    // eslint-disable-next-line no-await-in-loop
-    const hit = await findCustomerByOrderCode(code);
-    if (hit && hit.phone) {
-      if (!verifyOwner) return hit;
-      if (owner && owner.phone !== hit.phone) throw new Error('Vận đơn có nhiều khách đặt hàng khác nhau — chưa thể chọn Facebook nhận báo ship.');
-      owner = hit;
-    }
-  }
-  if (verifyOwner && codes.length && !owner) throw new Error('Không tra được khách đặt hàng từ mã đơn — chưa gửi báo ship qua Facebook.');
-  return owner;
+  return codes.length ? findOrderCustomer(codes, findCustomerByOrderCode) : null;
 }
 
 /**
@@ -190,7 +179,7 @@ async function sendShippingOne(order, opts = {}) {
     if (resolved.channel === 'facebook') {
       // Người nhận có thể là khách của khách, kể cả khi chính họ đã có link FB.
       // Tra chủ đơn trước khi gửi; không nuốt lỗi tra cứu rồi gửi nhầm người nhận.
-      const owner = await once('facebook-owner', () => findFallbackCustomer(order, true));
+      const owner = await once('facebook-owner', () => findFallbackCustomer(order));
       const fbPhone = owner?.phone || order.phone;
       const fbName = owner ? (owner.customerName || getZaloName(fbPhone) || fbPhone) : matchName;
       const fbLink = getFbLink(fbPhone);
@@ -224,52 +213,51 @@ async function sendShippingOne(order, opts = {}) {
   // có hội thoại Zalo" (KHONG_THAY_HOI_THOAI) — các lỗi khác (chưa đăng nhập, mạng...) thử số khác
   // cũng không giải quyết được. SĐT người nhận trên vận đơn có thể khác SĐT khách đặt đơn (người
   // nhận hộ) -> tra ngược mã đơn sang "Hàng về VN" rồi thử gửi lại 1 lần (docs/shipping-notify-plan.md).
-  // Không chạy nếu tài khoản/kênh đã được CHỌN TAY tường minh (resolved.source==='explicit' hoặc
-  // opts.channel==='zalo') — tôn trọng lựa chọn của người gửi, không tự ý đổi kênh.
-  const allowChannelSwitch = resolved.source !== 'explicit' && opts.channel !== 'zalo';
+  // Sau khi không thấy Zalo, dùng thông tin chủ đơn kể cả khi đã chọn Zalo tay.
   if (!result.ok && resolved.channel !== 'facebook' && !fallback && isRetryableAccountError(result.error)) {
     let fb;
     try {
-      fb = await once('fallback-customer', () => findFallbackCustomer(order, true));
-    } catch (err) {
-      result = { ok: false, error: err.message };
-    }
-    if (fb && fb.phone && fb.phone !== order.phone) {
-      const fbLink = allowChannelSwitch ? getFbLink(fb.phone) : '';
-      if (fbLink) {
-        // SĐT khách hàng thật lại có link Facebook trong Danh bạ (khách thực ra báo qua FB, không
-        // phải Zalo — chính là trường hợp gốc gây fail) -> gửi Facebook thay vì thử lại Zalo (thử
-        // lại Zalo với SĐT này gần như chắc chắn cũng lỗi KHONG_THAY_HOI_THOAI).
-        console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có hội thoại Zalo -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) có link Facebook -> gửi qua Facebook thay vì Zalo.`);
-        const fbResolved = await once('fallback-facebook', () => resolveForOrder(resolverOrder(fb.phone), { ...opts, channel: 'facebook' }));
-        if (fbResolved.skip) {
-          result = { ok: false, error: 'Chưa có tài khoản Facebook được gán cho nhân viên để báo khách hàng thật.' };
-        } else {
-          const fbMatchName = getZaloName(fb.phone) || fb.customerName || matchName;
-          const retryResult = await sendFacebookWithFallback(sendBaoHangFb, fbResolved, {
-            profile: fbResolved.profile || 'default', fbLink, keyword: fb.phone, name: fbMatchName, message: built.message,
-          });
+      fb = await once('fallback-customer', () => findFallbackCustomer(order));
+      if (!fb) throw new Error('Không có mã đơn để tra khách đặt hàng.');
+      if (fb && fb.phone) {
+        fallback = fb;
+        const fbLink = getFbLink(fb.phone);
+        if (fbLink) {
+          // SĐT khách hàng thật lại có link Facebook trong Danh bạ (khách thực ra báo qua FB, không
+          // phải Zalo — chính là trường hợp gốc gây fail) -> gửi Facebook thay vì thử lại Zalo (thử
+          // lại Zalo với SĐT này gần như chắc chắn cũng lỗi KHONG_THAY_HOI_THOAI).
+          console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có hội thoại Zalo -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) có link Facebook -> gửi qua Facebook thay vì Zalo.`);
+          const fbResolved = await once('fallback-facebook', () => resolveForOrder(resolverOrder(fb.phone), facebookFallbackOptions(opts)));
+          if (fbResolved.skip) {
+            resolved = fbResolved;
+            result = { ok: false, error: 'Chưa có tài khoản Facebook được gán cho nhân viên để báo khách hàng thật.' };
+          } else {
+            const fbMatchName = getZaloName(fb.phone) || fb.customerName || matchName;
+            const retryResult = await sendFacebookWithFallback(sendBaoHangFb, fbResolved, {
+              profile: fbResolved.profile || 'default', fbLink, keyword: fb.phone, name: fbMatchName, message: built.message,
+            });
+            if (retryResult.deferred || retryResult.stopped) return retryResult;
+            resolved = fbResolved;
+            result = retryResult;
+            fallback = fb;
+          }
+        } else if (fb.phone !== order.phone) {
+          const fbZaloName = getZaloName(fb.phone);
+          const fbMatchName = fbZaloName || fb.customerName || matchName;
+          console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có hội thoại Zalo -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) -> thử gửi lại.`);
+          const retryResult = await trySendZalo(resolved, fb.phone, fbMatchName, built.message);
           if (retryResult.deferred || retryResult.stopped) return retryResult;
-          resolved.channel = 'facebook';
-          resolved.account = fbResolved.account;
-          resolved.profile = fbResolved.profile;
-          result = retryResult;
-          fallback = fb;
-        }
-      } else {
-        const fbZaloName = getZaloName(fb.phone);
-        const fbMatchName = fbZaloName || fb.customerName || matchName;
-        console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có hội thoại Zalo -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) -> thử gửi lại.`);
-        const retryResult = await trySendZalo(resolved, fb.phone, fbMatchName, built.message);
-        if (retryResult.deferred || retryResult.stopped) return retryResult;
-        if (retryResult.ok) {
-          result = retryResult;
-          fallback = fb;
-        } else {
-          console.log(`[shipping-notify] SĐT khách hàng ${fb.phone} cũng không có hội thoại Zalo -> giữ nguyên lỗi.`);
-          result = retryResult;
+          if (retryResult.ok) {
+            result = retryResult;
+            fallback = fb;
+          } else {
+            console.log(`[shipping-notify] SĐT khách hàng ${fb.phone} cũng không có hội thoại Zalo -> giữ nguyên lỗi.`);
+            result = retryResult;
+          }
         }
       }
+    } catch (err) {
+      result = { ok: false, error: err.message };
     }
   }
 
