@@ -614,9 +614,9 @@ async function backfillShipSeenOnce() {
 // ---- Dashboard: danh sách hàng về (phân trang server-side) ----
 app.get('/api/orders', async (req, res) => {
   try {
-    const { from, to, status, staff, q, page, pageSize, days } = req.query;
+    const { from, to, status, staff, q, page, pageSize, days, fresh } = req.query;
     const data = await getOrders({
-      from, to, status, staff, q, days,
+      from, to, status, staff, q, days, fresh: fresh === '1',
       page: page ? parseInt(page, 10) || 1 : 1,
       pageSize: pageSize ? parseInt(pageSize, 10) || undefined : undefined,
     });
@@ -631,8 +631,8 @@ app.get('/api/orders', async (req, res) => {
 // Trả truncated=true khi tập quá lớn -> client tự fallback về /api/orders phân trang server.
 app.get('/api/orders/all', async (req, res) => {
   try {
-    const { from, to, days } = req.query;
-    const data = await getAllOrders({ from, to, days });
+    const { from, to, days, fresh } = req.query;
+    const data = await getAllOrders({ from, to, days, fresh: fresh === '1' });
     data.orders = enrichOrders(data.orders);
     res.json({ ok: true, ...data });
   } catch (err) {
