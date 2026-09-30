@@ -356,6 +356,7 @@
             customerId: o.customerId ?? '', dateInventory: o.dateInventory ?? '', phone: o.phone || '',
           });
           const res = await App.api(`/api/order-content?${qs.toString()}`);
+          if (byId(o.id) !== o) continue; // A newer list replaced this row during the request.
           o.noiDungBaoHang = res.noiDungBaoHang || "";
           o.noiDungBaoShip = res.noiDungBaoShip || "";
           if (res.noiDungBaoHang && String(res.noiDungBaoHang).trim()) updateHangCellDom(o);
@@ -1424,14 +1425,23 @@
   // Kéo TOÀN BỘ đơn của khoảng ngày 1 lần rồi chuyển sang lọc client. Cold-start: vẽ nhanh
   // trang 1 (server) trước cho đỡ trống, kéo tập đầy đủ ở nền rồi applyView thay vào. Tập quá
   // lớn (truncated) -> fallback về phân trang server (load()). auto = autosync (không hiện spinner).
+  // Ignore older responses that arrive after a newer list request (especially manual sync).
+  let listLoadVersion = 0;
+  let countsLoadVersion = 0;
+  let manualSyncing = false;
+
   async function loadAll(opts = {}) {
     const auto = opts.auto === true;
-    if (!auto && !allOrders.length && !clientMode) load({ fastPaint: true }); // vẽ nhanh, không block
+    const version = ++listLoadVersion;
+    ++countsLoadVersion; // Full-list counts supersede any outstanding page-count request.
+    if (!auto && !opts.fresh && !allOrders.length && !clientMode) load({ fastPaint: true, loadVersion: version }); // vẽ nhanh, không block
     const prevTodo = new Set(allOrders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
     const p = new URLSearchParams();
     applyScope(p); // from/to tường minh HOẶC ?days=scopeDays — giữ đúng phạm vi thời gian cả ở client-mode
     try {
+      if (opts.fresh) p.set('fresh', '1');
       const res = await App.api('/api/orders/all?' + p.toString());
+      if (version !== listLoadVersion) return false;
       if (res.truncated) {
         // Tập quá lớn để giữ ở client -> dùng phân trang server như cũ. Đang gom nhóm thì báo
         // cho user biết gom chỉ trong phạm vi trang hiện tại (không đủ chỗ gom cả tập).
@@ -1440,7 +1450,7 @@
           App.toast('⚠️ Quá nhiều đơn để gom cả tập — thu hẹp khoảng ngày/bộ lọc để gom đầy đủ.', 6000);
         }
         if (res.tabUsers && res.tabUsers.length) mergeTabUsers(res.tabUsers);
-        return load({ keepPage: auto || opts.keepPage });
+        return load({ keepPage: auto || opts.keepPage, fresh: opts.fresh });
       }
       clientMode = true;
       allOrders = res.orders || [];
@@ -1453,7 +1463,13 @@
       }
       setSyncInfo();
       applyView({ keepPage: true });
+      return true;
     } catch (e) {
+      if (version !== listLoadVersion) return false;
+      if (opts.fresh) {
+        App.toast(`Không đồng bộ được nội dung mới từ Basso: ${e.message}. Đang giữ bản trước.`, 6000);
+        return false;
+      }
       // Lỗi & chưa có gì để hiện -> KHÔNG xóa trắng kèm lỗi ngay. Tải "tất cả" là truy vấn
       // nặng nhất (login + nhiều trang Basso); nếu nó chậm/timeout thì thử FALLBACK sang
       // phân trang server (chỉ 1 trang nhỏ) — nhẹ hơn nhiều nên thường kịp, và lúc này cache
@@ -1474,11 +1490,12 @@
 
   // ----- SERVER-MODE: phân trang phía server (fallback khi tập quá lớn; + vẽ nhanh cold-start) -----
   async function load(opts = {}) {
+    const version = opts.loadVersion ?? ++listLoadVersion;
     const auto = opts.auto === true;
     const fast = opts.fastPaint === true; // vẽ nhanh trang 1 trong lúc loadAll kéo tập đầy đủ
     const keepPage = auto || opts.keepPage === true; // autosync/pager/refresh: giữ nguyên trang
     if (!keepPage) currentPage = 1;
-    if (!auto) rowsEl.innerHTML = `<tr><td colspan="${COLSPAN}" class="empty">Đang tải...</td></tr>`;
+    if (!auto && !opts.fresh) rowsEl.innerHTML = `<tr><td colspan="${COLSPAN}" class="empty">Đang tải...</td></tr>`;
     const q = $('fQ').value;
     const base = new URLSearchParams();
     applyScope(base); // from/to tường minh, hoặc ?days=scopeDays (cửa sổ mặc định)
@@ -1489,9 +1506,11 @@
     if (status) params.set('status', status);
     params.set('page', currentPage);
     params.set('pageSize', PAGE_SIZE);
+    if (opts.fresh) params.set('fresh', '1');
     const prevTodo = new Set(orders.filter((o) => groupOf(o) === 'todo').map((o) => String(o.id)));
     try {
       const res = await App.api('/api/orders?' + params.toString());
+      if (version !== listLoadVersion) return false;
       // Trong lúc chờ, loadAll đã chuyển sang client-mode -> bỏ kết quả vẽ-nhanh để không đè.
       if (fast && clientMode) return;
       orders = res.orders || [];
@@ -1502,7 +1521,7 @@
       // Trang hiện tại vượt quá tổng (vd sau khi báo loạt làm đơn rời nhóm) -> nhảy về trang cuối.
       if (!orders.length && currentPage > 1 && serverTotal > 0) {
         currentPage = Math.max(1, Math.ceil(serverTotal / PAGE_SIZE));
-        return load({ keepPage: true });
+        return load({ keepPage: true, fresh: opts.fresh });
       }
       // LƯU Ý: `orders` chỉ là 1 trang -> KHÔNG xoá openRows/dirtyNotes vì đơn vắng mặt
       // có thể ở trang khác (tránh mất trạng thái mở rộng & ghi chú đang soạn dở).
@@ -1520,7 +1539,13 @@
       updateCount(visibleOrders());
       // (Bỏ prefetch từng tab NV: server-mode mỗi tab là 1 call sống — prefetch = N call dội
       //  Basso mỗi lần mở, hại nhiều hơn lợi. Tab NV nào bấm mới tải, cache SWR giữ cho lần sau.)
+      return true;
     } catch (e) {
+      if (version !== listLoadVersion) return false;
+      if (opts.fresh) {
+        App.toast(`Không đồng bộ được nội dung mới từ Basso: ${e.message}. Đang giữ bản trước.`, 6000);
+        return false;
+      }
       if (!auto && !fast) {
         rowsEl.innerHTML = `<tr><td colspan="${COLSPAN}" class="empty"><span>Lỗi tải: ${App.esc(e.message)}</span> <button class="btn-retry" onclick="this.closest('tr').remove();window.__miReload&&window.__miReload()">Thử lại</button></td></tr>`;
       }
@@ -1551,16 +1576,19 @@
   // chỉ lấy total). ÁP DỤNG ĐÚNG phạm vi đang lọc (applyScope: khoảng ngày from/to tường minh,
   // hoặc ?days) + NV + tìm kiếm -> con số trên nút KHỚP tập thực gửi khi đang lọc theo ngày
   // (trước đây đếm all-time nên nút hiện nhiều hơn số thực gửi khi có lọc ngày).
-  async function loadCounts() {
+  async function loadCounts(opts = {}) {
+    const version = ++countsLoadVersion;
     const p = new URLSearchParams();
     p.set('status', 'not_sent');
     p.set('pageSize', '1');
+    if (opts.fresh) p.set('fresh', '1');
     if (currentStaff) p.set('staff', currentStaff);
     const q = $('fQ').value.trim();
     if (q) p.set('q', q);
     applyScope(p); // gắn from/to (hoặc days) — đếm đúng phạm vi ngày đang xem
     try {
       const res = await App.api('/api/orders?' + p.toString());
+      if (version !== countsLoadVersion) return;
       counts.todo = res.total != null ? res.total : 0;
       if (res.tabUsers && res.tabUsers.length) { mergeTabUsers(res.tabUsers); renderTabs(); }
       updateCount();
@@ -1574,7 +1602,7 @@
     // User chủ động đồng bộ -> cho các dòng đã hết lượt thử lại (Basso có thể đã sinh ND).
     if (opts.auto !== true) contentAttempts.clear();
     if (clientMode) return loadAll(opts); // gom nhóm: kéo lại cả tập rồi gom + phân trang
-    loadCounts();
+    loadCounts(opts);
     return load(opts);
   }
   function applyFilters(opts = {}) {                              // NV/trạng thái/trang/tìm kiếm đổi
@@ -1616,7 +1644,7 @@
   window.__miReload = () => reloadScope();
 
   function autoSync() {
-    if (document.hidden) return;
+    if (document.hidden || manualSyncing) return;
     if ($('modalBg').classList.contains('show')) return;
     if ($('bulkModalBg').classList.contains('show')) return;
     if (!$('filterPop').hidden) return;
@@ -1692,7 +1720,22 @@
   }
 
   // ---------------- Events ----------------
-  $('syncBtn').addEventListener('click', () => reloadScope({ keepPage: true }));
+  async function manualSync() {
+    if (manualSyncing) return;
+    const btn = $('syncBtn');
+    const label = btn.innerHTML;
+    manualSyncing = true;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Đang đồng bộ…';
+    try {
+      await reloadScope({ keepPage: true, fresh: true });
+    } finally {
+      manualSyncing = false;
+      btn.disabled = false;
+      btn.innerHTML = label;
+    }
+  }
+  $('syncBtn').addEventListener('click', manualSync);
 
   // Gom nhóm cần TOÀN BỘ tập để gom đúng qua mọi trang (không chỉ 20 đơn của trang đang xem).
   // -> Bật gom = kéo cả tập 1 lần (client-mode) rồi gom + phân trang theo nhóm trên toàn tập.
