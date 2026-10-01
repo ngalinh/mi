@@ -628,6 +628,50 @@
   }
 
   // ---- Gửi báo ship hàng loạt (tick nhiều) --------------------------------
+  let bulkNotifyPending = false;
+  let bulkNotifyRunning = false;
+  let bulkNotifyStopping = false;
+  let bulkStatusVersion = 0;
+  function renderBulkNotifyStatus() {
+    const busy = bulkNotifyPending || bulkNotifyRunning;
+    $('btnBulkNotify').disabled = busy;
+    const stop = $('btnStopBulkNotify');
+    stop.hidden = !busy;
+    stop.disabled = bulkNotifyStopping || !bulkNotifyRunning;
+    stop.innerHTML = App.icon('stop') + (bulkNotifyStopping ? ' Đang dừng…' : ' Dừng báo ship');
+    $('bulkNotifyStatus').textContent = bulkNotifyStopping
+      ? 'Đang dừng — chờ đơn đang gửi hoàn tất…'
+      : bulkNotifyRunning ? 'Đang gửi báo ship hàng loạt…'
+        : bulkNotifyPending ? 'Đang bắt đầu báo ship…' : '';
+  }
+  async function syncBulkNotifyStatus() {
+    const version = ++bulkStatusVersion;
+    try {
+      const r = await App.api('/api/shipping/send-bulk/status');
+      if (version !== bulkStatusVersion) return;
+      bulkNotifyRunning = r.running === true;
+      bulkNotifyStopping = r.stopping === true;
+      renderBulkNotifyStatus();
+    } catch (_) { /* Keep the stop control available when a status poll fails. */ }
+  }
+  async function stopBulkNotify() {
+    if (!bulkNotifyRunning || bulkNotifyStopping) return;
+    ++bulkStatusVersion;
+    bulkNotifyStopping = true;
+    renderBulkNotifyStatus();
+    try {
+      const r = await App.api('/api/shipping/send-bulk/stop', { method: 'POST' });
+      App.toast(r.stopping
+        ? 'Đã yêu cầu dừng — đơn đang gửi sẽ chạy xong, các đơn còn lại chưa gửi.'
+        : 'Lượt báo ship đã kết thúc.', 5000);
+      await syncBulkNotifyStatus();
+    } catch (e) {
+      bulkNotifyStopping = false;
+      renderBulkNotifyStatus();
+      App.toast('Không dừng được: ' + App.friendlyError(e.message));
+    }
+  }
+
   // Gắn tài khoản Zalo/FB CHỌN TAY (cột "Tài khoản gửi") của 1 đơn vào payload, nếu có -> báo loạt
   // cũng tôn trọng đúng lựa chọn tay như khi gửi từng dòng thay vì luôn tự động theo NV.
   function withRowAccountOverride(payload, id) {
@@ -637,20 +681,31 @@
     return payload;
   }
   async function bulkNotify() {
+    if (bulkNotifyPending || bulkNotifyRunning) return;
     const ids = checkedIds();
     if (!ids.length) { App.toast('Chưa chọn đơn nào.'); return; }
     const orders = state.orders.filter((o) => ids.includes(String(o.id)))
       .map((o) => withRowAccountOverride(toApiOrder(o), o.id));
     if (!confirm(`Gửi báo ship qua Zalo cho ${orders.length} đơn đã tick?`)) return;
+    ++bulkStatusVersion;
+    bulkNotifyPending = true;
+    renderBulkNotifyStatus();
     try {
       const r = await App.api('/api/shipping/send-bulk', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders }),
+        timeoutMs: 30 * 60 * 1000,
       });
-      App.toast(`Đã gửi ${r.sent}/${r.total} đơn${r.failed ? `, ${r.failed} lỗi` : ''}.`);
+      App.toast(r.stopped
+        ? `Đã dừng báo ship: ${r.sent}/${r.total} đơn đã gửi, ${r.failed} lỗi, ${r.skipped} đơn chưa gửi.`
+        : `Đã gửi ${r.sent}/${r.total} đơn${r.failed ? `, ${r.failed} lỗi` : ''}.`, 6000);
       load();
     } catch (e) {
       App.toast('Lỗi: ' + App.friendlyError(e.message));
+    } finally {
+      bulkNotifyPending = false;
+      await syncBulkNotifyStatus();
+      renderBulkNotifyStatus();
     }
   }
 
@@ -669,6 +724,7 @@
     };
     $('msgSend').onclick = sendMessage;
     $('btnBulkNotify').onclick = bulkNotify;
+    $('btnStopBulkNotify').onclick = stopBulkNotify;
     $('btnSearch').onclick = () => { state.page = 1; load(); };
     $('fQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') { state.page = 1; load(); } });
     ['fCarrier', 'fStatus', 'fDate', 'fStaff'].forEach((id) => $(id).addEventListener('change', () => { state.page = 1; load(); }));
@@ -759,6 +815,11 @@
   }
 
   bind();
+  async function pollBulkNotifyStatus() {
+    await syncBulkNotifyStatus();
+    setTimeout(pollBulkNotifyStatus, 2000);
+  }
+  pollBulkNotifyStatus();
   loadMeta();
   loadZaloAccounts();
   load();

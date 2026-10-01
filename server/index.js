@@ -985,6 +985,15 @@ app.post('/api/shipping/send', async (req, res) => {
 });
 
 // (Pha 1) Gửi báo ship hàng loạt (tick nhiều đơn). body: { orders:[...] }
+app.get('/api/shipping/send-bulk/status', (req, res) => {
+  res.json({ ok: true, ...shippingSendService.getBulkStatus() });
+});
+
+app.post('/api/shipping/send-bulk/stop', (req, res) => {
+  const stopping = shippingSendService.requestStopBulk();
+  res.json({ ok: true, stopping });
+});
+
 app.post('/api/shipping/send-bulk', async (req, res) => {
   try {
     const orders = req.body && req.body.orders;
@@ -992,7 +1001,7 @@ app.post('/api/shipping/send-bulk', async (req, res) => {
     const r = await shippingSendService.sendShippingBulk(orders, { actor: getActor(req) });
     res.json({ ok: true, ...r });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(err.status || 500).json({ ok: false, error: err.message });
   }
 });
 

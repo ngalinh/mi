@@ -177,6 +177,73 @@ test('stop drains no more sends and finalizes pending reports', async () => {
   assert.equal(h.requests.at(-1).path, '/api/browser/close');
 });
 
+test('shipping bulk stops after the current send, keeps unsent orders retryable and resets for the next batch', async () => {
+  const marked = [];
+  let h, stop = true;
+  h = harness(r => {
+    if (stop && r.path.endsWith('/send')) {
+      assert.equal(h.shipping.requestStopBulk(), true);
+      assert.equal(h.shipping.getBulkStatus().stopping, true);
+    }
+    return null;
+  }, async () => {}, { db: { markShippingNotified: id => marked.push(id) } });
+  assert.equal(h.shipping.requestStopBulk(), false);
+  const orders = [1, 2, 3].map(id => ({ id, phone: String(id) }));
+  const r = await h.shipping.sendShippingBulk(orders);
+  assert.equal(r.total, 3);
+  assert.equal(r.sent, 1);
+  assert.equal(r.failed, 0);
+  assert.equal(r.skipped, 2);
+  assert.equal(r.stopped, true);
+  assert.deepEqual(marked, [1]);
+  assert.equal(h.requests.filter(r => r.path.endsWith('/send')).length, 1);
+  assert.ok(h.reports.every(r => r.status !== 'pending'));
+  assert.equal(h.requests.at(-1).path, '/api/browser/close');
+  assert.equal(h.shipping.getBulkStatus().running, false);
+  assert.equal(h.shipping.getBulkStatus().stopping, false);
+  stop = false;
+  assert.equal((await h.shipping.sendShippingBulk(orders.slice(1))).sent, 2);
+});
+
+test('shipping bulk stops during the inter-send delay without counting cancellation as a failure', async () => {
+  let h;
+  h = harness(() => null, async () => { h.shipping.requestStopBulk(); });
+  const r = await h.shipping.sendShippingBulk([1, 2, 3].map(id => ({ id, phone: String(id) })));
+  assert.equal(r.sent, 1);
+  assert.equal(r.failed, 0);
+  assert.equal(r.skipped, 2);
+  assert.equal(h.requests.filter(r => r.path.endsWith('/send')).length, 1);
+  assert.ok(h.reports.every(r => r.status !== 'pending'));
+});
+
+test('queued shipping bulk is visible, rejects duplicate starts and can be stopped before any send', async () => {
+  const h = harness();
+  const gate = Promise.withResolvers(), entered = Promise.withResolvers();
+  const held = withLock(async () => { entered.resolve(); await gate.promise; }, 'ship');
+  await entered.promise;
+  let batch;
+  try {
+    batch = h.shipping.sendShippingBulk([{ id: 1, phone: '1' }]);
+    assert.equal(h.shipping.getBulkStatus().running, true);
+    await assert.rejects(h.shipping.sendShippingBulk([{ id: 2 }]), e => e.status === 409);
+    assert.equal(h.shipping.getBulkStatus().running, true);
+    assert.equal(h.shipping.requestStopBulk(), true);
+  } finally { gate.resolve(); await held; }
+  const r = await batch;
+  assert.equal(r.stopped, true);
+  assert.equal(r.skipped, 1);
+  assert.equal(r.sent, 0);
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.shipping.getBulkStatus().running, false);
+});
+
+test('shipping bulk clears its state even if account resolution fails', async () => {
+  const h = harness(() => null, async () => {}, { resolveForOrder: async () => { throw Error('resolver failed'); } });
+  await assert.rejects(h.shipping.sendShippingBulk([{ id: 1, phone: '1' }]), /resolver failed/);
+  assert.equal(h.shipping.getBulkStatus().running, false);
+  assert.equal(h.shipping.requestStopBulk(), false);
+});
+
 test('pre-send timeout retries once; missing conversation never retried locally', async () => {
   let reloads = 0, attempts = 0;
   const page = { reload: async () => { reloads++; } };
