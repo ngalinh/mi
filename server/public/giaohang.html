@@ -9,6 +9,8 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="css/styles.css?v=20260803" />
   <style>
+    #btnStopBulkNotify { background: var(--red); color: #fff; }
+    #btnStopBulkNotify[hidden] { display: none; }
     /* Bảng giao hàng: table-layout:fixed + <col> theo % (đặt bởi applyColVis() ở giaohang.js) ->
        mỗi cột giữ ĐÚNG TỈ LỆ đã khai (không bị 1 ô nội dung dài — vd link shipper nowrap — "hút"
        hết chỗ của cột khác như kiểu auto), NHƯNG vẫn giãn lấp đầy khung khi ẩn bớt cột (responsive).
@@ -134,6 +136,8 @@
         <div class="ship-topbar-actions">
           <button class="btn secondary small" id="btnBulkShip">Giao shipper</button>
           <button class="btn secondary small" id="btnBulkNotify" title="Gửi tin báo ship qua Zalo cho các đơn đã tick">Gửi báo ship</button>
+          <button class="btn secondary small" id="btnStopBulkNotify" hidden title="Dừng sau khi gửi xong đơn đang chạy; các đơn còn lại chưa gửi">Dừng báo ship</button>
+          <span id="bulkNotifyStatus" class="muted" role="status" aria-live="polite"></span>
           <button class="btn secondary small" id="btnPrint">In phiếu giao hàng</button>
           <button class="btn accent small" id="btnBulkComplete">Đã giao hàng</button>
         </div>
@@ -248,7 +252,7 @@
 
   <div class="toast" id="toast"></div>
   <script src="js/app.js?v=20260922"></script>
-  <script src="js/giaohang.js?v=20260804"></script>
+  <script src="js/giaohang.js?v=20261001"></script>
   <script>App.initMobileNav(); App.initUserAvatar();</script>
 </body>
 </html>

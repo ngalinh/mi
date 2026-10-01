@@ -20,6 +20,17 @@ const {
 const { withLock: lock } = require('./lock');
 const withLock = fn => lock(fn, 'ship');
 
+// Reserve the batch before waiting for the ship lock so queued work can also be stopped.
+let bulkRun = null;
+function getBulkStatus() {
+  return { running: !!bulkRun, stopping: !!bulkRun?.stop };
+}
+function requestStopBulk() {
+  if (!bulkRun) return false;
+  bulkRun.stop = true;
+  return true;
+}
+
 /** NV duyệt đại diện của vận đơn — lấy từ dòng SP đầu tiên (thường cả đơn cùng 1 NV duyệt). */
 function firstApproveUser(order) {
   const items = Array.isArray(order.items) ? order.items : [];
@@ -310,18 +321,36 @@ async function sendShippingOne(order, opts = {}) {
  * @param {object} [opts] { actor }
  */
 async function sendShippingBulk(orders, opts = {}) {
+  if (bulkRun) {
+    const error = new Error('Đang có một lượt báo ship hàng loạt. Hãy đợi hoặc dừng lượt hiện tại.');
+    error.status = 409;
+    throw error;
+  }
+  const run = { stop: false };
+  bulkRun = run;
+  try {
+    return await withLock(() => runShippingBulk(orders, opts, run));
+  } finally {
+    bulkRun = null;
+  }
+}
+
+async function runShippingBulk(orders, opts, run) {
   const list = Array.isArray(orders) ? orders : [];
   const results = [];
   await withBrowserBatch(async () => {
     const send = order => sendShippingOne(order, (order.account || order.profile)
       ? { ...opts, account: order.account || opts.account, profile: order.profile || opts.profile } : opts);
-    for await (const { item: order, result: r } of accountQueue(list, send)) {
+    for await (const { item: order, result: r } of accountQueue(list, send, { shouldStop: () => run.stop })) {
+      if (r.stopped) break;
       results.push({ id: order.id, ok: r.ok, error: r.error || null, alreadySent: !!r.alreadySent });
 
     }
   });
   const sent = results.filter((r) => r.ok).length;
-  return { total: results.length, sent, failed: results.length - sent, results };
+  return { total: list.length, sent, failed: results.length - sent,
+    stopped: run.stop, skipped: list.length - results.length, results };
 }
 
-module.exports = { sendShippingOne: (...args) => withLock(() => sendShippingOne(...args)), sendShippingBulk: (...args) => withLock(() => sendShippingBulk(...args)), firstApproveUser };
+module.exports = { sendShippingOne: (...args) => withLock(() => sendShippingOne(...args)),
+  sendShippingBulk, getBulkStatus, requestStopBulk, firstApproveUser };
