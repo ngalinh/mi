@@ -198,16 +198,20 @@ async function fetchAllShippingOrders(filters = {}) {
   const all = [];
   const seen = new Set();
   let source = 'api';
-  for (let page = 1; page <= 100; page += 1) {
+  for (let page = 1; ; page += 1) {
     // eslint-disable-next-line no-await-in-loop
     const { orders, total, pageSize, source: pageSource } = await getShippingOrders({ ...filters, page });
     source = pageSource || source;
+    const previousCount = all.length;
     for (const o of orders) {
       if (!seen.has(o.id)) { seen.add(o.id); all.push(o); }
     }
     if (!orders.length) break;                                  // hết trang
     if (pageSize && orders.length < pageSize) break;             // trang cuối (chưa đầy)
     if (total != null && all.length >= total) break;             // đã đủ
+    if (all.length === previousCount) {
+      throw new Error('Không thể tải đủ vận đơn: API trả lại trang trùng lặp. Vui lòng thử lại.');
+    }
   }
   return { orders: all, source };
 }
