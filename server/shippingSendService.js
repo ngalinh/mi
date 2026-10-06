@@ -163,7 +163,24 @@ async function sendShippingOne(order, opts = {}) {
     staff, userId: staffUserId, orderCode, phone,
     saleChannel: order.saleChannel, saleChannelLabel: order.saleChannelLabel,
   });
-  let resolved = await once('resolved', () => resolveForOrder(resolverOrder(order.phone), opts));
+  // AhaMove: kiểm tra Danh bạ của chủ đơn trước khi chọn tài khoản,
+  // kể cả khi SĐT người nhận chưa có Zalo hoặc không có account Zalo phù hợp.
+  // Lựa chọn tài khoản/kênh tường minh của NV vẫn được ưu tiên.
+  let ahaFacebookOwner = null;
+  if (Number(order.shippingId) === 3 && !opts.account && opts.channel !== 'zalo') {
+    try {
+      ahaFacebookOwner = await once('facebook-owner', () => findFallbackCustomer(order, true));
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+  const contactPhone = ahaFacebookOwner?.phone || order.phone;
+  const useAhaFacebook = Number(order.shippingId) === 3
+    && !opts.account && opts.channel !== 'zalo' && !!getFbLink(contactPhone);
+  let resolved = await once('resolved', () => resolveForOrder(
+    resolverOrder(useAhaFacebook ? contactPhone : order.phone),
+    useAhaFacebook ? { ...opts, channel: 'facebook' } : opts,
+  ));
   // Contact target overrides are applied per attempt, using the actual destination phone.
   // LOG CHẨN ĐOÁN: account + kiểu báo đã chọn cho đơn này (đối chiếu khi khách báo gửi nhầm nhóm/cá nhân).
   console.log(`[shipping-notify] ${order.recipient || order.phone || '?'} | staff=${staff || '-'} userId=${staffUserId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${getContactReportTarget(order.phone) || resolved.notifyTarget || 'group'}`);
