@@ -1,13 +1,14 @@
 'use strict';
 const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
+const { findOrderCustomer, facebookFallbackOptions } = require('./customerLookup');
 const config = require('./config');
-const { getOrders, updateOrderStatus, getArrivedItems, getOrderContent } = require('./bassoApi');
+const { getOrders, updateOrderStatus, getArrivedItems, getOrderContent, findCustomerByOrderCode } = require('./bassoApi');
 const { sendBaoHang, sendBaoHangFb } = require('./playwrightProxy');
 const { buildBaoHangMessage, buildBaoShipMessage } = require('../shared/messageTemplate');
 const { addReport, updateReport, getAutoRecord, recordAutoNotified, autoKey, autoKeyShip, getFbLink, getZaloName, getContactReportTarget } = require('./db');
 const { withLock } = require('./lock');
-const { resolveForOrder } = require('./accountResolver');
+const { resolveForOrder, isRetryableAccountError } = require('./accountResolver');
 
 // Marker lỗi "chưa đăng nhập Zalo" do runner (salework.ensureLoggedIn) ném ra khi mở trình duyệt
 // mà thấy trang login. Dùng để DỪNG NGAY báo loạt thay vì để mọi đơn còn lại failed như nhau.
@@ -162,7 +163,7 @@ async function notifyOne(order, opts = {}) {
   // brand không phân biệt được, resolver dùng kênh sale (chọn tay > thật của đơn > gắn trong Danh
   // bạ) để chọn đúng tài khoản trong số đó, KHÔNG tự chọn account độc lập với NV — xem
   // accountResolver.resolveForOrder.
-  const resolved = await once('resolved', () => resolveForOrder(order, opts));
+  let resolved = await once('resolved', () => resolveForOrder(order, opts));
   // Contact target overrides are applied per attempt, using the actual destination phone.
   // LOG CHẨN ĐOÁN: server đã chọn account nào + kiểu báo gì cho đơn này. notifyTarget=group cho NV
   // đáng lẽ cá nhân -> đơn KHÔNG khớp account store (source!='store'), hoặc server chạy code cũ.
@@ -232,13 +233,14 @@ async function notifyOne(order, opts = {}) {
     zaloAccount: resolved.account || resolved.profile || null,
   }), report => updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' }));
 
+  let fallback = null;
   const prepareMessage = async () => {
     if (opts.messageOverride && opts.messageOverride.trim()) return message;
     if (order.customerId == null || order.dateInventory == null) {
       throw new Error('Không đủ khóa đơn để lấy nội dung mới từ Basso. Hãy tải lại Dashboard.');
     }
     const fresh = await getOrderContent({ customerId: order.customerId,
-      dateInventory: order.dateInventory, phone: order.phone, fresh: true });
+      dateInventory: order.dateInventory, phone: fallback ? fallback.phone : order.phone, fresh: true });
     const next = fresh && fresh.found && (kind === 'ship' ? fresh.noiDungBaoShip : fresh.noiDungBaoHang);
     if (!next || !String(next).trim()) {
       throw new Error('Basso chưa có nội dung mới cho đúng đơn này; chưa gửi tin.');
@@ -307,6 +309,47 @@ async function notifyOne(order, opts = {}) {
 
   if (result.deferred || result.stopped) return result;
 
+  if (!result.ok && resolved.channel !== 'facebook' && isRetryableAccountError(result.error)) {
+    try {
+      const owner = await once('fallback-customer', async () => {
+        const { items } = await getArrivedItems({ id: order.id, customerId: order.customerId, dateInventory: order.dateInventory });
+        const codes = (items || []).map(item => item.orderCode).filter(Boolean);
+        if (!codes.length) codes.push(...String(meta.orderCode || '').split(/[,;]+/));
+        return findOrderCustomer(codes, findCustomerByOrderCode);
+      });
+      if (owner.customerId != null && order.customerId != null && String(owner.customerId) !== String(order.customerId)) {
+        throw new Error('Khách tra từ mã đơn không khớp khách của nội dung báo — cần kiểm tra lại đơn hàng.');
+      }
+      fallback = owner;
+      const destination = { ...order, phone: owner.phone, customerName: owner.customerName };
+      const fbLink = getFbLink(owner.phone);
+      if (fbLink) {
+        resolved = await once('fallback-facebook', () => resolveForOrder(destination, facebookFallbackOptions(opts)));
+        result = resolved.skip
+          ? { ok: false, error: 'Chưa có tài khoản Facebook được gán cho nhân viên để báo khách đặt hàng.' }
+          : await sendFacebookWithFallback(sendBaoHangFb, resolved, {
+            profile: resolved.profile || 'default', fbLink, keyword: owner.phone,
+            name: getZaloName(owner.phone) || owner.customerName || owner.phone,
+            message, prepareMessage, strictMatch: opts.strictMatch === true,
+          });
+      } else if (owner.phone !== order.phone) {
+        const candidates = [resolved, ...(resolved.fallbackAccounts || [])];
+        for (const candidate of candidates) {
+          result = await sendBaoHang({ profile: candidate.profile || 'default', account: candidate.account,
+            keyword: owner.phone, name: getZaloName(owner.phone) || owner.customerName || owner.phone,
+            message, prepareMessage, strictMatch: opts.strictMatch === true,
+            notifyTarget: getContactReportTarget(owner.phone) || candidate.notifyTarget || 'group' });
+          if (result.deferred || result.stopped) return result;
+          resolved = { ...candidate };
+          if (result.ok || !canTryNextAccount(result.error)) break;
+        }
+      }
+    } catch (err) {
+      result = { ok: false, error: err.message };
+    }
+    if (result.deferred || result.stopped) return result;
+  }
+
   // Gửi thành công -> cập nhật trạng thái 'Đã báo hàng' ngược về web (nếu bật).
   // skipWebUpdate=true (luồng bot tự động): CHỈ lưu trạng thái trong mi, KHÔNG đẩy về web Basso.
   let updateError = null;
@@ -333,6 +376,9 @@ async function notifyOne(order, opts = {}) {
     status: result.ok ? (updateError ? 'sent_check' : 'success') : 'failed',
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
+    channel: resolved.channel,
+    ...(fallback ? { phone: fallback.phone, customerName: fallback.customerName || order.customerName,
+      phoneSource: 'fallback_customer', phoneOriginal: order.phone } : {}),
     // resolved.account/profile được cập nhật lại nếu gửi thành công qua account DỰ PHÒNG (fallback)
     // -> Lịch sử báo phản ánh đúng account đã thực sự gửi, không phải account chính lúc đầu.
     zaloAccount: resolved.account || resolved.profile || null,
