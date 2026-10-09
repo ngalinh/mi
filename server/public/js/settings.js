@@ -1135,7 +1135,7 @@
   function statusTok(r) {
     if (r.status === 'success') return ['OK     ', 't-ok'];
     if (r.status === 'pending') return ['PENDING', 't-pending'];
-    if (r.status === 'needs_check') return ['ERROR  ', 't-err'];
+    if (r.status === 'needs_check') return ['CẦN KT ', 't-warn'];
     if (r.status === 'sent_check') return ['ĐÃ GỬI ', 't-warn'];
     if (isNoConvLog(r.error)) return ['NOZALO ', 't-noconv'];
     return ['ERROR  ', 't-err'];
@@ -1221,7 +1221,8 @@
         const jumpLink = (r.customer_id && r.date_inventory)
           ? ` <a class="t-key log-jump" href="index.html?${new URLSearchParams({ q: r.phone || '', customerId: r.customer_id, dateInventory: r.date_inventory }).toString()}" target="_blank" rel="noopener" title="Xem dòng Hàng về VN đã bị đổi trạng thái">↗ Hàng về VN</a>`
           : '';
-        return '<div class="ln">'
+        const review = r.status === 'needs_check' ? ` <button class="btn small secondary" data-decision="sent">Đã kiểm tra: đã gửi</button> <button class="btn small secondary" data-decision="not_sent">Đã kiểm tra: chưa gửi</button>` : '';
+        return `<div class="ln" data-report-id="${E(r.id)}">`
           + `<span class="t-time">${E(logTs(r.created_at))}</span> `
           + `<span class="${cls}">${tok}</span> `
           + `<span class="t-kind">${kindTok}</span>  `
@@ -1231,7 +1232,7 @@
           + `<span class="t-key">by=</span>${by} `
           + `<span class="t-key">acct=</span>${acct}`
           + (detail ? `  <span class="t-msg" title="${E(r.error || r.message || '')}">· ${E(detail)}</span>` : '')
-          + jumpLink
+          + jumpLink + review
           + '</div>';
       }).join('');
       if (!older) logTerm.scrollTop = 0;
@@ -1243,6 +1244,22 @@
       if (request === logRequest) $('logMore').disabled = false;
     }
   }
+
+  logTerm.addEventListener('click', async event => {
+    const button = event.target.closest('[data-decision]');
+    if (!button || button.disabled) return;
+    const row = button.closest('[data-report-id]');
+    const decision = button.dataset.decision;
+    if (!row || !['sent', 'not_sent'].includes(decision)) return;
+    if (!window.confirm(decision === 'sent' ? 'Bạn đã mở đúng hội thoại và xác nhận tin đã gửi?' : 'Bạn đã kiểm tra chắc chắn tin chưa gửi? Sau xác nhận, hệ thống có thể gửi lại.')) return;
+    const controls = row.querySelectorAll('[data-decision]');
+    controls.forEach(control => { control.disabled = true; });
+    try {
+      await App.api('/api/reports/' + encodeURIComponent(row.dataset.reportId) + '/resolve', { method: 'POST', body: JSON.stringify({ decision }) });
+      await loadLog();
+    } catch (err) { App.toast('Không cập nhật được: ' + err.message); }
+    finally { controls.forEach(control => { control.disabled = false; }); }
+  });
 
   $('logMore').addEventListener('click', () => loadLog(true));
   $('logReload').addEventListener('click', loadLog);

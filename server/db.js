@@ -49,8 +49,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_reports_status  ON reports(status);
 `);
 
-// Old uncertain sends are failures, never successful deliveries or manual retry gates.
-db.exec("UPDATE reports SET status = 'failed' WHERE status = 'needs_check'");
+// Preserve uncertain sends across restarts; they need human review, never automatic retry.
 
 // Migration: thêm cột ảnh SP (JSON mảng URL) cho report cũ. SQLite không có
 // "ADD COLUMN IF NOT EXISTS" -> bọc try/catch, chạy lại không sao.
@@ -97,19 +96,8 @@ try {
   db.exec('CREATE INDEX IF NOT EXISTS idx_reports_order ON reports(customer_id, date_inventory)');
 } catch (_) { /* index đã có hoặc cột chưa sẵn (bản DB rất cũ) — bỏ qua */ }
 
-// Dọn dòng "đang báo" MỒ CÔI lúc khởi động. notifyOne ghi 1 dòng status='pending' TRƯỚC khi
-// gửi rồi poll local-runner tới khi xong; nếu server restart/crash giữa chừng thì KHÔNG còn
-// ai poll tiếp -> dòng pending kẹt mãi. mi-server chạy 1 instance (ecosystem.config.js:
-// exec_mode 'fork', instances 1) nên mọi dòng pending còn sót lúc boot CHẮC CHẮN mồ côi ->
-// đánh dấu 'failed' luôn, không cần phán đoán theo tuổi.
-// ⚠️ NẾU sau này scale mi-server lên NHIỀU instance, câu này sẽ xoá nhầm job instance khác
-// đang gửi dở -> lúc đó đổi sang lọc theo tuổi (vd created_at < now - 15 phút, lớn hơn timeout
-// 10 phút của sendBaoHang).
-db.prepare(
-  `UPDATE reports SET status = 'failed',
-     error = COALESCE(error, 'Mất theo dõi (server khởi động lại khi đang gửi)')
-   WHERE status = 'pending'`,
-).run();
+// Orphan recovery runs after app_settings is initialized, so persisted send holds
+// can distinguish interrupted sends from older untracked pending reports.
 
 db.exec(`  -- Chống gửi trùng cho luồng TỰ ĐỘNG báo hàng: mỗi đơn (order_id) chỉ tự gửi 1 lần thành công.
   -- Khi lỗi, tăng attempts; quá maxRetries thì thôi (tránh spam khi local-runner offline).
@@ -1195,6 +1183,18 @@ function migrateFbRoutingIntoContacts() {
   try { setFbRouting({ customers: [], staffIds: [] }); } catch (_) { /* ignore */ }
 }
 migrateFbRoutingIntoContacts();
+
+// A process can die after sending but before saving the result. Holds are persisted
+// before dispatch, so those owned in-flight reports need review after a restart.
+db.exec(`UPDATE reports SET status = 'needs_check',
+  error = 'NEEDS_CHECK: tiến trình bị gián đoạn trong lượt gửi; kiểm tra hội thoại trước khi gửi lại.'
+  WHERE status = 'pending' AND EXISTS (
+    SELECT 1 FROM app_settings WHERE key = 'notification-hold-report:' || reports.id AND value IS NOT NULL
+  )`);
+// Keep the legacy cleanup for reports created before owned send holds existed.
+db.exec(`UPDATE reports SET status = 'failed',
+  error = COALESCE(error, 'Mất theo dõi (server khởi động lại khi đang gửi)')
+  WHERE status = 'pending'`);
 
 module.exports = {
   listReportPage,

@@ -9,7 +9,7 @@ const { EventEmitter } = require('node:events');
 function load(file, mocks, extra = '') {
   const filename = path.join(__dirname, '..', file);
   const sandbox = { module: { exports: {} }, console, URL, process, __dirname: path.dirname(filename),
-    require: (name) => Object.hasOwn(mocks, name) ? mocks[name] : require(name) };
+    require: (name) => Object.hasOwn(mocks, name) ? mocks[name] : require('node:module').createRequire(filename)(name) };
   vm.runInNewContext(fs.readFileSync(filename, 'utf8') + extra, sandbox, { filename });
   return sandbox.module.exports;
 }

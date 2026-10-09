@@ -2,6 +2,17 @@
 const { getSetting, setSetting, getReportById, updateReport, markShippingNotified, recordAutoNotified } = require('./db');
 const isUncertain = error => /^(?:NEEDS_CHECK|KHONG_XAC_NHAN_DA_GUI):/.test(String(error || ''));
 function getHold(key) { return getSetting(`notification-hold:${key}`); }
+function getOwner(key) { return getSetting(`notification-hold-owner:${key}`); }
+function begin(key, owner, reportId) {
+  hold(key, 'NEEDS_CHECK: lượt gửi đang chạy hoặc bị gián đoạn; kiểm tra hội thoại trước khi gửi lại.', reportId);
+  setSetting(`notification-hold-owner:${key}`, owner);
+}
+function finish(key, owner, reportId) {
+  if (getOwner(key) !== owner) return;
+  setSetting(`notification-hold:${key}`, null);
+  setSetting(`notification-hold-owner:${key}`, null);
+  setSetting(`notification-hold-report:${reportId}`, null);
+}
 function hold(key, error, reportId) {
   setSetting(`notification-hold:${key}`, error);
   if (reportId != null) setSetting(`notification-hold-report:${reportId}`, key);
@@ -20,7 +31,8 @@ function resolveHold(reportId, decision, actor) {
   updateReport(reportId, { status: decision === 'sent' ? 'success' : 'failed',
     error: `Đã kiểm tra thủ công (${actor || 'Admin'}): ${decision === 'sent' ? 'khách đã nhận tin' : 'chưa gửi; có thể báo lại'}.` });
   setSetting(`notification-hold:${key}`, null);
+  setSetting(`notification-hold-owner:${key}`, null);
   setSetting(`notification-hold-report:${reportId}`, null);
   return { ok: true };
 }
-module.exports = { isUncertain, getHold, hold, resolveHold };
+module.exports = { isUncertain, getHold, getOwner, begin, finish, hold, resolveHold };

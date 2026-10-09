@@ -1,4 +1,5 @@
 'use strict';
+const { getHold } = require('./notificationHold');
 const { withBrowserBatch, accountQueue } = require('./accountQueue');
 const config = require('./config');
 const { getOrders } = require('./bassoApi');
@@ -657,6 +658,7 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
     const toSend = [];
     for (const order of orders) {
       // eslint-disable-next-line no-await-in-loop
+      if (getHold(keyOf(order))) { summary.skippedNeedsCheck = (summary.skippedNeedsCheck || 0) + 1; continue; }
       const c = await classify(order, delayedMap);
       // classify đã resolve account -> lấy luôn profile để gom (khỏi resolve lại).
       if (c.decision === 'send') { toSend.push({ order, profileKey: (c.acct && c.acct.profile) || 'default' }); continue; }
@@ -695,6 +697,9 @@ async function executeNotifyPass({ trigger, kind, statusFilter, classify, keyOf,
         if (r.ok) {
           recordAutoNotified(key, 'success', (prev ? prev.attempts : 0) + 1);
           summary.sent += 1;
+        } else if (r.needsCheck) {
+          summary.failed += 1;
+          summary.needsCheck = (summary.needsCheck || 0) + 1;
         } else if (runnerDown) {
           // Runner sập / mạng tới runner đứt giữa chừng: không trừ lượt, dừng luôn để thử lại sau.
           summary.failed += 1;

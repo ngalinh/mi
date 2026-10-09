@@ -1257,6 +1257,16 @@ app.get('/api/reports', async (req, res) => {
   }
 });
 
+// Manual review is the only way to release an uncertain send.
+app.post('/api/reports/:id/resolve', async (req, res) => {
+  try {
+    const rep = getReportById(req.params.id);
+    if (!rep) return res.status(404).json({ ok: false, error: 'Không tìm thấy lượt báo' });
+    const result = await require('./lock').withLock(() => require('./notificationHold').resolveHold(rep.id, req.body?.decision, getActor(req)), rep.kind);
+    res.json(result);
+  } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
+});
+
 // ---- Thử gửi LẠI 1 lượt báo THẤT BẠI (từ Lịch sử báo) ----
 // Tái tạo đơn từ khóa đã lưu (customerId+dateInventory+userId) rồi đi qua notifyOrders như báo
 // tay: có khóa chung với bot, resolve đúng account và lấy nội dung Basso mới. Chỉ retry 'failed'.

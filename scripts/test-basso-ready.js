@@ -16,13 +16,13 @@ function harness() {
   const file = path.join(__dirname, '../local-runner/salework.js');
   const mocks = {
     './bassoReady': ready, './config': {}, './sendRecovery': {}, './browser': {},
-    './accountsStore': {}, './testModeStore': { get: () => ({ testMode: false }) },
+    './sendConfirmation': {}, './accountsStore': {}, './testModeStore': { get: () => ({ testMode: false }) },
   };
   const context = { module: { exports: {} }, Date: clock, URL, console, __dirname: path.dirname(file),
     require: name => Object.hasOwn(mocks, name) ? mocks[name] : createRequire(file)(name) };
   vm.runInNewContext(fs.readFileSync(file, 'utf8') + `
     shot = async () => {};
-    module.exports = { clickSend, typeAndSend, waitEntryReady, ensureLoggedIn, searchAndClickConversation };
+    module.exports = { clickSend, typeAndSend, waitEntryReady, ensureLoggedIn, searchAndClickConversation, setVerifier: v => Object.assign(confirmation, v) };
     clickFilterTab = async () => true;
   `, context);
   return { ready, flow: context.module.exports, now: () => now,
@@ -126,9 +126,13 @@ for (const confirmed of [true, false]) {
       click: async () => { clicks++; clickedAt = h.now(); } };
     h.page.locator = selector => selector.includes('aria-busy') ? { count: async () => 0 }
       : { first: () => control };
-    h.page.evaluate = async () => confirmed && clickedAt !== null && h.now() - clickedAt >= 20000 ? 1 : 0;
+    h.flow.setVerifier({ armBasso: async () => ({ start() {}, dispose() {}, wait: async () => {
+      await h.page.waitForTimeout(20000);
+      if (!confirmed) throw Error('NEEDS_CHECK: no server receipt');
+      return { confirmed: true, method: 'basso-api-zalo-id' };
+    } }) });
     if (confirmed) await h.flow.typeAndSend(h.page, 'test');
-    else await assert.rejects(h.flow.typeAndSend(h.page, 'test'), /KHONG_XAC_NHAN_DA_GUI/);
+    else await assert.rejects(h.flow.typeAndSend(h.page, 'test'), /NEEDS_CHECK/);
     assert.equal(clicks, 1);
     assert.equal(value, 'test');
   });

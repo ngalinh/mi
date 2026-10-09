@@ -1,4 +1,6 @@
 'use strict';
+const sendTrace = require('../shared/sendTrace');
+const confirmation = require('./sendConfirmation');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
@@ -325,7 +327,7 @@ async function typeLines(page, text) {
  * Paste thật chỉ chèn ĐÚNG 1 LẦN (không như tự bắn sự kiện paste — dễ bị Messenger xử lý 2 lần ->
  * nội dung vào đôi). Messenger (Lexical) hiểu \n là XUỐNG DÒNG trong CÙNG tin, rồi Enter = GỬI.
  */
-async function typeAndSend(page, box, message) {
+async function typeAndSend(page, box, message, onAttempt = null) {
   await box.click();
   const text = String(message == null ? '' : message);
 
@@ -353,18 +355,20 @@ async function typeAndSend(page, box, message) {
   }
 
   await page.waitForTimeout(300);
+  const norm = value => String(value || '').normalize('NFC').replace(/\s+/g, ' ').trim();
+  if (norm(await box.innerText()) !== norm(text)) throw new Error('UI_NOT_READY: nội dung Messenger chưa khớp đầy đủ; chưa bấm Gửi.');
   await shot(page, '03-typed');
-  await page.keyboard.press('Enter'); // gửi
-  await page.waitForTimeout(1500);
-
-  // Read-only confirmation after Enter. Never press Enter again on uncertainty.
-  let remaining;
+  const verifier = await confirmation.armFacebook(page, box, text);
   try {
-    await box.waitFor({ state: 'visible', timeout: 10000 });
-    remaining = (await box.innerText()).trim();
-  } catch (err) { throw new Error('NEEDS_CHECK: không đọc được kết quả gửi Facebook. ' + err.message); }
-  await shot(page, '04-sent');
-  if (remaining) throw new Error('NEEDS_CHECK: đã bấm Gửi Facebook nhưng ô soạn chưa xóa; cần kiểm tra hội thoại.');
+    sendTrace.log('facebook.send.enter-start', sendTrace.messageMeta(text));
+    if (typeof onAttempt === 'function') onAttempt();
+    await page.keyboard.press('Enter');
+    sendTrace.log('facebook.send.enter-pressed');
+    const evidence = await verifier.wait();
+    sendTrace.log('facebook.confirm.result', evidence);
+    await shot(page, '04-sent');
+    return evidence;
+  } finally { verifier.dispose(); }
 
 }
 
@@ -385,10 +389,10 @@ async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, messa
   // Tuần tự hoá theo profile: không mở trùng userDataDir với lệnh đăng nhập/kiểm tra cùng profile.
   return withProfileLock(profile, async () => {
     let sending = false;
+    let evidence;
     try {
       const { page, value: box } = await prepareWithRetry(profile, page => openConversationByLink(page, fbLink));
-      sending = true;
-      await typeAndSend(page, box, message);
+      evidence = await typeAndSend(page, box, message, () => { sending = true; });
     } catch (err) {
       if (sending && !/^NEEDS_CHECK:/.test(err.message)) throw new Error('NEEDS_CHECK: kết quả gửi Facebook chưa rõ. ' + err.message);
       throw err;
@@ -398,7 +402,7 @@ async function sendBaoHangFb({ profile = 'default', fbLink, keyword, name, messa
         catch (err) { throw new Error((sending ? 'NEEDS_CHECK: gửi đã chạy nhưng đóng browser lỗi. ' : 'ACCOUNT_UNAVAILABLE: ') + err.message); }
       }
     }
-    return { ok: true };
+    return { ok: true, confirmation: evidence };
   });
 }
 

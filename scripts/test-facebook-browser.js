@@ -8,7 +8,7 @@ const lane = require('../shared/notificationLane');
 
 function load(file, mocks, extra = '') {
   const sandbox = { module: { exports: {} }, console, URL,
-    require: name => Object.hasOwn(mocks, name) ? mocks[name] : require(name) };
+    require: name => Object.hasOwn(mocks, name) ? mocks[name] : require('node:module').createRequire(require.resolve(file))(name) };
   vm.runInNewContext(fs.readFileSync(require.resolve(file), 'utf8') + extra, sandbox);
   return sandbox.module.exports;
 }

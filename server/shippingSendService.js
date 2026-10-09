@@ -1,4 +1,5 @@
 'use strict';
+const { getHold, getOwner, begin, finish, hold, isUncertain } = require('./notificationHold');
 const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
 /**
@@ -135,6 +136,10 @@ async function findFallbackCustomer(order, verifyOwner = false) {
  */
 async function sendShippingOne(order, opts = {}) {
   if (!order || order.id == null) return { ok: false, error: 'Thiếu đơn' };
+  const holdKey = `shipping:${order.id}`;
+  const holdOwner = once('holdOwner', () => require('node:crypto').randomUUID());
+  const held = getHold(holdKey);
+  if (held && getOwner(holdKey) !== holdOwner) return { ok: false, needsCheck: true, error: held };
 
   if (!opts.force) {
     const seen = getShippingNotified(order.id);
@@ -208,7 +213,11 @@ async function sendShippingOne(order, opts = {}) {
     kind: 'ship',
     channel: resolved.channel,
     zaloAccount: resolved.account || resolved.profile || null,
-  }), report => updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' }));
+  }), report => {
+    updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' });
+    finish(holdKey, holdOwner, report.id);
+  });
+  begin(holdKey, holdOwner, pending.id);
 
   let result;
   // SĐT khách hàng THẬT khi phải tra ngược mã đơn (khác SĐT người nhận trên vận đơn) — set ở các
@@ -297,7 +306,7 @@ async function sendShippingOne(order, opts = {}) {
   }
 
   let report = updateReport(pending.id, {
-    status: result.ok ? 'success' : 'failed',
+    status: result.ok ? 'success' : (isUncertain(result.error) ? 'needs_check' : 'failed'),
     error: result.ok ? null : result.error,
     jobId: result.jobId,
     channel: resolved.channel,
@@ -309,6 +318,9 @@ async function sendShippingOne(order, opts = {}) {
       phoneOriginal: order.phone,
     } : {}),
   });
+
+  if (!result.ok && isUncertain(result.error)) hold(holdKey, result.error, pending.id);
+  else finish(holdKey, holdOwner, pending.id);
 
   if (result.ok) {
     // Đồng bộ theo SĐT khách hàng THẬT khi đã fallback — "Hàng về VN" lưu customer_phone, tìm
@@ -328,7 +340,7 @@ async function sendShippingOne(order, opts = {}) {
     }
   }
 
-  return { ok: result.ok, error: result.ok ? null : result.error, report };
+  return { ok: result.ok, needsCheck: !result.ok && isUncertain(result.error), error: result.ok ? null : result.error, report };
 }
 
 /**
