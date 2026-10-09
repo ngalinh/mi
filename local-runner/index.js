@@ -108,11 +108,11 @@ app.post('/api/browser/close', (req, res) => {
 app.post('/api/zalo/send', (req, res) => {
   // notifyTarget ('group'|'personal') + keepContext PHẢI đọc ra + chuyển tiếp — thiếu là
   // salework.sendBaoHang nhận undefined -> mặc định 'group' -> luôn bấm tab Nhóm dù NV để Cá nhân.
-  const { profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend, browserLane } = req.body || {};
+  const { profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend, browserLane, traceId } = req.body || {};
   if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend, browserLane }, sendBaoHang);
+  const jobId = createJob({ profile, account, keyword, name, message, strictMatch, imagePaths, notifyTarget, keepContext, closeAfterSend, browserLane, traceId }, sendBaoHang);
   res.json({ ok: true, jobId });
 });
 
@@ -122,11 +122,11 @@ app.post('/api/zalo/send', (req, res) => {
  * fbLink = link hội thoại FB/Messenger của khách để mở thẳng (bắt buộc, sendBaoHangFb cần).
  */
 app.post('/api/facebook/send', (req, res) => {
-  const { profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend, browserLane } = req.body || {};
+  const { profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend, browserLane, traceId } = req.body || {};
   if ((!keyword && !name) || (!message && !(Array.isArray(imagePaths) && imagePaths.length))) {
     return res.status(400).json({ ok: false, error: 'Thiếu (keyword/name) hoặc (message/imagePaths)' });
   }
-  const jobId = createJob({ profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend, browserLane }, sendBaoHangFb);
+  const jobId = createJob({ profile, fbLink, keyword, name, message, strictMatch, imagePaths, keepContext, closeAfterSend, browserLane, traceId }, sendBaoHangFb);
   res.json({ ok: true, jobId });
 });
 

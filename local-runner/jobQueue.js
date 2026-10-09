@@ -1,4 +1,5 @@
 'use strict';
+const sendTrace = require('../shared/sendTrace');
 const crypto = require('crypto');
 
 /**
@@ -24,6 +25,7 @@ function createJob(payload, handler) {
     finishedAt: null,
     _handler: handler,
   };
+  sendTrace.log('runner.queued', { traceId: payload.traceId, jobId: id, profile: payload.profile, account: payload.account, lane: payload.browserLane, ...sendTrace.messageMeta(payload.message) });
   jobs.set(id, job);
   const lane = laneScope.normalize(payload.browserLane);
   queues[lane].push(id);
@@ -43,11 +45,16 @@ async function pump(lane) {
       job.status = 'running';
       job.startedAt = Date.now();
       try {
-        job.result = await laneScope.run(lane, () => job._handler(job.payload));
+        job.result = await sendTrace.run({ traceId: job.payload.traceId, jobId: id, profile: job.payload.profile, account: job.payload.account, lane }, async () => {
+          sendTrace.log('runner.started', { queueWaitMs: job.startedAt - job.createdAt });
+          return laneScope.run(lane, () => job._handler(job.payload));
+        });
         job.status = 'done';
+        sendTrace.log('runner.done', { traceId: job.payload.traceId, jobId: id, runnerOk: job.result?.ok, durationMs: Date.now() - job.startedAt });
       } catch (err) {
         job.status = 'error';
         job.error = err && err.message ? err.message : String(err);
+        sendTrace.log('runner.error', { traceId: job.payload.traceId, jobId: id, error: job.error, stack: err?.stack, durationMs: Date.now() - job.startedAt });
       } finally {
         job.finishedAt = Date.now();
         delete job._handler;

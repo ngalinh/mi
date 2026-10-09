@@ -313,7 +313,7 @@ test('Facebook uncertain confirmation never presses Enter a second time', async 
   const source = fs.readFileSync(path.join(__dirname, '..', 'local-runner/facebook.js'), 'utf8');
   const start = source.indexOf('async function typeAndSend(');
   const body = source.slice(start, source.indexOf('\n/**', start));
-  const context = { shot: async () => {} };
+  const context = { shot: async () => {}, sendTrace: { log() {}, messageMeta: () => ({}) } };
   vm.createContext(context); vm.runInContext(body, context);
   const keys = [];
   const page = { evaluate: async () => {}, waitForTimeout: async () => {}, keyboard: { press: async key => keys.push(key) } };

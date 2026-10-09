@@ -1,4 +1,5 @@
 'use strict';
+const sendTrace = require('../shared/sendTrace');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -917,6 +918,7 @@ async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
   if (message) {
     const ta = await waitControl(page, COMPOSER_SELECTOR, 'ô soạn tin', { editable: true });
     const beforeCount = await countTextOccurrences(page, message);
+    sendTrace.log('zalo.confirm.baseline', { beforeCount, scope: 'document.body', anchorLength: CONFIRM_ANCHOR_LEN, ...sendTrace.messageMeta(message) });
 
     await ta.fill(message);
     await ta.evaluate((el, val) => {
@@ -926,11 +928,14 @@ async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
     }, message);
     await waitUntil(page, 'nội dung tin nhắn', async () => await ta.inputValue() === message);
     await shot(page, '05-message-typed');
+    sendTrace.log('zalo.send.click-start');
     await clickSend(page);
+    sendTrace.log('zalo.send.clicked');
 
     // (b) Đã bấm Gửi 1 lần thành công -> CHỜ DÀI để xác định tin có thực sự hiển thị trong hội
     // thoại không (nghi lag nên chờ lâu, tuyệt đối KHÔNG bấm Gửi lại ở bước này).
     const confirmed = await waitForSendConfirmed(page, message, beforeCount, 30000);
+    sendTrace.log('zalo.confirm.result', { confirmed, beforeCount, afterCount: await countTextOccurrences(page, message), composerLength: (await ta.inputValue().catch(() => '')).length, method: 'page-text-count', timeoutMs: 30000 });
     if (!confirmed) {
       await shot(page, '05-message-unconfirmed');
       throw new Error('KHONG_XAC_NHAN_DA_GUI: đã bấm Gửi nhưng không thấy tin nhắn xuất hiện trong hội thoại sau khi chờ (nghi Zalo Basso bị lag/mất kết nối). Cần kiểm tra hội thoại; hệ thống sẽ chặn tự động gửi lại để tránh trùng.');
@@ -993,6 +998,7 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
         }
 
         await searchAndClickConversation(page, { name, phone: keyword, strictMatch, notifyTarget });
+        sendTrace.log('zalo.conversation.ready', { notifyTarget, strictMatch });
       });
 
       const uniqueImagePaths = [...new Set((imagePaths || []).map((p) => path.resolve(p)))];

@@ -1,4 +1,5 @@
 'use strict';
+const sendTrace = require('../shared/sendTrace');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
@@ -354,7 +355,9 @@ async function typeAndSend(page, box, message) {
 
   await page.waitForTimeout(300);
   await shot(page, '03-typed');
+  sendTrace.log('facebook.send.enter-start', { composerLength: (await box.innerText()).trim().length, ...sendTrace.messageMeta(text) });
   await page.keyboard.press('Enter'); // gửi
+  sendTrace.log('facebook.send.enter-pressed');
   await page.waitForTimeout(1500);
 
   // Read-only confirmation after Enter. Never press Enter again on uncertainty.
@@ -363,6 +366,7 @@ async function typeAndSend(page, box, message) {
     await box.waitFor({ state: 'visible', timeout: 10000 });
     remaining = (await box.innerText()).trim();
   } catch (err) { throw new Error('NEEDS_CHECK: không đọc được kết quả gửi Facebook. ' + err.message); }
+  sendTrace.log('facebook.confirm.result', { composerLength: remaining.length, method: 'composer-empty', confirmed: !remaining, deliveryVerified: false });
   await shot(page, '04-sent');
   if (remaining) throw new Error('NEEDS_CHECK: đã bấm Gửi Facebook nhưng ô soạn chưa xóa; cần kiểm tra hội thoại.');
 

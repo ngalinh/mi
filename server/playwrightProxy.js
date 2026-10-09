@@ -1,4 +1,5 @@
 'use strict';
+const sendTrace = require('../shared/sendTrace');
 const fetch = require('node-fetch');
 const config = require('./config');
 const localRegistry = require('./localRegistry');
@@ -55,6 +56,8 @@ async function getLocalHealth() {
  * @returns {Promise<{ok:boolean, jobId:string, result?:object, error?:string}>}
  */
 async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeoutMs = 10 * 60 * 1000 } = {}) {
+  const trace = (event, details = {}) => sendTrace.log(event, { traceId: payload.traceId, sendPath, profile: payload.profile, ...details });
+  trace('proxy.dispatch', sendTrace.messageMeta(payload.message));
   let res;
   try { res = await fetch(localUrl(sendPath), {
     method: 'POST',
@@ -62,18 +65,23 @@ async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeout
     body: JSON.stringify(payload),
     timeout: 20000,
   }); } catch (err) {
+    trace('proxy.dispatch.error', { error: err.message });
     return { ok: false, error: `NEEDS_CHECK: mất kết nối khi giao lệnh gửi cho runner; không tự gửi lại. ${err.message}` };
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    trace('proxy.dispatch.rejected', { httpStatus: res.status });
     if (res.status >= 500) return { ok: false, error: `NEEDS_CHECK: runner/gateway trả ${res.status}; chưa rõ job đã được nhận chưa. ${text}` };
     throw new Error(`Local-runner từ chối (${res.status}): ${text}`);
   }
   let jobId;
   try { ({ jobId } = await res.json()); } catch {}
+  if (!jobId) trace('proxy.missing-job-id');
   if (!jobId) return { ok: false, error: 'NEEDS_CHECK: runner có thể đã nhận lệnh nhưng không trả jobId; không tự gửi lại.' };
 
+  trace('proxy.accepted', { jobId });
   const deadline = Date.now() + timeoutMs;
+  let lastStatus;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, pollIntervalMs));
     let job;
@@ -86,9 +94,14 @@ async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeout
       continue;
     }
     if (!job) continue;
+    if (job.status !== lastStatus) {
+      lastStatus = job.status;
+      trace('proxy.job-status', { jobId, status: job.status, runnerOk: job.result?.ok, error: job.error });
+    }
     if (job.status === 'done') return { ok: true, jobId, result: job.result };
     if (job.status === 'error') return { ok: false, jobId, error: job.error };
   }
+  trace('proxy.timeout', { jobId, lastStatus, timeoutMs });
   return { ok: false, jobId, error: 'NEEDS_CHECK: hết thời gian chờ local-runner (timeout); lệnh có thể đã gửi, không tự gửi lại.' };
 }
 

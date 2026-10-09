@@ -1,4 +1,5 @@
 'use strict';
+const sendTrace = require('../shared/sendTrace');
 const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
 const config = require('./config');
@@ -232,6 +233,10 @@ async function notifyOne(order, opts = {}) {
     zaloAccount: resolved.account || resolved.profile || null,
   }), report => updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' }));
 
+  const traceId = once('traceId', () => require('node:crypto').randomUUID());
+  const trace = (event, details = {}) => sendTrace.log(event, { traceId, reportId: pending.id, customerId: order.customerId, dateInventory: order.dateInventory, kind, ...details });
+  trace('notify.prepared', { channel: resolved.channel || 'zalo', profile: resolved.profile, account: resolved.account, ...sendTrace.messageMeta(message) });
+
   const prepareMessage = async () => {
     if (opts.messageOverride && opts.messageOverride.trim()) return message;
     if (order.customerId == null || order.dateInventory == null) {
@@ -244,6 +249,7 @@ async function notifyOne(order, opts = {}) {
       throw new Error('Basso chưa có nội dung mới cho đúng đơn này; chưa gửi tin.');
     }
     const value = String(next).trim();
+    trace('notify.fresh-content', sendTrace.messageMeta(value));
     updateReport(pending.id, { message: value });
     return value;
   };
@@ -259,6 +265,7 @@ async function notifyOne(order, opts = {}) {
         result = await sendFacebookWithFallback(sendBaoHangFb, resolved, {
           profile: resolved.profile || 'default',
           fbLink,
+          traceId,
           keyword,
           name: matchName,
           message,
@@ -277,6 +284,7 @@ async function notifyOne(order, opts = {}) {
         try {
           // eslint-disable-next-line no-await-in-loop
           result = await sendBaoHang({
+            traceId,
             profile: cand.profile || 'default',
             account: cand.account,
             keyword,
@@ -307,19 +315,24 @@ async function notifyOne(order, opts = {}) {
 
   if (result.deferred || result.stopped) return result;
 
+  trace('notify.runner-result', { ok: result.ok, jobId: result.jobId, error: result.error, runnerOk: result.result?.ok });
+
   // Gửi thành công -> cập nhật trạng thái 'Đã báo hàng' ngược về web (nếu bật).
   // skipWebUpdate=true (luồng bot tự động): CHỈ lưu trạng thái trong mi, KHÔNG đẩy về web Basso.
   let updateError = null;
   if (result.ok && !opts.skipWebUpdate && config.basso.autoUpdateStatus && order.customerId != null) {
     try {
+      trace('notify.web-update.start', { status: newStatus });
       await updateOrderStatus({
         customerId: order.customerId,
         dateInventory: order.dateInventory,
         status: newStatus,
         note: order.note || undefined,
       });
+      trace('notify.web-update.done', { status: newStatus });
     } catch (err) {
       updateError = err.message;
+      trace('notify.web-update.error', { error: updateError });
     }
   }
 
@@ -337,6 +350,8 @@ async function notifyOne(order, opts = {}) {
     // -> Lịch sử báo phản ánh đúng account đã thực sự gửi, không phải account chính lúc đầu.
     zaloAccount: resolved.account || resolved.profile || null,
   });
+
+  trace('notify.report-final', { status: report?.status, ok: result.ok, jobId: result.jobId, webUpdateRequested: !opts.skipWebUpdate && config.basso.autoUpdateStatus && order.customerId != null, updateError });
 
   // loginRequired: Zalo hiện trang login (chưa đăng nhập). Caller (notifyOrders) dùng cờ này để
   // DỪNG cả loạt ngay — các đơn còn lại chắc chắn cũng fail vì cùng chưa đăng nhập.
