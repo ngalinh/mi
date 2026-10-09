@@ -1,4 +1,5 @@
 'use strict';
+const { getHold, getOwner, begin, finish, hold, isUncertain } = require('./notificationHold');
 const sendTrace = require('../shared/sendTrace');
 const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
@@ -125,6 +126,10 @@ async function resolveOrderMeta(order) {
 async function notifyOne(order, opts = {}) {
   const kind = opts.kind === 'ship' ? 'ship' : 'hang';
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
+  const holdKey = kind === 'ship' ? autoKeyShip(order) : autoKey(order);
+  const holdOwner = once('holdOwner', () => require('node:crypto').randomUUID());
+  const held = getHold(holdKey);
+  if (held && getOwner(holdKey) !== holdOwner) return { order, ok: false, needsCheck: true, error: held };
 
   // Tài khoản CHỌN TAY riêng cho đơn này (cột "Tài khoản gửi" trên dashboard, gắn kèm mỗi đơn khi
   // báo LOẠT — khác với opts.account/opts.profile vốn chỉ áp dụng khi gửi 1 đơn từ modal/nút icon
@@ -231,7 +236,11 @@ async function notifyOne(order, opts = {}) {
     // Tài khoản Zalo dùng để gửi (để đối chiếu trên Lịch sử báo): ưu tiên tên dropdown,
     // không có thì tới profile/key, cuối cùng 'default'.
     zaloAccount: resolved.account || resolved.profile || null,
-  }), report => updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' }));
+  }), report => {
+    updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' });
+    finish(holdKey, holdOwner, report.id);
+  });
+  begin(holdKey, holdOwner, pending.id);
 
   const traceId = once('traceId', () => require('node:crypto').randomUUID());
   const trace = (event, details = {}) => sendTrace.log(event, { traceId, reportId: pending.id, customerId: order.customerId, dateInventory: order.dateInventory, kind, ...details });
@@ -343,7 +352,7 @@ async function notifyOne(order, opts = {}) {
   //    đổi (vd Basso timeout) -> cần KIỂM TRA/sửa tay. KHÔNG để 'success' (giấu lỗi) cũng KHÔNG để
   //    'failed' (sai — khách đã nhận tin, gửi lại sẽ trùng).
   const report = updateReport(pending.id, {
-    status: result.ok ? (updateError ? 'sent_check' : 'success') : 'failed',
+    status: result.ok ? (updateError ? 'sent_check' : 'success') : (isUncertain(result.error) ? 'needs_check' : 'failed'),
     error: result.ok ? (updateError ? `Đã gửi nhưng update web lỗi: ${updateError}` : null) : result.error,
     jobId: result.jobId,
     // resolved.account/profile được cập nhật lại nếu gửi thành công qua account DỰ PHÒNG (fallback)
@@ -351,12 +360,14 @@ async function notifyOne(order, opts = {}) {
     zaloAccount: resolved.account || resolved.profile || null,
   });
 
+  if (!result.ok && isUncertain(result.error)) hold(holdKey, result.error, pending.id);
+  else finish(holdKey, holdOwner, pending.id);
   trace('notify.report-final', { status: report?.status, ok: result.ok, jobId: result.jobId, webUpdateRequested: !opts.skipWebUpdate && config.basso.autoUpdateStatus && order.customerId != null, updateError });
 
   // loginRequired: Zalo hiện trang login (chưa đăng nhập). Caller (notifyOrders) dùng cờ này để
   // DỪNG cả loạt ngay — các đơn còn lại chắc chắn cũng fail vì cùng chưa đăng nhập.
   const loginRequired = !result.ok && isLoginRequiredError(result.error);
-  return { order, ...result, updateError, report, loginRequired };
+  return { order, ...result, needsCheck: !result.ok && isUncertain(result.error), updateError, report, loginRequired };
 }
 
 /**

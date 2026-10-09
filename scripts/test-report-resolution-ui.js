@@ -39,14 +39,21 @@ function harness({ confirm = true, resolve = async () => ({ ok: true }) } = {}) 
   };
 }
 
-test('error history is read-only and contains no confirmation controls', async () => {
+test('uncertain history exposes manual review with escaped details and no automatic resolution', async () => {
   const h = harness();
   h.setItems([{ id: 7, status: 'needs_check', error: 'NEEDS_CHECK: timeout', zalo_account: '<script>' }]);
   await h.load();
-  assert.match(h.$('logTerm').innerHTML, /ERROR/);
-  assert.match(h.$('logTerm').innerHTML, /Friendly: NEEDS_CHECK/);
-  assert.doesNotMatch(h.$('logTerm').innerHTML, /data-decision|log-resolution|<script>/);
-  assert.equal(h.$('logTerm').listeners.click, undefined);
+  assert.match(h.$('logTerm').innerHTML, /CẦN KT/);
+  assert.match(h.$('logTerm').innerHTML, /data-decision/);
+  assert.doesNotMatch(h.$('logTerm').innerHTML, /<script>/);
+  assert.equal(h.calls.filter(c => c.opts).length, 0);
+  await h.click('not_sent');
+  assert.equal(h.calls.find(c => c.opts).url, '/api/reports/7/resolve');
+  assert.equal(JSON.parse(h.calls.find(c => c.opts).opts.body).decision, 'not_sent');
+});
+test('cancelled manual review does not release a hold', async () => {
+  const h = harness({ confirm: false });
+  await h.load(); await h.click('sent');
   assert.equal(h.calls.filter(c => c.opts).length, 0);
 });
 

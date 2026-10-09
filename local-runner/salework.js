@@ -1,5 +1,6 @@
 'use strict';
 const sendTrace = require('../shared/sendTrace');
+const confirmation = require('./sendConfirmation');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -743,58 +744,9 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   await shot(page, '04-conversation-opened');
 }
 
-// Chuẩn hoá "lỏng" để so khớp tin nhắn: NFC (khác NFD, xem norm() ở trên) + gộp MỌI khoảng
-// trắng liên tiếp (space/tab/xuống dòng) thành 1 space. Tin nhiều dòng (báo hàng nhiều SP) khi
-// Zalo Basso render có thể co giãn dòng trắng khác với nguồn (CSS white-space collapse, dấu
-// cách kép trong ND Basso...) — so khớp NGUYÊN VĂN (chỉ NFC) vẫn báo nhầm KHONG_XAC_NHAN_DA_GUI
-// dù tin đã lên hội thoại. Áp CÙNG 1 kiểu chuẩn hoá cho cả 2 vế (needle & haystack) nên vẫn an
-// toàn (không nới lỏng match sai khách khác, chỉ bỏ qua khác biệt whitespace thuần tuý).
-const normLoose = (s) => norm(s).replace(/\s+/g, ' ');
-
-// Số ký tự ĐẦU tin dùng làm neo dự phòng khi không khớp được toàn văn (xem countTextOccurrences).
-// Đủ dài để gần như không trùng ngẫu nhiên với nội dung khác trên trang, đủ ngắn để vẫn khớp được
-// khi Zalo cắt bớt tin dài sau vài dòng (nút "Xem thêm") — khi đó chỉ phần ĐẦU tin nằm sẵn trong
-// DOM, phần đuôi chỉ hiện ra khi bấm mở rộng.
-const CONFIRM_ANCHOR_LEN = 100;
-
-// Đếm số lần đoạn text xuất hiện trong toàn trang (innerText). Dùng để XÁC NHẬN tin nhắn đã
-// thực sự lên hội thoại: đếm TRƯỚC khi bấm Gửi, rồi so sánh SAU khi bấm — count không tăng
-// nghĩa là bấm Gửi "trôi" (bị lag/mất kết nối) dù Playwright thao tác click vẫn thành công.
-// `full=false` (mặc định) tự rút gọn tin dài về neo CONFIRM_ANCHOR_LEN ký tự đầu — dùng khi so
-// khớp toàn văn có thể trượt do UI cắt bớt tin dài ("Xem thêm") dù tin đã thực sự gửi.
-async function countTextOccurrences(page, text, { full = false } = {}) {
-  if (!text) return 0;
-  // Chuẩn hoá NFC + gộp whitespace cả 2 vế trước khi so khớp: tin nhắn có dấu tiếng Việt có thể
-  // tới dưới dạng NFD (tổ hợp dấu rời) từ nguồn dữ liệu upstream, trong khi Zalo Basso render/lưu
-  // NFC — 2 chuỗi NHÌN GIỐNG HỆT nhau nhưng indexOf() không khớp -> báo nhầm
-  // KHONG_XAC_NHAN_DA_GUI dù tin đã thực sự hiển thị trong hội thoại (giống ACC_NORM() ở trên).
-  let t = normLoose(text);
-  if (!full && t.length > CONFIRM_ANCHOR_LEN) t = t.slice(0, CONFIRM_ANCHOR_LEN);
-  if (!t) return 0;
-  return page.evaluate((needle) => {
-    const body = (document.body.innerText || '').normalize('NFC').replace(/\s+/g, ' ');
-    let count = 0;
-    let idx = 0;
-    while ((idx = body.indexOf(needle, idx)) !== -1) { count += 1; idx += needle.length; }
-    return count;
-  }, t).catch(() => 0);
-}
-
-// Chờ tới khi số lần xuất hiện của `text` trên trang TĂNG so với `beforeCount` (tin đã lên
-// hội thoại), tối đa `timeoutMs`. Trả false nếu hết giờ mà vẫn chưa thấy — nghi ngờ gửi lag/lỗi.
-async function waitForSendConfirmed(page, text, beforeCount, timeoutMs = 8000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const count = await countTextOccurrences(page, text);
-    if (count > beforeCount) return true;
-    await page.waitForTimeout(400);
-  }
-  return (await countTextOccurrences(page, text)) > beforeCount;
-}
-
 // Bấm nút Gửi (.send-btn) — Playwright tự chờ tới khi hết disabled (nút bật khi ô soạn có
 // nội dung/ảnh). Fallback nút theo chữ "Gửi"/"Send"; hết thời gian chờ thì dừng.
-async function clickSend(page) {
+async function clickSend(page, onAttempt = null) {
   let button;
   await waitUntil(page, 'nút Gửi sẵn sàng', async () => {
     if (!(await notBusy(page))) return false;
@@ -804,6 +756,7 @@ async function clickSend(page) {
     }
     return false;
   });
+  if (typeof onAttempt === 'function') onAttempt();
   try { await button.click({ timeout: 10000 }); }
   catch (err) { throw new Error('NEEDS_CHECK: thao tác bấm Gửi bị gián đoạn; không bấm lại. ' + err.message); }
   await randomDelay(page, 1500, 2400);
@@ -892,33 +845,35 @@ async function attachImages(page, imagePaths) {
  * RỒI GỬI TEXT thành tin riêng. textarea bind Vue v-model → fill() + bắn 'input' để BẬT nút Gửi;
  * KHÔNG gõ Enter (Enter chỉ xuống dòng).
  */
-async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
+async function typeAndSend(page, message, imagePaths = [], onImageSent = null, onAttempt = null) {
   let sentAny = false;
+  let evidence = null;
 
   // ----- 1. ẢNH: đính rồi gửi (1 tin riêng) -----
   if (imagePaths && imagePaths.length > 0) {
     const uploaded = await attachImages(page, imagePaths);
-    if (uploaded) {
-      if (await clickSend(page)) {
-        sentAny = true;
-        // Ghi checkpoint NGAY sau khi nút gửi ảnh đã ăn, trước bước gửi text có thể lỗi.
-        if (typeof onImageSent === 'function') onImageSent();
-      }
-      await sleep(page, 1500); // chờ tin ảnh gửi xong + ô soạn reset trước khi nhập text
-    }
+    if (!uploaded) throw new Error('KHONG_GUI_DUOC: không đính được đầy đủ ảnh; chưa gửi tin.');
+    const composer = await waitControl(page, COMPOSER_SELECTOR, 'ô soạn tin', { editable: true });
+    const verifier = await confirmation.armBasso(page, composer, '', { fileNames: imagePaths.map(p => path.basename(p)) });
+    try {
+      verifier.start();
+      await clickSend(page, onAttempt);
+      evidence = await verifier.wait();
+      sentAny = true;
+      if (typeof onImageSent === 'function') onImageSent();
+    } finally { verifier.dispose(); }
+    await sleep(page, 1500);
   }
 
   // ----- 2. TEXT: nhập vào textarea.msg-textarea rồi gửi -----
-  // XÁC NHẬN tin đã thực sự lên hội thoại (đếm text trước/sau bấm Gửi) thay vì chỉ tin vào việc
-  // bấm nút thành công: khi Zalo Basso bị lag, Playwright vẫn bấm được nút Gửi nhưng tin không
-  // lên hội thoại -> khách không nhận được dù trước đây hàm này vẫn báo "gửi thành công".
+  // Require a reply from the exact send API with a Zalo message ID. The UI clears
+  // its composer before the API finishes and catches errors, so DOM text is not proof.
   //
   // Chờ nội dung và nút Gửi sẵn sàng, bấm đúng một lần rồi chờ xác nhận.
   // Không bấm lại khi chưa rõ kết quả: tin có thể đã gửi nhưng đang hiển thị chậm.
   if (message) {
     const ta = await waitControl(page, COMPOSER_SELECTOR, 'ô soạn tin', { editable: true });
-    const beforeCount = await countTextOccurrences(page, message);
-    sendTrace.log('zalo.confirm.baseline', { beforeCount, scope: 'document.body', anchorLength: CONFIRM_ANCHOR_LEN, ...sendTrace.messageMeta(message) });
+
 
     await ta.fill(message);
     await ta.evaluate((el, val) => {
@@ -928,26 +883,27 @@ async function typeAndSend(page, message, imagePaths = [], onImageSent = null) {
     }, message);
     await waitUntil(page, 'nội dung tin nhắn', async () => await ta.inputValue() === message);
     await shot(page, '05-message-typed');
-    sendTrace.log('zalo.send.click-start');
-    await clickSend(page);
-    sendTrace.log('zalo.send.clicked');
-
-    // (b) Đã bấm Gửi 1 lần thành công -> CHỜ DÀI để xác định tin có thực sự hiển thị trong hội
-    // thoại không (nghi lag nên chờ lâu, tuyệt đối KHÔNG bấm Gửi lại ở bước này).
-    const confirmed = await waitForSendConfirmed(page, message, beforeCount, 30000);
-    sendTrace.log('zalo.confirm.result', { confirmed, beforeCount, afterCount: await countTextOccurrences(page, message), composerLength: (await ta.inputValue().catch(() => '')).length, method: 'page-text-count', timeoutMs: 30000 });
-    if (!confirmed) {
+    const verifier = await confirmation.armBasso(page, ta, message);
+    try {
+      verifier.start();
+      sendTrace.log('zalo.send.click-start');
+      await clickSend(page, onAttempt);
+      sendTrace.log('zalo.send.clicked');
+      evidence = await verifier.wait();
+    } catch (err) {
       await shot(page, '05-message-unconfirmed');
-      throw new Error('KHONG_XAC_NHAN_DA_GUI: đã bấm Gửi nhưng không thấy tin nhắn xuất hiện trong hội thoại sau khi chờ (nghi Zalo Basso bị lag/mất kết nối). Cần kiểm tra hội thoại; hệ thống sẽ chặn tự động gửi lại để tránh trùng.');
-    }
+      throw err;
+    } finally { verifier.dispose(); }
     sentAny = true;
   }
 
   await page.waitForTimeout(1500);
   await shot(page, '06-sent');
+  if (sentAny && !evidence) throw new Error('NEEDS_CHECK: đã bấm gửi ảnh nhưng chưa có xác nhận gửi đầy đủ; kiểm tra hội thoại trước khi gửi lại.');
   if (!sentAny) {
     throw new Error('KHONG_GUI_DUOC: không gửi được tin nào (ảnh & text đều thất bại).');
   }
+  return evidence;
 }
 
 /**
@@ -976,6 +932,7 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
   // Tuần tự hoá theo profile: không mở trùng userDataDir với lệnh đăng nhập/kiểm tra cùng profile.
   return withProfileLock(profile, async () => {
     let sending = false;
+    let evidence;
     try {
       const { page } = await prepareWithRetry(profile, async page => {
         await gotoSalework(page);
@@ -1010,12 +967,12 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
         console.warn('[zalo] Lần trước đã gửi ảnh nhưng text lỗi — retry chỉ gửi text để tránh ảnh trùng.');
       }
 
-      sending = true;
-      await typeAndSend(
+      evidence = await typeAndSend(
         page,
         message,
         imageAlreadySent ? [] : uniqueImagePaths,
         checkpointKey ? () => markImageCheckpoint(checkpointKey) : null,
+        () => { sending = true; },
       );
 
       // Ảnh + text đã hoàn tất; xoá checkpoint để một yêu cầu gửi mới độc lập vẫn hoạt động.
@@ -1030,7 +987,7 @@ async function sendBaoHang({ profile = 'default', account, keyword, name, messag
         catch (err) { throw new Error((sending ? 'NEEDS_CHECK: gửi đã chạy nhưng đóng browser lỗi. ' : 'ACCOUNT_UNAVAILABLE: ') + err.message); }
       }
     }
-    return { ok: true };
+    return { ok: true, confirmation: evidence };
   });
 }
 

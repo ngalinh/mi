@@ -26,7 +26,7 @@ for (const trigger of ['interval', 'webhook', 'ship-poll', 'ship-catch', 'manual
     const body = source.slice(source.indexOf('async function executeNotifyPass('), source.indexOf('async function runAutoNotify('));
     for (const time of ['2026-09-22T22:30:00Z', '2026-09-22T10:29:00Z', '2026-09-22T10:30:00Z', '2026-09-22T17:00:00Z']) {
       const recorded = [];
-      const box = { Date: class extends Date { constructor() { super(time); } },
+      const box = { getHold: () => null, Date: class extends Date { constructor() { super(time); } },
         require: () => ({ isShippingTime }), cfg: { timezone: 'Asia/Ho_Chi_Minh' },
         state: {}, withLock: fn => fn(), withBrowserBatch: fn => fn(), checkLocalHealth: async () => true,
         fetchAllByStatus: async () => [{ id: 1, shippingId: 3 }, { id: 2, shippingId: 4 }, { id: 3 }, { id: 4 }],
@@ -50,7 +50,7 @@ test('shipping management sends eligible orders before the old cutoff and skips 
   const body = source.slice(source.indexOf('async function runShippingAuto('), source.indexOf('async function runSafetyNet('));
   for (const trigger of ['interval', 'manual']) {
     const sent = [];
-    const box = { Date: class extends Date { constructor() { super('2026-09-22T10:29:00Z'); } },
+    const box = { getHold: () => null, Date: class extends Date { constructor() { super('2026-09-22T10:29:00Z'); } },
       config: { autoNotify: { timezone: 'Asia/Ho_Chi_Minh' } }, cfg: { maxRetries: 3 }, isShippingTime,
       state: { enabled: true }, SEEDED_KEY: 'seed', safeGet: () => 'seeded',
       withLock: fn => fn(), withBrowserBatch: fn => fn(), checkLocalHealth: async () => true,

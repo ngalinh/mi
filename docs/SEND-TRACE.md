@@ -12,14 +12,21 @@ Các bước cần đối chiếu:
 - `proxy.accepted` / `runner.queued` / `runner.started`: runner đã nhận lệnh hay
   còn chờ hàng đợi.
 - `zalo.send.clicked` / `facebook.send.enter-pressed`: thao tác gửi đã chạy.
-- `zalo.confirm.result`: số lần xuất hiện trước/sau, phạm vi toàn trang,
-  độ dài nội dung còn trong ô soạn, kết quả xác nhận.
-- `facebook.confirm.result`: ô soạn còn nội dung không; `deliveryVerified:false`
-  cho biết đây chỉ là kiểm tra ô soạn trống, chưa xác minh giao tin.
+- `zalo.confirm.result`: mã tin Zalo và mã tin CRM do API trả về cho đúng
+  hội thoại, nội dung khớp hoàn toàn. HTTP 2xx hoặc ô soạn trống chưa đủ.
+- `facebook.confirm.result`: tin mới có nội dung khớp hoàn toàn trong
+  khung hội thoại và nhãn Đã gửi/Đã nhận/Đã xem. Thiếu nhãn chuyển Cần kiểm tra.
 - `runner.done` / `runner.error` / `proxy.job-status`: kết quả handler và job.
 - `notify.web-update.*` / `notify.report-final`: lý do web và lịch sử được chốt.
 
-Log này bổ sung chẩn đoán, chưa thay đổi điều kiện xác nhận gửi hiện tại.
+Chỉ ghi thành công khi runner trả bằng chứng xác nhận. Job done thiếu bằng chứng
+được chuyển sang needs_check, giữ khóa chặn gửi lại qua khởi động lại.
+Vào lịch sử báo, mở đúng hội thoại rồi chọn Đã kiểm tra: đã gửi/chưa gửi để xử lý.
+Messenger gửi lại nội dung giống hệt tin cũ có thể cần xác nhận thủ công nếu
+giao diện không cung cấp mã tin ổn định để phân biệt với lịch sử render lại.
+Khi triển khai, cập nhật cả server và local-runner: runner cũ không có bằng chứng
+xác nhận sẽ bị server mới chuyển sang Cần kiểm tra. Bản sửa chưa gửi tin thật
+trên tài khoản người dùng; cần đối chiếu API/nhãn trạng thái khi chạy thực tế.
 Nếu runner báo done nhưng khách không nhận, đối chiếu bước confirm và ảnh
 trong thư mục screenshots trên máy runner, cùng thời điểm thao tác gửi.
 
@@ -34,4 +41,4 @@ File sẽ đầy theo giới hạn trên; không lưu vô hạn.
 Không ghi nội dung tin nhắn, cookie hoặc mật khẩu: chỉ ghi độ dài và hash
 SHA-256 rút gọn của tin. Log có mã đơn/tài khoản và thông báo lỗi, chỉ chia sẻ
 cho người phụ trách xử lý. Nếu ghi file thất bại, có cảnh báo trong console;
-việc gửi vẫn giữ hành vi hiện tại.
+lỗi ghi log không ngăn luồng gửi.

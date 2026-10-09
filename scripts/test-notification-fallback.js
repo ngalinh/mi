@@ -115,8 +115,44 @@ test('startup migrates old uncertain reports without changing delivery evidence'
   } };
   try {
     vm.runInNewContext(read('server/db.js'), box);
-    assert.equal(box.module.exports.getReportById(1).status, 'failed');
+    assert.equal(box.module.exports.getReportById(1).status, 'needs_check');
     assert.equal(box.module.exports.getReportById(1).error, 'NEEDS_CHECK: timeout');
     assert.equal(box.module.exports.getReportById(2).status, 'success');
   } finally { database?.close(); }
+});
+
+test('uncertain hold and report survive a database restart and require explicit human resolution', () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const dataDir = path.join(__dirname, '..', 'data');
+  fs.mkdirSync(dataDir, { recursive: true });
+  const tempDir = fs.mkdtempSync(path.join(dataDir, 'test-hold-'));
+  let database;
+  const loadDb = () => {
+    const box = { module: { exports: {} }, console, require: name => {
+      if (name === './config') return { dbPath: path.join(tempDir, 'holds.sqlite') };
+      if (name === 'node:sqlite') return { DatabaseSync: class extends DatabaseSync { constructor(p) { super(p); database = this; } } };
+      return require(name);
+    } };
+    vm.runInNewContext(read('server/db.js'), box);
+    return box.module.exports;
+  };
+  const loadHold = db => {
+    const box = { module: { exports: {} }, require: () => db };
+    vm.runInNewContext(read('server/notificationHold.js'), box);
+    return box.module.exports;
+  };
+  try {
+    let db = loadDb(), hold = loadHold(db);
+    const report = db.addReport({ status: 'pending', phone: '1', kind: 'hang' });
+    hold.begin('c1:d2', 'process-before-crash', report.id);
+    database.close(); db = loadDb(); hold = loadHold(db);
+    assert.equal(db.getReportById(report.id).status, 'needs_check');
+    assert.match(hold.getHold('c1:d2'), /NEEDS_CHECK/);
+    assert.equal(db.getAutoRecord('c1:d2'), null);
+    hold.resolveHold(report.id, 'not_sent', 'tester');
+    assert.equal(hold.getHold('c1:d2'), null);
+    assert.equal(db.getReportById(report.id).status, 'failed');
+    assert.equal(db.getAutoRecord('c1:d2'), null);
+    assert.throws(() => hold.resolveHold(report.id, 'sent', 'tester'), /Không có lượt gửi/);
+  } finally { database?.close(); fs.rmSync(tempDir, { recursive: true, force: true }); }
 });

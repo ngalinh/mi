@@ -49,6 +49,7 @@ async function pump(lane) {
           sendTrace.log('runner.started', { queueWaitMs: job.startedAt - job.createdAt });
           return laneScope.run(lane, () => job._handler(job.payload));
         });
+        if (job.result?.ok === false) throw new Error(job.result.error || 'NEEDS_CHECK: handler kết thúc nhưng không xác nhận thành công.');
         job.status = 'done';
         sendTrace.log('runner.done', { traceId: job.payload.traceId, jobId: id, runnerOk: job.result?.ok, durationMs: Date.now() - job.startedAt });
       } catch (err) {

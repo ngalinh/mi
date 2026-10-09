@@ -98,7 +98,18 @@ async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeout
       lastStatus = job.status;
       trace('proxy.job-status', { jobId, status: job.status, runnerOk: job.result?.ok, error: job.error });
     }
-    if (job.status === 'done') return { ok: true, jobId, result: job.result };
+    if (job.status === 'done') {
+      const evidence = job.result?.confirmation;
+      const sendJob = sendPath === '/api/zalo/send' || sendPath === '/api/facebook/send';
+      const method = sendPath === '/api/zalo/send' ? 'basso-api-zalo-id' : 'messenger-new-row-sent-status';
+      const validEvidence = evidence?.confirmed === true && evidence.method === method
+        && (sendPath !== '/api/zalo/send' || (evidence.messageId && /^[1-9]\d*$/.test(String(evidence.platformMessageId || '')) && evidence.conversationId));
+      if (job.result?.ok !== true || (sendJob && !validEvidence)) {
+        trace('proxy.done-without-confirmation', { jobId, runnerOk: job.result?.ok });
+        return { ok: false, jobId, error: 'NEEDS_CHECK: job đã chạy xong nhưng thiếu xác nhận gửi tin; kiểm tra hội thoại trước khi gửi lại.' };
+      }
+      return { ok: true, jobId, result: job.result };
+    }
     if (job.status === 'error') return { ok: false, jobId, error: job.error };
   }
   trace('proxy.timeout', { jobId, lastStatus, timeoutMs });

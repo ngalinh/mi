@@ -1,4 +1,5 @@
 'use strict';
+const { getHold } = require('./notificationHold');
 const { withBrowserBatch, accountQueue } = require('./accountQueue');
 const { SCHEDULE_TIME, isShippingTime } = require('./shippingSchedule');
 /**
@@ -238,6 +239,7 @@ async function runShippingAuto(opts = {}) {
       const eligible = [];
       for (const order of orders) {
         if (order.id == null) continue;
+        if (getHold(`shipping:${order.id}`)) continue;
         if (getShippingNotified(order.id)) continue;
         if (isShippingAutoSeen(order.id)) continue;
         const c = classify(order);
@@ -258,7 +260,7 @@ async function runShippingAuto(opts = {}) {
             summary.failed += 1;
             // Đếm lần thử lỗi -> đạt cfg.maxRetries thì classify() sẽ bỏ qua đơn này ở các chu kỳ
             // sau (KHÔNG thử lại vô hạn). Gửi tay (nút Xem/Gửi) vẫn không bị ảnh hưởng.
-            if (order.id != null) {
+            if (order.id != null && !r.needsCheck) {
               const attempts = recordShippingAutoFail(order.id, r.error);
               if (attempts >= cfg.maxRetries) gaveUp.push(order);
             }
