@@ -129,30 +129,37 @@ async function armFacebook(page, box, message) {
   return {
     async wait(timeoutMs = 30000) {
       const deadline = Date.now() + timeoutMs;
+      let lastLabels = null;
       while (Date.now() < deadline && page.url() === url) {
-        const confirmed = await page.evaluate(({ token, message }) => {
+        const result = await page.evaluate(({ token, message }) => {
           const norm = s => String(s || '').normalize('NFC').replace(/\s+/g, ' ').trim();
           const grid = document.querySelector(`[data-mi-confirm-root="${token}"]`);
-          if (!grid?.isConnected) return false;
+          if (!grid?.isConnected) return { ok: false, labels: null };
           const baseline = new Set(JSON.parse(grid.getAttribute('data-mi-confirm-baseline') || '[]'));
           const oldTexts = new Set(JSON.parse(grid.getAttribute('data-mi-confirm-texts') || '[]').map(norm));
+          let labels = null;
           for (const row of grid.querySelectorAll('[role="row"]')) {
             if (row.getAttribute('data-mi-confirm-old') === token || baseline.has(row.innerText) || !row.getClientRects().length) continue;
             // With no stable Messenger message ID, repeated identical text cannot
             // distinguish a new send from remounted history. Require human review.
             if (oldTexts.has(norm(message))) continue;
             const exactText = [...row.querySelectorAll('[dir="auto"]')].some(el => norm(el.innerText) === norm(message));
-            const sentStatus = [...row.querySelectorAll('[aria-label], [title]')].some(el =>
-              /^(sent|delivered|seen|đã gửi|đã nhận|đã xem)(?:[.:]|$)/i.test(el.getAttribute('aria-label') || el.getAttribute('title') || ''));
-            const failed = [...row.querySelectorAll('[aria-label], [title]')].some(el =>
-              /sending|not sent|failed|couldn't send|đang gửi|chưa gửi|không gửi được/i.test(el.getAttribute('aria-label') || el.getAttribute('title') || ''));
-            if (exactText && sentStatus && !failed) return true;
+            const rowLabels = [...row.querySelectorAll('[aria-label], [title]')].map(el => el.getAttribute('aria-label') || el.getAttribute('title') || '');
+            // Status label carries a trailing timestamp ("Sent 10:32 AM"); match the
+            // word itself, not the whole label.
+            const sentStatus = rowLabels.some(label => /^(sent|delivered|seen|đã gửi|đã nhận|đã xem)\b/i.test(label));
+            const failed = rowLabels.some(label =>
+              /sending|not sent|failed|couldn't send|đang gửi|chưa gửi|không gửi được/i.test(label));
+            if (exactText && sentStatus && !failed) return { ok: true, labels: null };
+            if (exactText) labels = rowLabels;
           }
-          return false;
-        }, { token, message }).catch(() => false);
-        if (confirmed) return { confirmed: true, method: 'messenger-new-row-sent-status' };
+          return { ok: false, labels };
+        }, { token, message }).catch(() => ({ ok: false, labels: null }));
+        if (result.ok) return { confirmed: true, method: 'messenger-new-row-sent-status' };
+        if (result.labels) lastLabels = result.labels;
         await page.waitForTimeout(300);
       }
+      if (lastLabels) trace.log('facebook.confirm.unmatched-labels', { labels: lastLabels.slice(0, 10) });
       throw Error('NEEDS_CHECK: chưa thấy tin mới có trạng thái Đã gửi trong đúng hội thoại Messenger; kiểm tra trước khi gửi lại.');
     },
     dispose() {},
