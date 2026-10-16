@@ -636,7 +636,10 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       // Xoá cờ target cũ trước mỗi lần quét để chỉ còn 1 phần tử được đánh dấu.
       document.querySelectorAll('[data-mi-target]').forEach((e) => e.removeAttribute('data-mi-target'));
       let topmost = null; // hàng trên cùng khi không có từ khoá khớp
-      const matches = []; // MỌI hàng khớp — để phân biệt nhóm/cá nhân khi mục có nhiều hàng
+      const matches = []; // hàng khớp text — để phân biệt nhóm/cá nhân khi mục có nhiều hàng
+      const sectionRows = []; // MỌI hàng trong đúng mục (kể cả không khớp text) — dùng khi mục chỉ
+      // có đúng 1 hàng: lúc đó Zalo đã tự lọc theo SĐT gõ vào ô tìm rồi (nhóm đặt tên riêng có thể
+      // không hiện SĐT trong tên/preview), nên 1 hàng duy nhất trong mục vẫn tin tưởng lấy được.
       for (const el of els) {
         const r = el.getBoundingClientRect();
         if (!(r.width > 150 && r.height > 30 && r.height < 220 && r.top >= 0)) continue;
@@ -647,14 +650,15 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         if (terms.length) {
           const hit = terms.some((m) =>
             (m.text && t.includes(m.text)) || (m.phone && tPhone.includes(m.phone)));
-          if (!hit) continue;
           // Nhận diện NHÓM: avatar là ẢNH GHÉP nhiều thành viên (collage >=2 ảnh) hoặc có icon nhóm.
           // Chat 1-1 (cá nhân) chỉ có 1 avatar. Dùng để chọn ĐÚNG hàng khi mục có cả 2 loại
           // (vd: mục "Trò chuyện" liệt kê chat 1-1 TRƯỚC, nhóm SAU cho cùng 1 khách).
           const imgCount = el.querySelectorAll('img').length;
           const hasGroupIcon = !!el.querySelector('.mdi-account-group, .mdi-account-multiple');
           const isGroup = imgCount >= 2 || hasGroupIcon;
-          matches.push({ el, area: r.width * r.height, rect: r, isGroup });
+          const entry = { el, area: r.width * r.height, rect: r, isGroup };
+          sectionRows.push(entry);
+          if (hit) matches.push(entry);
         } else if (!topmost || r.top < topmost.top) {
           topmost = { el, top: r.top, rect: r };
         }
@@ -662,9 +666,15 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       let pick = null;
       let ambiguous = false; // >1 hàng khớp khác nhau -> đủ dữ liệu để đòi hỏi đúng loại (isGroup)
       if (terms.length) {
+        // Không hàng nào khớp text nhưng mục chỉ có ĐÚNG 1 hàng và đang tìm bằng SĐT -> hàng đó
+        // chính là kết quả Zalo đã tự lọc theo SĐT (chỉ là không hiện số trong tên/preview, vd nhóm
+        // đặt tên riêng). KHÔNG áp dụng khi tìm bằng TÊN (dễ khớp nhầm khách khác trùng tên) hoặc
+        // khi mục có nhiều hơn 1 hàng (không còn cách phân biệt hàng nào đúng nếu bỏ đối chiếu text).
+        const trustOnlyRow = !matches.length && sectionRows.length === 1 && terms.some((m) => m.phone);
+        const pool0 = trustOnlyRow ? sectionRows : matches;
         // Bỏ WRAPPER: hàng nào CHỨA hàng khớp khác -> loại (giữ hàng lá thật, tránh trúng vùng bọc mục).
-        const leaves = matches.filter((a) => !matches.some((b) => b.el !== a.el && a.el.contains(b.el)));
-        let pool = leaves.length ? leaves : matches;
+        const leaves = pool0.filter((a) => !pool0.some((b) => b.el !== a.el && a.el.contains(b.el)));
+        let pool = leaves.length ? leaves : pool0;
         ambiguous = pool.length > 1;
         // CHỈ dùng nhóm/cá nhân để PHÂN GIẢI khi có >1 hàng khớp (giữ nguyên case chỉ 1 hàng, tránh
         // phá luồng phổ biến nếu nhận diện avatar sai). preferGroup: báo nhóm -> chọn hàng nhóm.
