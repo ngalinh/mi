@@ -61,38 +61,24 @@ test('switching conversation cannot confirm a receipt for another customer', asy
   await assert.rejects(verifier.wait(20), /NEEDS_CHECK/); verifier.dispose();
 });
 
-function facebookHarness(oldText = 'previous message') {
-  const row = (text, status) => ({ innerText: text + ' ' + status, attributes: {}, getClientRects: () => [1],
-    getAttribute(name) { return this.attributes[name]; }, setAttribute(name,value) { this.attributes[name]=value; },
-    querySelectorAll(selector) { return selector.includes('dir=') ? [{ innerText: text }] : [{ getAttribute: name => name === 'aria-label' ? status : null }]; },
-  });
-  const rows = [row(oldText, 'Sent')];
-  const grid = { isConnected: true, attributes: {}, querySelectorAll: () => rows,
-    getAttribute(name) { return this.attributes[name]; }, setAttribute(name,value) { this.attributes[name]=value; } };
-  const document = { body: {}, documentElement: {}, querySelector: () => grid };
-  const box = { evaluate: async (fn,arg) => vm.runInNewContext(`(${fn}) (el,arg)`, {
-    document, el: { parentElement: { querySelector: () => grid } }, arg }) };
-  const page = { url: () => 'https://www.facebook.com/messages/t/42', waitForTimeout: () => new Promise(resolve => setTimeout(resolve,1)),
-    evaluate: async (fn,arg) => vm.runInNewContext(`(${fn}) (arg)`, { document, arg }) };
-  return { page, box, rows, row };
+function facebookHarness(remaining = '') {
+  let text = remaining;
+  const box = { waitFor: async () => {}, innerText: async () => text };
+  const page = { waitForTimeout: () => new Promise(resolve => setTimeout(resolve, 1)) };
+  return { page, box, setRemaining: value => { text = value; } };
 }
-test('Messenger ignores old rows, empty composer, previews, partial content and pending/failed status', async () => {
-  const h = facebookHarness(), verifier = await armFacebook(h.page,h.box,expected.message);
-  for (const [text,status] of [[expected.message,'Sending'],[expected.message,'Not sent'],[expected.message.slice(0,5),'Sent'],['sidebar preview','Sent']]) {
-    h.rows.push(h.row(text,status)); await assert.rejects(verifier.wait(5), /NEEDS_CHECK/);
-  }
-  // Same text remounted from old history must not look like a fresh send.
-  h.rows.push(h.row('previous message','Sent')); await assert.rejects(verifier.wait(5), /NEEDS_CHECK/);
+test('Facebook: empty composer after Enter is treated as sent (no delivery verification)', async () => {
+  const h = facebookHarness(''), verifier = await armFacebook(h.page, h.box);
+  const evidence = await verifier.wait(20);
+  assert.equal(evidence.confirmed, true);
+  assert.equal(evidence.method, 'composer-empty');
+  assert.equal(evidence.deliveryVerified, false);
   verifier.dispose();
 });
-
-test('Messenger accepts a new exact message with a delivery status, but identical historical text needs review', async () => {
-  const h = facebookHarness(), verifier = await armFacebook(h.page,h.box,expected.message);
-  h.rows.push(h.row(expected.message,'Delivered'));
-  assert.equal((await verifier.wait(20)).confirmed,true);
-  const duplicate = facebookHarness(expected.message), repeated = await armFacebook(duplicate.page,duplicate.box,expected.message);
-  duplicate.rows.push(duplicate.row(expected.message,'Delivered'));
-  await assert.rejects(repeated.wait(5), /NEEDS_CHECK/);
+test('Facebook: composer still holding text after Enter needs manual check', async () => {
+  const h = facebookHarness('chưa gửi được'), verifier = await armFacebook(h.page, h.box);
+  await assert.rejects(verifier.wait(20), /NEEDS_CHECK/);
+  verifier.dispose();
 });
 
 test('production Vue rendered tree resolves only the thread that contains the composer', async () => {
@@ -121,5 +107,5 @@ test('job done never marks a send successful without runner success and channel 
     const outcome = await proxyFor(result); assert.equal(outcome.ok,false); assert.match(outcome.error,/NEEDS_CHECK/);
   }
   assert.equal((await proxyFor({ ok:true, confirmation:bassoReceipt(valid(),expected) })).ok,true);
-  assert.equal((await proxyFor({ ok:true, confirmation:{ confirmed:true, method:'messenger-new-row-sent-status' } },'/api/facebook/send')).ok,true);
+  assert.equal((await proxyFor({ ok:true, confirmation:{ confirmed:true, method:'composer-empty' } },'/api/facebook/send')).ok,true);
 });

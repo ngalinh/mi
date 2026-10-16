@@ -1,5 +1,4 @@
 'use strict';
-const crypto = require('node:crypto');
 const trace = require('../shared/sendTrace');
 const normalize = value => String(value || '').normalize('NFC').replace(/\s+/g, ' ').trim();
 const validId = value => value != null && String(value) !== '' && String(value) !== '0';
@@ -108,59 +107,22 @@ async function armBasso(page, composer, message, { fileNames } = {}) {
   };
 }
 
-// Messenger exposes delivery status through accessibility labels. Scope to the
-// conversation containing the composer; require a new full message AND sent status.
-async function armFacebook(page, box, message) {
-  const token = crypto.randomUUID();
-  const url = page.url();
-  const ready = await box.evaluate((el, token) => {
-    let root = el.parentElement;
-    while (root && !root.querySelector('[role="grid"]')) root = root.parentElement;
-    if (!root || root === document.body || root === document.documentElement) return false;
-    const grid = root.querySelector('[role="grid"]');
-    grid.setAttribute('data-mi-confirm-root', token);
-    grid.setAttribute('data-mi-confirm-baseline', JSON.stringify([...grid.querySelectorAll('[role="row"]')].map(row => row.innerText)));
-    grid.setAttribute('data-mi-confirm-texts', JSON.stringify([...grid.querySelectorAll('[role="row"]')].flatMap(row =>
-      [...row.querySelectorAll('[dir="auto"]')].map(el => el.innerText))));
-    for (const row of grid.querySelectorAll('[role="row"]')) row.setAttribute('data-mi-confirm-old', token);
-    return true;
-  }, token);
-  if (!ready) throw Error('UI_NOT_READY: không xác định được khung hội thoại Messenger để xác nhận; chưa bấm Gửi.');
+// Messenger không có message-ID ổn định trong DOM để phân biệt tin mới gửi với lịch sử
+// render lại; so khớp dòng tin + nhãn trạng thái (đổi ngày 2026-10-09) hay bị kẹt Cần KT
+// khi nội dung trùng lịch sử hoặc Facebook đổi nhãn, dù tin đã gửi thật tới khách. Quay lại
+// cách trước đó: ô soạn tin rỗng sau khi bấm Gửi là dấu hiệu duy nhất coi là đã gửi.
+// KHÔNG xác minh thật khách đã nhận tin (deliveryVerified: false).
+async function armFacebook(page, box) {
   return {
-    async wait(timeoutMs = 30000) {
-      const deadline = Date.now() + timeoutMs;
-      let lastLabels = null;
-      while (Date.now() < deadline && page.url() === url) {
-        const result = await page.evaluate(({ token, message }) => {
-          const norm = s => String(s || '').normalize('NFC').replace(/\s+/g, ' ').trim();
-          const grid = document.querySelector(`[data-mi-confirm-root="${token}"]`);
-          if (!grid?.isConnected) return { ok: false, labels: null };
-          const baseline = new Set(JSON.parse(grid.getAttribute('data-mi-confirm-baseline') || '[]'));
-          const oldTexts = new Set(JSON.parse(grid.getAttribute('data-mi-confirm-texts') || '[]').map(norm));
-          let labels = null;
-          for (const row of grid.querySelectorAll('[role="row"]')) {
-            if (row.getAttribute('data-mi-confirm-old') === token || baseline.has(row.innerText) || !row.getClientRects().length) continue;
-            // With no stable Messenger message ID, repeated identical text cannot
-            // distinguish a new send from remounted history. Require human review.
-            if (oldTexts.has(norm(message))) continue;
-            const exactText = [...row.querySelectorAll('[dir="auto"]')].some(el => norm(el.innerText) === norm(message));
-            const rowLabels = [...row.querySelectorAll('[aria-label], [title]')].map(el => el.getAttribute('aria-label') || el.getAttribute('title') || '');
-            // Status label carries a trailing timestamp ("Sent 10:32 AM"); match the
-            // word itself, not the whole label.
-            const sentStatus = rowLabels.some(label => /^(sent|delivered|seen|đã gửi|đã nhận|đã xem)\b/i.test(label));
-            const failed = rowLabels.some(label =>
-              /sending|not sent|failed|couldn't send|đang gửi|chưa gửi|không gửi được/i.test(label));
-            if (exactText && sentStatus && !failed) return { ok: true, labels: null };
-            if (exactText) labels = rowLabels;
-          }
-          return { ok: false, labels };
-        }, { token, message }).catch(() => ({ ok: false, labels: null }));
-        if (result.ok) return { confirmed: true, method: 'messenger-new-row-sent-status' };
-        if (result.labels) lastLabels = result.labels;
-        await page.waitForTimeout(300);
-      }
-      if (lastLabels) trace.log('facebook.confirm.unmatched-labels', { labels: lastLabels.slice(0, 10) });
-      throw Error('NEEDS_CHECK: chưa thấy tin mới có trạng thái Đã gửi trong đúng hội thoại Messenger; kiểm tra trước khi gửi lại.');
+    async wait(timeoutMs = 10000) {
+      await page.waitForTimeout(1500);
+      let remaining;
+      try {
+        await box.waitFor({ state: 'visible', timeout: timeoutMs });
+        remaining = (await box.innerText()).trim();
+      } catch (err) { throw new Error('NEEDS_CHECK: không đọc được kết quả gửi Facebook. ' + err.message); }
+      if (remaining) throw new Error('NEEDS_CHECK: đã bấm Gửi Facebook nhưng ô soạn chưa xóa; cần kiểm tra hội thoại.');
+      return { confirmed: true, method: 'composer-empty', deliveryVerified: false };
     },
     dispose() {},
   };
