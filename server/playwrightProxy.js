@@ -101,7 +101,7 @@ async function sendViaRunner(sendPath, payload, { pollIntervalMs = 1500, timeout
     if (job.status === 'done') {
       const evidence = job.result?.confirmation;
       const sendJob = sendPath === '/api/zalo/send' || sendPath === '/api/facebook/send';
-      const method = sendPath === '/api/zalo/send' ? 'basso-api-zalo-id' : 'messenger-new-row-sent-status';
+      const method = sendPath === '/api/zalo/send' ? 'basso-api-zalo-id' : 'composer-empty';
       const validEvidence = evidence?.confirmed === true && evidence.method === method
         && (sendPath !== '/api/zalo/send' || (evidence.messageId && /^[1-9]\d*$/.test(String(evidence.platformMessageId || '')) && evidence.conversationId));
       if (job.result?.ok !== true || (sendJob && !validEvidence)) {

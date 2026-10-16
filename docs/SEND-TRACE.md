@@ -14,16 +14,14 @@ Các bước cần đối chiếu:
 - `zalo.send.clicked` / `facebook.send.enter-pressed`: thao tác gửi đã chạy.
 - `zalo.confirm.result`: mã tin Zalo và mã tin CRM do API trả về cho đúng
   hội thoại, nội dung khớp hoàn toàn. HTTP 2xx hoặc ô soạn trống chưa đủ.
-- `facebook.confirm.result`: tin mới có nội dung khớp hoàn toàn trong
-  khung hội thoại và nhãn Đã gửi/Đã nhận/Đã xem. Thiếu nhãn chuyển Cần kiểm tra.
+- `facebook.confirm.result`: ô soạn tin rỗng sau khi bấm Gửi (`composer-empty`).
+  Không xác minh khách đã thực nhận tin; còn chữ trong ô soạn mới chuyển Cần kiểm tra.
 - `runner.done` / `runner.error` / `proxy.job-status`: kết quả handler và job.
 - `notify.web-update.*` / `notify.report-final`: lý do web và lịch sử được chốt.
 
 Chỉ ghi thành công khi runner trả bằng chứng xác nhận. Job done thiếu bằng chứng
 được chuyển sang needs_check, giữ khóa chặn gửi lại qua khởi động lại.
 Vào lịch sử báo, mở đúng hội thoại rồi chọn Đã kiểm tra: đã gửi/chưa gửi để xử lý.
-Messenger gửi lại nội dung giống hệt tin cũ có thể cần xác nhận thủ công nếu
-giao diện không cung cấp mã tin ổn định để phân biệt với lịch sử render lại.
 Khi triển khai, cập nhật cả server và local-runner: runner cũ không có bằng chứng
 xác nhận sẽ bị server mới chuyển sang Cần kiểm tra. Bản sửa chưa gửi tin thật
 trên tài khoản người dùng; cần đối chiếu API/nhãn trạng thái khi chạy thực tế.

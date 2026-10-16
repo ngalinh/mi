@@ -33,7 +33,7 @@ function harness(outcome = () => null, delay = async () => {}, options = {}) {
         return { ok: true, json: async () => ({ jobId: requests.length }) };
       }
       const r = requests[Number(url.split('/').pop()) - 1];
-      const result = Object.hasOwn(options, 'runnerResult') ? options.runnerResult : { ok: true, confirmation: { confirmed: true, method: r.path.includes('facebook') ? 'messenger-new-row-sent-status' : 'basso-api-zalo-id', messageId: 'new', platformMessageId: '123456789', conversationId: 'customer' } };
+      const result = Object.hasOwn(options, 'runnerResult') ? options.runnerResult : { ok: true, confirmation: { confirmed: true, method: r.path.includes('facebook') ? 'composer-empty' : 'basso-api-zalo-id', messageId: 'new', platformMessageId: '123456789', conversationId: 'customer' } };
       return { ok: true, json: async () => ({ job: { status: r.error ? 'error' : 'done', error: r.error, result } }) };
     },
   });
