@@ -251,6 +251,7 @@ async function runShippingAuto(opts = {}) {
       }
       summary.candidates = eligible.length;
       const gaveUp = []; // đơn VỪA chạm trần maxRetries ở lượt này -> cảnh báo NV gửi tay
+      const needsCheckList = []; // đơn CẦN KT (không rõ đã gửi hay chưa) -> cảnh báo NV, không retry
       await withBrowserBatch(async () => {
         for await (const { item: order, result: r } of accountQueue(eligible, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' }))) {
           summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
@@ -263,22 +264,34 @@ async function runShippingAuto(opts = {}) {
             if (order.id != null && !r.needsCheck) {
               const attempts = recordShippingAutoFail(order.id, r.error);
               if (attempts >= cfg.maxRetries) gaveUp.push(order);
+            } else if (r.needsCheck) {
+              // CẦN KT: đơn vừa bị hold() (xem shippingSendService) -> lượt sau getHold() ở trên sẽ
+              // tự bỏ qua đơn này, nên nhánh này chỉ chạy ĐÚNG 1 LẦN cho mỗi đơn -> cảnh báo an toàn.
+              needsCheckList.push(order);
             }
           }
 
         }
         summary.gaveUp = gaveUp.length;
-        // Cảnh báo NV các đơn vừa NGỪNG tự thử (chạm trần retry) -> cần gửi tay qua nút Xem/Gửi,
-        // không thì đơn sẽ nằm im vô thời hạn (khác trước đây: tự thử lại vô hạn, ồn nhưng không
-        // "mất tích"). Gộp 1 tin cho cả lượt, giống cách lưới an toàn 17:30 cảnh báo missingLink/unregistered.
+        summary.needsCheck = needsCheckList.length;
+        // Cảnh báo NV các đơn vừa NGỪNG tự thử (chạm trần retry) hoặc CẦN KT (không rõ đã gửi hay
+        // chưa) -> cần xử lý tay, không thì nằm im vô thời hạn. Gộp 1 tin cho cả lượt, giống cách
+        // lưới an toàn 17:30 cảnh báo missingLink/unregistered.
       });
-      if (gaveUp.length) {
-        const names = gaveUp.slice(0, 15).map((o) => `${o.recipient || o.trackingCode || `#${o.id}`}${o.recipient ? ` (#${o.id})` : ''}`).join(', ');
-        const lines = [
-          `⚠️ [mi] Tự động báo ship — ${gaveUp.length} vận đơn gửi lỗi ${cfg.maxRetries} lần liên tiếp, đã NGỪNG tự thử lại:`,
-          `${names}${gaveUp.length > 15 ? '…' : ''}`,
-          'Vào Quản lý giao hàng, bấm nút Xem/Gửi để gửi tay cho các đơn này.',
-        ];
+      if (gaveUp.length || needsCheckList.length) {
+        const lines = [];
+        if (gaveUp.length) {
+          const names = gaveUp.slice(0, 15).map((o) => `${o.recipient || o.trackingCode || `#${o.id}`}${o.recipient ? ` (#${o.id})` : ''}`).join(', ');
+          lines.push(`⚠️ [mi] Tự động báo ship — ${gaveUp.length} vận đơn gửi lỗi ${cfg.maxRetries} lần liên tiếp, đã NGỪNG tự thử lại:`);
+          lines.push(`${names}${gaveUp.length > 15 ? '…' : ''}`);
+          lines.push('Vào Quản lý giao hàng, bấm nút Xem/Gửi để gửi tay cho các đơn này.');
+        }
+        if (needsCheckList.length) {
+          const names = needsCheckList.slice(0, 15).map((o) => `${o.recipient || o.trackingCode || `#${o.id}`}${o.recipient ? ` (#${o.id})` : ''}`).join(', ');
+          lines.push(`🔎 [mi] Tự động báo ship — ${needsCheckList.length} vận đơn CẦN KIỂM TRA (không rõ đã gửi hay chưa):`);
+          lines.push(`${names}${needsCheckList.length > 15 ? '…' : ''}`);
+          lines.push('Vào Quản lý giao hàng, kiểm tra hội thoại Zalo trước khi gửi lại cho các đơn này.');
+        }
         try {
           // eslint-disable-next-line global-require
           const autoNotify = require('./autoNotify');
