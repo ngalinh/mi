@@ -577,14 +577,14 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // null = không giới hạn. Khi search SĐT panel có 3 mục: "Người dùng Zalo" (user cá nhân),
   // "Trò chuyện" (hội thoại/nhóm đặt tên), "Tin nhắn" (chat 1-1). Báo nhóm -> "Trò chuyện";
   // báo cá nhân -> "Tin nhắn" (chat 1-1 thật), fallback "Người dùng Zalo".
-  async function attempt(typeTerm, matchTerms, section = 'Trò chuyện') {
+  async function attempt(typeTerm, matchTerms, section = 'Trò chuyện', nameHint = '') {
     if (!typeTerm) return null;
     await searchBox.fill('');
     await searchBox.fill(String(typeTerm));
     await waitUntil(page, 'từ khóa tìm kiếm', async () =>
       await searchBox.inputValue() === String(typeTerm) && await notBusy(page));
 
-    const scan = () => page.evaluate(({ matchTerms, section, preferGroup }) => {
+    const scan = () => page.evaluate(({ matchTerms, section, preferGroup, nameHint }) => {
       const deacc = (s) => (s || '').normalize('NFC').normalize('NFD')
         .replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
       // Lõi SĐT: bỏ ký tự không phải số + tiền tố 84/0 để khớp dù định dạng khác.
@@ -656,7 +656,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
           const imgCount = el.querySelectorAll('img').length;
           const hasGroupIcon = !!el.querySelector('.mdi-account-group, .mdi-account-multiple');
           const isGroup = imgCount >= 2 || hasGroupIcon;
-          const entry = { el, area: r.width * r.height, rect: r, isGroup };
+          const entry = { el, area: r.width * r.height, rect: r, isGroup, textDeacc: t };
           sectionRows.push(entry);
           if (hit) matches.push(entry);
         } else if (!topmost || r.top < topmost.top) {
@@ -671,7 +671,15 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         // đặt tên riêng). KHÔNG áp dụng khi tìm bằng TÊN (dễ khớp nhầm khách khác trùng tên) hoặc
         // khi mục có nhiều hơn 1 hàng (không còn cách phân biệt hàng nào đúng nếu bỏ đối chiếu text).
         const trustOnlyRow = !matches.length && sectionRows.length === 1 && terms.some((m) => m.phone);
-        const pool0 = trustOnlyRow ? sectionRows : matches;
+        // Nhiều hàng khớp SĐT (Zalo đã tự lọc khi gõ SĐT) nhưng KHÔNG hàng nào hiện SĐT trong
+        // tên/preview (nhóm đặt tên riêng) -> đối chiếu thêm bằng tên Zalo đã LƯU SẴN cho đúng SĐT
+        // này (Danh bạ, không phải tên khách tự nhập nên không lo trùng người khác). Chỉ nhận khi
+        // khớp CHÍNH XÁC đúng 1 hàng; khớp 0 hay >1 hàng thì vẫn chưa đủ chắc, để pool0 rỗng như cũ.
+        const nameNeedle = nameHint ? deacc(nameHint) : '';
+        const nameMatches = (!matches.length && sectionRows.length > 1 && nameNeedle)
+          ? sectionRows.filter((r) => r.textDeacc.includes(nameNeedle))
+          : [];
+        const pool0 = trustOnlyRow ? sectionRows : (nameMatches.length === 1 ? nameMatches : matches);
         // Bỏ WRAPPER: hàng nào CHỨA hàng khớp khác -> loại (giữ hàng lá thật, tránh trúng vùng bọc mục).
         const leaves = pool0.filter((a) => !pool0.some((b) => b.el !== a.el && a.el.contains(b.el)));
         let pool = leaves.length ? leaves : pool0;
@@ -695,7 +703,7 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
         x: rr.left + rr.width / 2, y: rr.top + rr.height / 2, isGroup: !!pick.isGroup, ambiguous,
         identity: (pick.el.textContent || '').normalize('NFC').replace(/\s+/g, ' ').trim(),
       };
-    }, { matchTerms, section, preferGroup: !isPersonal });
+    }, { matchTerms, section, preferGroup: !isPersonal, nameHint });
 
     // Give slow search up to 30s; require the same matching row for one second.
     let rect = null;
@@ -720,11 +728,12 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
   // CẢ 2 kiểu báo (cá nhân/nhóm) đều CHỈ chọn trong mục "Trò chuyện" — hội thoại có sẵn của khách.
   // Loại "Người dùng Zalo" (click vào mở chat 1-1 MỚI -> sai chỗ) và "Tin nhắn"; không có -> DỪNG.
   const primary = 'Trò chuyện';
-  // Có SĐT -> CHỈ tìm theo SĐT (duy nhất, khớp chính xác hơn tên). KHÔNG được lẫn TÊN vào
-  // matchTerms ở đây: tên có thể trùng/là tiền tố của khách khác không nằm trong whitelist
-  // (vd "Nguyễn Anh" khớp nhầm "Nguyễn Anh Kiệt" — 2 SĐT khác nhau) -> gửi nhầm người. Chỉ
-  // dùng TÊN để tìm khi hoàn toàn không có SĐT.
-  if (phone) rect = await attempt(phone, [phone], primary);
+  // Có SĐT -> CHỈ tìm theo SĐT (duy nhất, khớp chính xác hơn tên); KHÔNG lẫn TÊN vào matchTerms
+  // gõ tìm (tên có thể trùng/là tiền tố của khách khác không nằm trong whitelist, vd "Nguyễn Anh"
+  // khớp nhầm "Nguyễn Anh Kiệt") -> gửi nhầm người. Tên đã lưu cho đúng SĐT này chỉ dùng để PHÂN
+  // GIẢI khi "Trò chuyện" ra NHIỀU hàng mà không hàng nào khớp SĐT (xem nameHint trong attempt),
+  // không bao giờ dùng làm từ khoá gõ tìm khi đã có SĐT.
+  if (phone) rect = await attempt(phone, [phone], primary, name);
   else if (name) rect = await attempt(name, [name], primary);
 
   // Không khớp chắc trong "Trò chuyện" -> DỪNG LUÔN (cả tay & bot): KHÔNG lấy đại hàng trên cùng,
