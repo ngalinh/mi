@@ -127,6 +127,11 @@ module.exports = {
     orderCodeLookupDays: Math.max(parseInt(process.env.BASSO_ORDER_CODE_LOOKUP_DAYS || '45', 10) || 45, 1),
     orderCodeLookupMaxRows: Math.max(parseInt(process.env.BASSO_ORDER_CODE_LOOKUP_MAX_ROWS || '300', 10) || 300, 1),
     orderCodeLookupConcurrency: Math.min(Math.max(parseInt(process.env.BASSO_ORDER_CODE_LOOKUP_CONCURRENCY || '6', 10) || 6, 1), 16),
+    // URL chi tiết đơn/khách trong admin Basso (để dashboard dựng link "Mã ĐH"/tên khách).
+    // Trống = không tạo link (hiện chữ thường) thay vì trỏ URL cũ đã đổi -> ra 404. Basso đổi
+    // cấu trúc URL thì chỉ cần sửa 2 biến này trong .env, không cần sửa code.
+    orderDetailUrl: (process.env.BASSO_ORDER_DETAIL_URL || '').trim(),
+    customerDetailUrl: (process.env.BASSO_CUSTOMER_DETAIL_URL || '').trim(),
   },
   // Tự động báo hàng: cứ có đơn "Chưa báo" (đã về kho) là tự gửi tin, không cần bấm tay.
   autoNotify: {

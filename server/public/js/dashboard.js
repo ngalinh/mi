@@ -388,11 +388,13 @@
     return lines.join('<br>');
   }
 
-  const ORDER_DETAIL_BASE = 'https://basso.vn/basso/customer_order/detail/';
-  const CUSTOMER_DETAIL_BASE = 'https://basso.vn/management/customer/detail/';
+  // Rỗng cho tới khi /api/health trả về (xem loadHealth) — Basso đổi URL thì sửa qua
+  // BASSO_ORDER_DETAIL_URL/BASSO_CUSTOMER_DETAIL_URL trong .env, không hardcode ở đây nữa.
+  let ORDER_DETAIL_BASE = '';
+  let CUSTOMER_DETAIL_BASE = '';
   function customerNameCell(o) {
     const name = App.esc(o.customerName);
-    const nameHtml = o.customerId
+    const nameHtml = (o.customerId && CUSTOMER_DETAIL_BASE)
       ? `<a href="${CUSTOMER_DETAIL_BASE + encodeURIComponent(o.customerId)}" target="_blank" rel="noopener">${name}</a>`
       : name;
     // SĐT khách hiện thành 1 dòng nhỏ dưới tên (đã gộp cột SĐT riêng vào đây cho gọn bảng).
@@ -406,7 +408,7 @@
   }
   function orderCodeCell(it) {
     const code = App.esc(it.orderCode);
-    if (!it.orderId) return code;
+    if (!it.orderId || !ORDER_DETAIL_BASE) return code;
     const href = ORDER_DETAIL_BASE + encodeURIComponent(it.orderId);
     return `<a href="${href}" target="_blank" rel="noopener">${code}</a>`;
   }
@@ -1659,6 +1661,13 @@
     try {
       const h = await App.api('/api/health');
       $('mockBadge').style.display = h.mock ? '' : 'none';
+      // Nạp URL chi tiết đơn/khách Basso (xem orderCodeCell/customerNameCell) — lần đầu có
+      // giá trị thì vẽ lại bảng để Mã ĐH/tên khách đổi từ chữ thường sang link ngay, khỏi đợi
+      // thao tác khác kích hoạt render.
+      const hadLinkBase = !!(ORDER_DETAIL_BASE || CUSTOMER_DETAIL_BASE);
+      ORDER_DETAIL_BASE = h.bassoOrderDetailUrl || '';
+      CUSTOMER_DETAIL_BASE = h.bassoCustomerDetailUrl || '';
+      if (!hadLinkBase && (ORDER_DETAIL_BASE || CUSTOMER_DETAIL_BASE)) rerender();
       const tb = $('testBadge');
       if (h.localRunner && h.localRunner.testMode) {
         tb.style.display = '';
