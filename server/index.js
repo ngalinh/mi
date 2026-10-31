@@ -189,6 +189,10 @@ app.get('/api/health', async (req, res) => {
     bulkRunning: isBulkRunning(),
     // Số nhân viên đã ánh xạ sang tài khoản Zalo (ZALO_ACCOUNT_MAP) — để kiểm tra cấu hình.
     zaloAccountMapped: Object.keys(config.zaloAccountMap).length,
+    // URL base trang chi tiết đơn/khách trong admin Basso (BASSO_ORDER_DETAIL_URL/
+    // BASSO_CUSTOMER_DETAIL_URL). Rỗng = dashboard không tạo link (tránh 404 khi Basso đổi URL).
+    bassoOrderDetailUrl: config.basso.orderDetailUrl,
+    bassoCustomerDetailUrl: config.basso.customerDetailUrl,
   });
 });
 
