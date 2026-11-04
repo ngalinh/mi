@@ -39,7 +39,7 @@ const { isFacebookOrder, getContactKenhSale } = require('./db');
  * @returns {Promise<{profile:string, account:(string|undefined), autoEnabled:boolean, source:string,
  *   skip?:boolean, skipReason?:string, orderBrand?:string}>}
  */
-const norm = (s) => String(s == null ? '' : s).trim().toLowerCase();
+const norm = (s) => String(s == null ? '' : s).normalize('NFC').trim().toLowerCase();
 
 /** true nếu account thuộc về NV `uid` — chủ (staffId) hoặc được gắn DÙNG CHUNG (sharedStaffIds). */
 const ownedBy = (a, uid) => norm(a.staffId) === uid || (a.sharedStaffIds || []).some((s) => norm(s) === uid);

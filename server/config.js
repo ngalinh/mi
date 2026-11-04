@@ -20,7 +20,7 @@ function parseZaloAccountMap(raw) {
     const obj = JSON.parse(raw);
     const out = {};
     for (const [k, v] of Object.entries(obj)) {
-      if (v != null && String(v).trim()) out[String(k).trim().toLowerCase()] = String(v).trim();
+      if (v != null && String(v).trim()) out[String(k).normalize('NFC').trim().toLowerCase()] = String(v).trim();
     }
     return out;
   } catch (e) {
@@ -33,9 +33,9 @@ const zaloAccountMap = parseZaloAccountMap(process.env.ZALO_ACCOUNT_MAP);
 /** Tên account Zalo cho 1 đơn theo nhân viên phụ trách (userId ưu tiên, rồi tới tên). '' nếu không có. */
 function zaloAccountForOrder(order) {
   if (!order) return '';
-  const byId = order.userId != null ? zaloAccountMap[String(order.userId).trim().toLowerCase()] : '';
+  const byId = order.userId != null ? zaloAccountMap[String(order.userId).normalize('NFC').trim().toLowerCase()] : '';
   if (byId) return byId;
-  return (order.staff && zaloAccountMap[String(order.staff).trim().toLowerCase()]) || '';
+  return (order.staff && zaloAccountMap[String(order.staff).normalize('NFC').trim().toLowerCase()]) || '';
 }
 
 module.exports = {
