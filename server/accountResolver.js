@@ -44,6 +44,20 @@ const norm = (s) => String(s == null ? '' : s).normalize('NFC').trim().toLowerCa
 /** true nếu account thuộc về NV `uid` — chủ (staffId) hoặc được gắn DÙNG CHUNG (sharedStaffIds). */
 const ownedBy = (a, uid) => norm(a.staffId) === uid || (a.sharedStaffIds || []).some((s) => norm(s) === uid);
 
+/** NV đã nghỉ việc (staffId cũ không còn gắn account nào) -> tên các account dùng THỬ thay thế khi
+ * không khớp được staffId lẫn tên NV trong rổ account hiện có. VD: Thuỷ nghỉ -> thử account tên
+ * "Thuỳ Trang" trước, "Linh Thảo" sau (thứ tự trong mảng = thứ tự ưu tiên; account đứng sau được
+ * đính kèm làm fallbackAccounts, tự thử tiếp nếu account trước gửi lỗi "không thấy hội thoại" —
+ * xem isRetryableAccountError). Thêm dòng mới vào đây khi có NV khác nghỉ cần route tương tự. */
+const REASSIGNED_STAFF_NAMES = { [norm('Thuỷ')]: ['Thuỳ Trang', 'Linh Thảo'] };
+
+/** Tên account (đã chuẩn hoá) dùng thay cho 1 NV đã nghỉ `staff` (đã qua norm()); rỗng nếu NV không
+ * nằm trong danh sách reassign ở trên. */
+function reassignedNames(staff) {
+  const names = REASSIGNED_STAFF_NAMES[staff];
+  return names ? names.map(norm) : [];
+}
+
 /**
  * Suy ra staffId của NV theo TÊN khi đơn KHÔNG có `userId` (Basso đôi khi không trả `user_id` cho
  * 1 đơn) — tra trong TOÀN BỘ account đã cấu hình (mọi platform): account nào có `name` khớp đúng
@@ -132,6 +146,12 @@ function resolveFacebook(order, accounts, kenhSale) {
   const staff = norm(order && order.staff);
   let mine = uid ? fbAccounts.filter((a) => ownedBy(a, uid)) : [];
   if (!mine.length && staff) mine = fbAccounts.filter((a) => norm(a.name) === staff);
+  // NV đã nghỉ (không còn staffId active) -> thử account của NV kế thừa theo tên (xem
+  // REASSIGNED_STAFF_NAMES) trước khi rơi về nhóm "chung".
+  if (!mine.length && staff) {
+    const names = reassignedNames(staff);
+    if (names.length) mine = fbAccounts.filter((a) => names.includes(norm(a.name)));
+  }
   // Không khớp NV -> chỉ dùng account FB "chung" (không gắn staffId) làm catch-all. KHÔNG lấy
   // đại account FB của NV khác (tránh gửi nhầm từ trang FB của người khác).
   if (!mine.length) mine = fbAccounts.filter((a) => !norm(a.staffId));
@@ -207,6 +227,12 @@ async function resolveForOrder(order, opts = {}) {
     // Tất cả account của NV này: ưu tiên khớp theo staffId (hoặc sharedStaffIds), không có thì theo tên.
     let mine = uid ? accounts.filter((a) => ownedBy(a, uid)) : [];
     if (!mine.length && staff) mine = accounts.filter((a) => norm(a.name) === staff);
+    // NV đã nghỉ (không còn staffId active) -> thử account của NV kế thừa theo tên (xem
+    // REASSIGNED_STAFF_NAMES) trước khi rơi về nhóm "chung".
+    if (!mine.length && staff) {
+      const names = reassignedNames(staff);
+      if (names.length) mine = accounts.filter((a) => names.includes(norm(a.name)));
+    }
     // NV không có Zalo riêng (không khớp staffId/sharedStaffIds/tên) -> dùng nhóm account "CHUNG
     // TOÀN CÔNG TY" (không gắn staffId), chọn theo brand y như 1 NV bình thường. Áp dụng cho MỌI
     // NV kể cả NV mới sau này chưa từng cấu hình riêng (đối xứng với resolveFacebook ở trên).
