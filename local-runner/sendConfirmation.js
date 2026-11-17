@@ -112,16 +112,56 @@ async function armBasso(page, composer, message, { fileNames } = {}) {
 // khi nội dung trùng lịch sử hoặc Facebook đổi nhãn, dù tin đã gửi thật tới khách. Quay lại
 // cách trước đó: ô soạn tin rỗng sau khi bấm Gửi là dấu hiệu duy nhất coi là đã gửi.
 // KHÔNG xác minh thật khách đã nhận tin (deliveryVerified: false).
+// Thêm (2026-11-17): ô soạn rỗng không loại trừ Messenger báo lỗi gửi ngầm (toast "Không gửi
+// được"/"Click to try again") -> sau khi ô soạn rỗng, quét thêm NHÃN LỖI rõ ràng (không yêu cầu
+// khớp nhãn "Đã gửi" như bản trước đó 2026-10-09 — đó chính là thứ gây false NEEDS_CHECK) trong
+// 1 cửa sổ ngắn, trước khi coi là đã gửi. Né đối xứng: chỉ lật kết quả khi thấy lỗi RÕ RÀNG.
+const SEND_FAILURE_PATTERN = "couldn't send|wasn't sent|failed to send|click to try again|không gửi được|không thể gửi|gửi thất bại|nhấn để thử lại";
+
+/** Quét nhãn lỗi gửi (aria-label/title) hiển thị trên trang trong `windowMs`. null nếu không thấy. */
+async function detectSendFailure(page, windowMs) {
+  const deadline = Date.now() + windowMs;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line no-await-in-loop
+    const label = await page.evaluate((pattern) => {
+      const re = new RegExp(pattern, 'i');
+      for (const el of document.querySelectorAll('[aria-label], [title]')) {
+        const text = el.getAttribute('aria-label') || el.getAttribute('title') || '';
+        if (re.test(text) && el.getClientRects().length) return text;
+      }
+      return null;
+    }, SEND_FAILURE_PATTERN).catch(() => null);
+    if (label) return label;
+    // eslint-disable-next-line no-await-in-loop
+    await page.waitForTimeout(300);
+  }
+  return null;
+}
+
 async function armFacebook(page, box) {
   return {
     async wait(timeoutMs = 10000) {
+      trace.log('facebook.confirm.wait-start', { timeoutMs });
       await page.waitForTimeout(1500);
       let remaining;
       try {
         await box.waitFor({ state: 'visible', timeout: timeoutMs });
         remaining = (await box.innerText()).trim();
-      } catch (err) { throw new Error('NEEDS_CHECK: không đọc được kết quả gửi Facebook. ' + err.message); }
-      if (remaining) throw new Error('NEEDS_CHECK: đã bấm Gửi Facebook nhưng ô soạn chưa xóa; cần kiểm tra hội thoại.');
+      } catch (err) {
+        trace.log('facebook.confirm.box-unreadable', { error: err.message });
+        throw new Error('NEEDS_CHECK: không đọc được kết quả gửi Facebook. ' + err.message);
+      }
+      if (remaining) {
+        trace.log('facebook.confirm.composer-not-empty', { remainingLength: remaining.length });
+        throw new Error('NEEDS_CHECK: đã bấm Gửi Facebook nhưng ô soạn chưa xóa; cần kiểm tra hội thoại.');
+      }
+      trace.log('facebook.confirm.composer-empty');
+      const failureLabel = await detectSendFailure(page, Math.min(1500, timeoutMs));
+      if (failureLabel) {
+        trace.log('facebook.confirm.failure-label', { label: failureLabel });
+        throw new Error(`NEEDS_CHECK: ô soạn đã rỗng nhưng Messenger báo lỗi gửi ("${failureLabel}"); kiểm tra hội thoại trước khi gửi lại.`);
+      }
+      trace.log('facebook.confirm.result', { method: 'composer-empty', deliveryVerified: false });
       return { confirmed: true, method: 'composer-empty', deliveryVerified: false };
     },
     dispose() {},

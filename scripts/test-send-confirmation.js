@@ -61,10 +61,13 @@ test('switching conversation cannot confirm a receipt for another customer', asy
   await assert.rejects(verifier.wait(20), /NEEDS_CHECK/); verifier.dispose();
 });
 
-function facebookHarness(remaining = '') {
+function facebookHarness(remaining = '', failureLabel = null) {
   let text = remaining;
   const box = { waitFor: async () => {}, innerText: async () => text };
-  const page = { waitForTimeout: () => new Promise(resolve => setTimeout(resolve, 1)) };
+  const page = {
+    waitForTimeout: () => new Promise(resolve => setTimeout(resolve, 1)),
+    evaluate: async () => failureLabel,
+  };
   return { page, box, setRemaining: value => { text = value; } };
 }
 test('Facebook: empty composer after Enter is treated as sent (no delivery verification)', async () => {
@@ -78,6 +81,11 @@ test('Facebook: empty composer after Enter is treated as sent (no delivery verif
 test('Facebook: composer still holding text after Enter needs manual check', async () => {
   const h = facebookHarness('chưa gửi được'), verifier = await armFacebook(h.page, h.box);
   await assert.rejects(verifier.wait(20), /NEEDS_CHECK/);
+  verifier.dispose();
+});
+test('Facebook: empty composer but Messenger shows a send-failure label still needs manual check', async () => {
+  const h = facebookHarness('', 'This message wasn\'t sent.'), verifier = await armFacebook(h.page, h.box);
+  await assert.rejects(verifier.wait(20), /NEEDS_CHECK.*wasn't sent/);
   verifier.dispose();
 });
 

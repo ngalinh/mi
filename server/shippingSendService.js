@@ -1,4 +1,5 @@
 'use strict';
+const sendTrace = require('../shared/sendTrace');
 const { getHold, getOwner, begin, finish, hold, isUncertain } = require('./notificationHold');
 const { canTryNextAccount, sendFacebookWithFallback } = require('./accountFallback');
 const { once, pendingReport, withBrowserBatch, accountQueue } = require('./accountQueue');
@@ -70,7 +71,7 @@ async function staffUserIdByName(name) {
  * Gửi Zalo thử lần lượt account chính + fallbackAccounts (khách có thể nằm ở tài khoản khác của
  * cùng NV) — tách riêng để gọi lại được với keyword/tên khác khi fallback SĐT khách hàng (bên dưới).
  */
-async function trySendZalo(resolved, keyword, matchName, message) {
+async function trySendZalo(resolved, keyword, matchName, message, traceId) {
   let result;
   const candidates = [resolved, ...(Array.isArray(resolved.fallbackAccounts) ? resolved.fallbackAccounts : [])];
   for (let i = 0; i < candidates.length; i += 1) {
@@ -78,6 +79,7 @@ async function trySendZalo(resolved, keyword, matchName, message) {
     try {
       // eslint-disable-next-line no-await-in-loop
       result = await sendBaoHang({
+        traceId,
         profile: cand.profile || 'default',
         account: cand.account,
         keyword,
@@ -138,6 +140,7 @@ async function sendShippingOne(order, opts = {}) {
   if (!order || order.id == null) return { ok: false, error: 'Thiếu đơn' };
   const holdKey = `shipping:${order.id}`;
   const holdOwner = once('holdOwner', () => require('node:crypto').randomUUID());
+  const traceId = once('traceId', () => require('node:crypto').randomUUID());
   const held = getHold(holdKey);
   if (held && getOwner(holdKey) !== holdOwner) return { ok: false, needsCheck: true, error: held };
 
@@ -219,6 +222,9 @@ async function sendShippingOne(order, opts = {}) {
   });
   begin(holdKey, holdOwner, pending.id);
 
+  const trace = (event, details = {}) => sendTrace.log(event, { traceId, reportId: pending.id, orderId: order.id, trackingCode: order.trackingCode, kind: 'ship', ...details });
+  trace('shipping.prepared', { channel: resolved.channel || 'zalo', profile: resolved.profile, account: resolved.account, ...sendTrace.messageMeta(built.message) });
+
   let result;
   // SĐT khách hàng THẬT khi phải tra ngược mã đơn (khác SĐT người nhận trên vận đơn) — set ở các
   // nhánh fallback bên dưới, dùng để cập nhật report + đồng bộ "Đã báo ship" theo đúng SĐT khách.
@@ -242,14 +248,14 @@ async function sendShippingOne(order, opts = {}) {
         result = { ok: false, error: `Chưa có link Facebook cho khách đặt hàng ${fbPhone || '—'} — vào trang Danh bạ để thêm.` };
       } else {
         result = await sendFacebookWithFallback(sendBaoHangFb, resolved, {
-          profile: resolved.profile || 'default', fbLink, keyword: fbPhone, name: fbName, message: built.message,
+          traceId, profile: resolved.profile || 'default', fbLink, keyword: fbPhone, name: fbName, message: built.message,
         });
       }
     } else {
       // NV được gắn NHIỀU tài khoản Zalo không phân biệt được bằng brand (resolved.fallbackAccounts,
       // xem accountResolver.js) -> thử lần lượt: account chính trước, "không thấy hội thoại" (khách
       // có thể đang nằm ở tài khoản kia) thì thử account dự phòng kế tiếp.
-      result = await trySendZalo(resolved, keyword, matchName, built.message);
+      result = await trySendZalo(resolved, keyword, matchName, built.message, traceId);
     }
   } catch (err) {
     result = { ok: false, error: err.message };
@@ -279,7 +285,7 @@ async function sendShippingOne(order, opts = {}) {
         } else {
           const fbMatchName = getZaloName(fb.phone) || fb.customerName || matchName;
           const retryResult = await sendFacebookWithFallback(sendBaoHangFb, fbResolved, {
-            profile: fbResolved.profile || 'default', fbLink, keyword: fb.phone, name: fbMatchName, message: built.message,
+            traceId, profile: fbResolved.profile || 'default', fbLink, keyword: fb.phone, name: fbMatchName, message: built.message,
           });
           if (retryResult.deferred || retryResult.stopped) return retryResult;
           resolved.channel = 'facebook';
@@ -292,7 +298,7 @@ async function sendShippingOne(order, opts = {}) {
         const fbZaloName = getZaloName(fb.phone);
         const fbMatchName = fbZaloName || fb.customerName || matchName;
         console.log(`[shipping-notify] SĐT người nhận ${order.phone} không có hội thoại Zalo -> tra mã đơn ra khách hàng "${fb.customerName || '?'}" (${fb.phone}) -> thử gửi lại.`);
-        const retryResult = await trySendZalo(resolved, fb.phone, fbMatchName, built.message);
+        const retryResult = await trySendZalo(resolved, fb.phone, fbMatchName, built.message, traceId);
         if (retryResult.deferred || retryResult.stopped) return retryResult;
         if (retryResult.ok) {
           result = retryResult;
@@ -318,6 +324,8 @@ async function sendShippingOne(order, opts = {}) {
       phoneOriginal: order.phone,
     } : {}),
   });
+
+  trace('shipping.report-final', { ok: result.ok, error: result.ok ? null : result.error, channel: resolved.channel, fallbackPhone: fallback ? fallback.phone : undefined });
 
   if (!result.ok && isUncertain(result.error)) hold(holdKey, result.error, pending.id);
   else finish(holdKey, holdOwner, pending.id);
