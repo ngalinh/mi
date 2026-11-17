@@ -14,8 +14,11 @@ Các bước cần đối chiếu:
 - `zalo.send.clicked` / `facebook.send.enter-pressed`: thao tác gửi đã chạy.
 - `zalo.confirm.result`: mã tin Zalo và mã tin CRM do API trả về cho đúng
   hội thoại, nội dung khớp hoàn toàn. HTTP 2xx hoặc ô soạn trống chưa đủ.
-- `facebook.confirm.result`: ô soạn tin rỗng sau khi bấm Gửi (`composer-empty`).
-  Không xác minh khách đã thực nhận tin; còn chữ trong ô soạn mới chuyển Cần kiểm tra.
+- `facebook.confirm.result`: ô soạn tin rỗng sau khi bấm Gửi (`composer-empty`) và không thấy
+  nhãn lỗi gửi nào. Không xác minh khách đã thực nhận tin. Chuyển Cần kiểm tra khi còn chữ trong
+  ô soạn (`facebook.confirm.composer-not-empty`) hoặc khi ô soạn rỗng nhưng Messenger vẫn hiện
+  nhãn lỗi gửi rõ ràng trong vài giây sau đó, vd "wasn't sent"/"không gửi được"
+  (`facebook.confirm.failure-label`).
 - `runner.done` / `runner.error` / `proxy.job-status`: kết quả handler và job.
 - `notify.web-update.*` / `notify.report-final`: lý do web và lịch sử được chốt.
 
