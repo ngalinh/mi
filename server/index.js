@@ -1271,15 +1271,15 @@ app.post('/api/reports/:id/resolve', async (req, res) => {
   } catch (err) { res.status(400).json({ ok: false, error: err.message }); }
 });
 
-// ---- Thử gửi LẠI 1 lượt báo THẤT BẠI (từ Lịch sử báo) ----
+// ---- Thử gửi LẠI 1 lượt báo THẤT BẠI hoặc đã DỪNG giữa chừng (từ Lịch sử báo) ----
 // Tái tạo đơn từ khóa đã lưu (customerId+dateInventory+userId) rồi đi qua notifyOrders như báo
-// tay: có khóa chung với bot, resolve đúng account và lấy nội dung Basso mới. Chỉ retry 'failed'.
+// tay: có khóa chung với bot, resolve đúng account và lấy nội dung Basso mới. Chỉ retry 'failed'/'stopped'.
 app.post('/api/reports/:id/retry', async (req, res) => {
   try {
     const rep = getReportById(req.params.id);
     if (!rep) return res.status(404).json({ ok: false, error: 'Không tìm thấy lượt báo' });
-    if (rep.status !== 'failed') {
-      return res.status(400).json({ ok: false, error: 'Chỉ thử lại được lượt THẤT BẠI' });
+    if (rep.status !== 'failed' && rep.status !== 'stopped') {
+      return res.status(400).json({ ok: false, error: 'Chỉ thử lại được lượt THẤT BẠI hoặc đã DỪNG' });
     }
     // Report cũ (trước khi có 3 cột khóa đơn) không đủ dữ liệu tái tạo -> hướng người dùng báo tay.
     if (rep.customer_id == null || rep.date_inventory == null) {

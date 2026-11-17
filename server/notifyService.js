@@ -237,7 +237,7 @@ async function notifyOne(order, opts = {}) {
     // không có thì tới profile/key, cuối cùng 'default'.
     zaloAccount: resolved.account || resolved.profile || null,
   }), report => {
-    updateReport(report.id, { status: 'failed', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' });
+    updateReport(report.id, { status: 'stopped', error: 'Lượt gửi đã dừng trước khi hoàn tất; chưa gửi lại.' });
     finish(holdKey, holdOwner, report.id);
   });
   begin(holdKey, holdOwner, pending.id);
