@@ -1225,7 +1225,7 @@
         const review = r.status === 'needs_check' ? ` <button class="btn small secondary" data-decision="sent">Đã kiểm tra: đã gửi</button> <button class="btn small secondary" data-decision="not_sent">Đã kiểm tra: chưa gửi</button>` : '';
         return `<div class="ln" data-report-id="${E(r.id)}">`
           + `<span class="t-time">${E(logTs(r.created_at))}</span> `
-          + `<span class="${cls}">${tok}</span> `
+          + `<span class="${cls}">${tok}</span>${review} `
           + `<span class="t-kind">${kindTok}</span>  `
           + `${E(r.customer_name || '-')} <span class="t-key">${E(r.phone || '')}</span>  `
           + (r.phone_original ? `<span class="t-key">SĐT ban đầu=${E(r.phone_original)}</span>  ` : '')
@@ -1233,7 +1233,7 @@
           + `<span class="t-key">by=</span>${by} `
           + `<span class="t-key">acct=</span>${acct}`
           + (detail ? `  <span class="t-msg" title="${E(r.error || r.message || '')}">· ${E(detail)}</span>` : '')
-          + jumpLink + review
+          + jumpLink
           + '</div>';
       }).join('');
       if (!older) logTerm.scrollTop = 0;
