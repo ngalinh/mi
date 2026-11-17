@@ -1137,6 +1137,7 @@
     if (r.status === 'pending') return ['PENDING', 't-pending'];
     if (r.status === 'needs_check') return ['CẦN KT ', 't-warn'];
     if (r.status === 'sent_check') return ['ĐÃ GỬI ', 't-warn'];
+    if (r.status === 'stopped') return ['STOP   ', 't-warn'];
     if (isNoConvLog(r.error)) return ['NOZALO ', 't-noconv'];
     return ['ERROR  ', 't-err'];
   }
@@ -1212,7 +1213,7 @@
           : E(r.sent_by || '-');
         const acct = r.zalo_account ? `${E(r.zalo_account)}<span class="t-key">/${chan}</span>` : '-';
         // Lỗi -> ưu tiên lý do lỗi; ngược lại nội dung tin đã gửi. Gộp về 1 dòng.
-        const hasError = ['failed', 'needs_check', 'sent_check'].includes(r.status) && r.error;
+        const hasError = ['failed', 'needs_check', 'sent_check', 'stopped'].includes(r.status) && r.error;
         const detailRaw = hasError ? App.friendlyError(r.error) : (r.message || '');
         const detail = detailRaw ? String(detailRaw).replace(/\s*\n\s*/g, ' ⏎ ') : '';
         // Lượt báo ship đã tra khớp + đổi trạng thái ở Hàng về VN (customer_id/date_inventory

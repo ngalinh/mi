@@ -666,20 +666,27 @@ async function searchAndClickConversation(page, { name, phone, strictMatch = fal
       let pick = null;
       let ambiguous = false; // >1 hàng khớp khác nhau -> đủ dữ liệu để đòi hỏi đúng loại (isGroup)
       if (terms.length) {
+        // sectionRows có thể dính PHẦN TỬ LỒNG NHAU cho CÙNG 1 hàng hiển thị (vd hàng có thêm
+        // badge/tag riêng — "KHÁCH SALE", "Cách giao hàng tùy lúc" — mà badge đó lại khớp 1 trong
+        // các pattern selector ở trên) -> đếm sectionRows.length thô có thể lệch khỏi số hàng THẬT
+        // nhìn thấy trên màn hình, làm trustOnlyRow/nameMatches bên dưới (yêu cầu đếm CHÍNH XÁC 1
+        // hoặc >1) trượt oan dù chỉ có đúng 1 hàng. Lọc wrapper NGAY Ở ĐÂY (hàng nào chứa hàng khác
+        // trong cùng mục -> loại, giữ hàng lá) trước khi đếm, thay vì chỉ lọc sau khi đã chọn pool0.
+        const sectionLeaves = sectionRows.filter((a) => !sectionRows.some((b) => b.el !== a.el && a.el.contains(b.el)));
         // Không hàng nào khớp text nhưng mục chỉ có ĐÚNG 1 hàng và đang tìm bằng SĐT -> hàng đó
         // chính là kết quả Zalo đã tự lọc theo SĐT (chỉ là không hiện số trong tên/preview, vd nhóm
         // đặt tên riêng). KHÔNG áp dụng khi tìm bằng TÊN (dễ khớp nhầm khách khác trùng tên) hoặc
         // khi mục có nhiều hơn 1 hàng (không còn cách phân biệt hàng nào đúng nếu bỏ đối chiếu text).
-        const trustOnlyRow = !matches.length && sectionRows.length === 1 && terms.some((m) => m.phone);
+        const trustOnlyRow = !matches.length && sectionLeaves.length === 1 && terms.some((m) => m.phone);
         // Nhiều hàng khớp SĐT (Zalo đã tự lọc khi gõ SĐT) nhưng KHÔNG hàng nào hiện SĐT trong
         // tên/preview (nhóm đặt tên riêng) -> đối chiếu thêm bằng tên Zalo đã LƯU SẴN cho đúng SĐT
         // này (Danh bạ, không phải tên khách tự nhập nên không lo trùng người khác). Chỉ nhận khi
         // khớp CHÍNH XÁC đúng 1 hàng; khớp 0 hay >1 hàng thì vẫn chưa đủ chắc, để pool0 rỗng như cũ.
         const nameNeedle = nameHint ? deacc(nameHint) : '';
-        const nameMatches = (!matches.length && sectionRows.length > 1 && nameNeedle)
-          ? sectionRows.filter((r) => r.textDeacc.includes(nameNeedle))
+        const nameMatches = (!matches.length && sectionLeaves.length > 1 && nameNeedle)
+          ? sectionLeaves.filter((r) => r.textDeacc.includes(nameNeedle))
           : [];
-        const pool0 = trustOnlyRow ? sectionRows : (nameMatches.length === 1 ? nameMatches : matches);
+        const pool0 = trustOnlyRow ? sectionLeaves : (nameMatches.length === 1 ? nameMatches : matches);
         // Bỏ WRAPPER: hàng nào CHỨA hàng khớp khác -> loại (giữ hàng lá thật, tránh trúng vùng bọc mục).
         const leaves = pool0.filter((a) => !pool0.some((b) => b.el !== a.el && a.el.contains(b.el)));
         let pool = leaves.length ? leaves : pool0;
