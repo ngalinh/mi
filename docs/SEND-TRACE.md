@@ -8,7 +8,11 @@ Một lượt thử tài khoản dự phòng có cùng traceId nhưng jobId khá
 Các bước cần đối chiếu:
 
 - `notify.prepared` / `notify.fresh-content`: report, khóa đơn, tài khoản và dấu
-  vân tay nội dung trước khi gửi.
+  vân tay nội dung trước khi gửi (luồng "Hàng về VN").
+- `shipping.prepared` / `shipping.report-final`: cùng vai trò như 2 dòng trên nhưng cho
+  luồng "Quản lý giao hàng" (báo ship, `server/shippingSendService.js`) — độc lập với
+  `notify.*`, không có `notify.fresh-content` (ship không lấy lại nội dung mới ngay trước
+  khi gửi).
 - `proxy.accepted` / `runner.queued` / `runner.started`: runner đã nhận lệnh hay
   còn chờ hàng đợi.
 - `zalo.send.clicked` / `facebook.send.enter-pressed`: thao tác gửi đã chạy.
