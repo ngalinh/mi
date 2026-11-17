@@ -1222,7 +1222,7 @@
         const jumpLink = (r.customer_id && r.date_inventory)
           ? ` <a class="t-key log-jump" href="index.html?${new URLSearchParams({ q: r.phone || '', customerId: r.customer_id, dateInventory: r.date_inventory }).toString()}" target="_blank" rel="noopener" title="Xem dòng Hàng về VN đã bị đổi trạng thái">↗ Hàng về VN</a>`
           : '';
-        const review = r.status === 'needs_check' ? ` <button class="btn small secondary" data-decision="sent">Đã kiểm tra: đã gửi</button> <button class="btn small secondary" data-decision="not_sent">Đã kiểm tra: chưa gửi</button>` : '';
+        const review = r.status === 'needs_check' ? ` <button class="log-decision" data-decision="sent">Đã kiểm tra: đã gửi</button> <button class="log-decision" data-decision="not_sent">Đã kiểm tra: chưa gửi</button>` : '';
         return `<div class="ln" data-report-id="${E(r.id)}">`
           + `<span class="t-time">${E(logTs(r.created_at))}</span> `
           + `<span class="${cls}">${tok}</span>${review} `
