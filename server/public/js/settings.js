@@ -1225,8 +1225,8 @@
         const review = r.status === 'needs_check' ? ` <button class="log-decision" data-decision="sent">Đã kiểm tra: đã gửi</button> <button class="log-decision" data-decision="not_sent">Đã kiểm tra: chưa gửi</button>` : '';
         return `<div class="ln" data-report-id="${E(r.id)}">`
           + `<span class="t-time">${E(logTs(r.created_at))}</span> `
-          + `<span class="${cls}">${tok}</span>${review} `
-          + `<span class="t-kind">${kindTok}</span>  `
+          + `<span class="${cls}">${tok}</span> `
+          + `<span class="t-kind">${kindTok}</span>${review}  `
           + `${E(r.customer_name || '-')} <span class="t-key">${E(r.phone || '')}</span>  `
           + (r.phone_original ? `<span class="t-key">SĐT ban đầu=${E(r.phone_original)}</span>  ` : '')
           + `<span class="t-key">nv=</span>${E(r.staff || '-')} `
