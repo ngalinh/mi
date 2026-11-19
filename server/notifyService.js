@@ -23,7 +23,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // `bulkState().stop` = người dùng đã yêu cầu dừng loạt đang chạy; vòng lặp kiểm tra cờ này ở ranh giới
 // giữa các đơn để DỪNG ngay — các đơn còn lại bỏ dở (KHÔNG đánh dấu đã báo, báo lại sau được).
 const laneScope = require('../shared/notificationLane');
-const bulkStates = { hang: { running: false, stop: false }, ship: { running: false, stop: false } };
+// stopToken tăng mỗi lần bấm Dừng THẬT SỰ (có loạt đang chạy) — dùng để phát hiện lượt đang XẾP
+// HÀNG đợi khóa (vì loạt trước còn chạy) có bị yêu cầu dừng TRONG LÚC đợi không. Chỉ tự `stop`
+// (reset mỗi lượt) không đủ: lượt đang đợi khóa chưa `running` nên không bị requestStopBulk() đụng
+// tới, rồi khi loạt trước dừng/xong nhả khóa, lượt đang đợi cứ thế chạy tiếp như chưa hề có ai bấm
+// Dừng — xem notifyOrders().
+const bulkStates = { hang: { running: false, stop: false, stopToken: 0 }, ship: { running: false, stop: false, stopToken: 0 } };
 const bulkState = () => bulkStates[laneScope.current()];
 
 /** Có phiên báo loạt đang chạy không (để route/quyết định phản hồi). */
@@ -31,11 +36,13 @@ function isBulkRunning() { return Object.values(bulkStates).some(s => s.running)
 
 /**
  * Yêu cầu DỪNG loạt đang chạy. Chỉ có tác dụng khi đang chạy; đặt cờ để vòng lặp tự thoát ở đơn
- * kế tiếp (đơn đang gửi dở vẫn chạy xong). Trả true nếu có loạt để dừng, false nếu không có gì đang chạy.
+ * kế tiếp (đơn đang gửi dở vẫn chạy xong), đồng thời tăng stopToken để lượt đang XẾP HÀNG đợi khóa
+ * cũng biết mà dừng theo khi tới lượt (xem notifyOrders()). Trả true nếu có loạt để dừng, false nếu
+ * không có gì đang chạy.
  */
 function requestStopBulk() {
   if (!isBulkRunning()) return false;
-  for (const state of Object.values(bulkStates)) if (state.running) state.stop = true;
+  for (const state of Object.values(bulkStates)) if (state.running) { state.stop = true; state.stopToken += 1; }
   return true;
 }
 
@@ -409,7 +416,18 @@ async function groupOrdersByProfile(orders, opts = {}) {
  * @param {object} [opts]
  */
 async function notifyOrders(orders, opts = {}) {
+  // Chụp lại stopToken TRƯỚC KHI đợi khóa — nếu loạt trước đang chạy (mình phải xếp hàng đợi
+  // withLock) mà người dùng bấm Dừng NGAY LÚC ĐÓ, stopToken sẽ tăng trong lúc mình còn đang đợi.
+  const stopTokenBefore = bulkState().stopToken;
   return withLock(async () => {
+    // Bị bấm Dừng trong lúc xếp hàng đợi khóa -> tôn trọng luôn, không gửi gì cho lượt này (người
+    // dùng đã yêu cầu dừng báo hàng, không phải chỉ dừng đúng lượt đang chạy lúc đó).
+    if (bulkState().stopToken !== stopTokenBefore) {
+      return {
+        total: 0, sent: 0, failed: 0, results: [], aborted: false, stopped: true,
+        abortReason: 'STOPPED_BY_USER', abortError: null, skipped: orders.length,
+      };
+    }
     // Đánh dấu "đang chạy" để nút Dừng có tác dụng; reset cờ dừng của phiên trước cho chắc.
     bulkState().running = true;
     bulkState().stop = false;
