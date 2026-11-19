@@ -420,8 +420,23 @@ async function notifyOrders(orders, opts = {}) {
       let aborted = false;
       let stopped = false;
       let abortError = null;
+      // Chặn gửi trùng khi 2 lượt "Báo hàng loạt" chạy chồng nhau: route gọi hàm này tính
+      // targets (lọc đơn đã báo) TRƯỚC KHI giành khóa withLock bên dưới, nên lượt B có thể đợi
+      // khóa với 1 targets đã CŨ trong lúc lượt A đang gửi. Khi lượt B tới lượt mình (khóa vừa nhả),
+      // kiểm tra lại NGAY TRƯỚC khi gửi từng đơn — đơn nào lượt A vừa báo xong trong lúc mình đợi
+      // thì bỏ qua, không gửi trùng cho khách.
+      const send = ({ order }) => {
+        const dkey = opts.kind === 'ship' ? autoKeyShip(order) : autoKey(order);
+        const ex = getAutoRecord(dkey);
+        if (ex && (ex.status === 'success' || ex.status === 'manual')) {
+          console.warn(`[notify] bỏ qua ${order.customerName || order.phone || order.id} — lượt khác vừa báo xong trong lúc đợi khóa (chặn gửi trùng).`);
+          return Promise.resolve({ ok: false, duplicate: true });
+        }
+        return notifyOne(order, opts);
+      };
       await withBrowserBatch(async () => {
-        for await (const { item: { order }, result: r } of accountQueue(ordered, ({ order }) => notifyOne(order, opts), { shouldStop: () => bulkState().stop })) {
+        for await (const { item: { order }, result: r } of accountQueue(ordered, send, { shouldStop: () => bulkState().stop })) {
+          if (r.duplicate) continue;
           // notifyOne tự hủy trong ân hạn / lúc chuẩn bị (người dùng bấm Dừng trước khi tin đi) ->
           // KHÔNG tính vào results (không phải gửi lỗi), coi như đơn bỏ dở như khi dừng ở ranh giới.
           if (r.stopped) { stopped = true; break; }
