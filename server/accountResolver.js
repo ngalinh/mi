@@ -317,11 +317,13 @@ async function resolveForOrder(order, opts = {}) {
 
 /**
  * true nếu lỗi gửi cho thấy "tài khoản này không có hội thoại của khách" (khách có thể nằm ở tài
- * khoản Zalo KHÁC của NV) -> đáng thử tiếp fallbackAccounts. Các lỗi khác (chưa đăng nhập, chọn sai
- * tài khoản, mạng...) KHÔNG thử tiếp vì thử account khác cũng sẽ lỗi y hệt hoặc gửi nhầm ngữ cảnh.
+ * khoản Zalo KHÁC của NV, KHONG_THAY_HOI_THOAI) HOẶC có hội thoại nhưng sai loại cá nhân/nhóm
+ * (SAI_LOAI_HOI_THOAI, xem local-runner/salework.js) -> đáng thử tiếp (account dự phòng / đổi kiểu
+ * báo / tra lại SĐT từ đơn hàng gốc). Các lỗi khác (chưa đăng nhập, chọn sai tài khoản, mạng...)
+ * KHÔNG thử tiếp vì thử lại cũng sẽ lỗi y hệt hoặc gửi nhầm ngữ cảnh.
  */
 function isRetryableAccountError(msg) {
-  return /^KHONG_THAY_HOI_THOAI/.test(String(msg || '').trim());
+  return /^(?:KHONG_THAY_HOI_THOAI|SAI_LOAI_HOI_THOAI)/.test(String(msg || '').trim());
 }
 
 module.exports = { resolveForOrder, brandOfCode, isRetryableAccountError };

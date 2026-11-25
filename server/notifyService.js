@@ -297,6 +297,7 @@ async function notifyOne(order, opts = {}) {
       const candidates = [resolved, ...(Array.isArray(resolved.fallbackAccounts) ? resolved.fallbackAccounts : [])];
       for (let i = 0; i < candidates.length; i += 1) {
         const cand = candidates[i];
+        const target = getContactReportTarget(order.phone) || cand.notifyTarget || 'group'; // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
         try {
           // eslint-disable-next-line no-await-in-loop
           result = await sendBaoHang({
@@ -308,12 +309,36 @@ async function notifyOne(order, opts = {}) {
             message,
             prepareMessage,
             strictMatch: opts.strictMatch === true, // luồng bot: chỉ gửi khi khớp chắc chắn
-            notifyTarget: getContactReportTarget(order.phone) || cand.notifyTarget || 'group', // 'group' | 'personal' -> runner tìm hội thoại đúng kiểu
+            notifyTarget: target,
           });
         } catch (err) {
           result = { ok: false, error: err.message };
         }
         if (result.deferred || result.stopped) return result;
+        // SAI_LOAI_HOI_THOAI: account NÀY có hội thoại thật của khách, chỉ sai kiểu (cá nhân/nhóm) so
+        // với đang thử -> thử lại NGAY trên CHÍNH account này với kiểu còn lại trước khi bỏ qua sang
+        // account dự phòng khác (xem local-runner/salework.js: searchAndClickConversation).
+        if (!result.ok && /^SAI_LOAI_HOI_THOAI/.test(String(result.error || ''))) {
+          const altTarget = target === 'personal' ? 'group' : 'personal';
+          console.log(`[notify] account "${cand.account || cand.profile}" sai kiểu báo (${target}) -> thử lại kiểu "${altTarget}".`);
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            result = await sendBaoHang({
+              traceId,
+              profile: cand.profile || 'default',
+              account: cand.account,
+              keyword,
+              name: matchName,
+              message,
+              prepareMessage,
+              strictMatch: opts.strictMatch === true,
+              notifyTarget: altTarget,
+            });
+          } catch (err) {
+            result = { ok: false, error: err.message };
+          }
+          if (result.deferred || result.stopped) return result;
+        }
         if (result.ok || i === candidates.length - 1 || !canTryNextAccount(result.error)) {
           if (cand !== resolved && result.ok) {
             console.log(`[notify] account "${resolved.account || resolved.profile}" gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
