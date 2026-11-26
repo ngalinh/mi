@@ -20,7 +20,8 @@ function resolver(lists = [accounts]) {
     './bassoApi': {}, './db': { isFacebookOrder: () => true, getContactKenhSale: () => '' },
   })[name] };
   vm.runInNewContext(read('server/accountResolver.js'), box);
-  return { resolve: box.module.exports.resolveForOrder, refreshes: () => refreshes };
+  return { resolve: box.module.exports.resolveForOrder, refreshes: () => refreshes,
+    isRetryable: box.module.exports.isRetryableAccountError };
 }
 test('explicit FB key beats same-name Zalo and never gets fallback accounts', async () => {
   const r = await resolver().resolve({}, { profile: 'f1', account: 'Same' });
@@ -68,6 +69,18 @@ test('only known pre-send failures can advance to another account', () => {
   }
   assert.equal(canTryNextAccount('FB: no composer', 'zalo'), false);
   assert.equal(canTryNextAccount('KHONG_THAY_HOI_THOAI: missing', 'facebook'), false);
+  // Hội thoại khớp SĐT nhưng SAI kiểu cá nhân/nhóm -> vẫn là account THẬT của khách,
+  // đáng thử tiếp (account dự phòng + đổi kiểu báo), chỉ áp dụng cho Zalo (lỗi do
+  // local-runner/salework.js ném, không có nhánh Facebook).
+  assert.equal(canTryNextAccount('SAI_LOAI_HOI_THOAI: cần hội thoại NHÓM', 'zalo'), true);
+  assert.equal(canTryNextAccount('SAI_LOAI_HOI_THOAI: cần hội thoại NHÓM', 'facebook'), false);
+});
+test('isRetryableAccountError accepts both KHONG_THAY_HOI_THOAI and SAI_LOAI_HOI_THOAI', () => {
+  const { isRetryable } = resolver();
+  assert.equal(isRetryable('KHONG_THAY_HOI_THOAI: không tìm thấy hội thoại'), true);
+  assert.equal(isRetryable('SAI_LOAI_HOI_THOAI: cần hội thoại NHÓM'), true);
+  assert.equal(isRetryable('CHUA_DANG_NHAP: hết phiên'), false);
+  assert.equal(isRetryable(''), false);
 });
 test('error display preserves Facebook login and uncertain delivery meaning', () => {
   const s = read('server/public/js/app.js');

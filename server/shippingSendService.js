@@ -76,6 +76,7 @@ async function trySendZalo(resolved, keyword, matchName, message, traceId) {
   const candidates = [resolved, ...(Array.isArray(resolved.fallbackAccounts) ? resolved.fallbackAccounts : [])];
   for (let i = 0; i < candidates.length; i += 1) {
     const cand = candidates[i];
+    const target = getContactReportTarget(keyword) || cand.notifyTarget || 'group';
     try {
       // eslint-disable-next-line no-await-in-loop
       result = await sendBaoHang({
@@ -85,12 +86,34 @@ async function trySendZalo(resolved, keyword, matchName, message, traceId) {
         keyword,
         name: matchName,
         message,
-        notifyTarget: getContactReportTarget(keyword) || cand.notifyTarget || 'group',
+        notifyTarget: target,
       });
     } catch (err) {
       result = { ok: false, error: err.message };
     }
     if (result.deferred || result.stopped) return result;
+    // SAI_LOAI_HOI_THOAI: account NÀY có hội thoại thật của khách, chỉ sai kiểu (cá nhân/nhóm) so với
+    // đang thử -> thử lại NGAY trên CHÍNH account này với kiểu còn lại trước khi bỏ qua sang account
+    // dự phòng khác (xem local-runner/salework.js: searchAndClickConversation).
+    if (!result.ok && /^SAI_LOAI_HOI_THOAI/.test(String(result.error || ''))) {
+      const altTarget = target === 'personal' ? 'group' : 'personal';
+      console.log(`[shipping-notify] account "${cand.account || cand.profile}" sai kiểu báo (${target}) -> thử lại kiểu "${altTarget}".`);
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        result = await sendBaoHang({
+          traceId,
+          profile: cand.profile || 'default',
+          account: cand.account,
+          keyword,
+          name: matchName,
+          message,
+          notifyTarget: altTarget,
+        });
+      } catch (err) {
+        result = { ok: false, error: err.message };
+      }
+      if (result.deferred || result.stopped) return result;
+    }
     if (result.ok || i === candidates.length - 1 || !canTryNextAccount(result.error)) {
       if (cand !== resolved && result.ok) {
         console.log(`[shipping-notify] account "${resolved.account || resolved.profile}" gửi thành công qua account dự phòng "${cand.account || cand.profile}"`);
@@ -176,11 +199,9 @@ async function sendShippingOne(order, opts = {}) {
   // Lựa chọn tài khoản/kênh tường minh của NV vẫn được ưu tiên.
   let ahaFacebookOwner = null;
   if (Number(order.shippingId) === 3 && !opts.account && opts.channel !== 'zalo') {
-    try {
-      ahaFacebookOwner = await once('facebook-owner', () => findFallbackCustomer(order, true));
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
+    // Tra lỗi (không khớp được khách/nhiều chủ đơn) -> bỏ qua gợi ý Facebook, KHÔNG huỷ cả lượt
+    // gửi (trước đây throw làm mất luôn đường gửi Zalo bình thường theo order.phone).
+    ahaFacebookOwner = await once('facebook-owner', () => findFallbackCustomer(order, true).catch(() => null));
   }
   const contactPhone = ahaFacebookOwner?.phone || order.phone;
   const useAhaFacebook = Number(order.shippingId) === 3

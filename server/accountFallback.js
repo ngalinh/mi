@@ -5,7 +5,7 @@
 function canTryNextAccount(error, channel = 'zalo') {
   const value = String(error || '').trim();
   return /^(?:CHUA_DANG_NHAP|ACCOUNT_UNAVAILABLE):/.test(value)
-    || (channel === 'zalo' && /^KHONG_THAY_HOI_THOAI(?:\s|:|$)/.test(value))
+    || (channel === 'zalo' && /^(?:KHONG_THAY_HOI_THOAI|SAI_LOAI_HOI_THOAI)(?:\s|:|$)/.test(value))
     || (channel === 'facebook' && /^FB:/.test(value));
 }
 

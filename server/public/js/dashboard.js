@@ -1298,7 +1298,8 @@
   }
 
   async function bulkSend() {
-    if (!counts.todo) return;
+    // Chặn bấm đúp/gọi chồng: 1 lượt đang chạy thì bỏ qua lượt gọi thêm, không bắn request thứ 2.
+    if (bulkSending || !counts.todo) return;
     closeBulkModal();
     const btn = $('bulkBtn');
     // Giữ nút BẤM ĐƯỢC (không disable) để đóng vai nút Dừng trong lúc gửi.

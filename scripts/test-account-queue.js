@@ -53,7 +53,7 @@ function harness(outcome = () => null, delay = async () => {}, options = {}) {
     './accountFallback': require('../server/accountFallback'),
     './accountQueue': queue, './notificationHold': hold, './playwrightProxy': proxy,
     './lock': { withLock }, './db': db, './config': { basso: options.bassoConfig || {}, notify: {} },
-    './accountResolver': { resolveForOrder, isRetryableAccountError: e => /^KHONG_THAY_HOI_THOAI:/.test(e || '') },
+    './accountResolver': { resolveForOrder, isRetryableAccountError: e => /^(?:KHONG_THAY_HOI_THOAI|SAI_LOAI_HOI_THOAI):/.test(e || '') },
     './bassoApi': { getOrderContent: async ({ customerId }) => ({ found: true, noiDungBaoHang: 'arrival ' + customerId, noiDungBaoShip: 'ship ' + customerId }), getArrivedItems: async () => ({ items: [] }), getTabUsers: async () => ({ tabUsers: [] }),
       findCustomerByOrderCode: async () => null, syncShipStatusByCode: async () => ({}) },
     '../shared/messageTemplate': { buildBaoHangMessage: o => 'arrival ' + o.id, buildBaoShipMessage: o => 'ship ' + o.id },
@@ -418,6 +418,43 @@ for (const kind of ['hang', 'ship', 'shipping-management']) {
     });
   }
 }
+
+for (const kind of ['hang', 'ship', 'shipping-management']) {
+  test(`${kind}: SAI_LOAI_HOI_THOAI retries the SAME account with the opposite kiểu báo (cá nhân/nhóm)`, async () => {
+    const h = harness(r => r.path.endsWith('/send') && r.notifyTarget === 'group' ? 'SAI_LOAI_HOI_THOAI: cần hội thoại NHÓM' : null,
+      async () => {}, { resolveForOrder: async () => ({ channel: 'zalo', profile: 'X', account: 'X', notifyTarget: 'group' }) });
+    const order = { id: 1, phone: '1', orderCode: 'BS1' };
+    const result = kind === 'shipping-management' ? await h.shipping.sendShippingBulk([order]) : await h.notify.notifyOrders([order], { kind });
+    assert.equal(result.sent, 1);
+    assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => [r.profile, r.notifyTarget]), [['X', 'group'], ['X', 'personal']]);
+    assert.equal(h.reports[0].status, 'success');
+    assert.equal(h.reports[0].zaloAccount, 'X');
+  });
+  test(`${kind}: SAI_LOAI_HOI_THOAI on BOTH kiểu báo moves to a fallback Zalo account (sở hữu nhiều Zalo)`, async () => {
+    const h = harness(r => r.path.endsWith('/send') && r.profile === 'X' ? 'SAI_LOAI_HOI_THOAI: cần hội thoại NHÓM' : null,
+      async () => {}, { resolveForOrder: async () => ({ channel: 'zalo', profile: 'X', account: 'X', notifyTarget: 'group',
+        fallbackAccounts: [{ channel: 'zalo', profile: 'Y', account: 'Y', notifyTarget: 'personal' }] }) });
+    const order = { id: 1, phone: '1', orderCode: 'BS1' };
+    const result = kind === 'shipping-management' ? await h.shipping.sendShippingBulk([order]) : await h.notify.notifyOrders([order], { kind });
+    assert.equal(result.sent, 1);
+    assert.deepEqual(h.requests.filter(r => r.path.endsWith('/send')).map(r => [r.profile, r.notifyTarget]),
+      [['X', 'group'], ['X', 'personal'], ['Y', 'personal']]);
+    assert.equal(h.reports[0].zaloAccount, 'Y');
+  });
+}
+
+test('shipping: SAI_LOAI_HOI_THOAI on SĐT người nhận cũng tra cứu đơn hàng gốc (SĐT khách hàng thật)', async () => {
+  const h = harness(r => r.path.endsWith('/send') && r.keyword === 'recipient' ? 'SAI_LOAI_HOI_THOAI: cần hội thoại NHÓM' : null,
+    async () => {}, { db: { getFbLink: () => '', getContactReportTarget: () => null },
+      resolveForOrder: async () => ({ channel: 'zalo', profile: 'X', account: 'X', notifyTarget: 'group' }),
+      basso: { findCustomerByOrderCode: async () => ({ phone: 'purchaser', customerName: 'Buyer' }) } });
+  const result = await h.shipping.sendShippingBulk([{ id: 1, phone: 'recipient', items: [{ orderCode: 'BS1' }] }]);
+  assert.equal(result.sent, 1);
+  const sends = h.requests.filter(r => r.path.endsWith('/send'));
+  assert.deepEqual(sends.map(r => [r.keyword, r.notifyTarget]), [['recipient', 'group'], ['recipient', 'personal'], ['purchaser', 'group']]);
+  assert.equal(h.reports[0].phone, 'purchaser');
+  assert.equal(h.reports[0].phoneSource, 'fallback_customer');
+});
 
 test('shipping fallback re-reads purchaser target and preserves shipping message', async () => {
   const h = harness(r => r.path.endsWith('/send') && r.keyword === 'recipient' ? 'KHONG_THAY_HOI_THOAI: missing' : null,

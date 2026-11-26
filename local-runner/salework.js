@@ -190,20 +190,25 @@ async function hasLoginForm(page) {
 }
 
 /**
- * Lấy tài khoản/mật khẩu đăng nhập Zalo Basso cho 1 profile: ưu tiên account trong store
- * (field email = tài khoản đăng nhập, password), fallback SALEWORK_LOGIN_USER/PASS trong .env.
- * @returns {{username:string,password:string}|null} null nếu không có đủ credential.
+ * Mọi profile Zalo ưu tiên cặp đăng nhập chung trong môi trường.
+ * Chỉ dùng cặp riêng khi cả hai biến chung đều trống; không ghép hai nguồn.
  */
 function loginCredsFor(profile) {
-  let username = '';
-  let password = '';
+  const username = (config.saleworkLoginUser || '').trim();
+  const password = config.saleworkLoginPass || '';
+  if (username || password) {
+    if (!username || !password) {
+      throw new Error('CHUA_DANG_NHAP: cần cấu hình đủ SALEWORK_LOGIN_USER và SALEWORK_LOGIN_PASS trên local-runner.');
+    }
+    return { username, password };
+  }
   try {
     const a = accountsStore.get(profile);
-    if (a && a.platform !== 'facebook') { username = a.email || ''; password = a.password || ''; }
-  } catch { /* store lỗi -> dùng env */ }
-  if (!username) username = config.saleworkLoginUser || '';
-  if (!password) password = config.saleworkLoginPass || '';
-  return username && password ? { username, password } : null;
+    if (a && a.platform !== 'facebook' && a.email && a.password) {
+      return { username: a.email, password: a.password };
+    }
+  } catch { /* Không có cặp đăng nhập dùng được. */ }
+  return null;
 }
 
 /**
