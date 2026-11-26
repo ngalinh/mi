@@ -47,3 +47,19 @@ Không ghi nội dung tin nhắn, cookie hoặc mật khẩu: chỉ ghi độ d�
 SHA-256 rút gọn của tin. Log có mã đơn/tài khoản và thông báo lỗi, chỉ chia sẻ
 cho người phụ trách xử lý. Nếu ghi file thất bại, có cảnh báo trong console;
 lỗi ghi log không ngăn luồng gửi.
+
+## Lỗi trước khi gửi xuống runner
+
+- `notify.preflight-failed` / `shipping.preflight-failed`: chọn tài khoản bị lỗi
+  hoặc thiếu tài khoản phù hợp. Có `stage=resolve-account`, nguyên nhân `error`,
+  `reason` nếu bị bỏ qua theo cấu hình, `reportId`, `traceId`, mã đơn, người gọi
+  (`actor`) và tài khoản/kênh được yêu cầu. `outcome=not-sent` nghĩa là lượt này
+  chưa gọi runner; Lịch sử báo có dòng thất bại tương ứng.
+- `shipping.owner-lookup-warning`: tra chủ đơn AhaMove thất bại. Log giữ nguyên
+  lỗi và mã vận đơn (`trackingCode`), `stage=facebook-owner`,
+  `outcome=continue-account-resolution`: vẫn tiếp tục chọn tài khoản theo luồng
+  hiện hành. Đây là cảnh báo tra cứu, không phải kết luận gửi thất bại hay đã gửi
+  Zalo. Dùng cùng `traceId` để tìm kết quả gửi sau đó.
+
+Ví dụ tìm `HU26110931` trong log hệ thống, rồi lọc `traceId` của lần thử cần xem.
+Log mới chỉ có cho các lượt chạy sau khi triển khai; không khôi phục log đã thiếu.

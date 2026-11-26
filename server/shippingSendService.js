@@ -197,11 +197,21 @@ async function sendShippingOne(order, opts = {}) {
   // AhaMove: kiểm tra Danh bạ của chủ đơn trước khi chọn tài khoản,
   // kể cả khi SĐT người nhận chưa có Zalo hoặc không có account Zalo phù hợp.
   // Lựa chọn tài khoản/kênh tường minh của NV vẫn được ưu tiên.
+  const preflightTrace = (event, details = {}) => sendTrace.log(event, {
+    traceId, orderId: order.id, trackingCode: order.trackingCode, kind: 'ship', staff,
+    actor: opts.actor || null, account: opts.account || null, profile: opts.profile || null,
+    channel: opts.channel || null, ...details,
+  });
   let ahaFacebookOwner = null;
   if (Number(order.shippingId) === 3 && !opts.account && opts.channel !== 'zalo') {
     // Tra lỗi (không khớp được khách/nhiều chủ đơn) -> bỏ qua gợi ý Facebook, KHÔNG huỷ cả lượt
     // gửi (trước đây throw làm mất luôn đường gửi Zalo bình thường theo order.phone).
-    ahaFacebookOwner = await once('facebook-owner', () => findFallbackCustomer(order, true).catch(() => null));
+    ahaFacebookOwner = await once('facebook-owner', () => findFallbackCustomer(order, true).catch(err => {
+      preflightTrace('shipping.owner-lookup-warning', {
+        stage: 'facebook-owner', error: err.message, outcome: 'continue-account-resolution',
+      });
+      return null;
+    }));
   }
   const contactPhone = ahaFacebookOwner?.phone || order.phone;
   const useAhaFacebook = Number(order.shippingId) === 3
@@ -229,6 +239,7 @@ async function sendShippingOne(order, opts = {}) {
       channel: null,
       zaloAccount: null,
     });
+    preflightTrace('shipping.preflight-failed', { stage: 'resolve-account', error: err.message, reportId: report.id, outcome: 'not-sent' });
     return { ok: false, error: err.message, report };
   }
   // Contact target overrides are applied per attempt, using the actual destination phone.
@@ -240,7 +251,13 @@ async function sendShippingOne(order, opts = {}) {
       : resolved.skipReason === 'channel_no_account'
         ? `Đã chọn kênh sale "${opts.kenhSale}" cho lượt báo này nhưng chưa có cấu hình (kênh sale + NV) -> tài khoản Zalo cho NV ${staff || '—'}.`
         : `Chưa có tài khoản Zalo cho brand "${resolved.orderBrand || '?'}" của NV ${staff || '—'}`;
-    return { ok: false, error: err };
+    const report = addReport({
+      orderId: order.trackingCode || String(order.id), customerName: order.recipient,
+      phone: order.phone, staff, message: built.message, status: 'failed', error: err,
+      sentBy: opts.actor || null, kind: 'ship', channel: resolved.channel, zaloAccount: null,
+    });
+    preflightTrace('shipping.preflight-failed', { stage: 'resolve-account', error: err, reason: resolved.skipReason, reportId: report.id, outcome: 'not-sent' });
+    return { ok: false, error: err, report };
   }
 
   const zaloName = getZaloName(order.phone);

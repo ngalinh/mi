@@ -135,6 +135,7 @@ async function notifyOne(order, opts = {}) {
   const newStatus = kind === 'ship' ? 'notified_ship' : 'notified_arrival';
   const holdKey = kind === 'ship' ? autoKeyShip(order) : autoKey(order);
   const holdOwner = once('holdOwner', () => require('node:crypto').randomUUID());
+  const traceId = once('traceId', () => require('node:crypto').randomUUID());
   const held = getHold(holdKey);
   if (held && getOwner(holdKey) !== holdOwner) return { order, ok: false, needsCheck: true, error: held };
 
@@ -183,6 +184,11 @@ async function notifyOne(order, opts = {}) {
   // Bọc try/catch: resolveForOrder có thể throw (vd ACCOUNT_NOT_FOUND khi NV chọn tay 1 tài khoản
   // không khớp đúng duy nhất) -> nếu để throw trần, hàm thoát TRƯỚC khi ghi report/trace, lỗi biến
   // mất không dấu vết (không có trong Lịch sử báo lẫn trace log). Bắt lại để vẫn ghi 1 dòng "failed".
+  const preflightTrace = (event, details = {}) => sendTrace.log(event, {
+    traceId, orderId: order.id, orderCode: meta.orderCode, customerId: order.customerId, dateInventory: order.dateInventory, kind, staff: order.staff,
+    actor: opts.actor || null, account: opts.account || null, profile: opts.profile || null,
+    channel: opts.channel || null, ...details,
+  });
   let resolved;
   try {
     resolved = await once('resolved', () => resolveForOrder(order, opts));
@@ -204,6 +210,7 @@ async function notifyOne(order, opts = {}) {
       channel: null,
       zaloAccount: null,
     });
+    preflightTrace('notify.preflight-failed', { stage: 'resolve-account', error: err.message, reportId: report.id, outcome: 'not-sent' });
     return { order, ok: false, error: err.message, report };
   }
   // Contact target overrides are applied per attempt, using the actual destination phone.
@@ -238,6 +245,7 @@ async function notifyOne(order, opts = {}) {
       channel: resolved.channel,
       zaloAccount: null,
     });
+    preflightTrace('notify.preflight-failed', { stage: 'resolve-account', error: err, reason: resolved.skipReason, reportId: report.id, outcome: 'not-sent' });
     return { order, ok: false, error: err, report };
   }
 
@@ -275,7 +283,6 @@ async function notifyOne(order, opts = {}) {
   });
   begin(holdKey, holdOwner, pending.id);
 
-  const traceId = once('traceId', () => require('node:crypto').randomUUID());
   const trace = (event, details = {}) => sendTrace.log(event, { traceId, reportId: pending.id, customerId: order.customerId, dateInventory: order.dateInventory, kind, ...details });
   trace('notify.prepared', { channel: resolved.channel || 'zalo', profile: resolved.profile, account: resolved.account, ...sendTrace.messageMeta(message) });
 
