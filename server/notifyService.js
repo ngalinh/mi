@@ -169,21 +169,47 @@ async function notifyOne(order, opts = {}) {
     console.log(`[notify] danh bạ Zalo: ${order.phone || '-'} -> tên hội thoại "${zaloName}" (thay tên Basso "${order.customerName || '-'}")`);
   }
 
+  // Tra mã ĐH + ảnh SP TRƯỚC khi gửi để dòng "đang báo" đã đủ thông tin hiển thị (chỉ tra 1 lần,
+  // dùng lại cho cả lúc cập nhật kết quả cuối) — tra TRƯỚC resolveForOrder để nếu bước đó lỗi vẫn
+  // có đủ dữ liệu ghi report bên dưới.
+  const meta = await once('meta', () => resolveOrderMeta(order));
+
   // MÔ HÌNH B: mỗi tài khoản Zalo 1 profile riêng. Resolver quyết định profile + saleworkName
   // theo NV phụ trách đơn (accountsStore trên runner), fallback ZALO_ACCOUNT_MAP / mặc định.
   // KÊNH SALE: chỉ còn vai trò PHỤ — khi NV phụ trách có ≥2 tài khoản (Zalo lẫn Facebook) mà
   // brand không phân biệt được, resolver dùng kênh sale (chọn tay > thật của đơn > gắn trong Danh
   // bạ) để chọn đúng tài khoản trong số đó, KHÔNG tự chọn account độc lập với NV — xem
   // accountResolver.resolveForOrder.
-  const resolved = await once('resolved', () => resolveForOrder(order, opts));
+  // Bọc try/catch: resolveForOrder có thể throw (vd ACCOUNT_NOT_FOUND khi NV chọn tay 1 tài khoản
+  // không khớp đúng duy nhất) -> nếu để throw trần, hàm thoát TRƯỚC khi ghi report/trace, lỗi biến
+  // mất không dấu vết (không có trong Lịch sử báo lẫn trace log). Bắt lại để vẫn ghi 1 dòng "failed".
+  let resolved;
+  try {
+    resolved = await once('resolved', () => resolveForOrder(order, opts));
+  } catch (err) {
+    const report = addReport({
+      orderId: meta.orderCode,
+      customerName: order.customerName,
+      phone: order.phone,
+      staff: order.staff,
+      message,
+      status: 'failed',
+      error: err.message,
+      images: meta.images,
+      sentBy: opts.actor || null,
+      customerId: order.customerId,
+      dateInventory: order.dateInventory,
+      userId: order.userId,
+      kind,
+      channel: null,
+      zaloAccount: null,
+    });
+    return { order, ok: false, error: err.message, report };
+  }
   // Contact target overrides are applied per attempt, using the actual destination phone.
   // LOG CHẨN ĐOÁN: server đã chọn account nào + kiểu báo gì cho đơn này. notifyTarget=group cho NV
   // đáng lẽ cá nhân -> đơn KHÔNG khớp account store (source!='store'), hoặc server chạy code cũ.
   console.log(`[notify] ${order.customerName || order.phone || '?'} | staff=${order.staff || '-'} userId=${order.userId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${getContactReportTarget(order.phone) || resolved.notifyTarget || 'group'}`);
-
-  // Tra mã ĐH + ảnh SP TRƯỚC khi gửi để dòng "đang báo" đã đủ thông tin hiển thị (chỉ tra 1 lần,
-  // dùng lại cho cả lúc cập nhật kết quả cuối).
-  const meta = await once('meta', () => resolveOrderMeta(order));
 
   // Bỏ qua có lý do rõ ràng -> ghi 1 dòng "failed" vào Lịch sử báo để người soát xử lý.
   //   - brand             : NV chưa có Zalo cho brand của đơn (tránh gửi nhầm brand).

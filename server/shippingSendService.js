@@ -206,10 +206,31 @@ async function sendShippingOne(order, opts = {}) {
   const contactPhone = ahaFacebookOwner?.phone || order.phone;
   const useAhaFacebook = Number(order.shippingId) === 3
     && !opts.account && opts.channel !== 'zalo' && !!getFbLink(contactPhone);
-  let resolved = await once('resolved', () => resolveForOrder(
-    resolverOrder(useAhaFacebook ? contactPhone : order.phone),
-    useAhaFacebook ? { ...opts, channel: 'facebook' } : opts,
-  ));
+  // Bọc try/catch: resolveForOrder có thể throw (vd ACCOUNT_NOT_FOUND khi NV chọn tay 1 tài khoản
+  // không khớp đúng duy nhất) -> nếu để throw trần, hàm thoát TRƯỚC khi ghi report/trace, lỗi biến
+  // mất không dấu vết (không có trong Lịch sử báo lẫn trace log). Bắt lại để vẫn ghi 1 dòng "failed".
+  let resolved;
+  try {
+    resolved = await once('resolved', () => resolveForOrder(
+      resolverOrder(useAhaFacebook ? contactPhone : order.phone),
+      useAhaFacebook ? { ...opts, channel: 'facebook' } : opts,
+    ));
+  } catch (err) {
+    const report = addReport({
+      orderId: order.trackingCode || String(order.id),
+      customerName: order.recipient,
+      phone: order.phone,
+      staff,
+      message: built.message,
+      status: 'failed',
+      error: err.message,
+      sentBy: opts.actor || null,
+      kind: 'ship',
+      channel: null,
+      zaloAccount: null,
+    });
+    return { ok: false, error: err.message, report };
+  }
   // Contact target overrides are applied per attempt, using the actual destination phone.
   // LOG CHẨN ĐOÁN: account + kiểu báo đã chọn cho đơn này (đối chiếu khi khách báo gửi nhầm nhóm/cá nhân).
   console.log(`[shipping-notify] ${order.recipient || order.phone || '?'} | staff=${staff || '-'} userId=${staffUserId || '-'} -> channel=${resolved.channel || 'zalo'} account=${resolved.account || '-'} source=${resolved.source} notifyTarget=${getContactReportTarget(order.phone) || resolved.notifyTarget || 'group'}`);
