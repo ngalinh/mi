@@ -2,6 +2,32 @@
 const { AsyncLocalStorage } = require('node:async_hooks');
 const { withLock } = require('./lock');
 const active = new AsyncLocalStorage();
+const laneScope = require('../shared/notificationLane');
+const urgent = new Map();
+
+// Cooperatively borrow the lane only between customers, never during a send.
+async function drainPriority(before = async () => {}) {
+  const jobs = urgent.get(laneScope.current());
+  if (!jobs?.length || active.getStore()?.priority) return;
+  await before();
+  while (jobs.length) {
+    const job = jobs.shift();
+    try { job.resolve(await active.run({ priority: true }, job.fn)); }
+    catch (err) { job.reject(err); }
+  }
+}
+
+function withPriorityBatch(fn) {
+  const lane = laneScope.current();
+  const jobs = urgent.get(lane) || [];
+  urgent.set(lane, jobs);
+  const result = new Promise((resolve, reject) => jobs.push({ fn, resolve, reject }));
+  // Also run when there is no bulk loop to yield to us.
+  withLock(() => drainPriority(), lane).catch(err => {
+    for (const job of jobs.splice(0)) job.reject(err);
+  });
+  return result;
+}
 
 // Resume at a fallback account without repeating earlier sends or reports.
 function once(key, create) {
@@ -71,7 +97,7 @@ async function withBrowserBatch(fn) {
       await require('./playwrightProxy').closeBrowserProfile(batch.profile);
       batch.profile = null;
     };
-    return active.run({ batch }, async () => {
+    return active.run({ batch, priority: active.getStore()?.priority }, async () => {
       try { return await fn(batch); }
       finally { await batch.close(); }
     });
@@ -86,11 +112,16 @@ async function* accountQueue(items, send, { shouldStop = () => false } = {}) {
   const pending = [...tasks];
   try {
     while (pending.length && !shouldStop()) {
-      let i = pending.findIndex(t => t.profile == null);
-      if (i < 0) i = pending.findIndex(t => t.profile === batch.profile);
-      if (i < 0) i = 0;
+      await drainPriority(() => batch.close());
+      if (shouldStop()) break;
+      const aha = laneScope.current() === 'ship'
+        ? pending.filter(t => Number(t.item.shippingId ?? t.item.shipping_id) === 3) : [];
+      const candidates = aha.length ? aha : pending;
+      const chosen = candidates.find(t => t.profile == null)
+        || candidates.find(t => t.profile === batch.profile) || candidates[0];
+      const i = pending.indexOf(chosen);
       const task = pending.splice(i, 1)[0];
-      const result = await active.run({ batch, task }, () => send(task.item));
+      const result = await active.run({ batch, task, priority: active.getStore()?.priority }, () => send(task.item));
       if (result.deferred) {
         task.profile = result.profile;
         pending.push(task);
@@ -105,4 +136,4 @@ async function* accountQueue(items, send, { shouldStop = () => false } = {}) {
   }
 }
 
-module.exports = { once, pendingReport, dispatchSend, withBrowserBatch, accountQueue };
+module.exports = { once, pendingReport, dispatchSend, withBrowserBatch, accountQueue, withPriorityBatch };

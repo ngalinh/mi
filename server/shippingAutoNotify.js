@@ -1,7 +1,7 @@
 'use strict';
 const { getHold } = require('./notificationHold');
-const { withBrowserBatch, accountQueue } = require('./accountQueue');
-const { SCHEDULE_TIME, isShippingTime } = require('./shippingSchedule');
+const { withBrowserBatch, accountQueue, withPriorityBatch } = require('./accountQueue');
+const { SCHEDULE_TIME, isShippingTime, isAhamove } = require('./shippingSchedule');
 /**
  * Pha 2 — Tự động báo ship từ "Quản lý giao hàng" (xem docs/shipping-notify-plan.md).
  *
@@ -69,6 +69,7 @@ const state = {
   seeding: false,
   lastSeed: initialSeed(),
   running: false,
+  runningPriority: false,
   lastRun: null,
   lastResult: null,
   runningSafety: false,
@@ -222,11 +223,18 @@ async function runShippingAuto(opts = {}) {
     if (!state.seeding) startSeed().catch(() => {});
     return { trigger, skipped: true, reason: state.seeding ? 'Đang seed vận đơn tồn cũ' : 'Chờ seed vận đơn tồn cũ' };
   }
-  if (state.running) return { trigger, skipped: true, reason: 'Đang chạy một lượt khác' };
-  state.running = true;
+  const runningKey = opts.priorityOnly ? 'runningPriority' : 'running';
+  if (state[runningKey]) return { trigger, skipped: true, reason: 'Đang chạy một lượt khác' };
+  state[runningKey] = true;
   const summary = { trigger, scanned: 0, candidates: 0, sent: 0, failed: 0, byReason: {}, results: [] };
   try {
-    await withLock(async () => {
+    // Fetch outside the sending lock so new AhaMove orders are discovered during bulk sends.
+    const orders = await fetchRecentOrders(cfg.lookbackDays);
+    const runLocked = opts.priorityOnly
+      ? fn => require('../shared/notificationLane').run('ship', () => withPriorityBatch(fn))
+      : withLock;
+    await runLocked(async () => {
+      if (trigger !== 'manual' && (!state.enabled || !safeGet(SEEDED_KEY))) return;
       const online = await checkLocalHealth();
       if (!online) {
         summary.skipped = true;
@@ -234,10 +242,10 @@ async function runShippingAuto(opts = {}) {
         console.warn(`[auto-ship2:${trigger}] bỏ lượt — local-runner offline.`);
         return;
       }
-      const orders = await fetchRecentOrders(cfg.lookbackDays);
       summary.scanned = orders.length;
       const eligible = [];
       for (const order of orders) {
+        if (opts.priorityOnly && !isAhamove(order)) continue;
         if (order.id == null) continue;
         if (getHold(`shipping:${order.id}`)) continue;
         if (getShippingNotified(order.id)) continue;
@@ -254,6 +262,7 @@ async function runShippingAuto(opts = {}) {
       const needsCheckList = []; // đơn CẦN KT (không rõ đã gửi hay chưa) -> cảnh báo NV, không retry
       await withBrowserBatch(async () => {
         for await (const { item: order, result: r } of accountQueue(eligible, order => shippingSendService.sendShippingOne(order, { actor: 'auto-ship2' }))) {
+          if (r.alreadySent) continue; // May have been sent by the priority pass.
           summary.results.push({ id: order.id, ok: r.ok, error: r.error || null });
           if (r.ok) {
             summary.sent += 1;
@@ -303,7 +312,7 @@ async function runShippingAuto(opts = {}) {
     summary.error = err.message;
     console.error(`[auto-ship2:${trigger}] lỗi:`, err.message);
   } finally {
-    state.running = false;
+    state[runningKey] = false;
     state.lastRun = new Date().toISOString();
     state.lastResult = summary;
   }
@@ -397,7 +406,8 @@ async function runSafetyNet(day) {
 
 function maybeRun() {
   if (!state.enabled) return;
-  runShippingAuto({ trigger: 'interval' }).catch(() => {});
+  const busy = state.running || shippingSendService.getBulkStatus().running;
+  runShippingAuto({ trigger: 'interval', priorityOnly: busy }).catch(() => {});
 }
 
 function startTimer() {
@@ -462,7 +472,8 @@ function getStatus() {
     maxRetries: cfg.maxRetries,
     seeding: state.seeding,
     lastSeed: state.lastSeed,
-    running: state.running,
+    running: state.running || state.runningPriority,
+    runningPriority: state.runningPriority,
     lastRun: state.lastRun,
     lastResult: state.lastResult,
     runningSafety: state.runningSafety,

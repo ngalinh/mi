@@ -129,3 +129,12 @@ Sau khi gửi ship cho 1 vận đơn:
 | 7 | Khớp trạng thái | **`shipCode`** chính, `order_code` dự phòng; đánh dấu **mọi dòng khớp** |
 | 8 | Lưới 17:00 | **Chỉ gửi tin + mark `notified_ship`**, KHÔNG đổi status vận đơn (tránh ảnh hưởng NV kho) |
 | 9 | ĐVVC chưa khai mẫu | **Hướng B** — KHÔNG gửi, chỉ cảnh báo NV (whitelist registry) |
+
+## Ưu tiên AhaMove khi đang báo ship hàng loạt
+
+- Trong danh sách chờ, AhaMove (shippingId = 3) được xử lý trước các hãng khác.
+- Khi lượt tự động hoặc lượt gửi hàng loạt đang bận, mỗi nhịp poll vẫn quét AhaMove mới
+  đủ điều kiện. Đơn ưu tiên được gửi sau khi thao tác gửi hiện tại hoàn tất, rồi tiếp tục
+  danh sách cũ; không chạy hai thao tác gửi đồng thời trong luồng ship.
+- Vẫn áp dụng công tắc tự động, cửa sổ quét, seed, loại trừ, hold, chống trùng và giới hạn
+  retry. Không bảo đảm phát hiện ngay tức thì: phụ thuộc chu kỳ poll và thời gian API trả về.
