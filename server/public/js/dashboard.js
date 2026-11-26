@@ -11,8 +11,8 @@
   let currentGroupBy = ''; // gom dòng: '' = không gom | 'date' = theo ngày | 'customer' = theo khách | 'channel' = theo kênh (NV)
   let currentPage = 1;     // trang hiện tại (server-side)
   const PAGE_SIZE = 20;    // số đơn mỗi trang (giống Basso: ~20/trang -> 1193 đơn = 60 trang)
-  const COLSPAN = 14;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
-  const COLSPAN_CUST = 13; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
+  const COLSPAN = 15;      // số cột cho dòng full-width (chi tiết/nhóm/rỗng)
+  const COLSPAN_CUST = 14; // nhóm theo KHÁCH: đã có 1 ô nút mở ở đầu
   let serverTotal = 0;     // tổng số đơn của trạng thái đang xem (do server trả)
   let pageCount = 1;       // tổng số trang hiện tại (client-mode: đếm theo NHÓM khi đang gom)
   // Chỉ còn dùng counts.todo (số "Chưa báo" all-time) cho nút Báo hàng loạt + dòng thông tin.
@@ -22,6 +22,7 @@
   const STATUS_FOR_GROUP = { todo: 'not_sent', arrival: 'notified_arrival', ship: 'notified_ship', failed: 'send_failed' };
   // Nhãn hiển thị của từng nhóm (dùng cho dòng thông tin + popover Bộ lọc).
   const GROUP_LABELS = { todo: 'Chưa báo', arrival: 'Đã báo hàng', ship: 'Đã báo ship', failed: 'Lỗi - Báo lại' };
+  const selectedOrders = new Set();
   const openRows = new Set();
   const excluded = new Set(); // id các đơn bị TICK loại trừ (Delay) khỏi "Báo hàng loạt"
   // Đang có 1 phiên báo loạt chạy trên server hay không. Khi true, nút "Báo hàng loạt" đổi vai thành
@@ -516,6 +517,7 @@
     // nhân viên) — chọn ở đây rồi bấm nút Gửi hộp/xe cạnh bên vẫn dùng account vừa chọn.
     const rowAccountCell = deliveryCell(o);
     const main = `<tr class="main-row${gc} ${isExcl ? 'row-excluded' : ''}" data-id="${App.esc(o.id)}">
+      <td class="center"><input type="checkbox" class="bulk-select" data-id="${App.esc(o.id)}" aria-label="Chọn ${App.esc(o.customerName || o.id)} để báo hàng" ${selectedOrders.has(String(o.id)) ? 'checked' : ''} ${canSelectBulk(o) ? '' : 'disabled'}></td>
       <td class="center"><button class="expand-btn ${open ? 'open' : ''}" data-id="${App.esc(o.id)}">${App.icon('chevron')}</button></td>
       <td class="center">${App.esc(o.stt ?? '')}</td>
       <td>${App.esc(o.warehouseDate)}</td>
@@ -690,6 +692,9 @@
     renderStatusTabs();
     // `orders` đã là 1 trang do server trả về; chỉ áp thêm lọc client-side (exclude/note).
     const pageList = visibleOrders();
+    const selectableIds = new Set(pageList.filter(canSelectBulk).map(o => String(o.id)));
+    for (const id of selectedOrders) if (!selectableIds.has(id)) selectedOrders.delete(id);
+    syncSelection();
     const totalPages = pageCount;
     if (!pageList.length) {
       const msg = serverTotal ? 'Không có đơn khớp bộ lọc trên trang này.' : 'Không có dữ liệu';
@@ -765,11 +770,11 @@
       const scope = currentGroup ? GROUP_LABELS[currentGroup] : 'Tất cả trạng thái';
       let txt = `${scope} · ${serverTotal} đơn · trang ${currentPage}/${pageCount}`;
       if (currentGroup !== 'todo') txt += ` · ${counts.todo} chưa báo`;
-      ci.textContent = txt;
+      ci.textContent = txt + ` · Đã chọn ${selectedOrders.size} đơn trên trang`;
     }
     // Đang gửi loạt (tab này chạy HOẶC vừa reload nhận từ server): nút đóng vai "Dừng" -> KHÔNG để
     // render đè disable/nhãn của nó.
-    if (!bulkSending && !bulkAdopted) $('bulkBtn').disabled = counts.todo === 0;
+    if (!bulkSending && !bulkAdopted) $('bulkBtn').disabled = selectedBulkPayloads().length === 0;
   }
 
   // ---------------- Mở rộng dòng ----------------
@@ -1231,11 +1236,9 @@
   }
 
   function openBulkModal() {
-    if (!counts.todo) { App.toast('Không có khách nào để báo', 4000); return; }
-    const total = clientMode ? bulkTodoPayloads().length : (currentChannel ? null : counts.todo);
-    const channelLabel = currentChannel ? ` thuộc kênh <strong>${App.esc(currentChannel)}</strong>` : '';
-    $('bulkSummary').innerHTML = `Sẽ gửi báo hàng cho ${total == null ? 'các' : `<strong>${total}</strong>`} khách "Chưa báo"${channelLabel} trong phạm vi đang lọc (mọi trang)`
-      + ` <span class="muted">(các đơn đã Delay hoặc đã báo sẽ tự bỏ qua)</span>.`;
+    const total = selectedBulkPayloads().length;
+    if (!total) { App.toast('Hãy tick chọn khách cần báo hàng trên trang này', 4000); return; }
+    $('bulkSummary').textContent = `Sẽ gửi báo hàng cho ${total} đơn đã tick trên trang này. Đơn Delay hoặc đã báo được bỏ qua.`;
     $('bulkConfirm').innerHTML = App.icon('megaphone') + (total == null ? ' Báo hàng' : ` Báo hàng (${total})`);
     $('bulkModalBg').classList.add('show');
   }
@@ -1251,17 +1254,26 @@
     return payload;
   }
 
-  // Danh sách đơn "Chưa báo" hiện tại (theo NV + tìm kiếm) để gửi loạt. Client-mode đã có sẵn
-  // cả tập nên gửi THẲNG danh sách này lên -> server khỏi phải kéo lại từ Basso (tránh timeout
-  // khi Basso chậm). Đơn đã Delay / đã báo sẽ do server tự lọc bỏ như cũ.
-  function bulkTodoPayloads() {
-    const q = $('fQ').value.trim().toLowerCase();
-    return allOrders
-      .filter((o) => !currentChannel || saleChannelOf(o) === currentChannel)
-      .filter((o) => !currentStaff || String(o.userId) === String(currentStaff))
-      .filter((o) => !q || `${o.customerName} ${o.phone}`.toLowerCase().includes(q))
-      .filter((o) => groupOf(o) === 'todo')
-      .map((o) => withRowAccountOverride(orderPayload(o), o.id));
+  function canSelectBulk(o) {
+    return groupOf(o) === 'todo' && !excluded.has(String(o.id));
+  }
+
+  function selectedBulkPayloads() {
+    return visibleOrders().filter(canSelectBulk)
+      .filter(o => selectedOrders.has(String(o.id)))
+      .map(o => withRowAccountOverride(orderPayload(o), o.id));
+  }
+
+  function syncSelection() {
+    const eligible = visibleOrders().filter(canSelectBulk);
+    const count = eligible.filter(o => selectedOrders.has(String(o.id))).length;
+    const all = $('selectAllOrders');
+    if (all) {
+      all.checked = eligible.length > 0 && count === eligible.length;
+      all.indeterminate = count > 0 && count < eligible.length;
+      all.disabled = !eligible.length;
+    }
+    updateCount();
   }
 
   // Nhãn/nút mặc định của nút báo loạt (khi rảnh). Dùng lại ở nhiều nơi để khỏi lệch chữ.
@@ -1269,7 +1281,7 @@
     const btn = $('bulkBtn');
     btn.classList.remove('is-loading');
     btn.innerHTML = App.icon('megaphone') + ' Báo hàng loạt';
-    btn.disabled = counts.todo === 0;
+    btn.disabled = selectedBulkPayloads().length === 0;
   }
 
   // Người dùng bấm Dừng giữa chừng. Server dừng ở đơn kế tiếp; đơn đang gửi dở vẫn chạy xong.
@@ -1299,7 +1311,9 @@
 
   async function bulkSend() {
     // Chặn bấm đúp/gọi chồng: 1 lượt đang chạy thì bỏ qua lượt gọi thêm, không bắn request thứ 2.
-    if (bulkSending || !counts.todo) return;
+    if (bulkSending || bulkAdopted) return;
+    const selectedPayloads = selectedBulkPayloads();
+    if (!selectedPayloads.length) return;
     closeBulkModal();
     const btn = $('bulkBtn');
     // Giữ nút BẤM ĐƯỢC (không disable) để đóng vai nút Dừng trong lúc gửi.
@@ -1313,9 +1327,7 @@
         staff: currentStaff || undefined, q: q || undefined,
         saleChannel: currentChannel || undefined,
       };
-      // Chỉ gửi kèm `orders` khi client-mode (có đủ tập). Tập quá lớn (server-mode phân trang)
-      // -> để server tự kéo toàn bộ như cũ, tránh gửi thiếu đơn ở trang khác.
-      if (clientMode) body.orders = bulkTodoPayloads();
+      body.orders = selectedPayloads;
       const res = await App.api('/api/notify-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1975,6 +1987,13 @@
     }
   });
   rowsEl.addEventListener('change', (e) => {
+    const pick = e.target.closest('.bulk-select');
+    if (pick) {
+      if (pick.checked) selectedOrders.add(String(pick.dataset.id));
+      else selectedOrders.delete(String(pick.dataset.id));
+      syncSelection();
+      return;
+    }
     const sel = e.target.closest('.status-sel');
     if (sel) return changeStatus(sel.dataset.id, sel.value);
     const rsn = e.target.closest('.delay-reason');
@@ -2049,6 +2068,7 @@
     const headRow = document.querySelector('.table-wrap table thead tr');
     if (!headRow) return;
     headRow.innerHTML = `
+      <th class="center" style="width:64px"><label title="Chọn các đơn chưa báo trên trang này"><input type="checkbox" id="selectAllOrders" aria-label="Chọn tất cả đơn chưa báo trên trang này"> Chọn</label></th>
       <th style="width:34px"></th>
       <th class="center" style="width:50px">STT</th>
       <th title="Ngày nhập kho">Ngày về</th>
@@ -2065,6 +2085,13 @@
       <th style="width:160px" title="Người đã gửi lượt báo (Bot/nhân viên) & tài khoản Zalo/FB đã dùng">Người gửi / TK</th>`;
   }
   renderHeader();
+  $('selectAllOrders').addEventListener('change', (e) => {
+    for (const o of visibleOrders().filter(canSelectBulk)) {
+      if (e.target.checked) selectedOrders.add(String(o.id));
+      else selectedOrders.delete(String(o.id));
+    }
+    render();
+  });
 
   // Deep-link từ tab Log (Cài đặt): mở kèm ?q=<sđt>&dateInventory=<unix giây> để nhảy thẳng
   // tới đúng dòng khách bị đổi trạng thái bởi 1 lượt báo ship — set sẵn ô tìm + đổi phạm vi

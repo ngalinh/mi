@@ -8,7 +8,7 @@ const root = path.join(__dirname, '..');
 const server = fs.readFileSync(path.join(root, 'server/index.js'), 'utf8');
 const route = server.slice(server.indexOf("app.post('/api/notify-all',"), server.indexOf('// ---- Dừng báo hàng loạt'));
 const dashboard = fs.readFileSync(path.join(root, 'server/public/js/dashboard.js'), 'utf8');
-const payloadFn = dashboard.slice(dashboard.indexOf('  function bulkTodoPayloads()'), dashboard.indexOf('  // Nhãn/nút mặc định'));
+const payloadFn = dashboard.slice(dashboard.indexOf('  function canSelectBulk(o)'), dashboard.indexOf('  // Nhãn/nút mặc định'));
 const orders = [
   { id: '1', saleChannelLabel: 'Basso', userId: 1, customerName: 'An', phone: '123' },
   { id: '2', saleChannelLabel: 'Linh Dương', userId: 1, customerName: 'An', phone: '123' },
@@ -29,18 +29,39 @@ async function run(body, delayed = new Set(), records = {}) {
   await handler({ body }, { json: value => { result = value; }, status: () => { throw Error('Unexpected route error'); } });
   return { fetched, sent: Array.from(sent), result };
 }
-test('client payload respects channel, staff, search and todo across all pages', () => {
+test('selected payload excludes unticked, hidden, delayed and notified orders; keeps account override', () => {
   const context = {
-    allOrders: orders.concat([{ ...orders[0], id: '5', userId: 2 }, { ...orders[0], id: '6', customerName: 'Other', phone: '' }]),
-    currentChannel: 'Basso', currentStaff: 1,
-    $: () => ({ value: 'An' }), saleChannelOf: o => String(o.saleChannelLabel || o.saleChannel || '').trim(),
+    visibleOrders: () => orders,
+    selectedOrders: new Set(['1', '3', '4', 'hidden']), excluded: new Set(['4']),
     groupOf: o => o.id === '3' ? 'done' : 'todo', orderPayload: o => ({ ...o }),
     withRowAccountOverride: o => ({ ...o, profile: 'manual-account' }),
   };
   vm.createContext(context);
-  vm.runInContext(payloadFn + '; result = bulkTodoPayloads();', context);
+  vm.runInContext(payloadFn + '; result = selectedBulkPayloads();', context);
   assert.deepEqual(Array.from(context.result, o => o.id), ['1']);
   assert.equal(context.result[0].profile, 'manual-account');
+  context.selectedOrders.clear();
+  vm.runInContext('result = selectedBulkPayloads();', context);
+  assert.equal(context.result.length, 0);
+});
+test('select-all reflects partial, full and empty selection', () => {
+  const header = {};
+  const context = {
+    visibleOrders: () => orders, selectedOrders: new Set(['1']), excluded: new Set(['4']),
+    groupOf: () => 'todo', $: () => header, updateCount: () => {},
+  };
+  vm.createContext(context);
+  vm.runInContext(payloadFn + '; syncSelection();', context);
+  assert.equal(header.indeterminate, true);
+  assert.equal(header.checked, false);
+  context.selectedOrders.add('2'); context.selectedOrders.add('3');
+  vm.runInContext('syncSelection();', context);
+  assert.equal(header.checked, true);
+  assert.equal(header.indeterminate, false);
+  context.visibleOrders = () => [];
+  vm.runInContext('syncSelection();', context);
+  assert.equal(header.disabled, true);
+  assert.equal(header.checked, false);
 });
 test('server filters fetched full set by actual sale channel', async () => {
   const r = await run({ saleChannel: 'Basso' });
