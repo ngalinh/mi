@@ -199,11 +199,9 @@ async function sendShippingOne(order, opts = {}) {
   // Lựa chọn tài khoản/kênh tường minh của NV vẫn được ưu tiên.
   let ahaFacebookOwner = null;
   if (Number(order.shippingId) === 3 && !opts.account && opts.channel !== 'zalo') {
-    try {
-      ahaFacebookOwner = await once('facebook-owner', () => findFallbackCustomer(order, true));
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
+    // Tra lỗi (không khớp được khách/nhiều chủ đơn) -> bỏ qua gợi ý Facebook, KHÔNG huỷ cả lượt
+    // gửi (trước đây throw làm mất luôn đường gửi Zalo bình thường theo order.phone).
+    ahaFacebookOwner = await once('facebook-owner', () => findFallbackCustomer(order, true).catch(() => null));
   }
   const contactPhone = ahaFacebookOwner?.phone || order.phone;
   const useAhaFacebook = Number(order.shippingId) === 3
