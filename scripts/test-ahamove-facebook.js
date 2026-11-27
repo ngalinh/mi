@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 
 function harness({ owner = { phone: 'owner', customerName: 'Buyer' }, links = { owner: 'https://facebook.com/buyer' }, lookupError, skipZalo = false, skipFb = false, seen = false } = {}) {
-  const calls = { resolve: [], zalo: [], fb: [], lookup: [], marked: [], sync: [], reports: [] };
+  const calls = { resolve: [], zalo: [], fb: [], lookup: [], marked: [], sync: [], reports: [], logs: [] };
   const queue = {
     once: (_, fn) => fn(),
     pendingReport: fn => fn(),
@@ -20,6 +20,9 @@ function harness({ owner = { phone: 'owner', customerName: 'Buyer' }, links = { 
     return cache.get(key);
   };
   const deps = {
+    'node:crypto': require('node:crypto'),
+    '../shared/sendTrace': { log: (event, data) => calls.logs.push({ event, ...data }), messageMeta: () => ({}) },
+    './notificationHold': { getHold: () => null, begin() {}, finish() {}, isUncertain: () => false },
     './accountFallback': require('../server/accountFallback'),
     './accountQueue': queue,
     './playwrightProxy': {
@@ -102,9 +105,9 @@ test('ambiguous owners or failed lookup do not send to the recipient', async () 
     { owner: code => ({ phone: code }) },
     { owner: null },
   ]) {
-    const h = harness(options);
+    const h = harness({ ...options, links: options.owner === null ? {} : { recipient: 'https://facebook.com/recipient' } });
     h.order.items.push({ orderCode: 'BS2' });
-    assert.equal((await h.send(h.order)).ok, false);
+    assert.equal((await h.send(h.order, { channel: 'facebook' })).ok, false);
     assert.equal(h.calls.zalo.length + h.calls.fb.length, 0);
   }
 });
@@ -130,4 +133,25 @@ test('already sent and missing link are rejected before lookup or send', async (
     assert.equal(h.calls.lookup.length, 0);
     assert.equal(h.calls.zalo.length + h.calls.fb.length, 0);
   }
+});
+
+for (const opts of [{}, { channel: 'facebook' }, { account: 'FB' }]) {
+  test('missing order lookup uses saved phone contact: ' + JSON.stringify(opts), async () => {
+    const h = harness({ owner: null, links: { '0974308989': 'https://facebook.com/customer' } });
+    Object.assign(h.order, { phone: '0974308989', recipient: 'Thuy Nghiem Nguyen', trackingCode: '158336208062', items: [{ orderCode: 'SU03112648' }] });
+    assert.equal((await h.send(h.order, opts)).ok, true);
+    assert.equal(h.calls.fb.length, 1);
+    assert.equal(h.calls.fb[0].keyword, '0974308989');
+    assert.equal(h.calls.fb[0].fbLink, 'https://facebook.com/customer');
+    assert.equal(h.calls.zalo.length, 0);
+    assert.equal(h.calls.logs.find(e => e.event === 'shipping.facebook-recipient').source, 'contact_phone');
+    assert.equal(h.calls.reports.at(-1).status, 'success');
+    assert.equal(h.calls.marked[0][1], '0974308989');
+  });
+}
+test('automatic AhaMove does not reuse swallowed lookup error to send Facebook', async () => {
+  const h = harness({ lookupError: 'API unavailable', links: { recipient: 'https://facebook.com/recipient' } });
+  assert.equal((await h.send(h.order)).ok, false);
+  assert.equal(h.calls.fb.length, 0);
+  assert.equal(h.calls.reports.at(-1).status, 'failed');
 });

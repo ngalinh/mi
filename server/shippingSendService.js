@@ -149,6 +149,11 @@ async function findFallbackCustomer(order, verifyOwner = false) {
       owner = hit;
     }
   }
+  // Không tìm thấy mã đơn: dùng liên hệ đã lưu theo đúng SĐT vận đơn.
+  // Không bắt lỗi API hoặc lỗi nhiều chủ đơn ở đây.
+  if (verifyOwner && !owner && order.phone && getFbLink(order.phone)) {
+    return { phone: order.phone, customerName: getZaloName(order.phone) || order.recipient, source: 'contact_phone' };
+  }
   if (verifyOwner && codes.length && !owner) throw new Error('Không tra được khách đặt hàng từ mã đơn — chưa gửi báo ship qua Facebook.');
   return owner;
 }
@@ -206,7 +211,7 @@ async function sendShippingOne(order, opts = {}) {
   if (Number(order.shippingId) === 3 && !opts.account && opts.channel !== 'zalo') {
     // Tra lỗi (không khớp được khách/nhiều chủ đơn) -> bỏ qua gợi ý Facebook, KHÔNG huỷ cả lượt
     // gửi (trước đây throw làm mất luôn đường gửi Zalo bình thường theo order.phone).
-    ahaFacebookOwner = await once('facebook-owner', () => findFallbackCustomer(order, true).catch(err => {
+    ahaFacebookOwner = await once('facebook-owner-preflight', () => findFallbackCustomer(order, true).catch(err => {
       preflightTrace('shipping.owner-lookup-warning', {
         stage: 'facebook-owner', error: err.message, outcome: 'continue-account-resolution',
       });
@@ -292,7 +297,12 @@ async function sendShippingOne(order, opts = {}) {
     if (resolved.channel === 'facebook') {
       // Người nhận có thể là khách của khách, kể cả khi chính họ đã có link FB.
       // Tra chủ đơn trước khi gửi; không nuốt lỗi tra cứu rồi gửi nhầm người nhận.
-      const owner = await once('facebook-owner', () => findFallbackCustomer(order, true));
+      const owner = ahaFacebookOwner || await once('facebook-owner', () => findFallbackCustomer(order, true));
+      trace('shipping.facebook-recipient', {
+        source: owner?.source || (owner ? 'order_code' : 'contact_phone'),
+        phone: owner?.phone || order.phone,
+        orderCodes: [...new Set((order.items || []).map(item => item.orderCode).filter(Boolean))],
+      });
       const fbPhone = owner?.phone || order.phone;
       const fbName = owner ? (owner.customerName || getZaloName(fbPhone) || fbPhone) : matchName;
       const fbLink = getFbLink(fbPhone);

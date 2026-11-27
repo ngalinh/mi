@@ -550,7 +550,7 @@ for (const recipientHasLink of [false, true]) {
 for (const scenario of ['missing-link', 'lookup-error', 'not-found', 'multiple-owners', 'missing-account']) {
   test('Facebook owner lookup fails without sending recipient: ' + scenario, async () => {
     const h = harness(() => null, async () => {}, {
-      db: { getFbLink: phone => phone === 'buyer' && scenario === 'missing-link' ? '' : 'https://facebook.com/messages/t/' + phone },
+      db: { getFbLink: phone => scenario === 'not-found' || (phone === 'buyer' && scenario === 'missing-link') ? '' : 'https://facebook.com/messages/t/' + phone },
       basso: { findCustomerByOrderCode: async code => {
         if (scenario === 'lookup-error') throw Error('Basso lookup unavailable');
         if (scenario === 'not-found') return null;
